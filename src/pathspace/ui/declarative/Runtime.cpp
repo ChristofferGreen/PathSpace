@@ -5,6 +5,7 @@
 #include <pathspace/ui/Helpers.hpp>
 #include <pathspace/ui/LocalWindowBridge.hpp>
 #include <pathspace/ui/LegacyBuildersDeprecation.hpp>
+#include <pathspace/ui/SurfaceTypes.hpp>
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
@@ -14,8 +15,11 @@
 
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
+#include <IOSurface/IOSurface.h>
 #endif
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cctype>
 #include <cstdint>
@@ -35,6 +39,10 @@ using namespace SP::UI::Declarative::Detail;
 using SP::PathSpace;
 using ScenePath = SP::UI::ScenePath;
 using WindowPath = SP::UI::WindowPath;
+using RenderSettings = SP::UI::Builders::RenderSettings;
+using SurfaceDesc = SP::UI::Builders::SurfaceDesc;
+using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
+using SoftwareFramebuffer = SP::UI::Builders::SoftwareFramebuffer;
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 
 std::mutex g_io_trellis_mutex;
@@ -576,34 +584,6 @@ auto build_present_handles(SP::PathSpace& space,
     return handles;
 }
 
-auto make_bootstrap(SP::PathSpace& space,
-                    SP::UI::Declarative::PresentHandles const& handles)
-    -> SP::Expected<SP::UI::Builders::App::BootstrapResult> {
-    using SP::UI::Builders::App::BootstrapResult;
-    BootstrapResult bootstrap{};
-    bootstrap.window = handles.window;
-    bootstrap.view_name = handles.view_name;
-    bootstrap.surface = handles.surface;
-    bootstrap.renderer = handles.renderer;
-    bootstrap.target = handles.target;
-
-    auto surface_desc =
-        space.read<SP::UI::Builders::SurfaceDesc, std::string>(std::string(handles.surface.getPath()) + "/desc");
-    if (!surface_desc) {
-        return std::unexpected(surface_desc.error());
-    }
-    bootstrap.surface_desc = *surface_desc;
-
-    auto settings = SP::UI::Builders::Renderer::ReadSettings(space,
-                                                             SP::App::ConcretePathView{handles.target.getPath()});
-    if (!settings) {
-        return std::unexpected(settings.error());
-    }
-    bootstrap.applied_settings = *settings;
-    bootstrap.present_policy = read_present_policy(space, handles.window, handles.view_name);
-    return bootstrap;
-}
-
 } // namespace
 
 namespace SP::UI::Declarative {
@@ -619,33 +599,317 @@ auto ResizePresentSurface(SP::PathSpace& space,
                           PresentHandles const& handles,
                           int width,
                           int height) -> SP::Expected<void> {
-    auto bootstrap = make_bootstrap(space, handles);
-    if (!bootstrap) {
-        return std::unexpected(bootstrap.error());
+    if (width <= 0 || height <= 0) {
+        return std::unexpected(make_error("surface dimensions must be positive",
+                                          SP::Error::Code::InvalidPath));
     }
-    return SP::UI::Builders::App::UpdateSurfaceSize(space, *bootstrap, width, height);
+
+    auto surface_desc_path = std::string(handles.surface.getPath()) + "/desc";
+    auto surface_desc = space.read<SurfaceDesc, std::string>(surface_desc_path);
+    if (!surface_desc) {
+        return std::unexpected(surface_desc.error());
+    }
+
+    auto target_desc_path = std::string(handles.target.getPath()) + "/desc";
+    auto target_desc = space.read<SurfaceDesc, std::string>(target_desc_path);
+    if (!target_desc) {
+        return std::unexpected(target_desc.error());
+    }
+
+    SurfaceDesc updated_desc = *surface_desc;
+    updated_desc.size_px.width = width;
+    updated_desc.size_px.height = height;
+
+    if (auto status = replace_single(space, surface_desc_path, updated_desc); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single(space, target_desc_path, updated_desc); !status) {
+        return std::unexpected(status.error());
+    }
+
+    RenderSettings applied_settings{};
+    if (auto settings = SP::UI::Renderer::ReadSettings(space, handles.target); settings) {
+        applied_settings = *settings;
+    } else {
+        auto const& error = settings.error();
+        if (error.code != SP::Error::Code::NoObjectFound
+            && error.code != SP::Error::Code::NoSuchPath) {
+            return std::unexpected(error);
+        }
+        applied_settings.surface.visibility = true;
+        applied_settings.surface.dpi_scale = 1.0f;
+    }
+
+    applied_settings.surface.size_px.width = width;
+    applied_settings.surface.size_px.height = height;
+    if (applied_settings.surface.dpi_scale <= 0.0f) {
+        applied_settings.surface.dpi_scale = 1.0f;
+    }
+
+    if (auto status = SP::UI::Renderer::UpdateSettings(space, handles.target, applied_settings); !status) {
+        return std::unexpected(status.error());
+    }
+
+    DirtyRectHint dirty{};
+    dirty.max_x = static_cast<float>(width);
+    dirty.max_y = static_cast<float>(height);
+    if (dirty.max_x > dirty.min_x && dirty.max_y > dirty.min_y) {
+        std::array<DirtyRectHint, 1> rects{dirty};
+        auto submitted = submit_dirty_rects(space,
+                                            SP::App::ConcretePathView{handles.target.getPath()},
+                                            std::span<const DirtyRectHint>(rects.data(), rects.size()));
+        if (!submitted) {
+            return std::unexpected(submitted.error());
+        }
+    }
+
+    return {};
 }
 
 auto PresentWindowFrame(SP::PathSpace& space,
                         PresentHandles const& handles) -> SP::Expected<PresentFrame> {
-    auto present = SP::UI::Builders::Window::Present(space, handles.window, handles.view_name);
-    if (!present) {
-        return std::unexpected(present.error());
+    auto present_policy = read_present_policy(space, handles.window, handles.view_name);
+
+    auto context = prepare_surface_render_context(space, handles.surface, std::nullopt);
+    if (!context) {
+        return std::unexpected(context.error());
     }
+
+    auto target_key = std::string(context->target_path.getPath());
+    auto& surface = acquire_surface(target_key, context->target_desc);
+
+#if PATHSPACE_UI_METAL
+    SP::UI::PathSurfaceMetal* metal_surface = nullptr;
+    if (context->renderer_kind == SP::UI::RendererKind::Metal2D) {
+        metal_surface = &acquire_metal_surface(target_key, context->target_desc);
+    }
+    auto render_stats = render_into_target(space, *context, surface, metal_surface);
+#else
+    auto render_stats = render_into_target(space, *context, surface);
+#endif
+    if (!render_stats) {
+        return std::unexpected(render_stats.error());
+    }
+    auto const& stats_value = *render_stats;
+
+    SP::UI::PathSurfaceMetal::TextureInfo metal_texture{};
+    bool has_metal_texture = false;
+#if PATHSPACE_UI_METAL
+    if (metal_surface) {
+        has_metal_texture = true;
+    }
+#endif
+
+    auto dirty_tiles = surface.consume_progressive_dirty_tiles();
+    invoke_before_present_hook(surface, present_policy, dirty_tiles);
+
+    PathWindowView presenter;
+    std::vector<std::uint8_t> framebuffer;
+    std::span<std::uint8_t> framebuffer_span{};
+
+#if !defined(__APPLE__)
+    if (framebuffer.empty()) {
+        framebuffer.resize(surface.frame_bytes(), 0);
+    }
+    framebuffer_span = std::span<std::uint8_t>{framebuffer.data(), framebuffer.size()};
+#else
+    if (framebuffer_span.empty()
+        && (present_policy.capture_framebuffer || !surface.has_buffered())) {
+        framebuffer.resize(surface.frame_bytes(), 0);
+        framebuffer_span = std::span<std::uint8_t>{framebuffer.data(), framebuffer.size()};
+    }
+#endif
+
+    auto now = std::chrono::steady_clock::now();
+    auto vsync_budget = std::chrono::duration_cast<std::chrono::steady_clock::duration>(present_policy.frame_timeout);
+    if (vsync_budget < std::chrono::steady_clock::duration::zero()) {
+        vsync_budget = std::chrono::steady_clock::duration::zero();
+    }
+
+#if defined(__APPLE__)
+    PathWindowView::PresentRequest request{
+        .now = now,
+        .vsync_deadline = now + vsync_budget,
+        .vsync_align = present_policy.vsync_align,
+        .framebuffer = framebuffer_span,
+        .dirty_tiles = dirty_tiles,
+        .surface_width_px = context->target_desc.size_px.width,
+        .surface_height_px = context->target_desc.size_px.height,
+        .has_metal_texture = has_metal_texture,
+        .metal_surface = metal_surface,
+        .metal_texture = metal_texture,
+        .allow_iosurface_sharing = true,
+    };
+#else
+    PathWindowView::PresentRequest request{
+        .now = now,
+        .vsync_deadline = now + vsync_budget,
+        .vsync_align = present_policy.vsync_align,
+        .framebuffer = framebuffer_span,
+        .dirty_tiles = dirty_tiles,
+        .surface_width_px = context->target_desc.size_px.width,
+        .surface_height_px = context->target_desc.size_px.height,
+        .has_metal_texture = has_metal_texture,
+        .metal_surface = metal_surface,
+        .metal_texture = metal_texture,
+    };
+#endif
+
+    auto present_stats = presenter.present(surface, present_policy, request);
+    present_stats.frame.frame_index = stats_value.frame_index;
+    present_stats.frame.revision = stats_value.revision;
+    present_stats.frame.render_ms = stats_value.render_ms;
+    present_stats.damage_ms = stats_value.damage_ms;
+    present_stats.encode_ms = stats_value.encode_ms;
+    present_stats.progressive_copy_ms = stats_value.progressive_copy_ms;
+    present_stats.publish_ms = stats_value.publish_ms;
+    present_stats.drawable_count = stats_value.drawable_count;
+    present_stats.progressive_tiles_updated = stats_value.progressive_tiles_updated;
+    present_stats.progressive_bytes_copied = stats_value.progressive_bytes_copied;
+    present_stats.progressive_tile_size = stats_value.progressive_tile_size;
+    present_stats.progressive_workers_used = stats_value.progressive_workers_used;
+    present_stats.progressive_jobs = stats_value.progressive_jobs;
+    present_stats.encode_workers_used = stats_value.encode_workers_used;
+    present_stats.encode_jobs = stats_value.encode_jobs;
+    present_stats.progressive_tiles_dirty = stats_value.progressive_tiles_dirty;
+    present_stats.progressive_tiles_total = stats_value.progressive_tiles_total;
+    present_stats.progressive_tiles_skipped = stats_value.progressive_tiles_skipped;
+    present_stats.progressive_tile_diagnostics_enabled = stats_value.progressive_tile_diagnostics_enabled;
+    present_stats.backend_kind = renderer_kind_to_string(stats_value.backend_kind);
+
+#if defined(__APPLE__)
+    auto copy_iosurface_into = [&](SP::UI::PathSurfaceSoftware::SharedIOSurface const& handle,
+                                   std::vector<std::uint8_t>& out) {
+        auto retained = handle.retain_for_external_use();
+        if (!retained) {
+            return;
+        }
+        bool locked = IOSurfaceLock(retained, kIOSurfaceLockAvoidSync, nullptr) == kIOReturnSuccess;
+        auto* base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(retained));
+        auto const row_bytes = IOSurfaceGetBytesPerRow(retained);
+        auto const height = handle.height();
+        auto const row_stride = surface.row_stride_bytes();
+        auto const copy_bytes = std::min<std::size_t>(row_bytes, row_stride);
+        auto const total_bytes = row_stride * static_cast<std::size_t>(std::max(height, 0));
+        if (locked && base && copy_bytes > 0 && height > 0) {
+            out.resize(total_bytes);
+            for (int row = 0; row < height; ++row) {
+                auto* dst = out.data() + static_cast<std::size_t>(row) * row_stride;
+                auto const* src = base + static_cast<std::size_t>(row) * row_bytes;
+                std::memcpy(dst, src, copy_bytes);
+            }
+        }
+        if (locked) {
+            IOSurfaceUnlock(retained, kIOSurfaceLockAvoidSync, nullptr);
+        }
+        CFRelease(retained);
+    };
+
+    if (present_stats.iosurface && present_stats.iosurface->valid()) {
+        if (present_policy.capture_framebuffer) {
+            copy_iosurface_into(*present_stats.iosurface, framebuffer);
+        } else {
+            framebuffer.clear();
+        }
+    }
+    if (present_policy.capture_framebuffer
+        && present_stats.buffered_frame_consumed
+        && framebuffer.empty()) {
+        auto required = static_cast<std::size_t>(surface.frame_bytes());
+        framebuffer.resize(required);
+        auto copy = surface.copy_buffered_frame(framebuffer);
+        if (!copy) {
+            framebuffer.clear();
+        }
+    }
+#endif
+
+    auto metrics_base = std::string(context->target_path.getPath()) + "/output/v1/common";
+    std::uint64_t previous_age_frames = 0;
+    if (auto previous = read_optional<std::uint64_t>(space, metrics_base + "/presentedAgeFrames"); !previous) {
+        return std::unexpected(previous.error());
+    } else if (previous->has_value()) {
+        previous_age_frames = **previous;
+    }
+
+    double previous_age_ms = 0.0;
+    if (auto previous = read_optional<double>(space, metrics_base + "/presentedAgeMs"); !previous) {
+        return std::unexpected(previous.error());
+    } else if (previous->has_value()) {
+        previous_age_ms = **previous;
+    }
+
+    double frame_timeout_ms = static_cast<double>(present_policy.frame_timeout.count());
+    bool reuse_previous_frame = !present_stats.buffered_frame_consumed;
+#if defined(__APPLE__)
+    if (present_stats.used_iosurface) {
+        reuse_previous_frame = false;
+    }
+#endif
+    if (!reuse_previous_frame && present_stats.skipped) {
+        reuse_previous_frame = true;
+    }
+
+    if (reuse_previous_frame) {
+        present_stats.frame_age_frames = previous_age_frames + 1;
+        present_stats.frame_age_ms = previous_age_ms + frame_timeout_ms;
+    } else {
+        present_stats.frame_age_frames = 0;
+        present_stats.frame_age_ms = 0.0;
+    }
+    present_stats.stale = present_stats.frame_age_frames > present_policy.max_age_frames;
+
+    if (auto scheduled = maybe_schedule_auto_render(space, target_key, present_stats, present_policy); !scheduled) {
+        return std::unexpected(scheduled.error());
+    }
+
+    auto target_view = SP::App::ConcretePathView{context->target_path.getPath()};
+    if (auto status = write_present_metrics(space, target_view, present_stats, present_policy); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = write_residency_metrics(space,
+                                              target_view,
+                                              stats_value.resource_cpu_bytes,
+                                              stats_value.resource_gpu_bytes,
+                                              context->settings.cache.cpu_soft_bytes,
+                                              context->settings.cache.cpu_hard_bytes,
+                                              context->settings.cache.gpu_soft_bytes,
+                                              context->settings.cache.gpu_hard_bytes); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = write_window_present_metrics(space,
+                                                   SP::App::ConcretePathView{handles.window.getPath()},
+                                                   handles.view_name,
+                                                   present_stats,
+                                                   present_policy); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto framebuffer_path = target_key + "/output/v1/software/framebuffer";
+
     PresentFrame frame{};
-    frame.stats = std::move(present->stats);
-    frame.framebuffer = std::move(present->framebuffer);
-    if (present->html) {
-        HtmlPresentPayload payload{};
-        payload.revision = present->html->revision;
-        payload.dom = std::move(present->html->dom);
-        payload.css = std::move(present->html->css);
-        payload.commands = std::move(present->html->commands);
-        payload.mode = std::move(present->html->mode);
-        payload.used_canvas_fallback = present->html->used_canvas_fallback;
-        payload.assets = std::move(present->html->assets);
-        frame.html = std::move(payload);
+    frame.stats = present_stats;
+    if (present_policy.capture_framebuffer) {
+        SoftwareFramebuffer stored_framebuffer{};
+        stored_framebuffer.width = context->target_desc.size_px.width;
+        stored_framebuffer.height = context->target_desc.size_px.height;
+        stored_framebuffer.row_stride_bytes = static_cast<std::uint32_t>(surface.row_stride_bytes());
+        stored_framebuffer.pixel_format = context->target_desc.pixel_format;
+        stored_framebuffer.color_space = context->target_desc.color_space;
+        stored_framebuffer.premultiplied_alpha = context->target_desc.premultiplied_alpha;
+        stored_framebuffer.pixels = std::move(framebuffer);
+
+        if (auto status = replace_single<SoftwareFramebuffer>(space, framebuffer_path, stored_framebuffer); !status) {
+            return std::unexpected(status.error());
+        }
+        frame.framebuffer = std::move(stored_framebuffer.pixels);
+    } else {
+        if (auto cleared = drain_queue<SoftwareFramebuffer>(space, framebuffer_path); !cleared) {
+            return std::unexpected(cleared.error());
+        }
+        frame.framebuffer = std::move(framebuffer);
     }
+
     return frame;
 }
 

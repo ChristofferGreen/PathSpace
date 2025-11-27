@@ -4,8 +4,15 @@
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/DetailShared.hpp>
+#include <pathspace/ui/PathRenderer2D.hpp>
+#include <pathspace/ui/PathSurfaceSoftware.hpp>
+#include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/WidgetSharedTypes.hpp>
+
+#if PATHSPACE_UI_METAL
+#include <pathspace/ui/PathSurfaceMetal.hpp>
+#endif
 
 #include <atomic>
 #include <chrono>
@@ -15,8 +22,27 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <span>
+
+namespace SP::UI::Builders::Detail {
+struct SurfaceRenderContext;
+}
 
 namespace SP::UI::Declarative::Detail {
+
+using SurfacePath = SP::UI::Builders::SurfacePath;
+using RenderSettings = SP::UI::Builders::RenderSettings;
+using SurfaceDesc = SP::UI::Builders::SurfaceDesc;
+using RendererKind = SP::UI::Builders::RendererKind;
+using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
+
+struct SurfaceRenderContext {
+    SP::ConcretePathString target_path;
+    SP::ConcretePathString renderer_path;
+    SurfaceDesc target_desc;
+    RenderSettings settings;
+    RendererKind renderer_kind = RendererKind::Software2D;
+};
 
 inline auto make_error(std::string message,
                        SP::Error::Code code = SP::Error::Code::UnknownError) -> SP::Error {
@@ -126,6 +152,65 @@ inline std::atomic<std::uint64_t>& g_widget_op_sequence =
     SP::UI::DetailShared::widget_op_sequence();
 
 namespace Widgets = SP::UI::Builders::Widgets;
+
+[[nodiscard]] auto prepare_surface_render_context(PathSpace& space,
+                                                  SurfacePath const& surface,
+                                                  std::optional<RenderSettings> const& settings_override = std::nullopt)
+    -> SP::Expected<SurfaceRenderContext>;
+
+auto acquire_surface(std::string const& key,
+                     SurfaceDesc const& desc) -> SP::UI::PathSurfaceSoftware&;
+
+#if PATHSPACE_UI_METAL
+auto acquire_metal_surface(std::string const& key,
+                           SurfaceDesc const& desc) -> SP::UI::PathSurfaceMetal&;
+#endif
+
+[[nodiscard]] auto render_into_target(PathSpace& space,
+                                      SurfaceRenderContext const& context,
+                                      SP::UI::PathSurfaceSoftware& surface
+#if PATHSPACE_UI_METAL
+                                      ,
+                                      SP::UI::PathSurfaceMetal* metal_surface
+#endif
+                                      ) -> SP::Expected<SP::UI::PathRenderer2D::RenderStats>;
+
+void invoke_before_present_hook(SP::UI::PathSurfaceSoftware& surface,
+                                SP::UI::PathWindowView::PresentPolicy& policy,
+                                std::vector<std::size_t>& dirty_tiles);
+
+[[nodiscard]] auto renderer_kind_to_string(RendererKind kind) -> std::string;
+
+[[nodiscard]] auto maybe_schedule_auto_render(PathSpace& space,
+                                               std::string const& target_path,
+                                               SP::UI::PathWindowView::PresentStats const& stats,
+                                               SP::UI::PathWindowView::PresentPolicy const& policy)
+    -> SP::Expected<bool>;
+
+[[nodiscard]] auto write_present_metrics(PathSpace& space,
+                                         SP::App::ConcretePathView target_path,
+                                         SP::UI::PathWindowPresentStats const& stats,
+                                         SP::UI::PathWindowPresentPolicy const& policy) -> SP::Expected<void>;
+
+[[nodiscard]] auto write_window_present_metrics(PathSpace& space,
+                                                SP::App::ConcretePathView window_path,
+                                                std::string_view view_name,
+                                                SP::UI::PathWindowPresentStats const& stats,
+                                                SP::UI::PathWindowPresentPolicy const& policy)
+    -> SP::Expected<void>;
+
+[[nodiscard]] auto write_residency_metrics(PathSpace& space,
+                                            SP::App::ConcretePathView target_path,
+                                            std::uint64_t cpu_bytes,
+                                            std::uint64_t gpu_bytes,
+                                            std::uint64_t cpu_soft_bytes,
+                                            std::uint64_t cpu_hard_bytes,
+                                            std::uint64_t gpu_soft_bytes,
+                                            std::uint64_t gpu_hard_bytes) -> SP::Expected<void>;
+
+[[nodiscard]] auto submit_dirty_rects(PathSpace& space,
+                                      SP::App::ConcretePathView target_path,
+                                      std::span<DirtyRectHint const> rects) -> SP::Expected<void>;
 
 auto write_stack_metadata(PathSpace& space,
                           std::string const& rootPath,

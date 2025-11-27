@@ -67,14 +67,16 @@ plus tests in sync. Read it before touching declarative UI code or examples.
    resolved window/view, surface, renderer, and render target paths so
    declarative callers never have to touch `Builders::App::BootstrapResult`.
    Use `PresentHandles` with the new helpers:
-   - `ResizePresentSurface` mirrors `Builders::App::UpdateSurfaceSize` for
-     resize events (surface desc, renderer settings, dirty rectangles).
-   - `PresentWindowFrame` wraps `Builders::Window::Present` and returns a
-     `PresentFrame` with the cached `PathWindowPresentStats`, framebuffer bytes,
-     and optional HTML payload.
-   - `PresentFrameToLocalWindow` mirrors `Builders::App::PresentToLocalWindow`
-     so interactive loops can blit IOSurfaces or CPU framebuffers without
-     including `Builders.hpp`.
+   - `ResizePresentSurface` rewrites the surface/target descriptors, reapplies
+     renderer settings, and submits a full-surface dirty rect so resize paths no
+     longer call `Builders::App::UpdateSurfaceSize`.
+   - `PresentWindowFrame` renders into the target, records presenter/renderer
+     metrics, persists the software framebuffer when requested, and returns a
+     `PresentFrame` with the `PathWindowPresentStats` plus optional HTML payload
+     (no `Builders::Window::Present` dependency).
+   - `PresentFrameToLocalWindow` still mirrors the legacy
+     `PresentToLocalWindow` behaviour so interactive loops can blit IOSurfaces
+     or CPU framebuffers without including `Builders.hpp`.
 
    `PathSpaceExamples::run_present_loop` now consumes these handles directly,
    and the screenshot service (`ScreenshotService::Capture`) calls the same
