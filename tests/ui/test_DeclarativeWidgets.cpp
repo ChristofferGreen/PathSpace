@@ -9,6 +9,7 @@
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/Detail.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
+#include <pathspace/ui/declarative/Reducers.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/WidgetDetail.hpp>
@@ -436,7 +437,7 @@ TEST_CASE("PaintSurfaceRuntime marks GPU state and dirty hints") {
     auto paint = PaintSurface::Create(fx.space, fx.parent_view(), "gpu_paint", args);
     REQUIRE(paint.has_value());
 
-    SP::UI::Builders::Widgets::Reducers::WidgetAction action{};
+    SP::UI::Declarative::Reducers::WidgetAction action{};
     action.widget_path = paint->getPath();
     action.kind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind::PaintStrokeBegin;
     action.target_id = "paint_surface/stroke/1";

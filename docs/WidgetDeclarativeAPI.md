@@ -138,6 +138,14 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 | Paint GPU uploader | `/system/widgets/runtime/paint_gpu` | Rasterizes stroke history into `assets/texture`, tracks dirty rectangles, and logs upload failures before falling back to CPU buckets. |
 | Focus controller | `<app>/widgets/focus/current` + per-window mirrors | Depth-first traversal order is recomputed whenever widgets mount or are removed; wrapping per-container traversal can be disabled by setting `focus/wrap = false` on the container root. |
 
+### Reducer helpers
+- Prefer `SP::UI::Declarative::Reducers::{WidgetOpsQueue,ReducePending,PublishActions,ProcessPendingActions}` when draining widget op queues or synthesizing `WidgetAction` payloads for tests. The helpers live in `include/pathspace/ui/declarative/Reducers.hpp` and power the input task, manual pump, paint runtime, and declarative UITests so they no longer depend on the legacy builder guards.
+- The legacy `SP::UI::Builders::Widgets::Reducers::*` functions still exist for compatibility, but they now forward to the declarative helpers after running the guard. Use them only in compatibility suites while we delete the remaining legacy builder coverage.
+
+### Text bucket synthesis
+- Declarative code should include `pathspace/ui/declarative/Text.hpp` and call `SP::UI::Declarative::Text::BuildTextBucket` when labels or descriptor paths need text drawables. The helper shares the glyph shaping cache with the legacy builders but no longer drags the rest of `Builders.hpp` into declarative sources.
+- `include/pathspace/ui/TextBuilder.hpp` re-exports the declarative API so existing builder call sites continue to work; once legacy samples are gone we can delete the shim entirely.
+
 ### PaintSurface GPU staging
 - **Enable it at mount time** — set `PaintSurface::Args::gpu_enabled = true`. The fragment helper writes `render/gpu/enabled`, seeds `render/gpu/{state,stats,fence/start,fence/end}`, clears `render/buffer/pendingDirty`, and leaves the widget in `Idle`.
 - **Dirty hints + state machine** — every stroke append records a `DirtyRectHint` under both `render/buffer/pendingDirty` and `/render/gpu/dirtyRects`, bumps `render/buffer/revision`, and flips `render/gpu/state` to `DirtyPartial`. When you need a full re-rasterization (e.g., after external code resizes the buffer), set the state to `DirtyFull` before the uploader runs so the next upload increments both the per-widget `full_uploads` counter and the global `full_uploads_total` metric.

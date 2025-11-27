@@ -135,7 +135,6 @@ if(PATHSPACE_ENABLE_UI)
         ui/WindowBuilders.cpp
         ui/AppBuilders.cpp
         ui/LegacyBuildersDeprecation.cpp
-        ui/TextBuilder.cpp
         ui/WidgetBuildersCore.cpp
         ui/WidgetBindings.cpp
         ui/WidgetInput.cpp
@@ -146,6 +145,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/declarative/Descriptor.cpp
         ui/declarative/DescriptorDetail.cpp
         ui/declarative/Detail.cpp
+        ui/declarative/Reducers.cpp
         ui/declarative/SceneLifecycle.cpp
         ui/declarative/Theme.cpp
         ui/declarative/ThemeConfig.cpp
@@ -153,6 +153,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/declarative/Schema.cpp
         ui/declarative/Telemetry.cpp
         ui/declarative/HistoryBinding.cpp
+        ui/declarative/Text.cpp
         ui/declarative/PaintSurfaceRuntime.cpp
         ui/declarative/PaintSurfaceUploader.cpp
         ui/declarative/StackReadiness.cpp

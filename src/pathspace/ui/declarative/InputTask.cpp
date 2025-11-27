@@ -3,6 +3,7 @@
 #include "widgets/Common.hpp"
 
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
+#include <pathspace/ui/declarative/Reducers.hpp>
 #include <pathspace/ui/declarative/Telemetry.hpp>
 
 #include <pathspace/ui/Builders.hpp>
@@ -27,7 +28,7 @@ namespace {
 
 using namespace SP::UI::Builders;
 using namespace SP::UI::Declarative::Detail;
-namespace WidgetReducers = SP::UI::Builders::Widgets::Reducers;
+namespace WidgetReducers = SP::UI::Declarative::Reducers;
 using SP::UI::Declarative::ButtonContext;
 using SP::UI::Declarative::HandlerBinding;
 using SP::UI::Declarative::HandlerKind;
@@ -312,7 +313,7 @@ auto route_for_action(SP::UI::Builders::Widgets::Bindings::WidgetOpKind kind)
     }
 }
 
-auto format_handler_error(SP::UI::Builders::Widgets::Reducers::WidgetAction const& action,
+auto format_handler_error(WidgetReducers::WidgetAction const& action,
                           std::string_view event,
                           std::string_view message) -> std::string {
     std::ostringstream oss;
@@ -321,7 +322,7 @@ auto format_handler_error(SP::UI::Builders::Widgets::Reducers::WidgetAction cons
     return oss.str();
 }
 
-auto format_event_error(SP::UI::Builders::Widgets::Reducers::WidgetAction const& action,
+auto format_event_error(WidgetReducers::WidgetAction const& action,
                         std::string_view event,
                         std::string_view message) -> std::string {
     std::ostringstream oss;
@@ -345,7 +346,7 @@ auto event_specific_path(std::string const& widget_path, std::string_view event)
 }
 
 void enqueue_widget_event(PathSpace& space,
-                          SP::UI::Builders::Widgets::Reducers::WidgetAction const& action,
+                          WidgetReducers::WidgetAction const& action,
                           HandlerRoute const& route,
                           PumpStats& stats) {
     bool dropped = false;
@@ -376,7 +377,7 @@ void enqueue_widget_event(PathSpace& space,
 auto invoke_handler(PathSpace& space,
                     HandlerKind kind,
                     HandlerVariant const& handler,
-                    SP::UI::Builders::Widgets::Reducers::WidgetAction const& action,
+                    WidgetReducers::WidgetAction const& action,
                     std::uint64_t& duration_ns) -> std::optional<std::string> {
     duration_ns = 0;
     auto handler_start = now_ns();
@@ -488,7 +489,7 @@ auto invoke_handler(PathSpace& space,
 }
 
 void dispatch_action(PathSpace& space,
-                     SP::UI::Builders::Widgets::Reducers::WidgetAction const& action,
+                     WidgetReducers::WidgetAction const& action,
                      PumpStats& stats,
                      WidgetMetricsMap& widget_metrics,
                      std::chrono::nanoseconds slow_threshold) {

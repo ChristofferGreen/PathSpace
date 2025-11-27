@@ -103,7 +103,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Tree preview bounds/toggle regions now come from `Widgets::BuildTreePreview`; the demo consumes the shared layout metadata and only renders labels, so future apps can rely on the API for indentation, hover, and hit regions (October 27, 2025).
 - `Builders::App::Bootstrap` wires a renderer/surface/window + present policy for a scene in one call, trimming boilerplate in examples/tests (October 21, 2025).
 - `Builders::App::UpdateSurfaceSize` and `Builders::App::PresentToLocalWindow` now own LocalWindow resize/present scaffolding; widgets_example, pixel_noise_example, and paint_example consume the helpers instead of bespoke loops (October 23, 2025).
-- Reducer helpers (`Widgets::Reducers::ReducePending`/`PublishActions`) drain widget ops into `ops/actions/inbox/queue`; widgets_example seeds a sample action and prints the reducer output.
+- Reducer helpers (`SP::UI::Declarative::Reducers::ReducePending` / `PublishActions`) drain widget ops into `ops/actions/inbox/queue`; widgets_example seeds a sample action and prints the reducer output, while the legacy builder wrappers merely forward after running the guard.
 - Stroke rendering is now a first-class primitive: `DrawCommandKind::Stroke` serializes shared point buffers, `PathRenderer2D` rasterizes polylines, the HTML adapter/replay round-trip stroke data, and `paint_example` emits strokes instead of per-dab rects (October 21, 2025).
 
 ### Quit Shortcut Checklist (October 23, 2025)

@@ -1,0 +1,39 @@
+#pragma once
+
+#include <pathspace/PathSpace.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
+
+#include <limits>
+#include <span>
+#include <vector>
+
+namespace SP::UI::Declarative::Reducers {
+
+using WidgetPath = SP::UI::Builders::WidgetPath;
+using WidgetAction = SP::UI::Builders::Widgets::Reducers::WidgetAction;
+using ProcessActionsResult = SP::UI::Builders::Widgets::Reducers::ProcessActionsResult;
+using ConcretePath = SP::UI::Builders::ConcretePath;
+using ConcretePathView = SP::UI::Builders::ConcretePathView;
+using WidgetOp = SP::UI::Builders::Widgets::Bindings::WidgetOp;
+
+auto MakeWidgetAction(WidgetOp const& op) -> WidgetAction;
+
+auto WidgetOpsQueue(WidgetPath const& widget_root) -> ConcretePath;
+
+auto DefaultActionsQueue(WidgetPath const& widget_root) -> ConcretePath;
+
+auto ReducePending(PathSpace& space,
+                   ConcretePathView ops_queue,
+                   std::size_t max_actions = std::numeric_limits<std::size_t>::max())
+    -> SP::Expected<std::vector<WidgetAction>>;
+
+auto PublishActions(PathSpace& space,
+                    ConcretePathView actions_queue,
+                    std::span<WidgetAction const> actions) -> SP::Expected<void>;
+
+auto ProcessPendingActions(PathSpace& space,
+                           WidgetPath const& widget_root,
+                           std::size_t max_actions = std::numeric_limits<std::size_t>::max())
+    -> SP::Expected<ProcessActionsResult>;
+
+} // namespace SP::UI::Declarative::Reducers

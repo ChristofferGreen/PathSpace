@@ -42,9 +42,6 @@ using WindowPath = ConcretePath;
 using HtmlTargetPath = ConcretePath;
 using WidgetPath = ConcretePath;
 
-namespace Text {
-struct BuildResult;
-} // namespace Text
 
 struct DirtyRectHint {
     float min_x = 0.0f;

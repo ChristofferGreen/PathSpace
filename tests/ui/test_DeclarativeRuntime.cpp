@@ -6,6 +6,7 @@
 #include <pathspace/ui/Builders.hpp>
 #include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
+#include <pathspace/ui/declarative/Reducers.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
@@ -201,7 +202,7 @@ TEST_CASE("Declarative input task drains widget ops") {
     REQUIRE(app_after_metric);
     CHECK(*app_after_metric >= app_baseline + pump_result->widgets_processed);
 
-    auto action = DeclarativeTestUtils::take_with_retry<SP::UI::Builders::Widgets::Reducers::WidgetAction>(
+    auto action = DeclarativeTestUtils::take_with_retry<SP::UI::Declarative::Reducers::WidgetAction>(
         space,
         actions_path,
         std::chrono::milliseconds{50},
@@ -318,7 +319,7 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     }
     CHECK(observed);
 
-    auto inbox_event = DeclarativeTestUtils::take_with_retry<SP::UI::Builders::Widgets::Reducers::WidgetAction>(
+    auto inbox_event = DeclarativeTestUtils::take_with_retry<SP::UI::Declarative::Reducers::WidgetAction>(
         space,
         events_inbox,
         std::chrono::milliseconds{50},
@@ -326,7 +327,7 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     REQUIRE(inbox_event);
     CHECK(inbox_event->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate);
 
-    auto press_event = DeclarativeTestUtils::take_with_retry<SP::UI::Builders::Widgets::Reducers::WidgetAction>(
+    auto press_event = DeclarativeTestUtils::take_with_retry<SP::UI::Declarative::Reducers::WidgetAction>(
         space,
         press_events,
         std::chrono::milliseconds{50},

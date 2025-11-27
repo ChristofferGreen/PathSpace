@@ -1,5 +1,5 @@
-#include <pathspace/ui/TextBuilder.hpp>
-#include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/declarative/Text.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/FontAtlasCache.hpp>
 #include <pathspace/ui/FontManager.hpp>
@@ -18,9 +18,11 @@
 #include <unordered_map>
 #include <vector>
 
-#include "TextGlyphFallback.hpp"
+#include "../TextGlyphFallback.hpp"
 
-namespace SP::UI::Builders::Text {
+namespace SP::UI::Declarative::Text {
+
+namespace Widgets = SP::UI::Builders::Widgets;
 
 namespace {
 
@@ -604,4 +606,4 @@ auto BuildTextBucket(std::string_view text,
                                  z_value);
 }
 
-} // namespace SP::UI::Builders::Text
+} // namespace SP::UI::Declarative::Text

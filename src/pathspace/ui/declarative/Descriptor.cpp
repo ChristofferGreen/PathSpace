@@ -6,8 +6,8 @@
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/SceneUtilities.hpp>
-#include <pathspace/ui/TextBuilder.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
+#include <pathspace/ui/declarative/Text.hpp>
 
 #include <array>
 #include <cmath>
@@ -224,7 +224,7 @@ struct BucketVisitor {
     auto operator()(LabelDescriptor const& descriptor) const
         -> SP::Expected<SP::UI::Scene::DrawableBucketSnapshot> {
         auto drawable_id = std::hash<std::string>{}(authoring_root);
-        auto built = SP::UI::Builders::Text::BuildTextBucket(descriptor.text,
+        auto built = SP::UI::Declarative::Text::BuildTextBucket(descriptor.text,
                                                               0.0f,
                                                               descriptor.typography.line_height,
                                                               descriptor.typography,

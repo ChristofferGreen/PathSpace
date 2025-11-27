@@ -3,12 +3,13 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/WidgetSharedTypes.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceTypes.hpp>
+#include <pathspace/ui/declarative/Reducers.hpp>
 
 #include <vector>
 
 namespace SP::UI::Declarative::PaintRuntime {
 
-using WidgetAction = SP::UI::Builders::Widgets::Reducers::WidgetAction;
+using WidgetAction = SP::UI::Declarative::Reducers::WidgetAction;
 
 auto EnsureBufferDefaults(PathSpace& space,
                           std::string const& widget_path,

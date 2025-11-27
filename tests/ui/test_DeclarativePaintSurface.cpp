@@ -6,6 +6,7 @@
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/Detail.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
+#include <pathspace/ui/declarative/Reducers.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/WidgetDetail.hpp>
@@ -17,7 +18,7 @@
 
 namespace {
 
-using WidgetAction = SP::UI::Builders::Widgets::Reducers::WidgetAction;
+using WidgetAction = SP::UI::Declarative::Reducers::WidgetAction;
 using WidgetOpKind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
 using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;

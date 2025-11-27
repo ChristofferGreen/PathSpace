@@ -94,8 +94,10 @@ The steps below describe the declarative workflow. When legacy builder files are
 
 ### 4. Update reducers and actions
 - Translate new ops into reducer actions inside
-  `src/pathspace/ui/WidgetReducers.cpp` and, if necessary, extend
-  `Widgets::Reducers::WidgetAction`.
+  `src/pathspace/ui/declarative/Reducers.cpp` and, if necessary, extend
+  `SP::UI::Declarative::Reducers::WidgetAction` (the legacy
+  `src/pathspace/ui/WidgetReducers.cpp` file now just forwards to the
+  declarative helpers after running the guard).
 - Confirm reducers publish actions to `widgets/<id>/ops/actions/inbox/queue`
   and that apps/examples drain the queue (see `widgets_example.cpp` for patterns).
 

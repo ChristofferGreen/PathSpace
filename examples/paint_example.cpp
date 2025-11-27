@@ -15,6 +15,7 @@
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
 #include <pathspace/ui/declarative/StackReadiness.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
+#include <pathspace/ui/declarative/Reducers.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <algorithm>
@@ -282,7 +283,7 @@ auto apply_brush_color(SP::PathSpace& space,
 
 auto log_expected_error(std::string const& context, SP::Error const& error) -> void;
 
-using WidgetAction = SP::UI::Builders::Widgets::Reducers::WidgetAction;
+using WidgetAction = SP::UI::Declarative::Reducers::WidgetAction;
 using WidgetOpKind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
 using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
 

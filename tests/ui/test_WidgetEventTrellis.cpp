@@ -4,6 +4,7 @@
 #include <pathspace/io/IoEvents.hpp>
 #include <pathspace/runtime/IOPump.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
+#include <pathspace/ui/declarative/Reducers.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/WidgetEventTrellis.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
@@ -19,7 +20,7 @@ using namespace std::chrono_literals;
 using namespace SP;
 namespace BuilderWidgets = SP::UI::Builders::Widgets;
 using WidgetOp = SP::UI::Builders::Widgets::Bindings::WidgetOp;
-using WidgetAction = SP::UI::Builders::Widgets::Reducers::WidgetAction;
+using WidgetAction = SP::UI::Declarative::Reducers::WidgetAction;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
 
 struct RuntimeGuard {
