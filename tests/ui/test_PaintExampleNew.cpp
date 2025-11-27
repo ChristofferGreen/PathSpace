@@ -43,6 +43,7 @@ struct TestHarness {
     RuntimeGuard guard;
     SP::Window::CreateResult window;
     SP::Scene::CreateResult scene;
+    SP::UI::Declarative::PresentHandles present_handles;
     std::shared_ptr<std::atomic<bool>> pressed_flag;
     std::string button_path;
     float layout_width = 0.0f;
@@ -88,6 +89,13 @@ void init_harness(TestHarness& harness) {
     auto surface_path = SP::UI::Builders::SurfacePath{surface_abs->getPath()};
     auto set_scene = SP::UI::Builders::Surface::SetScene(harness.space, surface_path, harness.scene.path);
     REQUIRE(set_scene);
+
+    auto present_handles = SP::UI::Declarative::BuildPresentHandles(harness.space,
+                                                                    SP::App::AppRootPathView{app->getPath()},
+                                                                    harness.window.path,
+                                                                    harness.window.view_name);
+    REQUIRE(present_handles);
+    harness.present_handles = *present_handles;
 
     harness.pressed_flag = std::make_shared<std::atomic<bool>>(false);
     SP::UI::Declarative::Button::Args button_args{};
@@ -158,9 +166,7 @@ void send_pointer_click(TestHarness& harness, float x, float y) {
 }
 
 void present_once(TestHarness& harness) {
-    auto present = SP::UI::Builders::Window::Present(harness.space,
-                                                    harness.window.path,
-                                                    harness.window.view_name);
+    auto present = SP::UI::Declarative::PresentWindowFrame(harness.space, harness.present_handles);
     REQUIRE(present);
 }
 

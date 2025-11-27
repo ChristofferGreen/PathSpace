@@ -95,11 +95,11 @@ int main(int argc, char** argv) {
         return fail(space, "failed to create scene");
     }
 
-    auto bootstrap = build_bootstrap_from_window(space,
-                                                 app_root_view,
-                                                 window->path,
-                                                 window->view_name);
-    if (!bootstrap) {
+    auto present_handles = SP::UI::Declarative::BuildPresentHandles(space,
+                                                                    app_root_view,
+                                                                    window->path,
+                                                                    window->view_name);
+    if (!present_handles) {
         return fail(space, "failed to prepare presenter bootstrap");
     }
 
@@ -188,7 +188,7 @@ int main(int argc, char** argv) {
     run_present_loop(space,
                      window->path,
                      window->view_name,
-                     *bootstrap,
+                     *present_handles,
                      opts.width,
                      opts.height,
                      hooks);

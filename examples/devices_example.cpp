@@ -135,7 +135,7 @@ static bool drain_device_events(DeviceEventSink& sink) {
 struct PaintControlsDemoHandles {
     SP::UI::WindowPath window_path;
     std::string view_name;
-    SP::UI::Builders::App::BootstrapResult bootstrap;
+    SP::UI::Declarative::PresentHandles present_handles;
     SP::UI::Builders::WidgetPath status_label;
 };
 
@@ -195,12 +195,12 @@ static std::optional<PaintControlsDemoHandles> launch_paint_controls_demo(PathSp
         return std::nullopt;
     }
 
-    auto bootstrap = PathSpaceExamples::build_bootstrap_from_window(space,
+    auto present_handles = SP::UI::Declarative::BuildPresentHandles(space,
                                                                     app_root_view,
                                                                     window->path,
                                                                     window->view_name);
-    if (!bootstrap) {
-        log_expected_error("build_bootstrap_from_window", bootstrap.error());
+    if (!present_handles) {
+        log_expected_error("BuildPresentHandles", present_handles.error());
         return std::nullopt;
     }
 
@@ -319,7 +319,7 @@ static std::optional<PaintControlsDemoHandles> launch_paint_controls_demo(PathSp
     PaintControlsDemoHandles handles{
         .window_path = window->path,
         .view_name = window->view_name,
-        .bootstrap = std::move(*bootstrap),
+        .present_handles = std::move(*present_handles),
         .status_label = *status_label,
     };
     return handles;
@@ -400,7 +400,7 @@ int main(int argc, char** argv) {
         PathSpaceExamples::run_present_loop(space,
                                             demo->window_path,
                                             demo->view_name,
-                                            demo->bootstrap,
+                                            demo->present_handles,
                                             options.width,
                                             options.height,
                                             hooks);

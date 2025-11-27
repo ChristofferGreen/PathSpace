@@ -5,15 +5,20 @@
 #include <pathspace/io/IoTrellis.hpp>
 #include <pathspace/runtime/IOPump.hpp>
 #include <pathspace/runtime/TelemetryControl.hpp>
+#include <pathspace/ui/HtmlAsset.hpp>
 #include <pathspace/ui/PathTypes.hpp>
+#include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
 #include <pathspace/ui/declarative/WidgetEventTrellis.hpp>
 
 #include <cctype>
+#include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace SP::System::detail {
 inline auto sanitize_identifier(std::string_view raw, std::string_view fallback) -> std::string {
@@ -191,3 +196,75 @@ struct RunOptions {
                          RunOptions const& options = {}) -> SP::Expected<void>;
 
 } // namespace SP::App
+
+namespace SP::UI::Declarative {
+
+struct PresentHandles {
+    SP::UI::WindowPath window;
+    std::string view_name;
+    SP::UI::SurfacePath surface;
+    SP::UI::RendererPath renderer;
+    SP::UI::ConcretePath target;
+};
+
+struct HtmlPresentPayload {
+    std::uint64_t revision = 0;
+    std::string dom;
+    std::string css;
+    std::string commands;
+    std::string mode;
+    bool used_canvas_fallback = false;
+    std::vector<SP::UI::Html::Asset> assets;
+};
+
+struct PresentFrame {
+    SP::UI::PathWindowPresentStats stats;
+    std::vector<std::uint8_t> framebuffer;
+    std::optional<HtmlPresentPayload> html;
+};
+
+struct PresentToLocalWindowOptions {
+    bool allow_iosurface = true;
+    bool allow_framebuffer = true;
+    bool warn_when_metal_texture_unshared = true;
+};
+
+struct PresentToLocalWindowResult {
+    bool presented = false;
+    bool skipped = false;
+    bool used_iosurface = false;
+    bool used_framebuffer = false;
+    std::size_t framebuffer_bytes = 0;
+    std::size_t row_stride_bytes = 0;
+};
+
+[[nodiscard]] auto BuildPresentHandles(PathSpace& space,
+                                       SP::App::AppRootPathView app_root,
+                                       SP::UI::WindowPath const& window,
+                                       std::string const& view_name) -> SP::Expected<PresentHandles>;
+
+[[nodiscard]] inline auto BuildPresentHandles(PathSpace& space,
+                                              SP::UI::WindowPath const& window,
+                                              std::string const& view_name) -> SP::Expected<PresentHandles> {
+    auto app_root = SP::App::derive_app_root(SP::App::ConcretePathView{window.getPath()});
+    if (!app_root) {
+        return std::unexpected(app_root.error());
+    }
+    return BuildPresentHandles(space, SP::App::AppRootPathView{app_root->getPath()}, window, view_name);
+}
+
+[[nodiscard]] auto ResizePresentSurface(PathSpace& space,
+                                        PresentHandles const& handles,
+                                        int width,
+                                        int height) -> SP::Expected<void>;
+
+[[nodiscard]] auto PresentWindowFrame(PathSpace& space,
+                                      PresentHandles const& handles) -> SP::Expected<PresentFrame>;
+
+[[nodiscard]] auto PresentFrameToLocalWindow(PresentFrame const& frame,
+                                             int width,
+                                             int height,
+                                             PresentToLocalWindowOptions const& options = {})
+    -> PresentToLocalWindowResult;
+
+} // namespace SP::UI::Declarative

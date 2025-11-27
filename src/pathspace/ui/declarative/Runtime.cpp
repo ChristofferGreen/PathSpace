@@ -15,6 +15,7 @@
 #include <chrono>
 #include <cctype>
 #include <cstdint>
+#include <iostream>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -507,61 +508,9 @@ auto ensure_view_binding(PathSpace& space,
     return binding;
 }
 
-auto build_bootstrap_from_window(SP::PathSpace& space,
-                                SP::App::AppRootPathView app_root,
-                                SP::UI::WindowPath const& window,
-                                std::string const& view_name)
-    -> SP::Expected<SP::UI::Builders::App::BootstrapResult> {
-    using namespace SP::UI::Builders;
-    App::BootstrapResult bootstrap{};
-    bootstrap.window = window;
-    bootstrap.view_name = view_name;
-
-    auto renderer_rel = space.read<std::string, std::string>(std::string(window.getPath())
-                                                             + "/views/" + view_name + "/renderer");
-    if (!renderer_rel) {
-        return std::unexpected(renderer_rel.error());
-    }
-    auto renderer_abs = SP::App::resolve_app_relative(app_root, *renderer_rel);
-    if (!renderer_abs) {
-        return std::unexpected(renderer_abs.error());
-    }
-    bootstrap.renderer = RendererPath{renderer_abs->getPath()};
-
-    auto surface_rel = space.read<std::string, std::string>(std::string(window.getPath())
-                                                            + "/views/" + view_name + "/surface");
-    if (!surface_rel) {
-        return std::unexpected(surface_rel.error());
-    }
-    auto surface_abs = SP::App::resolve_app_relative(app_root, *surface_rel);
-    if (!surface_abs) {
-        return std::unexpected(surface_abs.error());
-    }
-    bootstrap.surface = SurfacePath{surface_abs->getPath()};
-
-    auto target_rel = space.read<std::string, std::string>(std::string(bootstrap.surface.getPath()) + "/target");
-    if (!target_rel) {
-        return std::unexpected(target_rel.error());
-    }
-    auto target_abs = SP::App::resolve_app_relative(app_root, *target_rel);
-    if (!target_abs) {
-        return std::unexpected(target_abs.error());
-    }
-    bootstrap.target = *target_abs;
-
-    auto surface_desc = space.read<SurfaceDesc, std::string>(std::string(bootstrap.surface.getPath()) + "/desc");
-    if (!surface_desc) {
-        return std::unexpected(surface_desc.error());
-    }
-    bootstrap.surface_desc = *surface_desc;
-
-    auto settings = SP::UI::Builders::Renderer::ReadSettings(space,
-                                                             SP::App::ConcretePathView{bootstrap.target.getPath()});
-    if (!settings) {
-        return std::unexpected(settings.error());
-    }
-    bootstrap.applied_settings = *settings;
-
+auto read_present_policy(SP::PathSpace& space,
+                         SP::UI::WindowPath const& window,
+                         std::string const& view_name) -> SP::UI::PathWindowPresentPolicy {
     SP::UI::PathWindowPresentPolicy policy{};
     auto present_mode_path = std::string(window.getPath()) + "/views/" + view_name + "/present/policy";
     auto present_mode = space.read<std::string, std::string>(present_mode_path);
@@ -575,11 +524,193 @@ auto build_bootstrap_from_window(SP::PathSpace& space,
             policy.mode = SP::UI::PathWindowPresentMode::AlwaysLatestComplete;
         }
     }
-    bootstrap.present_policy = policy;
+    return policy;
+}
+
+auto build_present_handles(SP::PathSpace& space,
+                           SP::App::AppRootPathView app_root,
+                           SP::UI::WindowPath const& window,
+                           std::string const& view_name) -> SP::Expected<SP::UI::Declarative::PresentHandles> {
+    auto renderer_rel = space.read<std::string, std::string>(std::string(window.getPath())
+                                                             + "/views/" + view_name + "/renderer");
+    if (!renderer_rel) {
+        return std::unexpected(renderer_rel.error());
+    }
+    auto renderer_abs = SP::App::resolve_app_relative(app_root, *renderer_rel);
+    if (!renderer_abs) {
+        return std::unexpected(renderer_abs.error());
+    }
+
+    auto surface_rel = space.read<std::string, std::string>(std::string(window.getPath())
+                                                            + "/views/" + view_name + "/surface");
+    if (!surface_rel) {
+        return std::unexpected(surface_rel.error());
+    }
+    auto surface_abs = SP::App::resolve_app_relative(app_root, *surface_rel);
+    if (!surface_abs) {
+        return std::unexpected(surface_abs.error());
+    }
+
+    auto target_rel =
+        space.read<std::string, std::string>(std::string(surface_abs->getPath()) + "/target");
+    if (!target_rel) {
+        return std::unexpected(target_rel.error());
+    }
+    auto target_abs = SP::App::resolve_app_relative(app_root, *target_rel);
+    if (!target_abs) {
+        return std::unexpected(target_abs.error());
+    }
+
+    SP::UI::Declarative::PresentHandles handles{
+        .window = window,
+        .view_name = view_name,
+        .surface = SP::UI::SurfacePath{surface_abs->getPath()},
+        .renderer = SP::UI::RendererPath{renderer_abs->getPath()},
+        .target = SP::ConcretePath{target_abs->getPath()},
+    };
+    return handles;
+}
+
+auto make_bootstrap(SP::PathSpace& space,
+                    SP::UI::Declarative::PresentHandles const& handles)
+    -> SP::Expected<SP::UI::Builders::App::BootstrapResult> {
+    using SP::UI::Builders::App::BootstrapResult;
+    BootstrapResult bootstrap{};
+    bootstrap.window = handles.window;
+    bootstrap.view_name = handles.view_name;
+    bootstrap.surface = handles.surface;
+    bootstrap.renderer = handles.renderer;
+    bootstrap.target = handles.target;
+
+    auto surface_desc =
+        space.read<SP::UI::Builders::SurfaceDesc, std::string>(std::string(handles.surface.getPath()) + "/desc");
+    if (!surface_desc) {
+        return std::unexpected(surface_desc.error());
+    }
+    bootstrap.surface_desc = *surface_desc;
+
+    auto settings = SP::UI::Builders::Renderer::ReadSettings(space,
+                                                             SP::App::ConcretePathView{handles.target.getPath()});
+    if (!settings) {
+        return std::unexpected(settings.error());
+    }
+    bootstrap.applied_settings = *settings;
+    bootstrap.present_policy = read_present_policy(space, handles.window, handles.view_name);
     return bootstrap;
 }
 
 } // namespace
+
+namespace SP::UI::Declarative {
+
+auto BuildPresentHandles(SP::PathSpace& space,
+                         SP::App::AppRootPathView app_root,
+                         SP::UI::WindowPath const& window,
+                         std::string const& view_name) -> SP::Expected<PresentHandles> {
+    return build_present_handles(space, app_root, window, view_name);
+}
+
+auto ResizePresentSurface(SP::PathSpace& space,
+                          PresentHandles const& handles,
+                          int width,
+                          int height) -> SP::Expected<void> {
+    auto bootstrap = make_bootstrap(space, handles);
+    if (!bootstrap) {
+        return std::unexpected(bootstrap.error());
+    }
+    return SP::UI::Builders::App::UpdateSurfaceSize(space, *bootstrap, width, height);
+}
+
+auto PresentWindowFrame(SP::PathSpace& space,
+                        PresentHandles const& handles) -> SP::Expected<PresentFrame> {
+    auto present = SP::UI::Builders::Window::Present(space, handles.window, handles.view_name);
+    if (!present) {
+        return std::unexpected(present.error());
+    }
+    PresentFrame frame{};
+    frame.stats = std::move(present->stats);
+    frame.framebuffer = std::move(present->framebuffer);
+    if (present->html) {
+        HtmlPresentPayload payload{};
+        payload.revision = present->html->revision;
+        payload.dom = std::move(present->html->dom);
+        payload.css = std::move(present->html->css);
+        payload.commands = std::move(present->html->commands);
+        payload.mode = std::move(present->html->mode);
+        payload.used_canvas_fallback = present->html->used_canvas_fallback;
+        payload.assets = std::move(present->html->assets);
+        frame.html = std::move(payload);
+    }
+    return frame;
+}
+
+auto PresentFrameToLocalWindow(PresentFrame const& frame,
+                               int width,
+                               int height,
+                               PresentToLocalWindowOptions const& options)
+    -> PresentToLocalWindowResult {
+    PresentToLocalWindowResult dispatched{};
+    dispatched.skipped = frame.stats.skipped;
+
+#if defined(__APPLE__)
+    if (options.allow_iosurface
+        && !frame.stats.skipped
+        && frame.stats.iosurface
+        && frame.stats.iosurface->valid()) {
+        auto iosurface_ref = frame.stats.iosurface->retain_for_external_use();
+        if (iosurface_ref) {
+            SP::UI::PresentLocalWindowIOSurface(static_cast<void*>(iosurface_ref),
+                                                width,
+                                                height,
+                                                static_cast<int>(frame.stats.iosurface->row_bytes()));
+            dispatched.presented = true;
+            dispatched.used_iosurface = true;
+            dispatched.row_stride_bytes = frame.stats.iosurface->row_bytes();
+            dispatched.framebuffer_bytes = static_cast<std::size_t>(dispatched.row_stride_bytes)
+                                           * static_cast<std::size_t>(std::max(height, 0));
+            CFRelease(iosurface_ref);
+        }
+    }
+#endif
+
+    if (!dispatched.presented
+        && !frame.stats.skipped
+        && options.allow_framebuffer
+        && !frame.framebuffer.empty()) {
+        int row_stride_bytes = 0;
+        if (height > 0) {
+            auto rows = static_cast<std::size_t>(height);
+            if (rows > 0) {
+                row_stride_bytes = static_cast<int>(frame.framebuffer.size() / rows);
+            }
+        }
+        if (row_stride_bytes <= 0) {
+            row_stride_bytes = width * 4;
+        }
+        SP::UI::PresentLocalWindowFramebuffer(frame.framebuffer.data(),
+                                              width,
+                                              height,
+                                              row_stride_bytes);
+        dispatched.presented = true;
+        dispatched.used_framebuffer = true;
+        dispatched.row_stride_bytes = static_cast<std::size_t>(row_stride_bytes);
+        dispatched.framebuffer_bytes = frame.framebuffer.size();
+    } else if (!dispatched.presented
+               && !frame.stats.skipped
+               && frame.stats.used_metal_texture
+               && options.warn_when_metal_texture_unshared) {
+        static bool warned = false;
+        if (!warned) {
+            std::cerr << "warning: Metal texture presented without IOSurface fallback; "
+                         "unable to blit to local window.\n";
+            warned = true;
+        }
+    }
+
+    return dispatched;
+}
+
+} // namespace SP::UI::Declarative
 
 namespace SP::System {
 
@@ -1003,12 +1134,12 @@ auto RunUI(SP::PathSpace& space,
         return std::unexpected(app_root.error());
     }
 
-    auto bootstrap = build_bootstrap_from_window(space,
-                                                 SP::App::AppRootPathView{app_root->getPath()},
-                                                 window.path,
-                                                 window.view_name);
-    if (!bootstrap) {
-        return std::unexpected(bootstrap.error());
+    auto present_handles = SP::UI::Declarative::BuildPresentHandles(space,
+                                                                    SP::App::AppRootPathView{app_root->getPath()},
+                                                                    window.path,
+                                                                    window.view_name);
+    if (!present_handles) {
+        return std::unexpected(present_handles.error());
     }
 
     std::array<std::string, 1> pointer_devices{std::string{"/system/devices/in/pointer/default"}};
@@ -1024,10 +1155,13 @@ auto RunUI(SP::PathSpace& space,
     bridge.space = &space;
     install_local_window_bridge(bridge);
 
-    int window_width = options.window_width > 0 ? options.window_width
-                                                : bootstrap->surface_desc.size_px.width;
-    int window_height = options.window_height > 0 ? options.window_height
-                                                  : bootstrap->surface_desc.size_px.height;
+    auto surface_desc =
+        space.read<SP::UI::Builders::SurfaceDesc, std::string>(std::string(present_handles->surface.getPath()) + "/desc");
+    if (!surface_desc) {
+        return std::unexpected(surface_desc.error());
+    }
+    int window_width = options.window_width > 0 ? options.window_width : surface_desc->size_px.width;
+    int window_height = options.window_height > 0 ? options.window_height : surface_desc->size_px.height;
     std::string title = options.window_title.empty() ? "PathSpace Declarative Window"
                                                      : options.window_title;
 
@@ -1044,19 +1178,20 @@ auto RunUI(SP::PathSpace& space,
         if (content_w > 0 && content_h > 0 && (content_w != window_width || content_h != window_height)) {
             window_width = content_w;
             window_height = content_h;
-            (void)SP::UI::Builders::App::UpdateSurfaceSize(space,
-                                                           *bootstrap,
-                                                           window_width,
-                                                           window_height);
+            (void)SP::UI::Declarative::ResizePresentSurface(space,
+                                                            *present_handles,
+                                                            window_width,
+                                                            window_height);
         }
 
-        auto present_result = SP::UI::Builders::Window::Present(space, window.path, window.view_name);
-        if (!present_result) {
-            return std::unexpected(present_result.error());
+        auto present_frame = SP::UI::Declarative::PresentWindowFrame(space, *present_handles);
+        if (!present_frame) {
+            return std::unexpected(present_frame.error());
         }
-        SP::UI::Builders::App::PresentToLocalWindow(*present_result,
-                                                    window_width,
-                                                    window_height);
+        auto present_status = SP::UI::Declarative::PresentFrameToLocalWindow(*present_frame,
+                                                                             window_width,
+                                                                             window_height);
+        (void)present_status;
 
         auto now = std::chrono::steady_clock::now();
         auto elapsed = now - last_frame;

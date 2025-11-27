@@ -119,13 +119,12 @@ auto pack_framebuffer(std::vector<std::uint8_t> const& framebuffer,
 }
 
 auto capture_present_frame(SP::PathSpace& space,
-                           SP::UI::WindowPath const& window_path,
-                           std::string const& view_name,
+                           SP::UI::Declarative::PresentHandles const& handles,
                            std::chrono::milliseconds timeout)
-    -> std::optional<SP::UI::Builders::Window::WindowPresentResult> {
+    -> std::optional<SP::UI::Declarative::PresentFrame> {
     auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline) {
-        auto present = SP::UI::Builders::Window::Present(space, window_path, view_name);
+        auto present = SP::UI::Declarative::PresentWindowFrame(space, handles);
         if (!present) {
             auto const& error = present.error();
             if (error.code == SP::Error::Code::NoObjectFound
@@ -140,7 +139,7 @@ auto capture_present_frame(SP::PathSpace& space,
             std::this_thread::sleep_for(std::chrono::milliseconds(16));
             continue;
         }
-        return std::optional<SP::UI::Builders::Window::WindowPresentResult>{std::move(*present)};
+        return std::optional<SP::UI::Declarative::PresentFrame>{std::move(*present)};
     }
     std::cerr << "ScreenshotService: Window::Present timed out\n";
     return std::nullopt;
@@ -498,12 +497,19 @@ auto ScreenshotService::Capture(ScreenshotRequest const& request) -> SP::Expecte
         }
     }
 
+    auto present_handles = SP::UI::Declarative::BuildPresentHandles(request.space,
+                                                                    request.window_path,
+                                                                    request.view_name);
+    if (!present_handles) {
+        emit_metrics("build_handles_failed");
+        return std::unexpected(present_handles.error());
+    }
+
     std::vector<std::uint8_t> capture_pixels;
     bool hardware_capture = false;
     if (!request.force_software) {
         auto present = capture_present_frame(request.space,
-                                             request.window_path,
-                                             request.view_name,
+                                             *present_handles,
                                              request.present_timeout);
         if (present) {
             auto packed = pack_framebuffer(present->framebuffer, request.width, request.height);

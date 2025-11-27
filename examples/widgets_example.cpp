@@ -109,11 +109,11 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    auto bootstrap = build_bootstrap_from_window(space,
-                                                 app_root_view,
-                                                 window->path,
-                                                 window->view_name);
-    if (!bootstrap) {
+    auto present_handles = SP::UI::Declarative::BuildPresentHandles(space,
+                                                                    app_root_view,
+                                                                    window->path,
+                                                                    window->view_name);
+    if (!present_handles) {
         std::cerr << "widgets_example: failed to prepare presenter bootstrap\n";
         return 1;
     }
@@ -380,7 +380,7 @@ int main(int argc, char** argv) {
     run_present_loop(space,
                      window->path,
                      window->view_name,
-                     *bootstrap,
+                     *present_handles,
                      options.width,
                      options.height,
                      hooks);

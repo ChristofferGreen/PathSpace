@@ -65,11 +65,11 @@ int main() {
         return 1;
     }
 
-    auto bootstrap = build_bootstrap_from_window(space,
-                                                 app_root_view,
-                                                 window->path,
-                                                 window->view_name);
-    if (!bootstrap) {
+    auto present_handles = SP::UI::Declarative::BuildPresentHandles(space,
+                                                                    app_root_view,
+                                                                    window->path,
+                                                                    window->view_name);
+    if (!present_handles) {
         std::cerr << "declarative_hello_example: failed to prepare presenter\n";
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
@@ -161,7 +161,7 @@ int main() {
     run_present_loop(space,
                      window->path,
                      window->view_name,
-                     *bootstrap,
+                     *present_handles,
                      window_opts.width,
                      window_opts.height,
                      hooks);

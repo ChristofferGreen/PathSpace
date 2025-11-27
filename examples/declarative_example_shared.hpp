@@ -334,86 +334,6 @@ inline void install_local_window_bridge(LocalInputBridge& bridge) {
     SP::UI::SetLocalWindowCallbacks(callbacks);
 }
 
-inline auto build_bootstrap_from_window(SP::PathSpace& space,
-                                        SP::App::AppRootPathView app_root,
-                                        SP::UI::WindowPath const& window,
-                                        std::string const& view_name)
-    -> SP::Expected<SP::UI::Builders::App::BootstrapResult> {
-    using namespace SP::UI::Builders;
-    App::BootstrapResult bootstrap{};
-    bootstrap.window = window;
-    bootstrap.view_name = view_name;
-
-    auto renderer_rel = space.read<std::string, std::string>(
-        std::string(window.getPath()) + "/views/" + view_name + "/renderer");
-    if (!renderer_rel) {
-        return std::unexpected(renderer_rel.error());
-    }
-    auto renderer_abs = SP::App::resolve_app_relative(app_root, *renderer_rel);
-    if (!renderer_abs) {
-        return std::unexpected(renderer_abs.error());
-    }
-    bootstrap.renderer = RendererPath{renderer_abs->getPath()};
-
-    auto surface_rel = space.read<std::string, std::string>(
-        std::string(window.getPath()) + "/views/" + view_name + "/surface");
-    if (!surface_rel) {
-        return std::unexpected(surface_rel.error());
-    }
-    auto surface_abs = SP::App::resolve_app_relative(app_root, *surface_rel);
-    if (!surface_abs) {
-        return std::unexpected(surface_abs.error());
-    }
-    bootstrap.surface = SurfacePath{surface_abs->getPath()};
-
-    auto target_rel = space.read<std::string, std::string>(std::string(bootstrap.surface.getPath()) + "/target");
-    if (!target_rel) {
-        return std::unexpected(target_rel.error());
-    }
-    auto target_abs = SP::App::resolve_app_relative(app_root, *target_rel);
-    if (!target_abs) {
-        return std::unexpected(target_abs.error());
-    }
-    bootstrap.target = *target_abs;
-
-    auto surface_desc = space.read<SurfaceDesc, std::string>(
-        std::string(bootstrap.surface.getPath()) + "/desc");
-    if (!surface_desc) {
-        return std::unexpected(surface_desc.error());
-    }
-    bootstrap.surface_desc = *surface_desc;
-
-    auto settings = SP::UI::Builders::Renderer::ReadSettings(space,
-                                                             SP::App::ConcretePathView{bootstrap.target.getPath()});
-    if (!settings) {
-        return std::unexpected(settings.error());
-    }
-    bootstrap.applied_settings = *settings;
-
-    // Present policy nodes may not exist yet; default to AlwaysLatestComplete.
-    SP::UI::PathWindowPresentPolicy policy{};
-    auto present_mode_path = std::string(window.getPath()) + "/views/" + view_name + "/present/policy";
-    auto present_mode = space.read<std::string, std::string>(present_mode_path);
-    if (!present_mode) {
-        auto const& error = present_mode.error();
-        if (error.code != SP::Error::Code::NoObjectFound
-            && error.code != SP::Error::Code::NoSuchPath) {
-            return std::unexpected(error);
-        }
-    } else {
-        auto const& mode = *present_mode;
-        if (mode == "AlwaysFresh") {
-            policy.mode = SP::UI::PathWindowPresentMode::AlwaysFresh;
-        } else if (mode == "PreferLatestCompleteWithBudget") {
-            policy.mode = SP::UI::PathWindowPresentMode::PreferLatestCompleteWithBudget;
-        } else {
-            policy.mode = SP::UI::PathWindowPresentMode::AlwaysLatestComplete;
-        }
-    }
-    bootstrap.present_policy = policy;
-    return bootstrap;
-}
-
 inline void subscribe_window_devices(SP::PathSpace& space,
                                      SP::UI::WindowPath const& window,
                                      std::span<std::string const> pointer_devices,
@@ -448,13 +368,13 @@ struct PresentLoopHooks {
     std::function<void()> before_present;
     std::function<void()> after_present;
     std::function<void()> per_frame;
-    std::function<void(SP::UI::Builders::Window::WindowPresentResult const&)> on_present;
+    std::function<void(SP::UI::Declarative::PresentFrame const&)> on_present;
 };
 
 inline void run_present_loop(SP::PathSpace& space,
                              SP::UI::WindowPath const& window,
                              std::string const& view_name,
-                             SP::UI::Builders::App::BootstrapResult& bootstrap,
+                             SP::UI::Declarative::PresentHandles const& present_handles,
                              int initial_width,
                              int initial_height,
                              PresentLoopHooks hooks = {}) {
@@ -476,22 +396,23 @@ inline void run_present_loop(SP::PathSpace& space,
         if (content_w > 0 && content_h > 0 && (content_w != window_width || content_h != window_height)) {
             window_width = content_w;
             window_height = content_h;
-            (void)SP::UI::Builders::App::UpdateSurfaceSize(space,
-                                                           bootstrap,
-                                                           window_width,
-                                                           window_height);
+            (void)SP::UI::Declarative::ResizePresentSurface(space,
+                                                            present_handles,
+                                                            window_width,
+                                                            window_height);
         }
         if (hooks.before_present) {
             hooks.before_present();
         }
-        auto present_result = SP::UI::Builders::Window::Present(space, window, view_name);
-        if (present_result) {
+        auto present_frame = SP::UI::Declarative::PresentWindowFrame(space, present_handles);
+        if (present_frame) {
             if (hooks.on_present) {
-                hooks.on_present(*present_result);
+                hooks.on_present(*present_frame);
             }
-            SP::UI::Builders::App::PresentToLocalWindow(*present_result,
-                                                        window_width,
-                                                        window_height);
+            auto present_status = SP::UI::Declarative::PresentFrameToLocalWindow(*present_frame,
+                                                                                 window_width,
+                                                                                 window_height);
+            (void)present_status;
         }
         if (hooks.after_present) {
             hooks.after_present();

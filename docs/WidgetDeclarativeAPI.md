@@ -61,6 +61,25 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 5. Shut down with `SP::System::ShutdownDeclarativeRuntime(space)` in tests to
    avoid leaking the worker threads into later suites.
 
+6. Once the window + scene are mounted, call
+   `SP::UI::Declarative::BuildPresentHandles(space, app_root, window.path, window.view_name)`
+   to obtain a lightweight `PresentHandles` record. The handles capture the
+   resolved window/view, surface, renderer, and render target paths so
+   declarative callers never have to touch `Builders::App::BootstrapResult`.
+   Use `PresentHandles` with the new helpers:
+   - `ResizePresentSurface` mirrors `Builders::App::UpdateSurfaceSize` for
+     resize events (surface desc, renderer settings, dirty rectangles).
+   - `PresentWindowFrame` wraps `Builders::Window::Present` and returns a
+     `PresentFrame` with the cached `PathWindowPresentStats`, framebuffer bytes,
+     and optional HTML payload.
+   - `PresentFrameToLocalWindow` mirrors `Builders::App::PresentToLocalWindow`
+     so interactive loops can blit IOSurfaces or CPU framebuffers without
+     including `Builders.hpp`.
+
+   `PathSpaceExamples::run_present_loop` now consumes these handles directly,
+   and the screenshot service (`ScreenshotService::Capture`) calls the same
+   helpers when it needs to read back a framebuffer.
+
 ## 3. Building Widgets Declaratively
 - **Create vs. Fragment**
   - `Widget::Create(space, parent_path, name, args...)` mounts a widget at a
@@ -148,7 +167,14 @@ plus tests in sync. Read it before touching declarative UI code or examples.
    ```
 4. Present:
    ```cpp
-   PathSpaceExamples::run_present_loop(space, app, window, scene, loop_config);
+   auto handles = SP::UI::Declarative::BuildPresentHandles(space, app, window.path, window.view_name);
+   if (!handles) { /* handle error */ }
+   PathSpaceExamples::run_present_loop(space,
+                                       window.path,
+                                       window.view_name,
+                                       *handles,
+                                       loop_config.window_width,
+                                       loop_config.window_height);
    ```
 5. Take screenshots or run GPU smoke tests via the shared CLI wrappers (`paint_example`,
    `pathspace_screenshot_cli`) so readiness gates, overlay hooks, and telemetry stay uniform.

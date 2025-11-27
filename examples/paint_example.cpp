@@ -950,7 +950,7 @@ struct PaintWindowContext {
     SP::App::AppRootPath app_root;
     SP::Window::CreateResult window;
     SP::Scene::CreateResult scene;
-    SP::UI::Builders::App::BootstrapResult bootstrap;
+    SP::UI::Declarative::PresentHandles present_handles;
     std::string window_view_path;
     SP::UI::Builders::Widgets::WidgetTheme theme;
 };
@@ -1279,15 +1279,15 @@ auto create_paint_window_context(SP::PathSpace& space, CommandLineOptions const&
     }
     auto scene = *scene_result;
 
-    auto bootstrap_result = build_bootstrap_from_window(space,
-                                                        app_root_view,
-                                                        window.path,
-                                                        window.view_name);
-    if (!bootstrap_result) {
-        log_expected_error("failed to prepare presenter bootstrap", bootstrap_result.error());
+    auto present_handles_result = SP::UI::Declarative::BuildPresentHandles(space,
+                                                                           app_root_view,
+                                                                           window.path,
+                                                                           window.view_name);
+    if (!present_handles_result) {
+        log_expected_error("failed to prepare presenter bootstrap", present_handles_result.error());
         return std::nullopt;
     }
-    auto bootstrap = *bootstrap_result;
+    auto present_handles = *present_handles_result;
     auto capture_status = set_capture_framebuffer_enabled(space,
                                                           window.path,
                                                           window.view_name,
@@ -1296,8 +1296,7 @@ auto create_paint_window_context(SP::PathSpace& space, CommandLineOptions const&
         log_expected_error("enable framebuffer capture", capture_status.error());
         return std::nullopt;
     }
-    bootstrap.present_policy.capture_framebuffer = true;
-    auto bind_scene = SP::UI::Builders::Surface::SetScene(space, bootstrap.surface, scene.path);
+    auto bind_scene = SP::UI::Builders::Surface::SetScene(space, present_handles.surface, scene.path);
     if (!bind_scene) {
         log_expected_error("Surface::SetScene", bind_scene.error());
         return std::nullopt;
@@ -1320,7 +1319,7 @@ auto create_paint_window_context(SP::PathSpace& space, CommandLineOptions const&
         .app_root = std::move(app_root),
         .window = std::move(window),
         .scene = std::move(scene),
-        .bootstrap = std::move(bootstrap),
+        .present_handles = std::move(present_handles),
         .window_view_path = std::move(window_view_path),
         .theme = std::move(active_theme),
     };
@@ -1642,7 +1641,6 @@ auto RunPaintExample(CommandLineOptions options) -> int {
     auto const& window_view_path = window_context->window_view_path;
     auto& window_result = window_context->window;
     auto& scene_result = window_context->scene;
-    auto& bootstrap = window_context->bootstrap;
 
     auto readiness = ensure_declarative_scene_ready(space,
                                                     scene_result.path,
@@ -1884,7 +1882,7 @@ auto RunPaintExample(CommandLineOptions options) -> int {
     run_present_loop(space,
                      window_result.path,
                      window_result.view_name,
-                     bootstrap,
+                     window_context->present_handles,
                      options.width,
                      options.height,
                      hooks);

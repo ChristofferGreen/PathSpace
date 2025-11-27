@@ -36,6 +36,12 @@ This document cross-references the legacy imperative widget builders (`src/paths
 
 The deterministic `widget_pipeline_benchmark` (`benchmarks/ui/widget_pipeline_benchmark.cpp`) now compares the legacy bucket builders with the declarative descriptor path, records bucket bytes/latency plus declarative dirty-widget throughput and paint GPU upload timings, and feeds the `widget_pipeline` scenario in `scripts/perf_guardrail.py`. The captured tolerances live in `docs/perf/performance_baseline.json`, so the pre-push guardrail halts regressions automatically.
 
+Declarative loops, screenshot capture, and `SP::App::RunUI` now rely on
+`SP::UI::Declarative::{BuildPresentHandles,ResizePresentSurface,PresentWindowFrame,PresentFrameToLocalWindow}`
+for presenter plumbing. Those wrappers keep the renderer/surface/target wiring
+inside the declarative runtime, so top-level code and helpers no longer include
+`<pathspace/ui/Builders.hpp>` just to resize a surface or display a frame.
+
 ## 4. Outstanding Gaps / Follow-ups
 
 1. **Inspector/consumer migration tracking:** Status now lives in `docs/WidgetDeclarativeMigrationTracker.md`. Keep that file current (owners, telemetry, verification dates) so we can see exactly which inspector/web/consumer surfaces still depend on legacy builders.
