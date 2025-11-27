@@ -184,9 +184,9 @@ auto capture_screenshot(SP::PathSpace& space,
             }
         }
     }
-    auto mark_dirty = SP::UI::Builders::Scene::MarkDirty(space,
-                                                         scene.path,
-                                                         SP::UI::Builders::Scene::DirtyKind::All);
+    auto mark_dirty = SP::UI::Declarative::SceneLifecycle::MarkDirty(space,
+                                                                     scene.path,
+                                                                     SP::UI::Builders::Scene::DirtyKind::All);
     if (!mark_dirty) {
         return std::unexpected(mark_dirty.error());
     }

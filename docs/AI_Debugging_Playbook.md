@@ -192,7 +192,7 @@ Environment knobs (all respected by the wrapper and the logger):
   | Widget ops & action throughput | `widgets/<id>/ops/{inbox,actions}/metrics/*` (published by reducers) | Grafana → **Widget Action Flow** (panels: Ops Inflight, Actions/sec, Focus Handoffs) | Actions/sec trending to zero with non-empty inbox triggers **Widget Action Backlog**. |
 
   The dashboards live under the shared `PathSpace / UI` folder; bookmark the Grafana search `dash:pathspace-ui` to jump directly to the four panels above. Update this table whenever new metrics land or panel names change so responders can correlate alerts with the emitting path quickly.
-- **Scene dirty state:** `scenes/<sid>/diagnostics/dirty/state` and `scenes/<sid>/diagnostics/dirty/queue` expose layout/build notifications. The `Scene::MarkDirty` doctests show how to wait on these paths without polling.
+- **Scene dirty state:** `scenes/<sid>/diagnostics/dirty/state` and `scenes/<sid>/diagnostics/dirty/queue` expose layout/build notifications. Use `SP::UI::Declarative::SceneLifecycle::MarkDirty` (or the legacy `SP::UI::Builders::Scene::MarkDirty` shim) to enqueue events; the declarative doctests show how to wait on these paths without polling.
 - **HTML/IO logs:** Application surfaces write to `<app>/io/log/{error,warn,info,debug}`. The global mirrors live at `/system/io/std{out,err}`; see `docs/AI_Paths.md` §2 for the canonical layout.
 
 ## 4. Workflow Checklist After a Failure

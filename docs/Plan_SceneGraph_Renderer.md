@@ -772,7 +772,7 @@ Hit testing (DrawableBucket-driven)
     - Build a pick ray in view space; test per-drawable AABB (required for 3D) before invoking TLAS/BLAS traversal for precise intersections when applicable
 - Results:
   - Return the topmost hit target plus an ordered list of ancestors for routing; include local/world coords, uv (if image/text), and modifiers
-- **Status (October 16, 2025):** `Scene::HitTest` now supplies scene-space and local-space coordinates alongside per-path focus metadata while walking opaque + alpha buckets back-to-front and respecting rect clips. Dirty markers surface via `Scene::MarkDirty` (`diagnostics/dirty/state`) and `Scene::DirtyEvent` queue entries, giving renderers a wait/notify hook for scheduling rebuilds. Shape-specific narrow-phase tests (rounded rect curves, image alpha sampling, text glyph coverage) remain future work.
+- **Status (October 16, 2025):** `Scene::HitTest` now supplies scene-space and local-space coordinates alongside per-path focus metadata while walking opaque + alpha buckets back-to-front and respecting rect clips. Dirty markers surface via `SP::UI::Declarative::SceneLifecycle::MarkDirty` (`diagnostics/dirty/state`) and `Scene::DirtyEvent` queue entries (the legacy `Scene::MarkDirty` wrapper now forwards), giving renderers a wait/notify hook for scheduling rebuilds. Shape-specific narrow-phase tests (rounded rect curves, image alpha sampling, text glyph coverage) remain future work.
 
 Event routing
 - Phases:

@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/PathTypes.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -53,5 +54,24 @@ auto InvalidateThemes(PathSpace& space,
                       SP::App::AppRootPathView app_root) -> void;
 
 auto StopAll(PathSpace& space) -> void;
+
+[[nodiscard]] auto MarkDirty(PathSpace& space,
+                             SP::UI::ScenePath const& scene_path,
+                             SP::UI::Builders::Scene::DirtyKind kinds,
+                             std::chrono::system_clock::time_point timestamp = std::chrono::system_clock::now())
+    -> SP::Expected<std::uint64_t>;
+
+[[nodiscard]] auto ClearDirty(PathSpace& space,
+                              SP::UI::ScenePath const& scene_path,
+                              SP::UI::Builders::Scene::DirtyKind kinds) -> SP::Expected<void>;
+
+[[nodiscard]] auto ReadDirtyState(PathSpace const& space,
+                                  SP::UI::ScenePath const& scene_path)
+    -> SP::Expected<SP::UI::Builders::Scene::DirtyState>;
+
+[[nodiscard]] auto TakeDirtyEvent(PathSpace& space,
+                                  SP::UI::ScenePath const& scene_path,
+                                  std::chrono::milliseconds timeout)
+    -> SP::Expected<SP::UI::Builders::Scene::DirtyEvent>;
 
 } // namespace SP::UI::Declarative::SceneLifecycle

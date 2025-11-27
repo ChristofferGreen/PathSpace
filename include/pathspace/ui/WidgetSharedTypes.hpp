@@ -26,7 +26,52 @@
 #include <vector>
 
 namespace SP::UI::Builders::Scene {
+
 struct HitTestResult;
+
+enum class DirtyKind : std::uint32_t {
+    None       = 0,
+    Structure  = 1u << 0,
+    Layout     = 1u << 1,
+    Transform  = 1u << 2,
+    Visual     = 1u << 3,
+    Text       = 1u << 4,
+    Batch      = 1u << 5,
+    All        = (1u << 6) - 1,
+};
+
+[[nodiscard]] inline constexpr DirtyKind operator|(DirtyKind lhs, DirtyKind rhs) {
+    return static_cast<DirtyKind>(static_cast<std::uint32_t>(lhs)
+                                  | static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] inline constexpr DirtyKind operator&(DirtyKind lhs, DirtyKind rhs) {
+    return static_cast<DirtyKind>(static_cast<std::uint32_t>(lhs)
+                                  & static_cast<std::uint32_t>(rhs));
+}
+
+inline constexpr DirtyKind& operator|=(DirtyKind& lhs, DirtyKind rhs) {
+    lhs = lhs | rhs;
+    return lhs;
+}
+
+inline constexpr DirtyKind& operator&=(DirtyKind& lhs, DirtyKind rhs) {
+    lhs = lhs & rhs;
+    return lhs;
+}
+
+struct DirtyState {
+    std::uint64_t sequence = 0;
+    DirtyKind pending = DirtyKind::None;
+    std::int64_t timestamp_ms = 0;
+};
+
+struct DirtyEvent {
+    std::uint64_t sequence = 0;
+    DirtyKind kinds = DirtyKind::None;
+    std::int64_t timestamp_ms = 0;
+};
+
 } // namespace SP::UI::Builders::Scene
 
 namespace SP::UI::Builders {

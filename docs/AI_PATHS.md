@@ -122,7 +122,7 @@ Keep this table in sync with `docs/Plan_WidgetDeclarativeAPI.md` (“Canonical P
       - `frame_profiler/node/<drawable-id>` — drawable-specific annotations
       - `frame_profiler/summary` — scene-level diagnostics counters and timestamps
       - `dirty/state` — latest `Scene::DirtyState` (sequence, pending mask, timestamp)
-      - `dirty/queue` — `Scene::DirtyEvent` items enqueued by `Scene::MarkDirty`
+      - `dirty/queue` — `Scene::DirtyEvent` items enqueued by `SP::UI::Declarative::SceneLifecycle::MarkDirty` (legacy `SP::UI::Builders::Scene::MarkDirty` now forwards here)
 
 - Renderers
   - `renderers/<renderer-id>/`

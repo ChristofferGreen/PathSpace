@@ -1,5 +1,7 @@
 #include "BuildersDetail.hpp"
 
+#include <pathspace/ui/declarative/SceneLifecycle.hpp>
+
 namespace SP::UI::Builders::Scene {
 
 using namespace Detail;
@@ -240,110 +242,27 @@ auto MarkDirty(PathSpace& space,
                DirtyKind kinds,
                std::chrono::system_clock::time_point timestamp) -> SP::Expected<std::uint64_t> {
     PATHSPACE_LEGACY_BUILDER_GUARD(space, "Scene::MarkDirty");
-    if (kinds == DirtyKind::None) {
-        return std::unexpected(make_error("dirty kinds must not be empty", SP::Error::Code::InvalidType));
-    }
-
-    if (auto status = EnsureAuthoringRoot(space, scenePath); !status) {
-        return std::unexpected(status.error());
-    }
-
-    auto statePath = dirty_state_path(scenePath);
-    auto queuePath = dirty_queue_path(scenePath);
-
-    auto existing = read_optional<DirtyState>(space, statePath);
-    if (!existing) {
-        return std::unexpected(existing.error());
-    }
-
-    DirtyState state{};
-    if (existing->has_value()) {
-        state = **existing;
-    }
-
-    auto seq = g_scene_dirty_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
-    auto combined_mask = dirty_mask(state.pending) | dirty_mask(kinds);
-    state.pending = make_dirty_kind(combined_mask);
-    state.sequence = seq;
-    state.timestamp_ms = to_epoch_ms(timestamp);
-
-    if (auto status = replace_single<DirtyState>(space, statePath, state); !status) {
-        return std::unexpected(status.error());
-    }
-
-    DirtyEvent event{
-        .sequence = seq,
-        .kinds = kinds,
-        .timestamp_ms = state.timestamp_ms,
-    };
-    auto inserted = space.insert(queuePath, event);
-    if (!inserted.errors.empty()) {
-        return std::unexpected(inserted.errors.front());
-    }
-    return seq;
+    return SP::UI::Declarative::SceneLifecycle::MarkDirty(space, scenePath, kinds, timestamp);
 }
 
 auto ClearDirty(PathSpace& space,
                 ScenePath const& scenePath,
                 DirtyKind kinds) -> SP::Expected<void> {
     PATHSPACE_LEGACY_BUILDER_GUARD(space, "Scene::ClearDirty");
-    if (kinds == DirtyKind::None) {
-        return {};
-    }
-
-    if (auto status = EnsureAuthoringRoot(space, scenePath); !status) {
-        return std::unexpected(status.error());
-    }
-
-    auto statePath = dirty_state_path(scenePath);
-    auto existing = read_optional<DirtyState>(space, statePath);
-    if (!existing) {
-        return std::unexpected(existing.error());
-    }
-    if (!existing->has_value()) {
-        return {};
-    }
-
-    auto state = **existing;
-    auto current_mask = dirty_mask(state.pending);
-    auto cleared_mask = current_mask & ~dirty_mask(kinds);
-    if (cleared_mask == current_mask) {
-        return {};
-    }
-
-    state.pending = make_dirty_kind(cleared_mask);
-    state.timestamp_ms = to_epoch_ms(std::chrono::system_clock::now());
-
-    if (auto status = replace_single<DirtyState>(space, statePath, state); !status) {
-        return std::unexpected(status.error());
-    }
-    return {};
+    return SP::UI::Declarative::SceneLifecycle::ClearDirty(space, scenePath, kinds);
 }
 
 auto ReadDirtyState(PathSpace const& space,
                     ScenePath const& scenePath) -> SP::Expected<DirtyState> {
     PATHSPACE_LEGACY_BUILDER_GUARD(space, "Scene::ReadDirtyState");
-    auto statePath = dirty_state_path(scenePath);
-    auto existing = read_optional<DirtyState>(space, statePath);
-    if (!existing) {
-        return std::unexpected(existing.error());
-    }
-    if (!existing->has_value()) {
-        return DirtyState{};
-    }
-    return **existing;
+    return SP::UI::Declarative::SceneLifecycle::ReadDirtyState(space, scenePath);
 }
 
 auto TakeDirtyEvent(PathSpace& space,
                     ScenePath const& scenePath,
                     std::chrono::milliseconds timeout) -> SP::Expected<DirtyEvent> {
     PATHSPACE_LEGACY_BUILDER_GUARD(space, "Scene::TakeDirtyEvent");
-    auto queuePath = dirty_queue_path(scenePath);
-    auto event = space.take<DirtyEvent>(queuePath, SP::Out{} & SP::Block{timeout});
-    if (!event) {
-        return std::unexpected(event.error());
-    }
-    return *event;
+    return SP::UI::Declarative::SceneLifecycle::TakeDirtyEvent(space, scenePath, timeout);
 }
 
 } // namespace SP::UI::Builders::Scene

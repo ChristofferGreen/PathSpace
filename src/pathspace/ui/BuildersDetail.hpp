@@ -53,7 +53,8 @@ inline constexpr std::string_view kSurfacesSegment = "/surfaces/";
 inline constexpr std::string_view kWindowsSegment = "/windows/";
 inline constexpr std::string_view kWidgetAuthoringMarker = "/authoring/";
 inline std::atomic<std::uint64_t> g_auto_render_sequence{0};
-inline std::atomic<std::uint64_t> g_scene_dirty_sequence{0};
+inline std::atomic<std::uint64_t>& g_scene_dirty_sequence =
+    SP::UI::DetailShared::scene_dirty_sequence();
 inline std::atomic<std::uint64_t>& g_widget_op_sequence =
     SP::UI::DetailShared::widget_op_sequence();
 
