@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
@@ -542,6 +543,7 @@ auto write_report_json(CommandLineOptions const& options,
 } // namespace
 
 int main(int argc, char** argv) {
+    SP::UI::LegacyBuilders::ScopedAllow legacy_allow{};
     auto options = parse_args(argc, argv);
     auto sample = make_sample_data();
 

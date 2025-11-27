@@ -1,6 +1,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/Builders.hpp>
+#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
@@ -644,6 +645,7 @@ void enable_damage_metrics_env() {
 } // namespace
 
 int main(int argc, char** argv) try {
+    SP::UI::LegacyBuilders::ScopedAllow legacy_allow{};
     int canvas_width = 3840;
     int canvas_height = 2160;
     constexpr int brush_size = 64;
