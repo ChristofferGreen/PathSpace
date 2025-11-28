@@ -7,7 +7,7 @@
 namespace SP::UI::Declarative {
 
 namespace WidgetDetail = SP::UI::Declarative::Detail;
-using SP::UI::Builders::WidgetPath;
+using SP::UI::Runtime::WidgetPath;
 
 namespace PaintSurface {
 

@@ -11,7 +11,7 @@
 #include <string_view>
 #include <vector>
 
-namespace SP::UI::Builders::Widgets {
+namespace SP::UI::Runtime::Widgets {
 struct TypographyStyle;
 }
 
@@ -54,12 +54,12 @@ private:
 };
 
 auto MeasureTextWidth(std::string_view text,
-                      SP::UI::Builders::Widgets::TypographyStyle const& typography) -> float;
+                      SP::UI::Runtime::Widgets::TypographyStyle const& typography) -> float;
 
 auto BuildTextBucket(std::string_view text,
                      float origin_x,
                      float baseline_y,
-                     SP::UI::Builders::Widgets::TypographyStyle const& typography,
+                     SP::UI::Runtime::Widgets::TypographyStyle const& typography,
                      std::array<float, 4> color,
                      std::uint64_t drawable_id,
                      std::string authoring_id,

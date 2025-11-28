@@ -11,7 +11,7 @@
 
 namespace SP::UI::Declarative::Theme {
 
-using WidgetTheme = SP::UI::Builders::Widgets::WidgetTheme;
+using WidgetTheme = SP::UI::Runtime::Widgets::WidgetTheme;
 
 struct CreateOptions {
     std::string name;

@@ -1,6 +1,6 @@
-#include "BuildersDetail.hpp"
+#include "RuntimeDetail.hpp"
 
-namespace SP::UI::Builders {
+namespace SP::UI::Runtime {
 
 using namespace Detail;
 
@@ -8,7 +8,6 @@ auto maybe_schedule_auto_render(PathSpace& space,
                                 std::string const& targetPath,
                                 PathWindowView::PresentStats const& stats,
                                 PathWindowView::PresentPolicy const& policy) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Window::MaybeScheduleAutoRender");
     return maybe_schedule_auto_render_impl(space, targetPath, stats, policy);
 }
 
@@ -37,4 +36,4 @@ void ResetBeforePresentHook() {
 
 } // namespace Window::TestHooks
 
-} // namespace SP::UI::Builders
+} // namespace SP::UI::Runtime

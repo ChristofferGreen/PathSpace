@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/HtmlAdapter.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
@@ -15,7 +15,7 @@
 
 using namespace SP;
 using namespace SP::UI;
-using namespace SP::UI::Builders;
+using namespace SP::UI::Runtime;
 namespace UIScene = SP::UI::Scene;
 
 namespace {
@@ -101,7 +101,7 @@ struct HtmlFixture {
 
     auto publish_scene(UIScene::DrawableBucketSnapshot bucket) -> ScenePath {
         SceneParams params{.name = "html_scene", .description = "HTML scene"};
-        auto scene = Builders::Scene::Create(space, root_view(), params);
+        auto scene = Runtime::Scene::Create(space, root_view(), params);
         REQUIRE(scene);
 
         UIScene::SceneSnapshotBuilder builder{space, root_view(), *scene};

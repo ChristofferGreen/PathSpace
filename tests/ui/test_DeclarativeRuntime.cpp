@@ -3,7 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/io/IoEvents.hpp>
 #include <pathspace/runtime/IOPump.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
 #include <pathspace/ui/declarative/Reducers.hpp>
@@ -180,8 +180,8 @@ TEST_CASE("Declarative input task drains widget ops") {
     auto app_baseline_metric = DeclarativeTestUtils::read_metric(space, app_metric_path);
     std::uint64_t app_baseline = app_baseline_metric ? *app_baseline_metric : 0;
 
-    SP::UI::Builders::Widgets::Bindings::WidgetOp op{};
-    op.kind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate;
+    SP::UI::Runtime::Widgets::Bindings::WidgetOp op{};
+    op.kind = SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Activate;
     op.widget_path = widget_root;
     op.value = 1.0f;
     (void)space.insert(queue_path, op);
@@ -285,8 +285,8 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     auto app_baseline_metric = DeclarativeTestUtils::read_metric(space, app_metric_path);
     std::uint64_t app_baseline = app_baseline_metric ? *app_baseline_metric : 0;
 
-    SP::UI::Builders::Widgets::Bindings::WidgetOp op{};
-    op.kind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate;
+    SP::UI::Runtime::Widgets::Bindings::WidgetOp op{};
+    op.kind = SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Activate;
     op.widget_path = widget_path;
     op.value = 1.0f;
     (void)space.insert(queue_path, op);
@@ -325,7 +325,7 @@ TEST_CASE("Declarative input task invokes registered handlers") {
         std::chrono::milliseconds{50},
         DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{500}, 4.0));
     REQUIRE(inbox_event);
-    CHECK(inbox_event->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate);
+    CHECK(inbox_event->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Activate);
 
     auto press_event = DeclarativeTestUtils::take_with_retry<SP::UI::Declarative::Reducers::WidgetAction>(
         space,
@@ -351,8 +351,8 @@ TEST_CASE("paint_example_new-style button reacts to pointer press via widget run
         [target_widget, target_authoring](PathSpace&,
                                           std::string const&,
                                           float scene_x,
-                                          float scene_y) -> SP::Expected<SP::UI::Builders::Scene::HitTestResult> {
-            SP::UI::Builders::Scene::HitTestResult result{};
+                                          float scene_y) -> SP::Expected<SP::UI::Runtime::Scene::HitTestResult> {
+            SP::UI::Runtime::Scene::HitTestResult result{};
             if (!target_widget->empty()) {
                 result.hit = true;
                 result.target.authoring_node_id = *target_authoring;
@@ -403,9 +403,9 @@ TEST_CASE("paint_example_new-style button reacts to pointer press via widget run
     auto button_height = button_args.style.height;
 
     SP::UI::Declarative::Stack::Args layout_args{};
-    layout_args.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
-    layout_args.style.align_main = SP::UI::Builders::Widgets::StackAlignMain::Center;
-    layout_args.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Center;
+    layout_args.style.axis = SP::UI::Runtime::Widgets::StackAxis::Vertical;
+    layout_args.style.align_main = SP::UI::Runtime::Widgets::StackAlignMain::Center;
+    layout_args.style.align_cross = SP::UI::Runtime::Widgets::StackAlignCross::Center;
     layout_args.style.width = static_cast<float>(window_options.width);
     layout_args.style.height = static_cast<float>(window_options.height);
     auto vertical_padding = (layout_args.style.height - button_height) * 0.5f;

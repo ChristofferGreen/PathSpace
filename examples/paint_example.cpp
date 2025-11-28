@@ -7,9 +7,8 @@
 
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/core/Error.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/Helpers.hpp>
-#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/HistoryBinding.hpp>
@@ -286,7 +285,7 @@ auto apply_brush_color(SP::PathSpace& space,
 auto log_expected_error(std::string const& context, SP::Error const& error) -> void;
 
 using WidgetAction = SP::UI::Declarative::Reducers::WidgetAction;
-using WidgetOpKind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
+using WidgetOpKind = SP::UI::Runtime::Widgets::Bindings::WidgetOpKind;
 using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
 
 auto make_paint_action(std::string const& widget_path,
@@ -955,7 +954,7 @@ struct PaintWindowContext {
     SP::Scene::CreateResult scene;
     SP::UI::Declarative::PresentHandles present_handles;
     std::string window_view_path;
-    SP::UI::Builders::Widgets::WidgetTheme theme;
+    SP::UI::Runtime::Widgets::WidgetTheme theme;
 };
 
 struct PaintUiContext {
@@ -1003,7 +1002,7 @@ auto set_history_buttons_enabled(SP::PathSpace& space,
         if (!target || target->empty()) {
             return;
         }
-        auto widget_path = SP::UI::Builders::WidgetPath{*target};
+        auto widget_path = SP::UI::Runtime::WidgetPath{*target};
         auto status = SP::UI::Declarative::Button::SetEnabled(space, widget_path, enabled);
         if (!status) {
             auto context = std::string{"Button::SetEnabled("};
@@ -1018,14 +1017,14 @@ auto set_history_buttons_enabled(SP::PathSpace& space,
 
 auto build_controls_fragment(PaintUiBindings const& bindings,
                              PaintControlsNS::PaintLayoutMetrics const& layout,
-                             SP::UI::Builders::Widgets::WidgetTheme const& theme,
+                             SP::UI::Runtime::Widgets::WidgetTheme const& theme,
                              std::span<const PaintControlsNS::PaletteEntry> palette_entries)
     -> SP::UI::Declarative::WidgetFragment {
     using namespace PaintControlsNS;
     SP::UI::Declarative::Stack::Args controls{};
-    controls.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
+    controls.style.axis = SP::UI::Runtime::Widgets::StackAxis::Vertical;
     controls.style.spacing = std::max(layout.controls_section_spacing, 8.0f);
-    controls.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
+    controls.style.align_cross = SP::UI::Runtime::Widgets::StackAlignCross::Stretch;
     controls.style.width = layout.controls_width;
     controls.style.height = layout.canvas_height;
     controls.style.padding_main_start = layout.controls_padding_main;
@@ -1035,9 +1034,9 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
 
     auto make_section_stack = [&](float spacing) {
         SP::UI::Declarative::Stack::Args section{};
-        section.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
+        section.style.axis = SP::UI::Runtime::Widgets::StackAxis::Vertical;
         section.style.spacing = spacing;
-        section.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
+        section.style.align_cross = SP::UI::Runtime::Widgets::StackAlignCross::Stretch;
         section.style.padding_main_start = layout.section_padding_main;
         section.style.padding_main_end = layout.section_padding_main;
         section.style.padding_cross_start = layout.section_padding_cross;
@@ -1090,7 +1089,7 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
             }
             auto brush_label = bindings.brush_label_path ? *bindings.brush_label_path : std::string{};
             if (!brush_label.empty() && bindings.brush_state) {
-                auto label_path = SP::UI::Builders::WidgetPath{brush_label};
+                auto label_path = SP::UI::Runtime::WidgetPath{brush_label};
                 log_error(SP::UI::Declarative::Label::SetText(ctx.space,
                                                               label_path,
                                                               format_brush_state(bindings.brush_state->size,
@@ -1099,7 +1098,7 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
             }
             auto status_label = bindings.status_label_path ? *bindings.status_label_path : std::string{};
             if (!status_label.empty()) {
-                auto label_path = SP::UI::Builders::WidgetPath{status_label};
+                auto label_path = SP::UI::Runtime::WidgetPath{status_label};
                 std::ostringstream message;
                 message << "Brush size adjusted to " << std::lround(value) << " px";
                 log_error(SP::UI::Declarative::Label::SetText(ctx.space,
@@ -1140,7 +1139,7 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
             }
             auto brush_label = bindings.brush_label_path ? *bindings.brush_label_path : std::string{};
             if (!brush_label.empty() && bindings.brush_state) {
-                auto brush_path = SP::UI::Builders::WidgetPath{brush_label};
+                auto brush_path = SP::UI::Runtime::WidgetPath{brush_label};
                 log_error(SP::UI::Declarative::Label::SetText(ctx.space,
                                                               brush_path,
                                                               format_brush_state(bindings.brush_state->size,
@@ -1149,7 +1148,7 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
             }
             auto status_path = bindings.status_label_path ? *bindings.status_label_path : std::string{};
             if (!status_path.empty()) {
-                auto widget_path = SP::UI::Builders::WidgetPath{status_path};
+                auto widget_path = SP::UI::Runtime::WidgetPath{status_path};
                 std::ostringstream message;
                 message << "Selected " << entry.label << " paint";
                 log_error(SP::UI::Declarative::Label::SetText(ctx.space, widget_path, message.str()),
@@ -1216,7 +1215,7 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
             SP::UI::Declarative::SetHistoryBindingState(ctx.space, *binding_ptr, "ready");
             auto status_label = bindings.status_label_path ? *bindings.status_label_path : std::string{};
             if (!status_label.empty()) {
-                auto status_path = SP::UI::Builders::WidgetPath{status_label};
+                auto status_path = SP::UI::Runtime::WidgetPath{status_label};
                 log_error(SP::UI::Declarative::Label::SetText(ctx.space,
                                                               status_path,
                                                               action == HistoryAction::Undo ? "Undo applied"
@@ -1251,8 +1250,7 @@ auto create_paint_window_context(SP::PathSpace& space, CommandLineOptions const&
     }
     auto app_root = *app;
     auto app_root_view = SP::App::AppRootPathView{app_root.getPath()};
-    SP::UI::LegacyBuilders::ScopedAllow theme_allow{};
-    auto theme_selection = SP::UI::Builders::Widgets::LoadTheme(space, app_root_view, "");
+    auto theme_selection = SP::UI::Runtime::Widgets::LoadTheme(space, app_root_view, "");
     if (!theme_selection) {
         log_expected_error("Widgets::LoadTheme", theme_selection.error());
         return std::nullopt;
@@ -1359,7 +1357,7 @@ auto mount_paint_ui(SP::PathSpace& space,
         if (label_path.empty()) {
             return;
         }
-        auto widget_path = SP::UI::Builders::WidgetPath{label_path};
+        auto widget_path = SP::UI::Runtime::WidgetPath{label_path};
         log_error(SP::UI::Declarative::Label::SetText(ctx.space, widget_path, "Stroke recorded"),
                   "Label::SetText");
     };
@@ -1372,9 +1370,9 @@ auto mount_paint_ui(SP::PathSpace& space,
 
     SP::UI::Declarative::Stack::Args root_stack{};
     root_stack.active_panel = "canvas_panel";
-    root_stack.style.axis = SP::UI::Builders::Widgets::StackAxis::Horizontal;
+    root_stack.style.axis = SP::UI::Runtime::Widgets::StackAxis::Horizontal;
     root_stack.style.spacing = layout_metrics.controls_spacing;
-    root_stack.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Start;
+    root_stack.style.align_cross = SP::UI::Runtime::Widgets::StackAlignCross::Start;
     root_stack.style.padding_main_start = layout_metrics.padding_x;
     root_stack.style.padding_main_end = layout_metrics.padding_x;
     root_stack.style.padding_cross_start = layout_metrics.padding_y;
@@ -1635,7 +1633,7 @@ auto RunPaintExample(CommandLineOptions options) -> int {
     auto const& layout_metrics = ui_context->layout_metrics;
     auto paint_widget_path = ui_context->paint_widget_path;
     bool const paint_gpu_enabled = ui_context->paint_gpu_enabled;
-    auto paint_widget = SP::UI::Builders::WidgetPath{paint_widget_path};
+    auto paint_widget = SP::UI::Runtime::WidgetPath{paint_widget_path};
     auto initial_buffer_revision = [&]() -> std::uint64_t {
         auto revision = space.read<std::uint64_t, std::string>(paint_widget_path + "/render/buffer/revision");
         return revision.value_or(0);

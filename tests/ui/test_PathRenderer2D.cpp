@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/PipelineFlags.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
@@ -41,7 +41,7 @@
 
 using namespace SP;
 using namespace SP::UI;
-using namespace SP::UI::Builders;
+using namespace SP::UI::Runtime;
 namespace Runtime = SP::UI::Runtime;
 using SP::UI::MaterialResourceResidency;
 using SP::UI::Scene::BoundingBox;
@@ -62,7 +62,7 @@ using SP::UI::Scene::StrokeCommand;
 using namespace SP::UI::PipelineFlags;
 namespace UIScene = SP::UI::Scene;
 
-namespace SP::UI::Builders {
+namespace SP::UI::Runtime {
 auto maybe_schedule_auto_render(PathSpace& space,
                                 std::string const& targetPath,
                                 PathWindowView::PresentStats const& stats,
@@ -133,7 +133,7 @@ auto create_scene(RendererFixture& fx,
         .name = name,
         .description = "Test scene",
     };
-    auto scene = Builders::Scene::Create(fx.space, fx.root_view(), params);
+    auto scene = Runtime::Scene::Create(fx.space, fx.root_view(), params);
     REQUIRE(scene);
     fx.publish_snapshot(*scene, std::move(bucket));
     return *scene;
@@ -1734,7 +1734,7 @@ TEST_CASE("progressive repaint keeps backdrop when dirty hints cover a tile") {
         .name = "scene_progressive_dirty_tile",
         .description = "Progressive hint repro",
     };
-    auto scene = Builders::Scene::Create(fx.space, fx.root_view(), sceneParams);
+    auto scene = Runtime::Scene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scene);
 
     auto base_bucket = make_background_bucket();
@@ -2503,7 +2503,7 @@ TEST_CASE("renders png image command") {
         .name = "scene_image",
         .description = "Image test",
     };
-    auto scene = Builders::Scene::Create(fx.space, fx.root_view(), sceneParams);
+    auto scene = Runtime::Scene::Create(fx.space, fx.root_view(), sceneParams);
     REQUIRE(scene);
     auto revision = fx.publish_snapshot(*scene, bucket);
 
@@ -3444,18 +3444,18 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     auto surfacePath = create_surface(fx, "surface_window", surfaceDesc, rendererPath.getPath());
     REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
 
-    Builders::WindowParams windowParams{};
+    Runtime::WindowParams windowParams{};
     windowParams.name = "main_window";
     windowParams.title = "Test";
     windowParams.width = 640;
     windowParams.height = 480;
-    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    auto windowPath = Runtime::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
-    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    REQUIRE(Runtime::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
     enable_framebuffer_capture(fx.space, *windowPath, "main");
     enable_framebuffer_capture(fx.space, *windowPath, "main");
 
-    auto presentResult = Builders::Window::Present(fx.space, *windowPath, "main");
+    auto presentResult = Runtime::Window::Present(fx.space, *windowPath, "main");
     REQUIRE(presentResult);
     CHECK(presentResult->stats.presented);
     CHECK_FALSE(presentResult->stats.skipped);
@@ -3517,7 +3517,7 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK(storedFramebuffer->premultiplied_alpha == surfaceDesc.premultiplied_alpha);
     CHECK(storedFramebuffer->pixels == presentResult->framebuffer);
 
-    auto diagnosticsFramebuffer = Builders::Diagnostics::ReadSoftwareFramebuffer(fx.space, SP::ConcretePathStringView{targetPath.getPath()});
+    auto diagnosticsFramebuffer = Runtime::Diagnostics::ReadSoftwareFramebuffer(fx.space, SP::ConcretePathStringView{targetPath.getPath()});
     REQUIRE(diagnosticsFramebuffer);
     CHECK(diagnosticsFramebuffer->pixels == storedFramebuffer->pixels);
 }
@@ -3550,16 +3550,16 @@ TEST_CASE("Window::Present skips framebuffer serialization when capture disabled
     auto surfacePath = create_surface(fx, "surface_no_capture", surfaceDesc, rendererPath.getPath());
     REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
 
-    Builders::WindowParams windowParams{};
+    Runtime::WindowParams windowParams{};
     windowParams.name = "window_no_capture";
     windowParams.title = "NoCapture";
     windowParams.width = 256;
     windowParams.height = 256;
-    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    auto windowPath = Runtime::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
-    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    REQUIRE(Runtime::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
 
-    auto present = Builders::Window::Present(fx.space, *windowPath, "main");
+    auto present = Runtime::Window::Present(fx.space, *windowPath, "main");
     if (!present) {
         INFO("Window::Present error code = " << static_cast<int>(present.error().code));
         INFO("Window::Present error message = " << present.error().message.value_or("<none>"));
@@ -3611,14 +3611,14 @@ TEST_CASE("Window::Present software path publishes residency watermarks") {
     auto surfacePath = create_surface(fx, "surface_software_residency", surfaceDesc, rendererPath.getPath());
     REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
 
-    Builders::WindowParams windowParams{};
+    Runtime::WindowParams windowParams{};
     windowParams.name = "residency_window";
     windowParams.title = "Residency";
     windowParams.width = 256;
     windowParams.height = 256;
-    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    auto windowPath = Runtime::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
-    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    REQUIRE(Runtime::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
 
     constexpr std::uint64_t kCpuSoftBytes = 1024;
     constexpr std::uint64_t kCpuHardBytes = 4096;
@@ -3646,7 +3646,7 @@ TEST_CASE("Window::Present software path publishes residency watermarks") {
     REQUIRE(renderFuture);
     CHECK(renderFuture->ready());
 
-    auto present = Builders::Window::Present(fx.space, *windowPath, "main");
+    auto present = Runtime::Window::Present(fx.space, *windowPath, "main");
     if (!present) {
         INFO("Window::Present error code = " << static_cast<int>(present.error().code));
         INFO("Window::Present error message = " << present.error().message.value_or("<none>"));
@@ -3657,7 +3657,7 @@ TEST_CASE("Window::Present software path publishes residency watermarks") {
     CHECK(present->stats.backend_kind == "Software2D");
 
     auto targetPath = resolve_target(fx, surfacePath);
-    auto metrics = Builders::Diagnostics::ReadTargetMetrics(fx.space,
+    auto metrics = Runtime::Diagnostics::ReadTargetMetrics(fx.space,
                                                             SP::ConcretePathStringView{targetPath.getPath()});
     REQUIRE(metrics);
     CHECK(metrics->backend_kind == "Software2D");
@@ -3682,7 +3682,7 @@ TEST_CASE("Window::Present software path publishes residency watermarks") {
     REQUIRE(gpuHard);
     CHECK(*gpuHard == kGpuHardBytes);
 
-    auto settings = Builders::Renderer::ReadSettings(fx.space, SP::ConcretePathStringView{targetPath.getPath()});
+    auto settings = Runtime::Renderer::ReadSettings(fx.space, SP::ConcretePathStringView{targetPath.getPath()});
     REQUIRE(settings);
     CHECK(settings->renderer.backend_kind == SP::UI::Runtime::RendererKind::Software2D);
     CHECK_FALSE(settings->renderer.metal_uploads_enabled);
@@ -3731,14 +3731,14 @@ TEST_CASE("Window::Present progressive updates preserve prior content") {
     auto surfacePath = create_surface(fx, "surface_window_progressive", surfaceDesc, rendererPath.getPath());
     REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
 
-    Builders::WindowParams windowParams{};
+    Runtime::WindowParams windowParams{};
     windowParams.name = "window_progressive";
     windowParams.title = "Progressive Window";
     windowParams.width = surfaceDesc.size_px.width;
     windowParams.height = surfaceDesc.size_px.height;
-    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    auto windowPath = Runtime::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
-    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    REQUIRE(Runtime::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
     enable_framebuffer_capture(fx.space, *windowPath, "main");
 
     auto targetPath = resolve_target(fx, surfacePath);
@@ -3749,7 +3749,7 @@ TEST_CASE("Window::Present progressive updates preserve prior content") {
             .max_x = rect.max_x,
             .max_y = rect.max_y,
         };
-        REQUIRE(Builders::Renderer::SubmitDirtyRects(fx.space,
+        REQUIRE(Runtime::Renderer::SubmitDirtyRects(fx.space,
                                                      SP::ConcretePathStringView{targetPath.getPath()},
                                                      std::span<const DirtyRectHint>{&hint, 1}));
     };
@@ -3773,7 +3773,7 @@ TEST_CASE("Window::Present progressive updates preserve prior content") {
 
     // Frame 1: render rect A
     submit_hint(rect_a);
-    auto present_first = Builders::Window::Present(fx.space, *windowPath, "main");
+    auto present_first = Runtime::Window::Present(fx.space, *windowPath, "main");
     REQUIRE(present_first);
     CHECK(present_first->stats.presented);
 
@@ -3805,7 +3805,7 @@ TEST_CASE("Window::Present progressive updates preserve prior content") {
                         }));
     submit_hint(rect_b);
 
-    auto present_second = Builders::Window::Present(fx.space, *windowPath, "main");
+    auto present_second = Runtime::Window::Present(fx.space, *windowPath, "main");
     REQUIRE(present_second);
     CHECK(present_second->stats.presented);
     CHECK(present_second->stats.progressive_tiles_copied >= 1);
@@ -3872,20 +3872,20 @@ TEST_CASE("Window::Present handles repeated loop without dropping metrics") {
     auto surfacePath = create_surface(fx, "surface_window_loop", surfaceDesc, rendererPath.getPath());
     REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
 
-    Builders::WindowParams windowParams{};
+    Runtime::WindowParams windowParams{};
     windowParams.name = "window_loop";
     windowParams.title = "Loop";
     windowParams.width = 320;
     windowParams.height = 240;
-    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    auto windowPath = Runtime::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
 
-    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    REQUIRE(Runtime::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
     enable_framebuffer_capture(fx.space, *windowPath, "main");
 
     constexpr int kIterations = 6;
     for (int i = 0; i < kIterations; ++i) {
-        auto present = Builders::Window::Present(fx.space, *windowPath, "main");
+        auto present = Runtime::Window::Present(fx.space, *windowPath, "main");
         REQUIRE(present);
         CHECK(present->stats.presented);
     }
@@ -3962,16 +3962,16 @@ TEST_CASE("Window::Present handles multiple renderer targets") {
     REQUIRE(Surface::SetScene(fx.space, surfaceLeft, sceneLeft));
     REQUIRE(Surface::SetScene(fx.space, surfaceRight, sceneRight));
 
-    Builders::WindowParams windowParams{};
+    Runtime::WindowParams windowParams{};
     windowParams.name = "multi_target_window";
     windowParams.title = "MultiTarget";
     windowParams.width = surfaceDesc.size_px.width * 2;
     windowParams.height = surfaceDesc.size_px.height;
-    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    auto windowPath = Runtime::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
-    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "left", surfaceLeft));
+    REQUIRE(Runtime::Window::AttachSurface(fx.space, *windowPath, "left", surfaceLeft));
     enable_framebuffer_capture(fx.space, *windowPath, "left");
-    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "right", surfaceRight));
+    REQUIRE(Runtime::Window::AttachSurface(fx.space, *windowPath, "right", surfaceRight));
     enable_framebuffer_capture(fx.space, *windowPath, "right");
 
     auto targetLeft = resolve_target(fx, surfaceLeft);
@@ -3997,32 +3997,32 @@ TEST_CASE("Window::Present handles multiple renderer targets") {
         };
     };
 
-    auto presentLeft = Builders::Window::Present(fx.space, *windowPath, "left");
+    auto presentLeft = Runtime::Window::Present(fx.space, *windowPath, "left");
     REQUIRE(presentLeft);
     CHECK(presentLeft->stats.presented);
     CHECK(presentLeft->stats.progressive_tiles_copied >= 1);
     CHECK(fx.space.read<uint64_t>(metricsBaseLeft + "/frameIndex").value() == 1);
 
-    auto framebufferLeft = Builders::Diagnostics::ReadSoftwareFramebuffer(fx.space,
+    auto framebufferLeft = Runtime::Diagnostics::ReadSoftwareFramebuffer(fx.space,
                                                                           SP::ConcretePathStringView{targetLeft.getPath()});
     REQUIRE(framebufferLeft);
     auto center = surfaceDesc.size_px.width / 2;
     auto pixelLeft = sample_pixel(*framebufferLeft, center, center);
     CHECK(pixelLeft == expected_left_bytes);
 
-    auto presentRight = Builders::Window::Present(fx.space, *windowPath, "right");
+    auto presentRight = Runtime::Window::Present(fx.space, *windowPath, "right");
     REQUIRE(presentRight);
     CHECK(presentRight->stats.presented);
     CHECK(presentRight->stats.progressive_tiles_copied >= 1);
     CHECK(fx.space.read<uint64_t>(metricsBaseRight + "/frameIndex").value() == 1);
 
-    auto framebufferRight = Builders::Diagnostics::ReadSoftwareFramebuffer(fx.space,
+    auto framebufferRight = Runtime::Diagnostics::ReadSoftwareFramebuffer(fx.space,
                                                                            SP::ConcretePathStringView{targetRight.getPath()});
     REQUIRE(framebufferRight);
     auto pixelRight = sample_pixel(*framebufferRight, center, center);
     CHECK(pixelRight == expected_right_bytes);
 
-    auto presentLeftAgain = Builders::Window::Present(fx.space, *windowPath, "left");
+    auto presentLeftAgain = Runtime::Window::Present(fx.space, *windowPath, "left");
     REQUIRE(presentLeftAgain);
     CHECK(presentLeftAgain->stats.presented);
     CHECK(fx.space.read<uint64_t>(metricsBaseLeft + "/frameIndex").value() == 2);
@@ -4079,27 +4079,27 @@ TEST_CASE("Window::Present handles multi-window multi-surface wiring") {
     REQUIRE(Surface::SetScene(fx.space, surfaceRed, sceneRed));
     REQUIRE(Surface::SetScene(fx.space, surfaceBlue, sceneBlue));
 
-    Builders::WindowParams primaryWindow{};
+    Runtime::WindowParams primaryWindow{};
     primaryWindow.name = "primary_window";
     primaryWindow.title = "Primary";
     primaryWindow.width = surfaceDesc.size_px.width;
     primaryWindow.height = surfaceDesc.size_px.height;
-    auto windowPrimary = Builders::Window::Create(fx.space, fx.root_view(), primaryWindow);
+    auto windowPrimary = Runtime::Window::Create(fx.space, fx.root_view(), primaryWindow);
     REQUIRE(windowPrimary);
 
-    Builders::WindowParams mirrorWindow{};
+    Runtime::WindowParams mirrorWindow{};
     mirrorWindow.name = "mirror_window";
     mirrorWindow.title = "Mirror";
     mirrorWindow.width = surfaceDesc.size_px.width;
     mirrorWindow.height = surfaceDesc.size_px.height;
-    auto windowMirror = Builders::Window::Create(fx.space, fx.root_view(), mirrorWindow);
+    auto windowMirror = Runtime::Window::Create(fx.space, fx.root_view(), mirrorWindow);
     REQUIRE(windowMirror);
 
-    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPrimary, "main", surfaceRed));
+    REQUIRE(Runtime::Window::AttachSurface(fx.space, *windowPrimary, "main", surfaceRed));
     enable_framebuffer_capture(fx.space, *windowPrimary, "main");
-    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowMirror, "main", surfaceBlue));
+    REQUIRE(Runtime::Window::AttachSurface(fx.space, *windowMirror, "main", surfaceBlue));
     enable_framebuffer_capture(fx.space, *windowMirror, "main");
-    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowMirror, "mirror", surfaceRed));
+    REQUIRE(Runtime::Window::AttachSurface(fx.space, *windowMirror, "mirror", surfaceRed));
     enable_framebuffer_capture(fx.space, *windowMirror, "mirror");
 
     auto targetRed = resolve_target(fx, surfaceRed);
@@ -4125,39 +4125,39 @@ TEST_CASE("Window::Present handles multi-window multi-surface wiring") {
         };
     };
 
-    auto presentPrimary = Builders::Window::Present(fx.space, *windowPrimary, "main");
+    auto presentPrimary = Runtime::Window::Present(fx.space, *windowPrimary, "main");
     REQUIRE(presentPrimary);
     CHECK(presentPrimary->stats.presented);
     CHECK(presentPrimary->stats.frame.frame_index == 1);
     CHECK(fx.space.read<uint64_t>(metricsBaseRed + "/frameIndex").value() == 1);
 
-    auto framebufferRed = Builders::Diagnostics::ReadSoftwareFramebuffer(fx.space,
+    auto framebufferRed = Runtime::Diagnostics::ReadSoftwareFramebuffer(fx.space,
                                                                          SP::ConcretePathStringView{targetRed.getPath()});
     REQUIRE(framebufferRed);
     auto center = surfaceDesc.size_px.width / 2;
     auto pixelRed = sample_pixel(*framebufferRed, center, center);
     CHECK(pixelRed == expected_red_bytes);
 
-    auto presentMirrorMain = Builders::Window::Present(fx.space, *windowMirror, "main");
+    auto presentMirrorMain = Runtime::Window::Present(fx.space, *windowMirror, "main");
     REQUIRE(presentMirrorMain);
     CHECK(presentMirrorMain->stats.presented);
     CHECK(presentMirrorMain->stats.frame.frame_index == 1);
     CHECK(fx.space.read<uint64_t>(metricsBaseBlue + "/frameIndex").value() == 1);
 
-    auto framebufferBlue = Builders::Diagnostics::ReadSoftwareFramebuffer(fx.space,
+    auto framebufferBlue = Runtime::Diagnostics::ReadSoftwareFramebuffer(fx.space,
                                                                           SP::ConcretePathStringView{targetBlue.getPath()});
     REQUIRE(framebufferBlue);
     auto pixelBlue = sample_pixel(*framebufferBlue, center, center);
     CHECK(pixelBlue == expected_blue_bytes);
 
-    auto presentMirrorShared = Builders::Window::Present(fx.space, *windowMirror, "mirror");
+    auto presentMirrorShared = Runtime::Window::Present(fx.space, *windowMirror, "mirror");
     REQUIRE(presentMirrorShared);
     CHECK(presentMirrorShared->stats.presented);
     CHECK(presentMirrorShared->stats.frame.frame_index == 2);
     CHECK(fx.space.read<uint64_t>(metricsBaseRed + "/frameIndex").value() == 2);
     CHECK(fx.space.read<uint64_t>(metricsBaseBlue + "/frameIndex").value() == 1);
 
-    auto sharedFramebuffer = Builders::Diagnostics::ReadSoftwareFramebuffer(fx.space,
+    auto sharedFramebuffer = Runtime::Diagnostics::ReadSoftwareFramebuffer(fx.space,
                                                                             SP::ConcretePathStringView{targetRed.getPath()});
     REQUIRE(sharedFramebuffer);
     auto sharedPixel = sample_pixel(*sharedFramebuffer, center, center);
@@ -4207,14 +4207,14 @@ TEST_CASE("Window::Present reads present policy overrides from PathSpace") {
     auto surfacePath = create_surface(fx, "surface_policy", surfaceDesc, rendererPath.getPath());
     REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
 
-    Builders::WindowParams windowParams{};
+    Runtime::WindowParams windowParams{};
     windowParams.name = "policy_window";
     windowParams.title = "Policy";
     windowParams.width = 320;
     windowParams.height = 240;
-    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    auto windowPath = Runtime::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
-    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    REQUIRE(Runtime::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
     enable_framebuffer_capture(fx.space, *windowPath, "main");
     enable_framebuffer_capture(fx.space, *windowPath, "main");
 
@@ -4226,7 +4226,7 @@ TEST_CASE("Window::Present reads present policy overrides from PathSpace") {
     REQUIRE(fx.space.insert(viewBase + "/present/params/auto_render_on_present", false).errors.empty());
     REQUIRE(fx.space.insert(viewBase + "/present/params/vsync_align", false).errors.empty());
 
-    auto presentStatus = Builders::Window::Present(fx.space, *windowPath, "main");
+    auto presentStatus = Runtime::Window::Present(fx.space, *windowPath, "main");
     REQUIRE(presentStatus);
     CHECK(presentStatus->stats.mode == PathWindowView::PresentMode::AlwaysFresh);
     CHECK(presentStatus->stats.wait_budget_ms == doctest::Approx(12.0).epsilon(0.1));
@@ -4294,7 +4294,7 @@ TEST_CASE("Window auto render scheduling enqueues render request when frame stay
     auto targetPath = resolve_target(fx, surfacePath);
     auto queuePath = std::string(targetPath.getPath()) + "/events/renderRequested/queue";
     while (true) {
-        auto drained = fx.space.take<Builders::AutoRenderRequestEvent>(queuePath);
+        auto drained = fx.space.take<Runtime::AutoRenderRequestEvent>(queuePath);
         if (!drained) {
             break;
         }
@@ -4324,7 +4324,7 @@ TEST_CASE("Window auto render scheduling enqueues render request when frame stay
     REQUIRE(scheduled);
     CHECK(*scheduled);
 
-    auto event = fx.space.take<Builders::AutoRenderRequestEvent>(queuePath);
+    auto event = fx.space.take<Runtime::AutoRenderRequestEvent>(queuePath);
     REQUIRE(event);
     CHECK(event->frame_index == stats.frame.frame_index);
     CHECK(event->reason.find("present-skipped") != std::string::npos);
@@ -4376,7 +4376,7 @@ TEST_CASE("Window auto render scheduling no-ops when disabled") {
     auto targetPath = resolve_target(fx, surfacePath);
     auto queuePath = std::string(targetPath.getPath()) + "/events/renderRequested/queue";
     while (true) {
-        auto drained = fx.space.take<Builders::AutoRenderRequestEvent>(queuePath);
+        auto drained = fx.space.take<Runtime::AutoRenderRequestEvent>(queuePath);
         if (!drained) {
             break;
         }
@@ -4404,7 +4404,7 @@ TEST_CASE("Window auto render scheduling no-ops when disabled") {
     REQUIRE(scheduled);
     CHECK_FALSE(*scheduled);
 
-    auto no_event = fx.space.take<Builders::AutoRenderRequestEvent>(queuePath);
+    auto no_event = fx.space.take<Runtime::AutoRenderRequestEvent>(queuePath);
     CHECK_FALSE(no_event);
     auto code = no_event.error().code;
     bool is_expected_code = (code == Error::Code::NoObjectFound)
@@ -4538,14 +4538,14 @@ TEST_CASE("Window::Present records progressive seqlock metrics") {
     auto surfacePath = create_surface(fx, "surface_window_seqlock", surfaceDesc, rendererPath.getPath());
     REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
 
-    Builders::WindowParams windowParams{};
+    Runtime::WindowParams windowParams{};
     windowParams.name = "window_seqlock";
     windowParams.title = "Seqlock";
     windowParams.width = 64;
     windowParams.height = 64;
-    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    auto windowPath = Runtime::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
-    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    REQUIRE(Runtime::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
     enable_framebuffer_capture(fx.space, *windowPath, "main");
 
     std::optional<ProgressiveSurfaceBuffer::TileWriter> locked_tile;
@@ -4562,7 +4562,7 @@ TEST_CASE("Window::Present records progressive seqlock metrics") {
                                                                TilePass::OpaqueInProgress));
         });
 
-    auto present = Builders::Window::Present(fx.space, *windowPath, "main");
+    auto present = Runtime::Window::Present(fx.space, *windowPath, "main");
     REQUIRE(present);
     CHECK(present->stats.progressive_skip_seq_odd >= 1);
     CHECK(present->stats.progressive_tiles_copied == 0);
@@ -4621,17 +4621,17 @@ TEST_CASE("Window::Present AlwaysFresh skip records deadline metrics") {
     auto surfacePath = create_surface(fx, "surface_window_always_fresh", surfaceDesc, rendererPath.getPath());
     REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
 
-    Builders::WindowParams windowParams{};
+    Runtime::WindowParams windowParams{};
     windowParams.name = "window_always_fresh";
     windowParams.title = "AlwaysFresh";
     windowParams.width = 320;
     windowParams.height = 240;
-    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    auto windowPath = Runtime::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
-    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    REQUIRE(Runtime::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
     enable_framebuffer_capture(fx.space, *windowPath, "main");
 
-    auto baseline = Builders::Window::Present(fx.space, *windowPath, "main");
+    auto baseline = Runtime::Window::Present(fx.space, *windowPath, "main");
     REQUIRE(baseline);
     CHECK(baseline->stats.presented);
 
@@ -4656,7 +4656,7 @@ TEST_CASE("Window::Present AlwaysFresh skip records deadline metrics") {
             surface.resize(surface.desc());
         });
 
-    auto skipped = Builders::Window::Present(fx.space, *windowPath, "main");
+    auto skipped = Runtime::Window::Present(fx.space, *windowPath, "main");
     REQUIRE(skipped);
     CHECK_FALSE(skipped->stats.presented);
     CHECK(skipped->stats.skipped);
@@ -4665,7 +4665,7 @@ TEST_CASE("Window::Present AlwaysFresh skip records deadline metrics") {
     CHECK(skipped->stats.wait_budget_ms == doctest::Approx(1.0).epsilon(0.2));
 
     auto queuePath = std::string(targetPath.getPath()) + "/events/renderRequested/queue";
-    auto autoRenderEvent = fx.space.take<Builders::AutoRenderRequestEvent>(queuePath);
+    auto autoRenderEvent = fx.space.take<Runtime::AutoRenderRequestEvent>(queuePath);
     CHECK_FALSE(autoRenderEvent);
     auto code = autoRenderEvent.error().code;
     bool expected_code = (code == Error::Code::NoObjectFound)
@@ -4717,14 +4717,14 @@ TEST_CASE("Window::Present progressive diagnostics reflect dirty hints") {
                                       rendererPath.getPath());
     REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
 
-    Builders::WindowParams windowParams{};
+    Runtime::WindowParams windowParams{};
     windowParams.name = "window_progressive_diagnostics";
     windowParams.title = "Progressive Diagnostics";
     windowParams.width = 160;
     windowParams.height = 160;
-    auto windowPath = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+    auto windowPath = Runtime::Window::Create(fx.space, fx.root_view(), windowParams);
     REQUIRE(windowPath);
-    REQUIRE(Builders::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
+    REQUIRE(Runtime::Window::AttachSurface(fx.space, *windowPath, "main", surfacePath));
 
     auto targetPath = resolve_target(fx, surfacePath);
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
@@ -4737,7 +4737,7 @@ TEST_CASE("Window::Present progressive diagnostics reflect dirty hints") {
             .max_x = rect.max_x,
             .max_y = rect.max_y,
         };
-        auto status = Builders::Renderer::SubmitDirtyRects(
+        auto status = Runtime::Renderer::SubmitDirtyRects(
             fx.space,
             SP::ConcretePathStringView{targetPath.getPath()},
             std::span<const DirtyRectHint>{&hint, 1});
@@ -4745,7 +4745,7 @@ TEST_CASE("Window::Present progressive diagnostics reflect dirty hints") {
     };
 
     submit_hint(rect_initial);
-    auto firstPresent = Builders::Window::Present(fx.space, *windowPath, "main");
+    auto firstPresent = Runtime::Window::Present(fx.space, *windowPath, "main");
     REQUIRE(firstPresent);
     CHECK(firstPresent->stats.presented);
     CHECK(firstPresent->stats.progressive_tiles_copied >= 1);
@@ -4782,7 +4782,7 @@ TEST_CASE("Window::Present progressive diagnostics reflect dirty hints") {
                         }));
     submit_hint(rect_update);
 
-    auto secondPresent = Builders::Window::Present(fx.space, *windowPath, "main");
+    auto secondPresent = Runtime::Window::Present(fx.space, *windowPath, "main");
     REQUIRE(secondPresent);
     CHECK(secondPresent->stats.presented);
     CHECK(secondPresent->stats.progressive_tiles_copied >= 1);

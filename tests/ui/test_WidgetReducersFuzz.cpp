@@ -21,8 +21,8 @@ namespace {
 
 using namespace SP;
 namespace Declarative = SP::UI::Declarative;
-namespace WidgetsNS = SP::UI::Builders::Widgets;
-namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
+namespace WidgetsNS = SP::UI::Runtime::Widgets;
+namespace WidgetBindings = SP::UI::Runtime::Widgets::Bindings;
 namespace DeclarativeReducers = SP::UI::Declarative::Reducers;
 
 auto is_not_found_error(SP::Error::Code code) -> bool {
@@ -82,7 +82,7 @@ auto mark_widget_dirty(PathSpace& space, std::string const& root_path) -> void {
     overwrite_node(space, dirty_path, true);
 }
 
-auto make_widget_queues(SP::UI::Builders::WidgetPath const& widget) -> WidgetQueues {
+auto make_widget_queues(SP::UI::Runtime::WidgetPath const& widget) -> WidgetQueues {
     WidgetQueues queues;
     queues.ops_queue = DeclarativeReducers::WidgetOpsQueue(widget).getPath();
     queues.actions_queue = DeclarativeReducers::DefaultActionsQueue(widget).getPath();
@@ -104,7 +104,7 @@ auto random_pointer(std::mt19937& rng, Bounds bounds) -> WidgetBindings::Pointer
 
 struct ButtonContext {
     PathSpace* space = nullptr;
-    SP::UI::Builders::WidgetPath widget;
+    SP::UI::Runtime::WidgetPath widget;
     std::string root_path;
     std::string state_path;
     WidgetsNS::ButtonState state{};
@@ -114,7 +114,7 @@ struct ButtonContext {
 
 struct ToggleContext {
     PathSpace* space = nullptr;
-    SP::UI::Builders::WidgetPath widget;
+    SP::UI::Runtime::WidgetPath widget;
     std::string root_path;
     std::string state_path;
     WidgetsNS::ToggleState state{};
@@ -124,7 +124,7 @@ struct ToggleContext {
 
 struct SliderContext {
     PathSpace* space = nullptr;
-    SP::UI::Builders::WidgetPath widget;
+    SP::UI::Runtime::WidgetPath widget;
     std::string root_path;
     std::string state_path;
     WidgetsNS::SliderState state{};
@@ -135,7 +135,7 @@ struct SliderContext {
 
 struct ListContext {
     PathSpace* space = nullptr;
-    SP::UI::Builders::WidgetPath widget;
+    SP::UI::Runtime::WidgetPath widget;
     std::string root_path;
     std::string state_path;
     WidgetsNS::ListState state{};

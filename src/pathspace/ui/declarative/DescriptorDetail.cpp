@@ -3,7 +3,7 @@
 #include "../WidgetDetail.hpp"
 #include <pathspace/ui/declarative/Detail.hpp>
 
-#include <pathspace/ui/TextBuilder.hpp>
+#include <pathspace/ui/runtime/TextRuntime.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
 
@@ -21,7 +21,7 @@
 
 namespace SP::UI::Declarative::DescriptorDetail {
 namespace Detail = SP::UI::Declarative::Detail;
-namespace BuilderWidgets = SP::UI::Builders::Widgets;
+namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 
@@ -323,7 +323,7 @@ auto ReadStackDescriptor(PathSpace& space, std::string const& root)
 }
 
 auto ResolveThemeForWidget(PathSpace& space,
-                           SP::UI::Builders::WidgetPath const& widget)
+                           SP::UI::Runtime::WidgetPath const& widget)
     -> SP::Expected<ThemeContext> {
     auto widget_root = widget.getPath();
     auto app_root = Detail::derive_app_root_for(SP::App::ConcretePathView{widget_root});
@@ -426,7 +426,7 @@ void ApplyThemeOverride(ThemeContext const& theme, WidgetDescriptor& descriptor)
 }
 
 auto ReadInputFieldDescriptor(PathSpace& space,
-                              SP::UI::Builders::WidgetPath const& widget,
+                              SP::UI::Runtime::WidgetPath const& widget,
                               BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<InputFieldDescriptor> {
     auto root = widget.getPath();

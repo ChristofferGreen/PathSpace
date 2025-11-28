@@ -1,7 +1,7 @@
 #pragma once
 
 #include <pathspace/ui/PathRenderer2D.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/FontAtlas.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/ImageCache.hpp>
@@ -47,7 +47,7 @@ auto set_last_error(PathSpace& space,
                     SP::ConcretePathStringView targetPath,
                     std::string const& message,
                     std::uint64_t revision = 0,
-                    Builders::Diagnostics::PathSpaceError::Severity severity = Builders::Diagnostics::PathSpaceError::Severity::Recoverable,
+                    Runtime::Diagnostics::PathSpaceError::Severity severity = Runtime::Diagnostics::PathSpaceError::Severity::Recoverable,
                     int code = 3000) -> SP::Expected<void>;
 
 auto pipeline_flags_for(Scene::DrawableBucketSnapshot const& bucket,

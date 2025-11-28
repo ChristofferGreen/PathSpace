@@ -11,7 +11,7 @@
 #include <pathspace/ui/declarative/Telemetry.hpp>
 #include <pathspace/ui/declarative/widgets/Common.hpp>
 
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 
 #include <pathspace/path/ConcretePath.hpp>
 
@@ -42,7 +42,7 @@ namespace SP::UI::Declarative::SceneLifecycle {
 namespace {
 
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
-namespace BuilderRenderer = SP::UI::Builders::Renderer;
+namespace BuilderRenderer = SP::UI::Runtime::Renderer;
 using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
 namespace Telemetry = SP::UI::Declarative::Telemetry;
 constexpr std::string_view kPublishAuthor = "declarative-runtime";
@@ -113,12 +113,12 @@ inline auto dirty_queue_path(SP::UI::ScenePath const& scene_path) -> std::string
     return std::string(scene_path.getPath()) + "/diagnostics/dirty/queue";
 }
 
-inline auto dirty_mask(SP::UI::Builders::Scene::DirtyKind kind) -> std::uint32_t {
+inline auto dirty_mask(SP::UI::Runtime::Scene::DirtyKind kind) -> std::uint32_t {
     return static_cast<std::uint32_t>(kind);
 }
 
-inline auto make_dirty_kind(std::uint32_t mask) -> SP::UI::Builders::Scene::DirtyKind {
-    using DirtyKind = SP::UI::Builders::Scene::DirtyKind;
+inline auto make_dirty_kind(std::uint32_t mask) -> SP::UI::Runtime::Scene::DirtyKind {
+    using DirtyKind = SP::UI::Runtime::Scene::DirtyKind;
     return static_cast<DirtyKind>(mask & static_cast<std::uint32_t>(DirtyKind::All));
 }
 
@@ -686,7 +686,7 @@ private:
 
     void process_event(std::string const& widget_path) {
         auto dirty_start = std::chrono::steady_clock::now();
-        SP::UI::Builders::WidgetPath widget{widget_path};
+        SP::UI::Runtime::WidgetPath widget{widget_path};
         auto dirty_version = space_.read<std::uint64_t, std::string>(widget_path + "/render/dirty_version");
         std::uint64_t observed_version = dirty_version.value_or(0);
         bool cleared = false;
@@ -1262,11 +1262,11 @@ auto StopAll(PathSpace& space) -> void {
 
 auto MarkDirty(PathSpace& space,
                SP::UI::ScenePath const& scene_path,
-               SP::UI::Builders::Scene::DirtyKind kinds,
+               SP::UI::Runtime::Scene::DirtyKind kinds,
                std::chrono::system_clock::time_point timestamp) -> SP::Expected<std::uint64_t> {
-    using DirtyState = SP::UI::Builders::Scene::DirtyState;
-    using DirtyEvent = SP::UI::Builders::Scene::DirtyEvent;
-    if (kinds == SP::UI::Builders::Scene::DirtyKind::None) {
+    using DirtyState = SP::UI::Runtime::Scene::DirtyState;
+    using DirtyEvent = SP::UI::Runtime::Scene::DirtyEvent;
+    if (kinds == SP::UI::Runtime::Scene::DirtyKind::None) {
         return std::unexpected(DeclarativeDetail::make_error(
             "dirty kinds must not be empty", SP::Error::Code::InvalidType));
     }
@@ -1312,9 +1312,9 @@ auto MarkDirty(PathSpace& space,
 
 auto ClearDirty(PathSpace& space,
                 SP::UI::ScenePath const& scene_path,
-                SP::UI::Builders::Scene::DirtyKind kinds) -> SP::Expected<void> {
-    using DirtyState = SP::UI::Builders::Scene::DirtyState;
-    if (kinds == SP::UI::Builders::Scene::DirtyKind::None) {
+                SP::UI::Runtime::Scene::DirtyKind kinds) -> SP::Expected<void> {
+    using DirtyState = SP::UI::Runtime::Scene::DirtyState;
+    if (kinds == SP::UI::Runtime::Scene::DirtyKind::None) {
         return {};
     }
     if (auto status = ensure_scene_authoring_root(scene_path); !status) {
@@ -1348,8 +1348,8 @@ auto ClearDirty(PathSpace& space,
 
 auto ReadDirtyState(PathSpace const& space,
                     SP::UI::ScenePath const& scene_path)
-    -> SP::Expected<SP::UI::Builders::Scene::DirtyState> {
-    using DirtyState = SP::UI::Builders::Scene::DirtyState;
+    -> SP::Expected<SP::UI::Runtime::Scene::DirtyState> {
+    using DirtyState = SP::UI::Runtime::Scene::DirtyState;
     if (auto status = ensure_scene_authoring_root(scene_path); !status) {
         return std::unexpected(status.error());
     }
@@ -1368,8 +1368,8 @@ auto ReadDirtyState(PathSpace const& space,
 auto TakeDirtyEvent(PathSpace& space,
                     SP::UI::ScenePath const& scene_path,
                     std::chrono::milliseconds timeout)
-    -> SP::Expected<SP::UI::Builders::Scene::DirtyEvent> {
-    using DirtyEvent = SP::UI::Builders::Scene::DirtyEvent;
+    -> SP::Expected<SP::UI::Runtime::Scene::DirtyEvent> {
+    using DirtyEvent = SP::UI::Runtime::Scene::DirtyEvent;
     if (auto status = ensure_scene_authoring_root(scene_path); !status) {
         return std::unexpected(status.error());
     }

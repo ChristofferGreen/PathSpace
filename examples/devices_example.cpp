@@ -93,7 +93,7 @@ static inline std::ostream& operator<<(std::ostream& os, Expected<T> const& e) {
 
 struct DeviceEventSink {
     PathSpace& space;
-    std::optional<SP::UI::Builders::WidgetPath> status_label;
+    std::optional<SP::UI::Runtime::WidgetPath> status_label;
 };
 
 static void update_status_label(DeviceEventSink& sink, std::string const& message) {
@@ -136,7 +136,7 @@ struct PaintControlsDemoHandles {
     SP::UI::WindowPath window_path;
     std::string view_name;
     SP::UI::Declarative::PresentHandles present_handles;
-    SP::UI::Builders::WidgetPath status_label;
+    SP::UI::Runtime::WidgetPath status_label;
 };
 
 static void log_expected_error(std::string const& context, Error const& error) {
@@ -166,7 +166,7 @@ static std::optional<PaintControlsDemoHandles> launch_paint_controls_demo(PathSp
     auto app_root = *app;
     auto app_root_view = SP::App::AppRootPathView{app_root.getPath()};
 
-    auto theme_selection = SP::UI::Builders::Widgets::LoadTheme(space, app_root_view, "");
+    auto theme_selection = SP::UI::Runtime::Widgets::LoadTheme(space, app_root_view, "");
     if (!theme_selection) {
         log_expected_error("Widgets::LoadTheme", theme_selection.error());
         return std::nullopt;
@@ -262,7 +262,7 @@ static std::optional<PaintControlsDemoHandles> launch_paint_controls_demo(PathSp
     };
 
     SP::UI::Declarative::Stack::Args paint_controls_stack{};
-    paint_controls_stack.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
+    paint_controls_stack.style.axis = SP::UI::Runtime::Widgets::StackAxis::Vertical;
     paint_controls_stack.style.spacing = std::max(10.0f, layout_metrics.controls_spacing * 0.5f);
     paint_controls_stack.style.padding_main_start = layout_metrics.controls_padding_main;
     paint_controls_stack.style.padding_main_end = layout_metrics.controls_padding_main;

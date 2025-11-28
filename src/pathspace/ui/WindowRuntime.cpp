@@ -1,13 +1,12 @@
-#include "BuildersDetail.hpp"
+#include "RuntimeDetail.hpp"
 
-namespace SP::UI::Builders::Window {
+namespace SP::UI::Runtime::Window {
 
 using namespace Detail;
 
 auto Create(PathSpace& space,
              AppRootPathView appRoot,
              WindowParams const& params) -> SP::Expected<WindowPath> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Window::Create");
     if (auto status = ensure_identifier(params.name, "window name"); !status) {
         return std::unexpected(status.error());
     }
@@ -53,7 +52,6 @@ auto AttachSurface(PathSpace& space,
                     WindowPath const& windowPath,
                     std::string_view viewName,
                     SurfacePath const& surfacePath) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Window::AttachSurface");
     if (auto status = ensure_identifier(viewName, "view name"); !status) {
         return status;
     }
@@ -89,7 +87,6 @@ auto AttachHtmlTarget(PathSpace& space,
                        WindowPath const& windowPath,
                        std::string_view viewName,
                        HtmlTargetPath const& targetPath) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Window::AttachHtmlTarget");
     if (auto status = ensure_identifier(viewName, "view name"); !status) {
         return status;
     }
@@ -133,7 +130,6 @@ auto AttachHtmlTarget(PathSpace& space,
 auto Present(PathSpace& space,
               WindowPath const& windowPath,
               std::string_view viewName) -> SP::Expected<WindowPresentResult> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Window::Present");
     if (auto status = ensure_identifier(viewName, "view name"); !status) {
         return std::unexpected(status.error());
     }
@@ -572,4 +568,4 @@ auto Present(PathSpace& space,
     return result;
 }
 
-} // namespace SP::UI::Builders::Window
+} // namespace SP::UI::Runtime::Window

@@ -8,7 +8,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/PipelineFlags.hpp>
@@ -34,7 +34,7 @@
 using namespace SP::UI;
 namespace Runtime = SP::UI::Runtime;
 namespace UIScene = SP::UI::Scene;
-using SP::UI::Builders::Diagnostics::PathSpaceError;
+using SP::UI::Runtime::Diagnostics::PathSpaceError;
 
 namespace {
 
@@ -199,7 +199,7 @@ auto make_image_bucket(std::uint64_t fingerprint) -> UIScene::DrawableBucketSnap
 }
 
 auto publish_minimal_scene(MetalBuildersFixture& fx,
-                           Builders::ScenePath const& scenePath) -> void {
+                           Runtime::ScenePath const& scenePath) -> void {
     auto bucket = make_rect_bucket();
     UIScene::SceneSnapshotBuilder builder{fx.space, fx.root_view(), scenePath};
     UIScene::SnapshotPublishOptions opts{};
@@ -210,17 +210,17 @@ auto publish_minimal_scene(MetalBuildersFixture& fx,
     opts.metadata.command_count = bucket.command_kinds.size();
     auto revision = builder.publish(opts, bucket);
     REQUIRE(revision);
-    auto ready = Builders::Scene::WaitUntilReady(fx.space, scenePath, std::chrono::milliseconds{10});
+    auto ready = Runtime::Scene::WaitUntilReady(fx.space, scenePath, std::chrono::milliseconds{10});
     REQUIRE(ready);
 }
 
 auto create_scene(MetalBuildersFixture& fx,
-                  std::string const& name) -> Builders::ScenePath {
-    Builders::SceneParams params{
+                  std::string const& name) -> Runtime::ScenePath {
+    Runtime::SceneParams params{
         .name = name,
         .description = "Metal test scene",
     };
-    auto scene = Builders::Scene::Create(fx.space, fx.root_view(), params);
+    auto scene = Runtime::Scene::Create(fx.space, fx.root_view(), params);
     REQUIRE(scene);
     publish_minimal_scene(fx, *scene);
     return *scene;
@@ -228,13 +228,13 @@ auto create_scene(MetalBuildersFixture& fx,
 
 auto create_renderer(MetalBuildersFixture& fx,
                      std::string const& name,
-                     SP::UI::Runtime::RendererKind kind) -> Builders::RendererPath {
-    Builders::RendererParams params{
+                     SP::UI::Runtime::RendererKind kind) -> Runtime::RendererPath {
+    Runtime::RendererParams params{
         .name = name,
         .kind = kind,
         .description = "Renderer",
     };
-    auto renderer = Builders::Renderer::Create(fx.space, fx.root_view(), params);
+    auto renderer = Runtime::Renderer::Create(fx.space, fx.root_view(), params);
     REQUIRE(renderer);
     return *renderer;
 }
@@ -242,18 +242,18 @@ auto create_renderer(MetalBuildersFixture& fx,
 auto create_surface(MetalBuildersFixture& fx,
                     std::string const& name,
                     Runtime::SurfaceDesc desc,
-                    std::string const& rendererName) -> Builders::SurfacePath {
-    Builders::SurfaceParams params{};
+                    std::string const& rendererName) -> Runtime::SurfacePath {
+    Runtime::SurfaceParams params{};
     params.name = name;
     params.desc = desc;
     params.renderer = rendererName;
-    auto surface = Builders::Surface::Create(fx.space, fx.root_view(), params);
+    auto surface = Runtime::Surface::Create(fx.space, fx.root_view(), params);
     REQUIRE(surface);
     return *surface;
 }
 
 auto resolve_target(MetalBuildersFixture& fx,
-                    Builders::SurfacePath const& surfacePath) -> SP::ConcretePathString {
+                    Runtime::SurfacePath const& surfacePath) -> SP::ConcretePathString {
     auto targetRel = fx.space.read<std::string, std::string>(std::string(surfacePath.getPath()) + "/target");
     REQUIRE(targetRel);
     auto targetAbs = SP::App::resolve_app_relative(fx.root_view(), *targetRel);
@@ -536,13 +536,13 @@ TEST_CASE("PathWindowView surfaces Metal presenter errors and falls back") {
         policy.staleness_budget = std::chrono::milliseconds{2};
         policy.staleness_budget_ms_value = 2.0;
 
-        auto writeMetrics = Builders::Diagnostics::WritePresentMetrics(space,
+        auto writeMetrics = Runtime::Diagnostics::WritePresentMetrics(space,
                                                                        targetView,
                                                                        stats,
                                                                        policy);
         REQUIRE(writeMetrics);
 
-        auto metrics = Builders::Diagnostics::ReadTargetMetrics(space, targetView);
+        auto metrics = Runtime::Diagnostics::ReadTargetMetrics(space, targetView);
         REQUIRE(metrics);
         CHECK(metrics->backend_kind == "Metal2D");
         CHECK_FALSE(metrics->used_metal_texture);
@@ -603,9 +603,9 @@ TEST_CASE("Metal pipeline publishes residency metrics and material descriptors")
                                    | static_cast<std::uint8_t>(Runtime::MetalTextureUsage::RenderTarget);
 
         auto surface = create_surface(fx, "surface_metal_metrics", desc, renderer.getPath());
-        REQUIRE(Builders::Surface::SetScene(fx.space, surface, scene));
+        REQUIRE(Runtime::Surface::SetScene(fx.space, surface, scene));
 
-        Builders::WindowParams windowParams{
+        Runtime::WindowParams windowParams{
             .name = "MainWindow",
             .title = "Metal Window",
             .width = 8,
@@ -613,11 +613,11 @@ TEST_CASE("Metal pipeline publishes residency metrics and material descriptors")
             .scale = 1.0f,
             .background = "#000000",
         };
-        auto window = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+        auto window = Runtime::Window::Create(fx.space, fx.root_view(), windowParams);
         REQUIRE(window);
-        REQUIRE(Builders::Window::AttachSurface(fx.space, *window, "main", surface));
+        REQUIRE(Runtime::Window::AttachSurface(fx.space, *window, "main", surface));
 
-        auto renderFuture = Builders::Surface::RenderOnce(fx.space, surface, std::nullopt);
+        auto renderFuture = Runtime::Surface::RenderOnce(fx.space, surface, std::nullopt);
         if (!renderFuture) {
             auto err = renderFuture.error();
             INFO("Surface::RenderOnce error code = " << static_cast<int>(err.code));
@@ -626,7 +626,7 @@ TEST_CASE("Metal pipeline publishes residency metrics and material descriptors")
         REQUIRE(renderFuture);
         CHECK(renderFuture->ready());
 
-        auto present = Builders::Window::Present(fx.space, *window, "main");
+        auto present = Runtime::Window::Present(fx.space, *window, "main");
         if (!present) {
             INFO("Window::Present error code = " << static_cast<int>(present.error().code));
             INFO("Window::Present error message = " << present.error().message.value_or("<none>"));
@@ -637,8 +637,8 @@ TEST_CASE("Metal pipeline publishes residency metrics and material descriptors")
         CHECK(present->stats.backend_kind == "Metal2D");
 
         auto targetPath = resolve_target(fx, surface);
-        auto metrics = Builders::Diagnostics::ReadTargetMetrics(fx.space,
-                                                                Builders::ConcretePathView{targetPath.getPath()});
+        auto metrics = Runtime::Diagnostics::ReadTargetMetrics(fx.space,
+                                                                Runtime::ConcretePathView{targetPath.getPath()});
         REQUIRE(metrics);
         CHECK(metrics->backend_kind == "Metal2D");
         CHECK(metrics->used_metal_texture);
@@ -669,8 +669,8 @@ TEST_CASE("Metal pipeline publishes residency metrics and material descriptors")
         REQUIRE(storedGpuBytes);
         CHECK(*storedGpuBytes == metrics->gpu_bytes);
 
-        auto settings = Builders::Renderer::ReadSettings(fx.space,
-                                                         Builders::ConcretePathView{targetPath.getPath()});
+        auto settings = Runtime::Renderer::ReadSettings(fx.space,
+                                                         Runtime::ConcretePathView{targetPath.getPath()});
         REQUIRE(settings);
         CHECK(settings->renderer.backend_kind == SP::UI::Runtime::RendererKind::Metal2D);
         CHECK(settings->renderer.metal_uploads_enabled);
@@ -740,7 +740,7 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
             auto inserted_trunc = fx.space.insert(truncated_path, png_bytes);
             REQUIRE(inserted_trunc.errors.empty());
         }
-        auto ready = Builders::Scene::WaitUntilReady(fx.space, scene, std::chrono::milliseconds{10});
+        auto ready = Runtime::Scene::WaitUntilReady(fx.space, scene, std::chrono::milliseconds{10});
         REQUIRE(ready);
 
         auto desc = make_surface_desc();
@@ -752,9 +752,9 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
                                    | static_cast<std::uint8_t>(Runtime::MetalTextureUsage::RenderTarget);
 
         auto surface = create_surface(fx, "surface_metal_image_metrics", desc, renderer.getPath());
-        REQUIRE(Builders::Surface::SetScene(fx.space, surface, scene));
+        REQUIRE(Runtime::Surface::SetScene(fx.space, surface, scene));
 
-        Builders::WindowParams windowParams{
+        Runtime::WindowParams windowParams{
             .name = "ImageWindow",
             .title = "Metal Image Window",
             .width = 16,
@@ -762,9 +762,9 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
             .scale = 1.0f,
             .background = "#000000",
         };
-        auto window = Builders::Window::Create(fx.space, fx.root_view(), windowParams);
+        auto window = Runtime::Window::Create(fx.space, fx.root_view(), windowParams);
         REQUIRE(window);
-        REQUIRE(Builders::Window::AttachSurface(fx.space, *window, "main", surface));
+        REQUIRE(Runtime::Window::AttachSurface(fx.space, *window, "main", surface));
 
         constexpr std::uint64_t kCpuSoftBytes = 4096;
         constexpr std::uint64_t kCpuHardBytes = 8192;
@@ -788,7 +788,7 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
         overrides.cache.gpu_soft_bytes = kGpuSoftBytes;
         overrides.cache.gpu_hard_bytes = kGpuHardBytes;
 
-        auto renderFuture = Builders::Surface::RenderOnce(fx.space, surface, overrides);
+        auto renderFuture = Runtime::Surface::RenderOnce(fx.space, surface, overrides);
         if (!renderFuture) {
             auto err = renderFuture.error();
             INFO("Surface::RenderOnce error code = " << static_cast<int>(err.code));
@@ -797,7 +797,7 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
         REQUIRE(renderFuture);
         CHECK(renderFuture->ready());
 
-        auto present = Builders::Window::Present(fx.space, *window, "main");
+        auto present = Runtime::Window::Present(fx.space, *window, "main");
         if (!present) {
             INFO("Window::Present error code = " << static_cast<int>(present.error().code));
             INFO("Window::Present error message = " << present.error().message.value_or("<none>"));
@@ -808,8 +808,8 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
         CHECK(present->stats.backend_kind == "Metal2D");
 
         auto targetPath = resolve_target(fx, surface);
-        auto metrics = Builders::Diagnostics::ReadTargetMetrics(fx.space,
-                                                                Builders::ConcretePathView{targetPath.getPath()});
+        auto metrics = Runtime::Diagnostics::ReadTargetMetrics(fx.space,
+                                                                Runtime::ConcretePathView{targetPath.getPath()});
         REQUIRE(metrics);
         CHECK(metrics->backend_kind == "Metal2D");
         CHECK(metrics->used_metal_texture);
@@ -857,8 +857,8 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
         REQUIRE(gpuHard);
         CHECK(*gpuHard == kGpuHardBytes);
 
-        auto settings = Builders::Renderer::ReadSettings(fx.space,
-                                                         Builders::ConcretePathView{targetPath.getPath()});
+        auto settings = Runtime::Renderer::ReadSettings(fx.space,
+                                                         Runtime::ConcretePathView{targetPath.getPath()});
         REQUIRE(settings);
         CHECK(settings->renderer.backend_kind == SP::UI::Runtime::RendererKind::Metal2D);
         CHECK(settings->renderer.metal_uploads_enabled);

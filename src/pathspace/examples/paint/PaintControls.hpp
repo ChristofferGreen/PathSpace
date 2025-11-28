@@ -1,6 +1,6 @@
 #pragma once
 
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <array>
@@ -47,7 +47,7 @@ struct PaletteEntry {
 
 struct PaletteComponentConfig {
     PaintLayoutMetrics const& layout;
-    SP::UI::Builders::Widgets::WidgetTheme const& theme;
+    SP::UI::Runtime::Widgets::WidgetTheme const& theme;
     std::span<const PaletteEntry> entries;
     std::shared_ptr<BrushState> brush_state;
     std::function<void(SP::UI::Declarative::ButtonContext&, PaletteEntry const&)> on_select;
@@ -76,7 +76,7 @@ struct HistoryActionsConfig {
 
 auto ComputeLayoutMetrics(int window_width, int window_height) -> PaintLayoutMetrics;
 
-auto BuildDefaultPaletteEntries(SP::UI::Builders::Widgets::WidgetTheme const& theme)
+auto BuildDefaultPaletteEntries(SP::UI::Runtime::Widgets::WidgetTheme const& theme)
     -> std::vector<PaletteEntry>;
 
 auto BuildPaletteFragment(PaletteComponentConfig const& config)
@@ -88,7 +88,7 @@ auto BuildBrushSliderFragment(BrushSliderConfig const& config)
 auto BuildHistoryActionsFragment(HistoryActionsConfig const& config)
     -> SP::UI::Declarative::WidgetFragment;
 
-SP::UI::Builders::Widgets::TypographyStyle MakeTypography(float font_size, float line_height);
+SP::UI::Runtime::Widgets::TypographyStyle MakeTypography(float font_size, float line_height);
 void EnsureActivePanel(SP::UI::Declarative::Stack::Args& args);
 
 } // namespace SP::Examples::PaintControls

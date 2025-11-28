@@ -2,8 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
-#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
@@ -35,10 +34,10 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 namespace Declarative = SP::UI::Declarative;
-namespace BuilderWidgets = SP::UI::Builders::Widgets;
+namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 using SP::UI::Scene::DrawableBucketSnapshot;
 using SP::PathSpace;
-using WidgetPath = SP::UI::Builders::WidgetPath;
+using WidgetPath = SP::UI::Runtime::WidgetPath;
 
 struct CommandLineOptions {
     int iterations = 200;
@@ -78,7 +77,7 @@ struct DeclarativePaths {
     WidgetPath slider;
     WidgetPath list;
     WidgetPath paint;
-    SP::UI::Builders::ScenePath scene;
+    SP::UI::Runtime::ScenePath scene;
 };
 
 constexpr std::string_view kPaintUploaderMetrics = "/system/widgets/runtime/paint_gpu/metrics";
@@ -543,7 +542,6 @@ auto write_report_json(CommandLineOptions const& options,
 } // namespace
 
 int main(int argc, char** argv) {
-    SP::UI::LegacyBuilders::ScopedAllow legacy_allow{};
     auto options = parse_args(argc, argv);
     auto sample = make_sample_data();
 

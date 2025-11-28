@@ -64,9 +64,9 @@ auto MountButtonUI(SP::PathSpace& space,
     auto button_height = button_args.style.height;
 
     SP::UI::Declarative::Stack::Args layout_args{};
-    layout_args.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
-    layout_args.style.align_main = SP::UI::Builders::Widgets::StackAlignMain::Center;
-    layout_args.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Center;
+    layout_args.style.axis = SP::UI::Runtime::Widgets::StackAxis::Vertical;
+    layout_args.style.align_main = SP::UI::Runtime::Widgets::StackAlignMain::Center;
+    layout_args.style.align_cross = SP::UI::Runtime::Widgets::StackAlignCross::Center;
     layout_args.style.width = static_cast<float>(window_width);
     layout_args.style.height = static_cast<float>(window_height);
 

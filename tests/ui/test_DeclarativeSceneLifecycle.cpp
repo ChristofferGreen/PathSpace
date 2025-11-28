@@ -1,7 +1,7 @@
 #include "third_party/doctest.h"
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
@@ -274,15 +274,15 @@ TEST_CASE("Focus and theme changes invalidate declarative widgets") {
     auto dirty_queue = std::string(button->getPath()) + "/render/events/dirty";
     (void)space.take<std::string>(dirty_queue, SP::Out{} & SP::Block{std::chrono::milliseconds{500}});
 
-    auto focus_config = SP::UI::Builders::Widgets::Focus::MakeConfig(SP::App::AppRootPathView{app_root->getPath()});
-    auto set_focus = SP::UI::Builders::Widgets::Focus::Set(space, focus_config, *button);
+    auto focus_config = SP::UI::Runtime::Widgets::Focus::MakeConfig(SP::App::AppRootPathView{app_root->getPath()});
+    auto set_focus = SP::UI::Runtime::Widgets::Focus::Set(space, focus_config, *button);
     REQUIRE(set_focus);
 
     auto focus_event = space.take<std::string>(dirty_queue, SP::Out{} & SP::Block{std::chrono::milliseconds{200}});
     REQUIRE(focus_event);
     CHECK_EQ(*focus_event, button->getPath());
 
-    auto sunset_theme = SP::UI::Builders::Widgets::MakeSunsetWidgetTheme();
+    auto sunset_theme = SP::UI::Runtime::Widgets::MakeSunsetWidgetTheme();
     auto ensured = ThemeConfig::Ensure(space,
                                                           SP::App::AppRootPathView{app_root->getPath()},
                                                           "sunset",

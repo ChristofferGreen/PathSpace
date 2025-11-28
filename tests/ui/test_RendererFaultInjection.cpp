@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
@@ -27,7 +27,7 @@
 
 using namespace SP;
 using namespace SP::UI;
-using namespace SP::UI::Builders;
+using namespace SP::UI::Runtime;
 namespace Runtime = SP::UI::Runtime;
 namespace UIScene = SP::UI::Scene;
 
@@ -172,7 +172,7 @@ auto create_scene(RendererFixture& fx,
     SceneParams params{};
     params.name = name;
     params.description = "Fault harness scene";
-    auto scene = Builders::Scene::Create(fx.space, fx.app_root_view(), params);
+    auto scene = Runtime::Scene::Create(fx.space, fx.app_root_view(), params);
     REQUIRE(scene);
     fx.publish_snapshot(*scene, std::move(bucket));
     return *scene;
@@ -185,7 +185,7 @@ auto create_renderer(RendererFixture& fx,
     params.name = name;
     params.description = "Fault harness renderer";
     params.kind = kind;
-    auto renderer = Builders::Renderer::Create(fx.space, fx.app_root_view(), params);
+    auto renderer = Runtime::Renderer::Create(fx.space, fx.app_root_view(), params);
     REQUIRE(renderer);
     return *renderer;
 }
@@ -198,7 +198,7 @@ auto create_surface(RendererFixture& fx,
     params.name = name;
     params.desc = desc;
     params.renderer = rendererName;
-    auto surface = Builders::Surface::Create(fx.space, fx.app_root_view(), params);
+    auto surface = Runtime::Surface::Create(fx.space, fx.app_root_view(), params);
     REQUIRE(surface);
     return *surface;
 }
@@ -275,12 +275,12 @@ TEST_SUITE("Renderer fault harness") {
         auto result = renderer.render(params);
         CHECK_FALSE(result);
 
-        auto last_error = Builders::Diagnostics::ReadTargetError(fixture.fx.space,
+        auto last_error = Runtime::Diagnostics::ReadTargetError(fixture.fx.space,
                                                                  SP::ConcretePathStringView{fixture.target_path.getPath()});
         REQUIRE(last_error);
         REQUIRE(last_error->has_value());
         auto const& error = last_error->value();
-        CHECK_EQ(error.severity, Builders::Diagnostics::PathSpaceError::Severity::Recoverable);
+        CHECK_EQ(error.severity, Runtime::Diagnostics::PathSpaceError::Severity::Recoverable);
         CHECK_NE(error.code, 0);
     }
 

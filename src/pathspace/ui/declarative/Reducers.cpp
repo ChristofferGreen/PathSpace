@@ -6,7 +6,7 @@
 
 namespace SP::UI::Declarative::Reducers {
 
-namespace Bindings = SP::UI::Builders::Widgets::Bindings;
+namespace Bindings = SP::UI::Runtime::Widgets::Bindings;
 
 auto MakeWidgetAction(Bindings::WidgetOp const& op) -> WidgetAction {
     WidgetAction action{};

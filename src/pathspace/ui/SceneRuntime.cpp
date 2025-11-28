@@ -1,15 +1,14 @@
-#include "BuildersDetail.hpp"
+#include "RuntimeDetail.hpp"
 
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
 
-namespace SP::UI::Builders::Scene {
+namespace SP::UI::Runtime::Scene {
 
 using namespace Detail;
 
 auto Create(PathSpace& space,
              AppRootPathView appRoot,
              SceneParams const& params) -> SP::Expected<ScenePath> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Scene::Create");
     if (auto status = ensure_identifier(params.name, "scene name"); !status) {
         return std::unexpected(status.error());
     }
@@ -41,7 +40,6 @@ auto Create(PathSpace& space,
 
 auto EnsureAuthoringRoot(PathSpace& space,
                           ScenePath const& scenePath) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Scene::EnsureAuthoringRoot");
     if (!scenePath.isValid()) {
         return std::unexpected(make_error("scene path is not valid",
                                           SP::Error::Code::InvalidPath));
@@ -57,7 +55,6 @@ auto PublishRevision(PathSpace& space,
                       SceneRevisionDesc const& revision,
                       std::span<std::byte const> drawableBucket,
                       std::span<std::byte const> metadata) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Scene::PublishRevision");
     if (auto status = EnsureAuthoringRoot(space, scenePath); !status) {
         return status;
     }
@@ -90,7 +87,6 @@ auto PublishRevision(PathSpace& space,
 
 auto ReadCurrentRevision(PathSpace const& space,
                           ScenePath const& scenePath) -> SP::Expected<SceneRevisionDesc> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Scene::ReadCurrentRevision");
     auto currentRevisionPath = std::string(scenePath.getPath()) + "/current_revision";
     auto revisionValue = read_value<uint64_t>(space, currentRevisionPath);
     if (!revisionValue) {
@@ -109,7 +105,6 @@ auto ReadCurrentRevision(PathSpace const& space,
 auto WaitUntilReady(PathSpace& space,
                      ScenePath const& scenePath,
                      std::chrono::milliseconds timeout) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Scene::WaitUntilReady");
     auto currentRevisionPath = std::string(scenePath.getPath()) + "/current_revision";
     auto result = read_value<uint64_t>(space, currentRevisionPath, SP::Out{} & SP::Block{timeout});
     if (!result) {
@@ -122,7 +117,6 @@ auto WaitUntilReady(PathSpace& space,
 auto HitTest(PathSpace& space,
              ScenePath const& scenePath,
              HitTestRequest const& request) -> SP::Expected<HitTestResult> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Scene::HitTest");
     auto sceneRoot = derive_app_root_for(ConcretePathView{scenePath.getPath()});
     if (!sceneRoot) {
         return std::unexpected(sceneRoot.error());
@@ -241,28 +235,24 @@ auto MarkDirty(PathSpace& space,
                ScenePath const& scenePath,
                DirtyKind kinds,
                std::chrono::system_clock::time_point timestamp) -> SP::Expected<std::uint64_t> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Scene::MarkDirty");
     return SP::UI::Declarative::SceneLifecycle::MarkDirty(space, scenePath, kinds, timestamp);
 }
 
 auto ClearDirty(PathSpace& space,
                 ScenePath const& scenePath,
                 DirtyKind kinds) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Scene::ClearDirty");
     return SP::UI::Declarative::SceneLifecycle::ClearDirty(space, scenePath, kinds);
 }
 
 auto ReadDirtyState(PathSpace const& space,
                     ScenePath const& scenePath) -> SP::Expected<DirtyState> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Scene::ReadDirtyState");
     return SP::UI::Declarative::SceneLifecycle::ReadDirtyState(space, scenePath);
 }
 
 auto TakeDirtyEvent(PathSpace& space,
                     ScenePath const& scenePath,
                     std::chrono::milliseconds timeout) -> SP::Expected<DirtyEvent> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Scene::TakeDirtyEvent");
     return SP::UI::Declarative::SceneLifecycle::TakeDirtyEvent(space, scenePath, timeout);
 }
 
-} // namespace SP::UI::Builders::Scene
+} // namespace SP::UI::Runtime::Scene

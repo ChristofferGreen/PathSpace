@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/path/ConcretePath.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
@@ -24,8 +24,8 @@ namespace {
 
 using namespace SP;
 using namespace SP::UI::Declarative;
-namespace Builders = SP::UI::Builders;
-namespace WidgetsNS = SP::UI::Builders::Widgets;
+namespace Runtime = SP::UI::Runtime;
+namespace WidgetsNS = SP::UI::Runtime::Widgets;
 namespace DetailNS = SP::UI::Declarative::Detail;
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 
@@ -69,7 +69,7 @@ TEST_CASE("Declarative Button mounts under window widgets") {
     REQUIRE(button.has_value());
 
     auto state =
-        fx.space.read<SP::UI::Builders::Widgets::ButtonState, std::string>(button->getPath()
+        fx.space.read<SP::UI::Runtime::Widgets::ButtonState, std::string>(button->getPath()
                                                                            + "/state");
     REQUIRE(state.has_value());
     CHECK(state->enabled);
@@ -115,7 +115,7 @@ TEST_CASE("Slider clamps value and SetValue updates render flag") {
 
     REQUIRE(Slider::SetValue(fx.space, *slider, 42.0f).has_value());
     auto state =
-        fx.space.read<SP::UI::Builders::Widgets::SliderState, std::string>(
+        fx.space.read<SP::UI::Runtime::Widgets::SliderState, std::string>(
             slider->getPath() + "/state");
     REQUIRE(state.has_value());
     CHECK_EQ(state->value, doctest::Approx(10.0f));
@@ -244,9 +244,9 @@ TEST_CASE("Declarative focus metadata mirrors window and widget state") {
     auto slider = Slider::Create(fx.space, fx.parent_view(), "focus_slider", slider_args);
     REQUIRE(slider.has_value());
 
-    auto config = Builders::Widgets::Focus::MakeConfig(SP::App::AppRootPathView{fx.app_root.getPath()});
+    auto config = Runtime::Widgets::Focus::MakeConfig(SP::App::AppRootPathView{fx.app_root.getPath()});
 
-    auto set_button = Builders::Widgets::Focus::Set(fx.space, config, *button);
+    auto set_button = Runtime::Widgets::Focus::Set(fx.space, config, *button);
     if (!set_button) {
         FAIL_CHECK(set_button.error().message.value_or("focus set failed"));
     }
@@ -283,10 +283,10 @@ TEST_CASE("Declarative focus metadata mirrors window and widget state") {
     REQUIRE(window_focus.has_value());
     CHECK_EQ(*window_focus, button->getPath());
 
-    auto move_forward = Builders::Widgets::Focus::Move(
+    auto move_forward = Runtime::Widgets::Focus::Move(
         fx.space,
         config,
-        Builders::Widgets::Focus::Direction::Forward);
+        Runtime::Widgets::Focus::Direction::Forward);
     REQUIRE(move_forward);
     REQUIRE(move_forward->has_value());
     CHECK_EQ(move_forward->value().widget.getPath(), slider->getPath());
@@ -296,7 +296,7 @@ TEST_CASE("Declarative focus metadata mirrors window and widget state") {
     REQUIRE(window_focus.has_value());
     CHECK_EQ(*window_focus, slider->getPath());
 
-    auto cleared = Builders::Widgets::Focus::Clear(fx.space, config);
+    auto cleared = Runtime::Widgets::Focus::Clear(fx.space, config);
     REQUIRE(cleared);
     CHECK(*cleared);
     CHECK_FALSE(read_focus_flag((*slider).getPath() + "/focus/current"));
@@ -439,9 +439,9 @@ TEST_CASE("PaintSurfaceRuntime marks GPU state and dirty hints") {
 
     SP::UI::Declarative::Reducers::WidgetAction action{};
     action.widget_path = paint->getPath();
-    action.kind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind::PaintStrokeBegin;
+    action.kind = SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::PaintStrokeBegin;
     action.target_id = "paint_surface/stroke/1";
-    auto pointer = SP::UI::Builders::Widgets::Bindings::PointerInfo{};
+    auto pointer = SP::UI::Runtime::Widgets::Bindings::PointerInfo{};
     pointer.WithLocal(48.0f, 24.0f);
     action.pointer = pointer;
 

@@ -1,9 +1,9 @@
 #include "third_party/doctest.h"
 
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 
-namespace WidgetInput = SP::UI::Builders::Widgets::Input;
-namespace Widgets = SP::UI::Builders::Widgets;
+namespace WidgetInput = SP::UI::Runtime::Widgets::Input;
+namespace Widgets = SP::UI::Runtime::Widgets;
 
 TEST_CASE("WidgetInput SliderPointerForValue computes horizontal position") {
     WidgetInput::WidgetInputContext ctx{};

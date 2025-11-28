@@ -94,7 +94,7 @@ auto const start = std::chrono::steady_clock::now();
         return std::unexpected(sceneAbsolute.error());
     }
 
-    auto sceneRevision = Builders::Scene::ReadCurrentRevision(space_, Builders::ScenePath{sceneAbsolute->getPath()});
+    auto sceneRevision = Runtime::Scene::ReadCurrentRevision(space_, Runtime::ScenePath{sceneAbsolute->getPath()});
     if (!sceneRevision) {
         auto message = std::string{"scene has no current revision"};
         (void)set_last_error(space_, params.target_path, message);
@@ -134,10 +134,10 @@ auto const start = std::chrono::steady_clock::now();
     }
 
     switch (desc.pixel_format) {
-    case Builders::PixelFormat::RGBA8Unorm:
-    case Builders::PixelFormat::BGRA8Unorm:
-    case Builders::PixelFormat::RGBA8Unorm_sRGB:
-    case Builders::PixelFormat::BGRA8Unorm_sRGB:
+    case Runtime::PixelFormat::RGBA8Unorm:
+    case Runtime::PixelFormat::BGRA8Unorm:
+    case Runtime::PixelFormat::RGBA8Unorm_sRGB:
+    case Runtime::PixelFormat::BGRA8Unorm_sRGB:
         break;
     default: {
         auto message = std::string{"pixel format not supported by PathRenderer2D"};
@@ -661,8 +661,8 @@ auto const start = std::chrono::steady_clock::now();
     }
 
     auto const stride = static_cast<std::size_t>(surface.row_stride_bytes());
-    bool const is_bgra = (desc.pixel_format == Builders::PixelFormat::BGRA8Unorm
-                          || desc.pixel_format == Builders::PixelFormat::BGRA8Unorm_sRGB);
+    bool const is_bgra = (desc.pixel_format == Runtime::PixelFormat::BGRA8Unorm
+                          || desc.pixel_format == Runtime::PixelFormat::BGRA8Unorm_sRGB);
 
     auto payload_offsets = compute_command_payload_offsets(bucket->command_kinds,
                                                            bucket->command_payload);
@@ -1482,7 +1482,7 @@ EncodeRunStats encode_stats{};
                                  params.target_path,
                                  metal_error,
                                  frame_info.revision,
-                                 Builders::Diagnostics::PathSpaceError::Severity::Recoverable,
+                                 Runtime::Diagnostics::PathSpaceError::Severity::Recoverable,
                                  3201);
             render_error_recorded = true;
         }
@@ -1517,7 +1517,7 @@ EncodeRunStats encode_stats{};
     (void)replace_single<std::uint64_t>(space_, metricsBase + "/commandsExecuted", executed_commands);
 
     if (!render_error_recorded) {
-        if (auto status = set_last_error(space_, params.target_path, "", sceneRevision->revision, Builders::Diagnostics::PathSpaceError::Severity::Info); !status) {
+        if (auto status = set_last_error(space_, params.target_path, "", sceneRevision->revision, Runtime::Diagnostics::PathSpaceError::Severity::Info); !status) {
             return std::unexpected(status.error());
         }
     }

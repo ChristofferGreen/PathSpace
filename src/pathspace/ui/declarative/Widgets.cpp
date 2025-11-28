@@ -30,13 +30,13 @@ auto mark_if_widget(PathSpace& space, std::string const& path) -> void {
 
 } // namespace
 
-using SP::UI::Builders::WidgetPath;
+using SP::UI::Runtime::WidgetPath;
 
 auto MountFragment(PathSpace& space,
                    SP::App::ConcretePathView parent,
                    std::string_view name,
                    WidgetFragment const& fragment,
-                   MountOptions const& options) -> SP::Expected<SP::UI::Builders::WidgetPath> {
+                   MountOptions const& options) -> SP::Expected<SP::UI::Runtime::WidgetPath> {
     if (auto status = WidgetDetail::ensure_widget_name(name); !status) {
         return std::unexpected(status.error());
     }
@@ -77,18 +77,18 @@ auto MountFragment(PathSpace& space,
         }
     }
 
-    return SP::UI::Builders::WidgetPath{root};
+    return SP::UI::Runtime::WidgetPath{root};
 }
 
 auto Widgets::Mount(PathSpace& space,
                     SP::App::ConcretePathView parent,
                     std::string_view name,
                     WidgetFragment const& fragment,
-                    MountOptions const& options) -> SP::Expected<SP::UI::Builders::WidgetPath> {
+                    MountOptions const& options) -> SP::Expected<SP::UI::Runtime::WidgetPath> {
     return MountFragment(space, parent, name, fragment, options);
 }
 
-auto Remove(PathSpace& space, SP::UI::Builders::WidgetPath const& widget) -> SP::Expected<void> {
+auto Remove(PathSpace& space, SP::UI::Runtime::WidgetPath const& widget) -> SP::Expected<void> {
     if (auto status = WidgetDetail::write_value(space,
                                                 widget.getPath() + "/state/removed",
                                                 true);
@@ -101,10 +101,10 @@ auto Remove(PathSpace& space, SP::UI::Builders::WidgetPath const& widget) -> SP:
 }
 
 auto Move(PathSpace& space,
-          SP::UI::Builders::WidgetPath const& widget,
+          SP::UI::Runtime::WidgetPath const& widget,
           SP::App::ConcretePathView new_parent,
           std::string_view new_name,
-          MountOptions const& options) -> SP::Expected<SP::UI::Builders::WidgetPath> {
+          MountOptions const& options) -> SP::Expected<SP::UI::Runtime::WidgetPath> {
     if (auto status = WidgetDetail::ensure_widget_name(new_name); !status) {
         return std::unexpected(status.error());
     }
@@ -113,7 +113,7 @@ auto Move(PathSpace& space,
     auto destination_root = WidgetDetail::make_path(base, new_name);
     auto const& source_root = widget.getPath();
     if (destination_root == source_root) {
-        return SP::UI::Builders::WidgetPath{destination_root};
+        return SP::UI::Runtime::WidgetPath{destination_root};
     }
 
     auto destination_parent = parent_path(destination_root);
@@ -137,7 +137,7 @@ auto Move(PathSpace& space,
     mark_if_widget(space, parent_path(source_root));
     mark_if_widget(space, destination_parent);
 
-    return SP::UI::Builders::WidgetPath{destination_root};
+    return SP::UI::Runtime::WidgetPath{destination_root};
 }
 
 namespace Handlers {

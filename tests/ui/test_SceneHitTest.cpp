@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/PipelineFlags.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 
@@ -15,9 +15,9 @@
 
 using namespace SP;
 namespace UI = SP::UI;
-namespace BuildersNS = SP::UI::Builders;
+namespace BuildersNS = SP::UI::Runtime;
 namespace UIScene = SP::UI::Scene;
-namespace BuildersScene = SP::UI::Builders::Scene;
+namespace BuildersScene = SP::UI::Runtime::Scene;
 using namespace std::chrono_literals;
 using namespace SP::UI::PipelineFlags;
 

@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/HtmlAdapter.hpp>
 #include <pathspace/ui/HtmlRunner.hpp>
@@ -107,14 +107,14 @@ UIScene::DrawableBucketSnapshot make_integration_bucket() {
     return bucket;
 }
 
-Builders::ScenePath create_scene(BackendFixture& fx,
+Runtime::ScenePath create_scene(BackendFixture& fx,
                                  std::string const& name,
                                  UIScene::DrawableBucketSnapshot const& bucket) {
-    Builders::SceneParams params{
+    Runtime::SceneParams params{
         .name = name,
         .description = "backend integration scene",
     };
-    auto scene = Builders::Scene::Create(fx.space, fx.root_view(), params);
+    auto scene = Runtime::Scene::Create(fx.space, fx.root_view(), params);
     REQUIRE(scene);
 
     UIScene::SceneSnapshotBuilder builder{fx.space, fx.root_view(), *scene};
@@ -130,34 +130,34 @@ Builders::ScenePath create_scene(BackendFixture& fx,
     return *scene;
 }
 
-Builders::RendererPath create_renderer(BackendFixture& fx,
+Runtime::RendererPath create_renderer(BackendFixture& fx,
                                        std::string const& name,
                                        SP::UI::Runtime::RendererKind kind) {
-    Builders::RendererParams params{
+    Runtime::RendererParams params{
         .name = name,
         .kind = kind,
         .description = "backend integration renderer",
     };
-    auto renderer = Builders::Renderer::Create(fx.space, fx.root_view(), params);
+    auto renderer = Runtime::Renderer::Create(fx.space, fx.root_view(), params);
     REQUIRE(renderer);
     return *renderer;
 }
 
-Builders::SurfacePath create_surface(BackendFixture& fx,
+Runtime::SurfacePath create_surface(BackendFixture& fx,
                                      std::string const& name,
                                      Runtime::SurfaceDesc desc,
                                      std::string const& renderer) {
-    Builders::SurfaceParams params{};
+    Runtime::SurfaceParams params{};
     params.name = name;
     params.desc = desc;
     params.renderer = renderer;
-    auto surface = Builders::Surface::Create(fx.space, fx.root_view(), params);
+    auto surface = Runtime::Surface::Create(fx.space, fx.root_view(), params);
     REQUIRE(surface);
     return *surface;
 }
 
 auto resolve_target(BackendFixture& fx,
-                    Builders::SurfacePath const& surface) -> SP::ConcretePathString {
+                    Runtime::SurfacePath const& surface) -> SP::ConcretePathString {
     auto target_rel = fx.space.read<std::string, std::string>(std::string(surface.getPath()) + "/target");
     REQUIRE(target_rel);
     auto target_abs = SP::App::resolve_app_relative(fx.root_view(), *target_rel);
@@ -171,7 +171,7 @@ std::vector<std::uint8_t> render_bucket_to_buffer(PathRenderer2D& renderer,
                                                   Runtime::RenderSettings const& settings,
                                                   UIScene::DrawableBucketSnapshot const& bucket,
                                                   BackendFixture& fx,
-                                                  Builders::ScenePath const& scene_path) {
+                                                  Runtime::ScenePath const& scene_path) {
     UIScene::SceneSnapshotBuilder builder{fx.space, fx.root_view(), scene_path};
     UIScene::SnapshotPublishOptions opts{};
     opts.metadata.author = "backend_adapters";
@@ -223,7 +223,7 @@ TEST_CASE("Renderer integration replay retains framebuffer parity") {
     surface_desc.premultiplied_alpha = true;
 
     auto surface = create_surface(fx, "integration_surface", surface_desc, renderer_path.getPath());
-    REQUIRE(Builders::Surface::SetScene(fx.space, surface, scene));
+    REQUIRE(Runtime::Surface::SetScene(fx.space, surface, scene));
     auto target_path = resolve_target(fx, surface);
 
     Runtime::RenderSettings settings{};

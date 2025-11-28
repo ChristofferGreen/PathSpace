@@ -4,7 +4,7 @@
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/FontAtlasCache.hpp>
 #include <pathspace/ui/ImageCache.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/MaterialShaderKey.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>

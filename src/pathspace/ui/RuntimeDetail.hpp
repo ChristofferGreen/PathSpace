@@ -1,8 +1,7 @@
 #pragma once
 
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/DetailShared.hpp>
-#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceMetal.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
@@ -44,7 +43,7 @@
 #include <IOSurface/IOSurface.h>
 #endif
 
-namespace SP::UI::Builders {
+namespace SP::UI::Runtime {
 namespace Detail {
 
 inline constexpr std::string_view kScenesSegment = "/scenes/";
@@ -128,7 +127,7 @@ inline void invoke_before_present_hook(PathSurfaceSoftware& surface,
 }
 
 inline auto acquire_surface_unlocked(std::string const& key,
-                              Builders::SurfaceDesc const& desc) -> PathSurfaceSoftware& {
+                              Runtime::SurfaceDesc const& desc) -> PathSurfaceSoftware& {
     auto& cache = surfaces_cache();
     auto it = cache.find(key);
     if (it == cache.end()) {
@@ -151,7 +150,7 @@ inline auto acquire_surface_unlocked(std::string const& key,
 }
 
 inline auto acquire_surface(std::string const& key,
-                     Builders::SurfaceDesc const& desc) -> PathSurfaceSoftware& {
+                     Runtime::SurfaceDesc const& desc) -> PathSurfaceSoftware& {
     auto& mutex = surfaces_cache_mutex();
     std::lock_guard<std::mutex> lock{mutex};
     return acquire_surface_unlocked(key, desc);
@@ -159,7 +158,7 @@ inline auto acquire_surface(std::string const& key,
 
 #if PATHSPACE_UI_METAL
 inline auto acquire_metal_surface_unlocked(std::string const& key,
-                                    Builders::SurfaceDesc const& desc) -> PathSurfaceMetal& {
+                                    Runtime::SurfaceDesc const& desc) -> PathSurfaceMetal& {
     auto& cache = metal_surfaces_cache();
     auto it = cache.find(key);
     if (it == cache.end()) {
@@ -182,7 +181,7 @@ inline auto acquire_metal_surface_unlocked(std::string const& key,
 }
 
 inline auto acquire_metal_surface(std::string const& key,
-                           Builders::SurfaceDesc const& desc) -> PathSurfaceMetal& {
+                           Runtime::SurfaceDesc const& desc) -> PathSurfaceMetal& {
     auto& mutex = metal_surfaces_cache_mutex();
     std::lock_guard<std::mutex> lock{mutex};
     return acquire_metal_surface_unlocked(key, desc);
@@ -1026,4 +1025,4 @@ inline auto ensure_within_root(AppRootPathView root,
 
 } // namespace Detail
 
-} // namespace SP::UI::Builders
+} // namespace SP::UI::Runtime

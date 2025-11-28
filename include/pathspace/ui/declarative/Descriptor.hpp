@@ -14,7 +14,7 @@
 
 namespace SP::UI::Declarative {
 
-namespace BuilderWidgets = SP::UI::Builders::Widgets;
+namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 
 struct ButtonDescriptor {
     BuilderWidgets::ButtonStyle style{};
@@ -92,7 +92,7 @@ struct PaintSurfaceDescriptor {
 
 struct WidgetDescriptor {
     WidgetKind kind = WidgetKind::Button;
-    SP::UI::Builders::WidgetPath widget;
+    SP::UI::Runtime::WidgetPath widget;
     std::variant<ButtonDescriptor,
                  ToggleDescriptor,
                  SliderDescriptor,
@@ -109,7 +109,7 @@ struct DescriptorBucketOptions {
 };
 
 [[nodiscard]] auto LoadWidgetDescriptor(PathSpace& space,
-                                        SP::UI::Builders::WidgetPath const& widget)
+                                        SP::UI::Runtime::WidgetPath const& widget)
     -> SP::Expected<WidgetDescriptor>;
 
 [[nodiscard]] auto BuildWidgetBucket(PathSpace& space,

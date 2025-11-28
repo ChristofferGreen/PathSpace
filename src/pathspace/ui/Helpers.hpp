@@ -4,22 +4,22 @@
 
 #include "path/GlobPath.hpp"
 
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 namespace SP::UI {
 
-using SceneParams = Builders::SceneParams;
-using SceneRevisionDesc = Builders::SceneRevisionDesc;
-using RendererParams = Builders::RendererParams;
+using SceneParams = Runtime::SceneParams;
+using SceneRevisionDesc = Runtime::SceneRevisionDesc;
+using RendererParams = Runtime::RendererParams;
 using RendererKind = Runtime::RendererKind;
 using SurfaceDesc = Runtime::SurfaceDesc;
-using SurfaceParams = Builders::SurfaceParams;
-using WindowParams = Builders::WindowParams;
+using SurfaceParams = Runtime::SurfaceParams;
+using WindowParams = Runtime::WindowParams;
 using RenderSettings = Runtime::RenderSettings;
-using WindowPresentResult = Builders::Window::WindowPresentResult;
+using WindowPresentResult = Runtime::Window::WindowPresentResult;
 
 namespace Scene {
 
@@ -105,7 +105,7 @@ auto Present(PathSpace& space,
 
 namespace Diagnostics {
 
-using TargetMetrics = Builders::Diagnostics::TargetMetrics;
+using TargetMetrics = Runtime::Diagnostics::TargetMetrics;
 
 auto ReadTargetMetrics(PathSpace const& space,
                        ConcretePath const& targetPath) -> SP::Expected<TargetMetrics>;

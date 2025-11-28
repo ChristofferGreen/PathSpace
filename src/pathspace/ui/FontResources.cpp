@@ -1,4 +1,4 @@
-#include "BuildersDetail.hpp"
+#include "RuntimeDetail.hpp"
 #include "TextGlyphFallback.hpp"
 
 #include <pathspace/ui/FontAtlas.hpp>
@@ -12,7 +12,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace SP::UI::Builders::Resources::Fonts {
+namespace SP::UI::Runtime::Resources::Fonts {
 
 using namespace Detail;
 
@@ -272,4 +272,4 @@ auto Register(PathSpace& space,
     return *paths;
 }
 
-} // namespace SP::UI::Builders::Resources::Fonts
+} // namespace SP::UI::Runtime::Resources::Fonts

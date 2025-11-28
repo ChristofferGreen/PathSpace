@@ -26,11 +26,11 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 2. Include `<pathspace/ui/PathTypes.hpp>` when you need canonical handles such as
    `SP::UI::WindowPath` or `SP::UI::ScenePath`. The header re-exports the common
    aliases from declarative code so you no longer have to depend on
-   `SP::UI::Builders::*` just to store window/scene/widget paths.
+   `SP::UI::Runtime::*` just to store window/scene/widget paths.
 3. Include `<pathspace/ui/WidgetSharedTypes.hpp>` whenever you need the shared
    widget data (`WidgetTheme`, style structs, stack enums, handler payloads,
    `DirtyRectHint`, `WidgetAction`, etc.) without dragging in the rest of
-   `BuildersShared.hpp`/`WidgetSharedTypes.hpp`. Declarative headers/tests now pull from these headers so you can
+   `runtime/UIRuntime.hpp`/`WidgetSharedTypes.hpp`. Declarative headers/tests now pull from these headers so you can
    manipulate widget data and telemetry independently of the legacy builder
    functions.
 4. Include `<pathspace/ui/runtime/RenderSettings.hpp>` when you need renderer
@@ -71,18 +71,18 @@ plus tests in sync. Read it before touching declarative UI code or examples.
    `SP::UI::Declarative::BuildPresentHandles(space, app_root, window.path, window.view_name)`
    to obtain a lightweight `PresentHandles` record. The handles capture the
    resolved window/view, surface, renderer, and render target paths so
-   declarative callers never have to touch `Builders::App::BootstrapResult`.
+   declarative callers never have to touch `Runtime::App::BootstrapResult`.
    Use `PresentHandles` with the new helpers:
    - `ResizePresentSurface` rewrites the surface/target descriptors, reapplies
      renderer settings, and submits a full-surface dirty rect so resize paths no
-     longer call `Builders::App::UpdateSurfaceSize`.
+     longer call `Runtime::App::UpdateSurfaceSize`.
    - `PresentWindowFrame` renders into the target, records presenter/renderer
      metrics, persists the software framebuffer when requested, and returns a
      `PresentFrame` with the `PathWindowPresentStats` plus optional HTML payload
-     (no `Builders::Window::Present` dependency).
+     (no `Runtime::Window::Present` dependency).
    - `PresentFrameToLocalWindow` still mirrors the legacy
      `PresentToLocalWindow` behaviour so interactive loops can blit IOSurfaces
-    or CPU framebuffers without including `BuildersShared.hpp`.
+    or CPU framebuffers without including `runtime/UIRuntime.hpp`.
 
    `PathSpaceExamples::run_present_loop` now consumes these handles directly,
    and the screenshot service (`ScreenshotService::Capture`) calls the same
@@ -93,8 +93,8 @@ plus tests in sync. Read it before touching declarative UI code or examples.
    `SP::UI::Declarative::Theme::{Create,SetColor,RebuildValue}` helpers.
    `ThemeConfig::{SanitizeName,Resolve,Ensure,Load,SetActive,LoadActive}` expose
    the canonical declarative entry points; the legacy
-   `Builders::Config::Theme::*` functions now simply forward to them so you no
-  longer have to include `BuildersShared.hpp` to work with theme metadata.
+   `Runtime::Config::Theme::*` functions now simply forward to them so you no
+  longer have to include `runtime/UIRuntime.hpp` to work with theme metadata.
 
 ## 3. Building Widgets Declaratively
 - **Create vs. Fragment**
@@ -146,10 +146,10 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 
 ### Reducer helpers
 - Prefer `SP::UI::Declarative::Reducers::{WidgetOpsQueue,ReducePending,PublishActions,ProcessPendingActions}` when draining widget op queues or synthesizing `WidgetAction` payloads for tests. The helpers live in `include/pathspace/ui/declarative/Reducers.hpp` and power the input task, manual pump, paint runtime, and declarative UITests so they no longer depend on the legacy builder guards.
-- The legacy `SP::UI::Builders::Widgets::Reducers::*` functions still exist for compatibility, but they now forward to the declarative helpers after running the guard. Use them only in compatibility suites while we delete the remaining legacy builder coverage.
+- The legacy `SP::UI::Runtime::Widgets::Reducers::*` functions still exist for compatibility, but they now forward to the declarative helpers after running the guard. Use them only in compatibility suites while we delete the remaining legacy builder coverage.
 
 ### Text bucket synthesis
-- Declarative code should include `pathspace/ui/declarative/Text.hpp` and call `SP::UI::Declarative::Text::BuildTextBucket` when labels or descriptor paths need text drawables. The helper shares the glyph shaping cache with the legacy builders but no longer drags the rest of `BuildersShared.hpp` into declarative sources.
+- Declarative code should include `pathspace/ui/declarative/Text.hpp` and call `SP::UI::Declarative::Text::BuildTextBucket` when labels or descriptor paths need text drawables. The helper shares the glyph shaping cache with the legacy builders but no longer drags the rest of `runtime/UIRuntime.hpp` into declarative sources.
 - `include/pathspace/ui/TextBuilder.hpp` re-exports the declarative API so existing builder call sites continue to work; once legacy samples are gone we can delete the shim entirely.
 
 ### PaintSurface GPU staging
@@ -295,7 +295,7 @@ plus tests in sync. Read it before touching declarative UI code or examples.
   of the declarative deprecation effort.
 
 ## 11. Legacy Builder Deprecation Telemetry
-- Every legacy `SP::UI::Builders::*` entry point now records usage under
+- Every legacy `SP::UI::Runtime::*` entry point now records usage under
   `/_system/diagnostics/legacy_widget_builders/<entry>/`:
   - `usage_total` — cumulative invocation count (per-space, so clear it before capturing a new baseline).
   - `last_entry`, `last_path`, `last_timestamp_ns` — identify the latest offending builder and widget path.
@@ -307,7 +307,7 @@ plus tests in sync. Read it before touching declarative UI code or examples.
   3. `error` — builder calls fail with `Error::NotSupported`, propagating through the existing `std::expected` channels so CI/pre-push can block immediately.
   - `scripts/compile.sh`, `.github/workflows/ci.yml`, and `scripts/git-hooks/pre-push.local.sh` now export `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` automatically so any accidental legacy usage in examples, binaries, or new tests fails fast by default.
 - Set `PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT=<path>` to append JSONL diagnostics (`{"entry":"Widgets::CreateButton","path":"/system/...","timestamp_ns":...}`) for every guard hit. `compile.sh`/CI wire this up to `build/legacy_builders_usage.jsonl` so investigating regressions does not require scraping `_system/diagnostics`.
-- Compatibility suites that intentionally exercise the legacy API (all `tests/ui/*`) run under the same environment but the shared test reporter instantiates `SP::UI::LegacyBuilders::ScopedAllow` for those files. Use the RAII helper directly if you need to isolate a bespoke repro; the scope only suppresses the hard failure—telemetry and reporter output still fire so we can track remaining usage.
+- Compatibility suites that intentionally exercised the legacy API (all `tests/ui/*`) previously ran under the same environment while the shared test reporter instantiated `SP::UI::LegacyBuilders::ScopedAllow` for those files. The guard has been removed now that the legacy builders are gone, but the telemetry/report files remain so we can spot any straggling binaries.
 - Expectations before the February 1, 2026 support-window cutoff:
   - Keep the diagnostics tree at zero; CI can scrape `usage_total` to guarantee no regressions slip in.
   - Flip CI/pre-push to `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` once the repo stays clean for a full validation cycle.

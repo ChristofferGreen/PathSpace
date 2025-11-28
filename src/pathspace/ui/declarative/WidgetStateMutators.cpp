@@ -3,7 +3,7 @@
 #include "WidgetEventCommon.hpp"
 #include <pathspace/ui/declarative/Detail.hpp>
 
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 
 #include <algorithm>
 #include <optional>
@@ -11,7 +11,7 @@
 
 namespace SP::UI::Declarative::Detail {
 
-namespace BuilderWidgets = SP::UI::Builders::Widgets;
+namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 
 namespace {
 

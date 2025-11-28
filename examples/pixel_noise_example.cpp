@@ -1,9 +1,8 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
-#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 #include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
@@ -54,7 +53,7 @@ int main() {
 using namespace SP;
 using namespace SP::UI;
 namespace Runtime = SP::UI::Runtime;
-namespace Builders = SP::UI::Builders;
+namespace Builders = SP::UI::Runtime;
 namespace UIScene = SP::UI::Scene;
 
 namespace {
@@ -119,8 +118,8 @@ auto format_double(double value) -> std::string {
     return oss.str();
 }
 
-auto severity_to_string(Builders::Diagnostics::PathSpaceError::Severity severity) -> std::string {
-    using Severity = Builders::Diagnostics::PathSpaceError::Severity;
+auto severity_to_string(Runtime::Diagnostics::PathSpaceError::Severity severity) -> std::string {
+    using Severity = Runtime::Diagnostics::PathSpaceError::Severity;
     switch (severity) {
     case Severity::Info:
         return "info";
@@ -143,10 +142,10 @@ void write_frame_capture_png_or_exit(Runtime::SoftwareFramebuffer const& framebu
     }
 
     auto const format = framebuffer.pixel_format;
-    bool const is_rgba = format == Builders::PixelFormat::RGBA8Unorm
-                      || format == Builders::PixelFormat::RGBA8Unorm_sRGB;
-    bool const is_bgra = format == Builders::PixelFormat::BGRA8Unorm
-                      || format == Builders::PixelFormat::BGRA8Unorm_sRGB;
+    bool const is_rgba = format == Runtime::PixelFormat::RGBA8Unorm
+                      || format == Runtime::PixelFormat::RGBA8Unorm_sRGB;
+    bool const is_bgra = format == Runtime::PixelFormat::BGRA8Unorm
+                      || format == Runtime::PixelFormat::BGRA8Unorm_sRGB;
     if (!(is_rgba || is_bgra)) {
         std::cerr << "pixel_noise_example: framebuffer capture pixel format not supported for PNG export ("
                   << static_cast<int>(format) << ")\n";
@@ -222,7 +221,7 @@ void write_frame_capture_png_or_exit(Runtime::SoftwareFramebuffer const& framebu
 void write_baseline_metrics(Options const& options,
                             BaselineSummary const& summary,
                             TileSummary const& tiles,
-                            Builders::Diagnostics::TargetMetrics const& metrics,
+                            Runtime::Diagnostics::TargetMetrics const& metrics,
                             std::string const& backend_kind,
                             std::filesystem::path const& output_path) {
     namespace fs = std::filesystem;
@@ -865,7 +864,7 @@ auto build_background_bucket(int width, int height) -> UIScene::DrawableBucketSn
 }
 
 struct SceneSetup {
-    Builders::ScenePath scene;
+    Runtime::ScenePath scene;
     std::uint64_t revision = 0;
 };
 
@@ -873,11 +872,11 @@ auto publish_scene(PathSpace& space,
                    SP::App::AppRootPathView root,
                    int width,
                    int height) -> SceneSetup {
-    Builders::SceneParams scene_params{};
+    Runtime::SceneParams scene_params{};
     scene_params.name = "pixel_noise_scene";
     scene_params.description = "Pixel noise perf harness scene";
 
-    auto scene_path = expect_or_exit(Builders::Scene::Create(space, root, scene_params),
+    auto scene_path = expect_or_exit(Runtime::Scene::Create(space, root, scene_params),
                                      "create scene");
 
     UIScene::SceneSnapshotBuilder builder{space, root, scene_path};
@@ -899,7 +898,7 @@ auto publish_scene(PathSpace& space,
     };
 }
 
-void present_to_local_window(Builders::Window::WindowPresentResult const& present,
+void present_to_local_window(Runtime::Window::WindowPresentResult const& present,
                              int width,
                              int height,
                              bool headless) {
@@ -907,10 +906,10 @@ void present_to_local_window(Builders::Window::WindowPresentResult const& presen
         return;
     }
 
-    Builders::App::PresentToLocalWindowOptions options{};
+    Runtime::App::PresentToLocalWindowOptions options{};
     options.allow_framebuffer = false;
     options.warn_when_metal_texture_unshared = false;
-    auto dispatched = Builders::App::PresentToLocalWindow(present,
+    auto dispatched = Runtime::App::PresentToLocalWindow(present,
                                                           width,
                                                           height,
                                                           options);
@@ -935,7 +934,7 @@ struct HookGuard {
     HookGuard& operator=(HookGuard&& other) noexcept {
         if (this != &other) {
             if (active) {
-                Builders::Window::TestHooks::ResetBeforePresentHook();
+                Runtime::Window::TestHooks::ResetBeforePresentHook();
             }
             active = other.active;
             other.active = false;
@@ -944,7 +943,7 @@ struct HookGuard {
     }
     ~HookGuard() {
         if (active) {
-            Builders::Window::TestHooks::ResetBeforePresentHook();
+            Runtime::Window::TestHooks::ResetBeforePresentHook();
         }
     }
 
@@ -953,7 +952,7 @@ private:
 };
 
 auto install_noise_hook(std::shared_ptr<NoiseState> state) -> HookGuard {
-    Builders::Window::TestHooks::SetBeforePresentHook(
+    Runtime::Window::TestHooks::SetBeforePresentHook(
         [state = std::move(state)](PathSurfaceSoftware& surface,
                                    PathWindowView::PresentPolicy& /*policy*/,
                                    std::vector<std::size_t>& dirty_tiles) mutable {
@@ -999,7 +998,6 @@ auto install_noise_hook(std::shared_ptr<NoiseState> state) -> HookGuard {
 } // namespace
 
 int main(int argc, char** argv) {
-    SP::UI::LegacyBuilders::ScopedAllowAllThreads legacy_allow_guard{};
     auto options = parse_options(argc, argv);
 
 #if !defined(PATHSPACE_UI_METAL)
@@ -1024,7 +1022,7 @@ int main(int argc, char** argv) {
 
     auto scene_setup = publish_scene(space, app_root_view, options.width, options.height);
 
-    Builders::App::BootstrapParams bootstrap_params{};
+    Runtime::App::BootstrapParams bootstrap_params{};
     bootstrap_params.renderer.name = options.use_metal_backend ? "noise_renderer_metal" : "noise_renderer";
     bootstrap_params.renderer.kind = options.use_metal_backend
                                          ? SP::UI::Runtime::RendererKind::Metal2D
@@ -1036,14 +1034,14 @@ int main(int argc, char** argv) {
     bootstrap_params.surface.name = "noise_surface";
     bootstrap_params.surface.desc.size_px.width = options.width;
     bootstrap_params.surface.desc.size_px.height = options.height;
-    bootstrap_params.surface.desc.pixel_format = Builders::PixelFormat::RGBA8Unorm_sRGB;
-    bootstrap_params.surface.desc.color_space = Builders::ColorSpace::sRGB;
+    bootstrap_params.surface.desc.pixel_format = Runtime::PixelFormat::RGBA8Unorm_sRGB;
+    bootstrap_params.surface.desc.color_space = Runtime::ColorSpace::sRGB;
     bootstrap_params.surface.desc.premultiplied_alpha = true;
 #if defined(PATHSPACE_UI_METAL)
     if (options.use_metal_backend) {
-        bootstrap_params.surface.desc.metal.storage_mode = Builders::MetalStorageMode::Shared;
-        bootstrap_params.surface.desc.metal.texture_usage = static_cast<std::uint8_t>(Builders::MetalTextureUsage::ShaderRead)
-                                                            | static_cast<std::uint8_t>(Builders::MetalTextureUsage::RenderTarget);
+        bootstrap_params.surface.desc.metal.storage_mode = Runtime::MetalStorageMode::Shared;
+        bootstrap_params.surface.desc.metal.texture_usage = static_cast<std::uint8_t>(Runtime::MetalTextureUsage::ShaderRead)
+                                                            | static_cast<std::uint8_t>(Runtime::MetalTextureUsage::RenderTarget);
         bootstrap_params.surface.desc.metal.iosurface_backing = false;
     }
 #endif
@@ -1060,13 +1058,13 @@ int main(int argc, char** argv) {
     bootstrap_params.present_policy.auto_render_on_present = true;
     bootstrap_params.present_policy.vsync_align = false;
 
-    auto bootstrap = expect_or_exit(Builders::App::Bootstrap(space,
+    auto bootstrap = expect_or_exit(Runtime::App::Bootstrap(space,
                                                              app_root_view,
                                                              scene_setup.scene,
                                                              bootstrap_params),
                                     "bootstrap application");
 
-    expect_or_exit(Builders::Surface::SetScene(space, bootstrap.surface, scene_setup.scene),
+    expect_or_exit(Runtime::Surface::SetScene(space, bootstrap.surface, scene_setup.scene),
                    "bind scene to surface");
 
     auto noise_state = std::make_shared<NoiseState>(options.seed);
@@ -1158,9 +1156,9 @@ int main(int argc, char** argv) {
             }
 
             if ((window_width != current_surface_width || window_height != current_surface_height)) {
-                Builders::App::ResizeSurfaceOptions resize_options{};
+                Runtime::App::ResizeSurfaceOptions resize_options{};
                 resize_options.submit_dirty_rect = false;
-                expect_or_exit(Builders::App::UpdateSurfaceSize(space,
+                expect_or_exit(Runtime::App::UpdateSurfaceSize(space,
                                                                 bootstrap,
                                                                 window_width,
                                                                 window_height,
@@ -1187,7 +1185,7 @@ int main(int argc, char** argv) {
         if (track_present_call_time) {
             present_call_start = std::chrono::steady_clock::now();
         }
-        auto present = Builders::Window::Present(space,
+        auto present = Runtime::Window::Present(space,
                                                  bootstrap.window,
                                                  bootstrap.view_name);
         if (track_present_call_time) {
@@ -1262,7 +1260,7 @@ int main(int argc, char** argv) {
 
         if (options.frame_output_path && !frame_written && present->stats.presented) {
             auto framebuffer_capture = expect_or_exit(
-                Builders::Diagnostics::ReadSoftwareFramebuffer(
+                Runtime::Diagnostics::ReadSoftwareFramebuffer(
                     space,
                     SP::ConcretePathStringView{target_absolute.getPath()}),
                 "read software framebuffer");
@@ -1408,7 +1406,7 @@ int main(int argc, char** argv) {
             std::cerr << "pixel_noise_example: skipping baseline write because budgets failed\n";
         } else {
             auto metrics = expect_or_exit(
-                Builders::Diagnostics::ReadTargetMetrics(space,
+                Runtime::Diagnostics::ReadTargetMetrics(space,
                                                          SP::ConcretePathStringView{target_absolute.getPath()}),
                 "read target metrics");
             std::string backend = !last_backend_kind.empty() ? last_backend_kind : metrics.backend_kind;

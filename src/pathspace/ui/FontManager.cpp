@@ -1,6 +1,6 @@
 #include <pathspace/ui/FontManager.hpp>
 
-#include "BuildersDetail.hpp"
+#include "RuntimeDetail.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -535,9 +535,9 @@ FontManager::FontManager(PathSpace& space)
 }
 
 auto FontManager::register_font(App::AppRootPathView appRoot,
-                                Builders::Resources::Fonts::RegisterFontParams const& params)
-    -> SP::Expected<Builders::Resources::Fonts::FontResourcePaths> {
-    auto registered = Builders::Resources::Fonts::Register(*space_, appRoot, params);
+                                Runtime::Resources::Fonts::RegisterFontParams const& params)
+    -> SP::Expected<Runtime::Resources::Fonts::FontResourcePaths> {
+    auto registered = Runtime::Resources::Fonts::Register(*space_, appRoot, params);
     if (!registered) {
         return registered;
     }
@@ -571,7 +571,7 @@ auto FontManager::resolve_font(App::AppRootPathView appRoot,
                                          "FontManager requires a valid PathSpace"});
     }
 
-    auto paths = Builders::Resources::Fonts::Resolve(appRoot, family, style);
+    auto paths = Runtime::Resources::Fonts::Resolve(appRoot, family, style);
     if (!paths) {
         return std::unexpected(paths.error());
     }
@@ -832,7 +832,7 @@ void FontManager::publish_metrics(App::AppRootPathView appRoot,
     std::string base{root_view};
     base += "/diagnostics/metrics/fonts";
 
-    using SP::UI::Builders::Detail::replace_single;
+    using SP::UI::Runtime::Detail::replace_single;
 
     (void)replace_single<std::uint64_t>(*space_, base + "/registeredFonts", snapshot.registered_fonts);
     (void)replace_single<std::uint64_t>(*space_, base + "/cacheHits", snapshot.cache_hits);

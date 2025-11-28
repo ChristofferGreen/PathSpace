@@ -34,7 +34,7 @@ auto ApplyLayoutSize(PathSpace& space,
                      std::string const& widget_path) -> SP::Expected<bool>;
 
 inline auto ApplyLayoutSize(PathSpace& space,
-                            SP::UI::Builders::WidgetPath const& widget)
+                            SP::UI::Runtime::WidgetPath const& widget)
     -> SP::Expected<bool> {
     return ApplyLayoutSize(space, widget.getPath());
 }

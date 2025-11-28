@@ -6,7 +6,7 @@
 #include <pathspace/ui/LocalWindowBridge.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
-#include <pathspace/ui/TextBuilder.hpp>
+#include <pathspace/ui/runtime/TextRuntime.hpp>
 #include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/layer/io/PathIOMouse.hpp>
 
@@ -26,7 +26,7 @@
 #include <utility>
 #include <vector>
 
-namespace SP::UI::Builders::Scene {
+namespace SP::UI::Runtime::Scene {
 
 struct HitTestResult;
 
@@ -73,9 +73,9 @@ struct DirtyEvent {
     std::int64_t timestamp_ms = 0;
 };
 
-} // namespace SP::UI::Builders::Scene
+} // namespace SP::UI::Runtime::Scene
 
-namespace SP::UI::Builders {
+namespace SP::UI::Runtime {
 using AppRootPath = SP::App::AppRootPath;
 using AppRootPathView = SP::App::AppRootPathView;
 using ConcretePath = SP::ConcretePathString;
@@ -2093,4 +2093,4 @@ auto ProcessPendingActions(PathSpace& space,
 
 } // namespace Widgets
 
-} // namespace SP::UI::Builders
+} // namespace SP::UI::Runtime

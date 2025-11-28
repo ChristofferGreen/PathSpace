@@ -1,7 +1,7 @@
 #include "third_party/doctest.h"
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/Detail.hpp>
@@ -19,7 +19,7 @@
 namespace {
 
 using WidgetAction = SP::UI::Declarative::Reducers::WidgetAction;
-using WidgetOpKind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
+using WidgetOpKind = SP::UI::Runtime::Widgets::Bindings::WidgetOpKind;
 using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
 namespace BuilderDetail = SP::UI::Declarative::Detail;

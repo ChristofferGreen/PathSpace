@@ -1,4 +1,4 @@
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -8,7 +8,7 @@
 #include <string>
 #include <utility>
 
-namespace SP::UI::Builders::Widgets::Input {
+namespace SP::UI::Runtime::Widgets::Input {
 
 namespace {
 
@@ -1287,4 +1287,4 @@ auto HandlePointerWheel(WidgetInputContext& ctx, int wheel_delta) -> InputUpdate
     return update;
 }
 
-} // namespace SP::UI::Builders::Widgets::Input
+} // namespace SP::UI::Runtime::Widgets::Input

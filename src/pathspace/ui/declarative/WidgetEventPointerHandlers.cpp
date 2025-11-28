@@ -11,8 +11,8 @@
 namespace SP::UI::Declarative {
 
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
-namespace BuilderWidgets = SP::UI::Builders::Widgets;
-namespace BuildersScene = SP::UI::Builders::Scene;
+namespace BuilderWidgets = SP::UI::Runtime::Widgets;
+namespace BuildersScene = SP::UI::Runtime::Scene;
 
 namespace {
     auto format_paint_component(std::uint64_t stroke_id) -> std::string {

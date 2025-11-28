@@ -186,7 +186,7 @@ auto capture_screenshot(SP::PathSpace& space,
     }
     auto mark_dirty = SP::UI::Declarative::SceneLifecycle::MarkDirty(space,
                                                                      scene.path,
-                                                                     SP::UI::Builders::Scene::DirtyKind::All);
+                                                                     SP::UI::Runtime::Scene::DirtyKind::All);
     if (!mark_dirty) {
         return std::unexpected(mark_dirty.error());
     }
@@ -388,7 +388,7 @@ int main(int argc, char** argv) {
         }
         auto layout_children_path = stack_root + "/layout/children";
         auto layout_children =
-            space.read<std::vector<SP::UI::Builders::Widgets::StackChildSpec>, std::string>(layout_children_path);
+            space.read<std::vector<SP::UI::Runtime::Widgets::StackChildSpec>, std::string>(layout_children_path);
         if (layout_children) {
             std::cerr << "paint_example_new(debug): layout children ids=";
             if (layout_children->empty()) {
@@ -455,7 +455,7 @@ int main(int argc, char** argv) {
             }
             auto button_root = window_widgets_root + "/" + name + "/children/button_panel";
             auto style_value =
-                space.read<SP::UI::Builders::Widgets::ButtonStyle, std::string>(button_root + "/meta/style");
+                space.read<SP::UI::Runtime::Widgets::ButtonStyle, std::string>(button_root + "/meta/style");
             if (style_value) {
                 auto const& bg = style_value->background_color;
                 std::cerr << "paint_example_new(debug): button style background=(" << bg[0] << ", " << bg[1]

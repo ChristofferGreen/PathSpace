@@ -1,12 +1,11 @@
-#include "BuildersDetail.hpp"
+#include "RuntimeDetail.hpp"
 
-namespace SP::UI::Builders::Diagnostics {
+namespace SP::UI::Runtime::Diagnostics {
 
 using namespace Detail;
 
 auto ReadTargetMetrics(PathSpace const& space,
                        ConcretePathView targetPath) -> SP::Expected<TargetMetrics> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Diagnostics::ReadTargetMetrics");
     TargetMetrics metrics{};
 
     auto base = std::string(targetPath.getPath()) + "/output/v1/common";
@@ -468,7 +467,6 @@ auto ReadTargetMetrics(PathSpace const& space,
 
 auto ClearTargetError(PathSpace& space,
                        ConcretePathView targetPath) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Diagnostics::ClearTargetError");
     auto livePath = std::string(targetPath.getPath()) + "/diagnostics/errors/live";
     PathSpaceError cleared{};
     if (auto status = replace_single<PathSpaceError>(space, livePath, cleared); !status) {
@@ -481,7 +479,6 @@ auto ClearTargetError(PathSpace& space,
 auto WriteTargetError(PathSpace& space,
                        ConcretePathView targetPath,
                        PathSpaceError const& error) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Diagnostics::WriteTargetError");
     if (error.message.empty()) {
         return ClearTargetError(space, targetPath);
     }
@@ -506,14 +503,12 @@ auto WriteTargetError(PathSpace& space,
 
 auto ReadTargetError(PathSpace const& space,
                      ConcretePathView targetPath) -> SP::Expected<std::optional<PathSpaceError>> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Diagnostics::ReadTargetError");
     auto livePath = std::string(targetPath.getPath()) + "/diagnostics/errors/live";
     return read_optional<PathSpaceError>(space, livePath);
 }
 
 auto ReadSoftwareFramebuffer(PathSpace const& space,
                              ConcretePathView targetPath) -> SP::Expected<SoftwareFramebuffer> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Diagnostics::ReadSoftwareFramebuffer");
     auto framebufferPath = std::string(targetPath.getPath()) + "/output/v1/software/framebuffer";
     return read_value<SoftwareFramebuffer>(space, framebufferPath);
 }
@@ -706,7 +701,6 @@ auto WritePresentMetrics(PathSpace& space,
                           ConcretePathView targetPath,
                           PathWindowPresentStats const& stats,
                           PathWindowPresentPolicy const& policy) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Diagnostics::WritePresentMetrics");
     auto base = std::string(targetPath.getPath()) + "/output/v1/common";
     if (auto status = write_present_metrics_to_base(space, base, stats, policy); !status) {
         return status;
@@ -735,7 +729,6 @@ auto WriteWindowPresentMetrics(PathSpace& space,
                                std::string_view viewName,
                                PathWindowPresentStats const& stats,
                                PathWindowPresentPolicy const& policy) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Diagnostics::WriteWindowPresentMetrics");
     std::string base = std::string(windowPath.getPath()) + "/diagnostics/metrics/live/views/";
     base.append(viewName);
     base.append("/present");
@@ -773,7 +766,6 @@ auto WriteResidencyMetrics(PathSpace& space,
                            std::uint64_t cpu_hard_bytes,
                            std::uint64_t gpu_soft_bytes,
                            std::uint64_t gpu_hard_bytes) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Diagnostics::WriteResidencyMetrics");
     auto base = std::string(targetPath.getPath()) + "/diagnostics/metrics/residency";
     if (auto status = replace_single<std::uint64_t>(space, base + "/cpuBytes", cpu_bytes); !status) {
         return status;
@@ -871,4 +863,4 @@ auto WriteResidencyMetrics(PathSpace& space,
     return {};
 }
 
-} // namespace SP::UI::Builders::Diagnostics
+} // namespace SP::UI::Runtime::Diagnostics

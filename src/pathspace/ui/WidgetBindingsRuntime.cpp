@@ -2,7 +2,7 @@
 
 #include <functional>
 
-namespace SP::UI::Builders::Widgets::Bindings {
+namespace SP::UI::Runtime::Widgets::Bindings {
 
 using namespace Detail;
 
@@ -239,7 +239,6 @@ auto CreateButtonBinding(PathSpace& space,
                          DirtyRectHint footprint,
                          std::optional<DirtyRectHint> dirty_override,
                          bool auto_render) -> SP::Expected<ButtonBinding> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateButtonBinding");
     if (auto style = read_button_style(space, paths); !style) {
         return std::unexpected(style.error());
     }
@@ -265,7 +264,6 @@ auto CreateToggleBinding(PathSpace& space,
                          DirtyRectHint footprint,
                          std::optional<DirtyRectHint> dirty_override,
                          bool auto_render) -> SP::Expected<ToggleBinding> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateToggleBinding");
     if (auto style = read_toggle_style(space, paths); !style) {
         return std::unexpected(style.error());
     }
@@ -287,7 +285,6 @@ auto CreateSliderBinding(PathSpace& space,
                          DirtyRectHint footprint,
                          std::optional<DirtyRectHint> dirty_override,
                          bool auto_render) -> SP::Expected<SliderBinding> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateSliderBinding");
     if (auto style = read_slider_style(space, paths); !style) {
         return std::unexpected(style.error());
     }
@@ -309,7 +306,6 @@ auto CreateListBinding(PathSpace& space,
                        DirtyRectHint footprint,
                        std::optional<DirtyRectHint> dirty_override,
                        bool auto_render) -> SP::Expected<ListBinding> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateListBinding");
     if (auto style = read_list_style(space, paths); !style) {
         return std::unexpected(style.error());
     }
@@ -335,7 +331,6 @@ auto CreateTreeBinding(PathSpace& space,
                        DirtyRectHint footprint,
                        std::optional<DirtyRectHint> dirty_override,
                        bool auto_render) -> SP::Expected<TreeBinding> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateTreeBinding");
     if (auto style = read_tree_style(space, paths); !style) {
         return std::unexpected(style.error());
     }
@@ -361,7 +356,6 @@ auto CreateStackBinding(PathSpace& space,
                         DirtyRectHint footprint,
                         std::optional<DirtyRectHint> dirty_override,
                         bool auto_render) -> SP::Expected<StackBinding> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateStackBinding");
     auto layout = Widgets::ReadStackLayout(space, paths);
     if (!layout) {
         return std::unexpected(layout.error());
@@ -385,7 +379,6 @@ auto CreateTextFieldBinding(PathSpace& space,
                             DirtyRectHint footprint,
                             std::optional<DirtyRectHint> dirty_override,
                             bool auto_render) -> SP::Expected<TextFieldBinding> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateTextFieldBinding");
     auto style = read_text_field_style(space, paths);
     if (!style) {
         return std::unexpected(style.error());
@@ -410,7 +403,6 @@ auto CreateTextAreaBinding(PathSpace& space,
                            DirtyRectHint footprint,
                            std::optional<DirtyRectHint> dirty_override,
                            bool auto_render) -> SP::Expected<TextAreaBinding> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateTextAreaBinding");
     auto style = read_text_area_style(space, paths);
     if (!style) {
         return std::unexpected(style.error());
@@ -433,7 +425,6 @@ auto DispatchButton(PathSpace& space,
                     ButtonState const& new_state,
                     WidgetOpKind op_kind,
                     PointerInfo const& pointer) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::DispatchButton");
     switch (op_kind) {
     case WidgetOpKind::HoverEnter:
     case WidgetOpKind::HoverExit:
@@ -491,7 +482,6 @@ auto DispatchToggle(PathSpace& space,
                     ToggleState const& new_state,
                     WidgetOpKind op_kind,
                     PointerInfo const& pointer) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::DispatchToggle");
     switch (op_kind) {
     case WidgetOpKind::HoverEnter:
     case WidgetOpKind::HoverExit:
@@ -549,7 +539,6 @@ auto DispatchSlider(PathSpace& space,
                     SliderState const& new_state,
                     WidgetOpKind op_kind,
                     PointerInfo const& pointer) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::DispatchSlider");
     bool enqueue_op = false;
     switch (op_kind) {
     case WidgetOpKind::HoverEnter:
@@ -619,7 +608,6 @@ auto DispatchList(PathSpace& space,
                   PointerInfo const& pointer,
                   std::int32_t item_index,
                   float scroll_delta) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::DispatchList");
     switch (op_kind) {
     case WidgetOpKind::ListHover:
     case WidgetOpKind::ListSelect:
@@ -723,7 +711,6 @@ auto DispatchTree(PathSpace& space,
                   std::string_view node_id,
                   PointerInfo const& pointer,
                   float scroll_delta) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::DispatchTree");
     switch (op_kind) {
     case WidgetOpKind::TreeHover:
     case WidgetOpKind::TreeSelect:
@@ -938,7 +925,6 @@ auto DispatchTextField(PathSpace& space,
                        TextFieldState const& new_state,
                        WidgetOpKind op_kind,
                        PointerInfo const& pointer) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::DispatchTextField");
     switch (op_kind) {
     case WidgetOpKind::HoverEnter:
     case WidgetOpKind::HoverExit:
@@ -1014,7 +1000,6 @@ auto DispatchTextArea(PathSpace& space,
                       WidgetOpKind op_kind,
                       PointerInfo const& pointer,
                       float scroll_delta_y) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::DispatchTextArea");
     switch (op_kind) {
     case WidgetOpKind::HoverEnter:
     case WidgetOpKind::HoverExit:
@@ -1088,7 +1073,6 @@ auto DispatchTextArea(PathSpace& space,
 auto UpdateStack(PathSpace& space,
                  StackBinding const& binding,
                  StackLayoutParams const& params) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::Bindings::UpdateStack");
     auto changed = Widgets::UpdateStackLayout(space, binding.layout, params);
     if (!changed) {
         return std::unexpected(changed.error());
@@ -1128,4 +1112,4 @@ auto UpdateStack(PathSpace& space,
     return true;
 }
 
-} // namespace SP::UI::Builders::Widgets::Bindings
+} // namespace SP::UI::Runtime::Widgets::Bindings

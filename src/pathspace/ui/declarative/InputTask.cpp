@@ -6,7 +6,7 @@
 #include <pathspace/ui/declarative/Reducers.hpp>
 #include <pathspace/ui/declarative/Telemetry.hpp>
 
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/runtime/IOPump.hpp>
 
@@ -26,7 +26,7 @@ namespace SP::UI::Declarative {
 
 namespace {
 
-using namespace SP::UI::Builders;
+using namespace SP::UI::Runtime;
 using namespace SP::UI::Declarative::Detail;
 namespace WidgetReducers = SP::UI::Declarative::Reducers;
 using SP::UI::Declarative::ButtonContext;
@@ -266,9 +266,9 @@ auto component_suffix(std::string_view component) -> std::string_view {
     return component.substr(pos + 1);
 }
 
-auto route_for_action(SP::UI::Builders::Widgets::Bindings::WidgetOpKind kind)
+auto route_for_action(SP::UI::Runtime::Widgets::Bindings::WidgetOpKind kind)
     -> std::optional<HandlerRoute> {
-    using SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
+    using SP::UI::Runtime::Widgets::Bindings::WidgetOpKind;
     switch (kind) {
     case WidgetOpKind::Activate:
         return HandlerRoute{"press", HandlerKind::ButtonPress};
@@ -393,7 +393,7 @@ auto invoke_handler(PathSpace& space,
             if (!fn || !(*fn)) {
                 return finish(std::string{"button handler not registered"});
             }
-            ButtonContext ctx{space, SP::UI::Builders::WidgetPath{action.widget_path}};
+            ButtonContext ctx{space, SP::UI::Runtime::WidgetPath{action.widget_path}};
             (*fn)(ctx);
             return finish(std::nullopt);
         }
@@ -402,7 +402,7 @@ auto invoke_handler(PathSpace& space,
             if (!fn || !(*fn)) {
                 return finish(std::string{"toggle handler not registered"});
             }
-            ToggleContext ctx{space, SP::UI::Builders::WidgetPath{action.widget_path}};
+            ToggleContext ctx{space, SP::UI::Runtime::WidgetPath{action.widget_path}};
             (*fn)(ctx);
             return finish(std::nullopt);
         }
@@ -411,7 +411,7 @@ auto invoke_handler(PathSpace& space,
             if (!fn || !(*fn)) {
                 return finish(std::string{"slider handler not registered"});
             }
-            SliderContext ctx{space, SP::UI::Builders::WidgetPath{action.widget_path}};
+            SliderContext ctx{space, SP::UI::Runtime::WidgetPath{action.widget_path}};
             ctx.value = action.analog_value;
             (*fn)(ctx);
             return finish(std::nullopt);
@@ -421,7 +421,7 @@ auto invoke_handler(PathSpace& space,
             if (!fn || !(*fn)) {
                 return finish(std::string{"list handler not registered"});
             }
-            ListChildContext ctx{space, SP::UI::Builders::WidgetPath{action.widget_path}};
+            ListChildContext ctx{space, SP::UI::Runtime::WidgetPath{action.widget_path}};
             ctx.child_id = action.target_id;
             (*fn)(ctx);
             return finish(std::nullopt);
@@ -431,7 +431,7 @@ auto invoke_handler(PathSpace& space,
             if (!fn || !(*fn)) {
                 return finish(std::string{"tree handler not registered"});
             }
-            TreeNodeContext ctx{space, SP::UI::Builders::WidgetPath{action.widget_path}};
+            TreeNodeContext ctx{space, SP::UI::Runtime::WidgetPath{action.widget_path}};
             ctx.node_id = action.target_id;
             (*fn)(ctx);
             return finish(std::nullopt);
@@ -441,7 +441,7 @@ auto invoke_handler(PathSpace& space,
             if (!fn || !(*fn)) {
                 return finish(std::string{"input change handler not registered"});
             }
-            InputFieldContext ctx{space, SP::UI::Builders::WidgetPath{action.widget_path}};
+            InputFieldContext ctx{space, SP::UI::Runtime::WidgetPath{action.widget_path}};
             (*fn)(ctx);
             return finish(std::nullopt);
         }
@@ -450,7 +450,7 @@ auto invoke_handler(PathSpace& space,
             if (!fn || !(*fn)) {
                 return finish(std::string{"input submit handler not registered"});
             }
-            InputFieldContext ctx{space, SP::UI::Builders::WidgetPath{action.widget_path}};
+            InputFieldContext ctx{space, SP::UI::Runtime::WidgetPath{action.widget_path}};
             (*fn)(ctx);
             return finish(std::nullopt);
         }
@@ -460,7 +460,7 @@ auto invoke_handler(PathSpace& space,
                 if (!fn || !(*fn)) {
                     return finish(std::string{"stack handler not registered"});
                 }
-                StackPanelContext ctx{space, SP::UI::Builders::WidgetPath{action.widget_path}};
+                StackPanelContext ctx{space, SP::UI::Runtime::WidgetPath{action.widget_path}};
                 auto suffix = component_suffix(action.target_id);
                 ctx.panel_id = std::string{suffix};
                 (*fn)(ctx);
@@ -473,7 +473,7 @@ auto invoke_handler(PathSpace& space,
             if (!fn || !(*fn)) {
                 return finish(std::string{"paint handler not registered"});
             }
-            PaintSurfaceContext ctx{space, SP::UI::Builders::WidgetPath{action.widget_path}};
+            PaintSurfaceContext ctx{space, SP::UI::Runtime::WidgetPath{action.widget_path}};
             (*fn)(ctx);
             return finish(std::nullopt);
         }

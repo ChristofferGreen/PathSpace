@@ -1,13 +1,12 @@
-#include "BuildersDetail.hpp"
+#include "RuntimeDetail.hpp"
 
-namespace SP::UI::Builders::Renderer {
+namespace SP::UI::Runtime::Renderer {
 
 using namespace Detail;
 
 auto Create(PathSpace& space,
             AppRootPathView appRoot,
             RendererParams const& params) -> SP::Expected<RendererPath> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Renderer::Create");
     if (auto status = ensure_identifier(params.name, "renderer name"); !status) {
         return std::unexpected(status.error());
     }
@@ -60,7 +59,6 @@ auto CreateHtmlTarget(PathSpace& space,
                       AppRootPathView appRoot,
                       RendererPath const& rendererPath,
                       HtmlTargetParams const& params) -> SP::Expected<HtmlTargetPath> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Renderer::CreateHtmlTarget");
     if (auto status = ensure_identifier(params.name, "html target name"); !status) {
         return std::unexpected(status.error());
     }
@@ -118,7 +116,6 @@ auto ResolveTargetBase(PathSpace const& space,
                         AppRootPathView appRoot,
                         RendererPath const& rendererPath,
                         std::string_view targetSpec) -> SP::Expected<ConcretePath> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Renderer::ResolveTargetBase");
     if (auto status = ensure_non_empty(targetSpec, "target spec"); !status) {
         return std::unexpected(status.error());
     }
@@ -157,14 +154,12 @@ auto ResolveTargetBase(PathSpace const& space,
 auto UpdateSettings(PathSpace& space,
                      ConcretePathView targetPath,
                      RenderSettings const& settings) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Renderer::UpdateSettings");
     auto settingsPath = std::string(targetPath.getPath()) + "/settings";
     return replace_single<RenderSettings>(space, settingsPath, settings);
 }
 
 auto ReadSettings(PathSpace const& space,
                    ConcretePathView targetPath) -> SP::Expected<RenderSettings> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Renderer::ReadSettings");
     auto settingsPath = std::string(targetPath.getPath()) + "/settings";
     return read_value<RenderSettings>(space, settingsPath);
 }
@@ -290,7 +285,6 @@ auto snap_hint_to_tiles(DirtyRectHint hint, float tile_size) -> DirtyRectHint {
 auto SubmitDirtyRects(PathSpace& space,
                       ConcretePathView targetPath,
                       std::span<DirtyRectHint const> rects) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Renderer::SubmitDirtyRects");
     if (rects.empty()) {
         return SP::Expected<void>{};
     }
@@ -335,7 +329,6 @@ auto SubmitDirtyRects(PathSpace& space,
 auto TriggerRender(PathSpace& space,
                    ConcretePathView targetPath,
                    RenderSettings const& settings) -> SP::Expected<SP::FutureAny> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Renderer::TriggerRender");
     auto descPath = std::string(targetPath.getPath()) + "/desc";
     auto surfaceDesc = read_value<SurfaceDesc>(space, descPath);
     if (!surfaceDesc) {
@@ -402,7 +395,6 @@ auto TriggerRender(PathSpace& space,
 
 auto RenderHtml(PathSpace& space,
                 ConcretePathView targetPath) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Renderer::RenderHtml");
     auto base = std::string(targetPath.getPath());
     uint64_t rendered_revision = 0;
 
@@ -641,4 +633,4 @@ auto RenderHtml(PathSpace& space,
     return {};
 }
 
-} // namespace SP::UI::Builders::Renderer
+} // namespace SP::UI::Runtime::Renderer

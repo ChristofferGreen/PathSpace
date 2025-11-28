@@ -9,7 +9,7 @@
 
 namespace SP::UI::Declarative {
 
-namespace BuilderWidgets = SP::UI::Builders::Widgets;
+namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
 using SP::UI::ScenePath;
 

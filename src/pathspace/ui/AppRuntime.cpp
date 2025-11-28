@@ -7,7 +7,7 @@
 
 #include <pathspace/ui/LocalWindowBridge.hpp>
 
-namespace SP::UI::Builders::App {
+namespace SP::UI::Runtime::App {
 
 using namespace Detail;
 
@@ -15,7 +15,6 @@ auto Bootstrap(PathSpace& space,
                AppRootPathView appRoot,
                ScenePath const& scene,
                BootstrapParams const& params) -> SP::Expected<BootstrapResult> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "App::Bootstrap");
     if (auto status = ensure_identifier(params.view_name, "view name"); !status) {
         return std::unexpected(status.error());
     }
@@ -225,7 +224,6 @@ auto UpdateSurfaceSize(PathSpace& space,
                        int width,
                        int height,
                        ResizeSurfaceOptions const& options) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "App::UpdateSurfaceSize");
     if (width <= 0 || height <= 0) {
         return std::unexpected(make_error("surface dimensions must be positive"));
     }
@@ -272,16 +270,16 @@ auto UpdateSurfaceSize(PathSpace& space,
     bootstrap.surface_desc = updated_desc;
 
     if (options.submit_dirty_rect) {
-        Builders::DirtyRectHint dirty{};
+        Runtime::DirtyRectHint dirty{};
         dirty.min_x = 0.0f;
         dirty.min_y = 0.0f;
         dirty.max_x = static_cast<float>(width);
         dirty.max_y = static_cast<float>(height);
         if (dirty.max_x > dirty.min_x && dirty.max_y > dirty.min_y) {
-            std::array<Builders::DirtyRectHint, 1> rects{dirty};
+            std::array<Runtime::DirtyRectHint, 1> rects{dirty};
             auto status = Renderer::SubmitDirtyRects(space,
                                                      ConcretePathView{bootstrap.target.getPath()},
-                                                     std::span<const Builders::DirtyRectHint>(rects));
+                                                     std::span<const Runtime::DirtyRectHint>(rects));
             if (!status) {
                 return std::unexpected(status.error());
             }
@@ -356,4 +354,4 @@ auto PresentToLocalWindow(Window::WindowPresentResult const& present,
     return dispatched;
 }
 
-} // namespace SP::UI::Builders::App
+} // namespace SP::UI::Runtime::App

@@ -4,7 +4,6 @@
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/Helpers.hpp>
 #include <pathspace/ui/LocalWindowBridge.hpp>
-#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 #include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
@@ -363,10 +362,9 @@ auto ensure_theme(PathSpace& space,
     std::string normalized = requested.empty() ? "default" : std::string(requested);
     auto sanitized = ThemeConfig::SanitizeName(normalized);
     auto defaults = sanitized == "sunset"
-        ? SP::UI::Builders::Widgets::MakeSunsetWidgetTheme()
-        : SP::UI::Builders::Widgets::MakeDefaultWidgetTheme();
+        ? SP::UI::Runtime::Widgets::MakeSunsetWidgetTheme()
+        : SP::UI::Runtime::Widgets::MakeDefaultWidgetTheme();
 
-    SP::UI::LegacyBuilders::ScopedAllow theme_allow{};
     auto ensured = ThemeConfig::Ensure(space, app_root, sanitized, defaults);
     if (!ensured) {
         return std::unexpected(ensured.error());
@@ -382,19 +380,18 @@ auto renderer_config_path(SP::App::AppRootPathView app_root) -> std::string {
 }
 
 struct RendererBootstrap {
-    SP::UI::Builders::RendererPath renderer_path;
+    SP::UI::Runtime::RendererPath renderer_path;
     std::string renderer_relative;
 };
 
 auto ensure_renderer(PathSpace& space,
                      SP::App::AppRootPathView app_root,
                      std::string_view renderer_name) -> SP::Expected<RendererBootstrap> {
-    SP::UI::Builders::RendererParams params{};
+    SP::UI::Runtime::RendererParams params{};
     params.name = renderer_name.empty() ? std::string{kDefaultRendererName} : std::string(renderer_name);
     params.kind = SP::UI::Runtime::RendererKind::Software2D;
     params.description = "Declarative widget renderer";
-    SP::UI::LegacyBuilders::ScopedAllow renderer_allow{};
-    auto renderer = SP::UI::Builders::Renderer::Create(space, app_root, params);
+    auto renderer = SP::UI::Runtime::Renderer::Create(space, app_root, params);
     if (!renderer) {
         return std::unexpected(renderer.error());
     }
@@ -457,13 +454,13 @@ auto ensure_view_binding(PathSpace& space,
         return std::unexpected(renderer_absolute.error());
     }
 
-    SP::UI::Builders::SurfaceParams surface_params{};
+    SP::UI::Runtime::SurfaceParams surface_params{};
     surface_params.name = make_surface_name(window_name, view_name);
     surface_params.renderer = renderer_relative;
     surface_params.desc.size_px.width = width > 0 ? width : 1280;
     surface_params.desc.size_px.height = height > 0 ? height : 720;
 
-    auto surface = SP::UI::Builders::Surface::Create(space, app_root, surface_params);
+    auto surface = SP::UI::Runtime::Surface::Create(space, app_root, surface_params);
     if (!surface) {
         return std::unexpected(surface.error());
     }
@@ -507,7 +504,7 @@ auto ensure_view_binding(PathSpace& space,
         defaults.renderer.metal_uploads_enabled = false;
         defaults.clear_color = {0.11f, 0.12f, 0.15f, 1.0f};
 
-        auto settings_status = SP::UI::Builders::Renderer::UpdateSettings(space,
+        auto settings_status = SP::UI::Runtime::Renderer::UpdateSettings(space,
                                                                           SP::App::ConcretePathView{target_absolute->getPath()},
                                                                           defaults);
         if (!settings_status) {
@@ -1159,7 +1156,7 @@ auto Create(PathSpace& space,
         return std::unexpected(view.error());
     }
 
-    SP::UI::Builders::WindowParams params{};
+    SP::UI::Runtime::WindowParams params{};
     params.name = *name;
     params.title = options.title.empty() ? params.name : options.title;
     params.width = options.width > 0 ? options.width : 1280;
@@ -1183,7 +1180,6 @@ auto Create(PathSpace& space,
     if (auto status = ensure_value<std::string>(space, base + "/style/theme", std::string{}); !status) {
         return std::unexpected(status.error());
     }
-    SP::UI::LegacyBuilders::ScopedAllow theme_allow{};
     auto active_theme = ThemeConfig::LoadActive(space, app_root);
     if (active_theme) {
         (void)replace_single<std::string>(space, base + "/style/theme", *active_theme);

@@ -5,7 +5,7 @@
 #include "../../examples/declarative_example_shared.hpp"
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/system/Standard.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/Helpers.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
@@ -232,7 +232,7 @@ TEST_CASE("paint_example_new pointer hover updates button state") {
     bool hovered = false;
     for (int attempt = 0; attempt < 200; ++attempt) {
         present_once(harness);
-        auto state = harness.space.read<SP::UI::Builders::Widgets::ButtonState, std::string>(
+        auto state = harness.space.read<SP::UI::Runtime::Widgets::ButtonState, std::string>(
             harness.button_path + "/state");
         if (state && state->hovered) {
             hovered = true;

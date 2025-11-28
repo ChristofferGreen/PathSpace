@@ -1,7 +1,6 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
-#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
@@ -353,7 +352,7 @@ struct DamageAccumulator {
 auto render_frame(PathRenderer2D& renderer,
                   PathSurfaceSoftware& surface,
                   PathSpace& space,
-                  Builders::ConcretePathView targetPath,
+                  Runtime::ConcretePathView targetPath,
                   Runtime::RenderSettings& settings,
                   std::uint64_t frame_index,
                   bool collect_damage_metrics) -> FrameMetrics {
@@ -648,7 +647,6 @@ void enable_damage_metrics_env() {
 } // namespace
 
 int main(int argc, char** argv) try {
-    SP::UI::LegacyBuilders::ScopedAllow legacy_allow{};
     int canvas_width = 3840;
     int canvas_height = 2160;
     constexpr int brush_size = 64;
@@ -722,11 +720,11 @@ int main(int argc, char** argv) try {
     auto root_view = SP::App::AppRootPathView{app_root.getPath()};
 
     // Scene setup
-    Builders::SceneParams scene_params{
+    Runtime::SceneParams scene_params{
         .name = "benchmark_scene",
         .description = "Renderer benchmark scene",
     };
-    auto scene_path = Builders::Scene::Create(space, root_view, scene_params);
+    auto scene_path = Runtime::Scene::Create(space, root_view, scene_params);
     if (!scene_path) {
         throw std::runtime_error(scene_path.error().message.value_or("failed to create scene"));
     }
@@ -734,12 +732,12 @@ int main(int argc, char** argv) try {
     UIScene::SceneSnapshotBuilder snapshot_builder{space, root_view, *scene_path};
 
     // Renderer + surface setup
-    Builders::RendererParams renderer_params{
+    Runtime::RendererParams renderer_params{
         .name = "renderer_bench",
         .kind = SP::UI::Runtime::RendererKind::Software2D,
         .description = "Benchmark renderer",
     };
-    auto renderer_path = Builders::Renderer::Create(space, root_view, renderer_params);
+    auto renderer_path = Runtime::Renderer::Create(space, root_view, renderer_params);
     if (!renderer_path) {
         throw std::runtime_error(renderer_path.error().message.value_or("failed to create renderer"));
     }
@@ -751,16 +749,16 @@ int main(int argc, char** argv) try {
     surface_desc.color_space = Runtime::ColorSpace::sRGB;
     surface_desc.premultiplied_alpha = true;
 
-    Builders::SurfaceParams surface_params{};
+    Runtime::SurfaceParams surface_params{};
     surface_params.name = "surface_bench";
     surface_params.desc = surface_desc;
     surface_params.renderer = renderer_params.name;
-    auto surface_path = Builders::Surface::Create(space, root_view, surface_params);
+    auto surface_path = Runtime::Surface::Create(space, root_view, surface_params);
     if (!surface_path) {
         throw std::runtime_error(surface_path.error().message.value_or("failed to create surface"));
     }
 
-    auto set_scene = Builders::Surface::SetScene(space, *surface_path, *scene_path);
+    auto set_scene = Runtime::Surface::SetScene(space, *surface_path, *scene_path);
     if (!set_scene) {
         throw std::runtime_error(set_scene.error().message.value_or("failed to bind scene to surface"));
     }
@@ -775,7 +773,7 @@ int main(int argc, char** argv) try {
         throw std::runtime_error(target_abs.error().message.value_or("failed to resolve surface target"));
     }
     auto target_path = *target_abs;
-    auto target_path_view = Builders::ConcretePathView{target_path.getPath()};
+    auto target_path_view = Runtime::ConcretePathView{target_path.getPath()};
     auto hints_path = std::string(target_path.getPath()) + "/hints/dirtyRects";
 
     PathRenderer2D renderer{space};
@@ -929,8 +927,8 @@ int main(int argc, char** argv) try {
         SP::App::AppRootPath small_root{"/system/applications/bench_small"};
         auto small_root_view = SP::App::AppRootPathView{small_root.getPath()};
 
-        Builders::SceneParams sp_params{.name = "small_scene", .description = "Small surface diagnostics"};
-        auto sp_scene = Builders::Scene::Create(small_space, small_root_view, sp_params);
+        Runtime::SceneParams sp_params{.name = "small_scene", .description = "Small surface diagnostics"};
+        auto sp_scene = Runtime::Scene::Create(small_space, small_root_view, sp_params);
         if (!sp_scene) {
             throw std::runtime_error(sp_scene.error().message.value_or("failed to create small scene"));
         }
@@ -986,12 +984,12 @@ int main(int argc, char** argv) try {
             throw std::runtime_error("failed to publish small snapshot");
         }
 
-        Builders::RendererParams sp_renderer_params{
+        Runtime::RendererParams sp_renderer_params{
             .name = "small_renderer",
             .kind = SP::UI::Runtime::RendererKind::Software2D,
             .description = "",
         };
-        auto sp_renderer = Builders::Renderer::Create(small_space, small_root_view, sp_renderer_params);
+        auto sp_renderer = Runtime::Renderer::Create(small_space, small_root_view, sp_renderer_params);
         if (!sp_renderer) {
             throw std::runtime_error("failed to create small renderer");
         }
@@ -1003,22 +1001,22 @@ int main(int argc, char** argv) try {
         sp_desc.color_space = Runtime::ColorSpace::sRGB;
         sp_desc.premultiplied_alpha = true;
 
-        Builders::SurfaceParams sp_surface_params{};
+        Runtime::SurfaceParams sp_surface_params{};
         sp_surface_params.name = "small_surface";
         sp_surface_params.desc = sp_desc;
         sp_surface_params.renderer = sp_renderer_params.name;
-        auto sp_surface_path = Builders::Surface::Create(small_space, small_root_view, sp_surface_params);
+        auto sp_surface_path = Runtime::Surface::Create(small_space, small_root_view, sp_surface_params);
         if (!sp_surface_path) {
             throw std::runtime_error("failed to create small surface");
         }
 
-        if (auto set_scene_result = Builders::Surface::SetScene(small_space, *sp_surface_path, *sp_scene); !set_scene_result) {
+        if (auto set_scene_result = Runtime::Surface::SetScene(small_space, *sp_surface_path, *sp_scene); !set_scene_result) {
             throw std::runtime_error("failed to bind scene for small surface");
         }
 
         auto sp_target_rel = small_space.read<std::string, std::string>(std::string(sp_surface_path->getPath()) + "/target");
         auto sp_target_abs = SP::App::resolve_app_relative(small_root_view, SP::UnvalidatedPathView{sp_target_rel->c_str()});
-        auto sp_target_view = Builders::ConcretePathView{sp_target_abs->getPath()};
+        auto sp_target_view = Runtime::ConcretePathView{sp_target_abs->getPath()};
 
         PathRenderer2D sp_renderer_inst{small_space};
         PathSurfaceSoftware::Options sp_opts_surface{.enable_progressive = true, .enable_buffered = false, .progressive_tile_size_px = 2};

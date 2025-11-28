@@ -2,7 +2,7 @@
 
 #include <pathspace/core/Error.hpp>
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/PathTypes.hpp>
 
 #include "../../examples/declarative_example_shared.hpp"

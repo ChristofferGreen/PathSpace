@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/declarative/Detail.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Theme.hpp>
@@ -52,7 +52,7 @@ TEST_CASE("Theme::Create seeds tokens and value") {
         ThemeConfig::Resolve(fx.app_root_view(), result->canonical_name);
     REQUIRE(theme_paths.has_value());
     auto compiled =
-        fx.space.read<SP::UI::Builders::Widgets::WidgetTheme, std::string>(theme_paths->value.getPath());
+        fx.space.read<SP::UI::Runtime::Widgets::WidgetTheme, std::string>(theme_paths->value.getPath());
     REQUIRE(compiled.has_value());
     CHECK_EQ(compiled->button.background_color[0], doctest::Approx((*button_color)[0]));
 }
@@ -83,7 +83,7 @@ TEST_CASE("Theme::SetColor updates storage and compiled value") {
         ThemeConfig::Resolve(fx.app_root_view(), result->canonical_name);
     REQUIRE(theme_paths.has_value());
     auto compiled =
-        fx.space.read<SP::UI::Builders::Widgets::WidgetTheme, std::string>(theme_paths->value.getPath());
+        fx.space.read<SP::UI::Runtime::Widgets::WidgetTheme, std::string>(theme_paths->value.getPath());
     REQUIRE(compiled.has_value());
     CHECK_EQ(compiled->button.background_color[0], doctest::Approx(1.0f));
     CHECK_EQ(compiled->button.background_color[1], doctest::Approx(0.0f));
@@ -102,7 +102,7 @@ TEST_CASE("Theme::SetColor updates storage and compiled value") {
     CHECK_EQ((*palette_token)[0], doctest::Approx(readable.rgba[0]));
     CHECK_EQ((*palette_token)[1], doctest::Approx(readable.rgba[1]));
     auto recompiled =
-        fx.space.read<SP::UI::Builders::Widgets::WidgetTheme, std::string>(theme_paths->value.getPath());
+        fx.space.read<SP::UI::Runtime::Widgets::WidgetTheme, std::string>(theme_paths->value.getPath());
     REQUIRE(recompiled.has_value());
     CHECK_EQ(recompiled->palette_text_on_light[0], doctest::Approx(readable.rgba[0]));
     CHECK_EQ(recompiled->palette_text_on_light[1], doctest::Approx(readable.rgba[1]));
@@ -121,7 +121,7 @@ TEST_CASE("Theme::SetColor updates storage and compiled value") {
     CHECK_EQ((*swatch_token)[0], doctest::Approx(swatch.rgba[0]));
     CHECK_EQ((*swatch_token)[1], doctest::Approx(swatch.rgba[1]));
     auto recompiled_swatch =
-        fx.space.read<SP::UI::Builders::Widgets::WidgetTheme, std::string>(theme_paths->value.getPath());
+        fx.space.read<SP::UI::Runtime::Widgets::WidgetTheme, std::string>(theme_paths->value.getPath());
     REQUIRE(recompiled_swatch.has_value());
     CHECK_EQ(recompiled_swatch->palette_swatches[3][0], doctest::Approx(swatch.rgba[0]));
     CHECK_EQ(recompiled_swatch->palette_swatches[3][1], doctest::Approx(swatch.rgba[1]));
@@ -171,7 +171,7 @@ TEST_CASE("Theme::SetColor propagates through inherited themes until overridden"
 
     auto derived_paths = ThemeConfig::Resolve(app_view, derived->canonical_name);
     REQUIRE(derived_paths.has_value());
-    auto derived_theme = fx.space.read<SP::UI::Builders::Widgets::WidgetTheme, std::string>(
+    auto derived_theme = fx.space.read<SP::UI::Runtime::Widgets::WidgetTheme, std::string>(
         derived_paths->value.getPath());
     REQUIRE(derived_theme.has_value());
     CHECK_EQ((*derived_theme).button.background_color[0], doctest::Approx(base_color.rgba[0]));
@@ -187,7 +187,7 @@ TEST_CASE("Theme::SetColor propagates through inherited themes until overridden"
                                                  override_color)
                 .has_value());
 
-    auto updated_child = fx.space.read<SP::UI::Builders::Widgets::WidgetTheme, std::string>(
+    auto updated_child = fx.space.read<SP::UI::Runtime::Widgets::WidgetTheme, std::string>(
         derived_paths->value.getPath());
     REQUIRE(updated_child.has_value());
     CHECK_EQ(updated_child->button.background_color[0], doctest::Approx(override_color.rgba[0]));
@@ -196,7 +196,7 @@ TEST_CASE("Theme::SetColor propagates through inherited themes until overridden"
 
     auto parent_paths = ThemeConfig::Resolve(app_view, base->canonical_name);
     REQUIRE(parent_paths.has_value());
-    auto parent_theme = fx.space.read<SP::UI::Builders::Widgets::WidgetTheme, std::string>(
+    auto parent_theme = fx.space.read<SP::UI::Runtime::Widgets::WidgetTheme, std::string>(
         parent_paths->value.getPath());
     REQUIRE(parent_theme.has_value());
     CHECK_EQ(parent_theme->button.background_color[0], doctest::Approx(base_color.rgba[0]));
@@ -239,7 +239,7 @@ TEST_CASE("Theme::RebuildValue replays manual color edits") {
 
     auto theme_paths = ThemeConfig::Resolve(app_view, created->canonical_name);
     REQUIRE(theme_paths.has_value());
-    auto compiled = fx.space.read<SP::UI::Builders::Widgets::WidgetTheme, std::string>(
+    auto compiled = fx.space.read<SP::UI::Runtime::Widgets::WidgetTheme, std::string>(
         theme_paths->value.getPath());
     REQUIRE(compiled.has_value());
     CHECK_EQ(compiled->button.background_color[0], doctest::Approx(manual_override[0]));

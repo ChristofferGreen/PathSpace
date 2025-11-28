@@ -1,7 +1,7 @@
 #include "third_party/doctest.h"
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/FontAtlasCache.hpp>
 #include <pathspace/ui/FontManager.hpp>
 
@@ -24,7 +24,7 @@ auto format_revision(std::uint64_t revision) -> std::string {
 }
 
 TEST_CASE("Font resources resolve canonical paths") {
-    using namespace SP::UI::Builders::Resources::Fonts;
+    using namespace SP::UI::Runtime::Resources::Fonts;
     SP::App::AppRootPath app_root{"/system/applications/demo_app"};
     SP::App::AppRootPathView app_view{app_root.getPath()};
 
@@ -49,7 +49,7 @@ TEST_CASE("FontManager registers font metadata and manifest") {
     SP::App::AppRootPathView app_view{app_root.getPath()};
 
     FontManager manager(space);
-    SP::UI::Builders::Resources::Fonts::RegisterFontParams params{
+    SP::UI::Runtime::Resources::Fonts::RegisterFontParams params{
         .family = "DisplaySans",
         .style = "Regular",
         .weight = "450",
@@ -131,7 +131,7 @@ TEST_CASE("FontManager resolves manifest fallback chain") {
     SP::App::AppRootPathView app_view{app_root.getPath()};
 
     FontManager manager(space);
-    Builders::Resources::Fonts::RegisterFontParams params{
+    Runtime::Resources::Fonts::RegisterFontParams params{
         .family = "PathSpaceSans",
         .style = "Regular",
         .weight = "500",
@@ -160,7 +160,7 @@ TEST_CASE("FontManager supplies default fallback when metadata omitted") {
     SP::App::AppRootPathView app_view{app_root.getPath()};
 
     FontManager manager(space);
-    Builders::Resources::Fonts::RegisterFontParams params{
+    Runtime::Resources::Fonts::RegisterFontParams params{
         .family = "DefaultedFont",
         .style = "Regular",
         .weight = "400",
@@ -186,7 +186,7 @@ TEST_CASE("FontManager caches shaped runs and updates metrics") {
     FontManager manager(space);
     manager.set_cache_capacity_for_testing(8);
 
-    Builders::Widgets::TypographyStyle typography{};
+    Runtime::Widgets::TypographyStyle typography{};
     typography.font_family = "PathSpaceSans";
     typography.font_style = "Regular";
     typography.font_weight = "400";
@@ -224,7 +224,7 @@ TEST_CASE("FontManager evicts least recently used cache entries") {
     FontManager manager(space);
     manager.set_cache_capacity_for_testing(2);
 
-    Builders::Widgets::TypographyStyle typography{};
+    Runtime::Widgets::TypographyStyle typography{};
     typography.font_family = "PathSpaceSans";
     typography.font_style = "Regular";
     typography.font_weight = "400";

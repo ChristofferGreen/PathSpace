@@ -1,7 +1,7 @@
 #include "PathRenderer2DDetail.hpp"
 #include "PathRenderer2DInternal.hpp"
 
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/ImageCache.hpp>
 
 #include <algorithm>

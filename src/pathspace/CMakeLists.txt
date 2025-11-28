@@ -128,19 +128,18 @@ if(PATHSPACE_ENABLE_UI)
 
     target_sources(PathSpace PRIVATE
         ui/Helpers.cpp
-        ui/SceneBuilders.cpp
-        ui/BuildersAPI.cpp
-        ui/RendererBuilders.cpp
-        ui/SurfaceBuilders.cpp
-        ui/WindowBuilders.cpp
-        ui/AppBuilders.cpp
-        ui/LegacyBuildersDeprecation.cpp
-        ui/WidgetBuildersCore.cpp
-        ui/WidgetBindings.cpp
-        ui/WidgetInput.cpp
+        ui/SceneRuntime.cpp
+        ui/RuntimeAPI.cpp
+        ui/RendererRuntime.cpp
+        ui/SurfaceRuntime.cpp
+        ui/WindowRuntime.cpp
+        ui/AppRuntime.cpp
+        ui/WidgetRuntime.cpp
+        ui/WidgetBindingsRuntime.cpp
+        ui/WidgetInputRuntime.cpp
         ui/WidgetTrace.cpp
-        ui/WidgetFocus.cpp
-        ui/WidgetReducers.cpp
+        ui/WidgetFocusRuntime.cpp
+        ui/WidgetReducersRuntime.cpp
         ui/declarative/InputTask.cpp
         ui/declarative/Descriptor.cpp
         ui/declarative/DescriptorDetail.cpp
@@ -178,7 +177,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/FontAtlasCache.cpp
         ui/ThemeResources.cpp
         ui/FontManager.cpp
-        ui/DiagnosticsBuilders.cpp
+        ui/DiagnosticsRuntime.cpp
         ui/SceneSnapshotBuilder.cpp
         ui/SceneSnapshotBuilderDecode.cpp
         ui/SceneSnapshotBuilderFingerprint.cpp

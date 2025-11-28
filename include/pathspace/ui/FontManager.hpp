@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -18,10 +18,10 @@ namespace SP::UI {
 
 class FontManager {
 public:
-    using TypographyStyle = Builders::Widgets::TypographyStyle;
+    using TypographyStyle = Runtime::Widgets::TypographyStyle;
 
     struct ResolvedFont {
-        Builders::Resources::Fonts::FontResourcePaths paths;
+        Runtime::Resources::Fonts::FontResourcePaths paths;
         std::string family;
         std::string style;
         std::string weight;
@@ -60,8 +60,8 @@ public:
     explicit FontManager(PathSpace& space);
 
     auto register_font(App::AppRootPathView appRoot,
-                       Builders::Resources::Fonts::RegisterFontParams const& params)
-        -> SP::Expected<Builders::Resources::Fonts::FontResourcePaths>;
+                       Runtime::Resources::Fonts::RegisterFontParams const& params)
+        -> SP::Expected<Runtime::Resources::Fonts::FontResourcePaths>;
 
     auto resolve_font(App::AppRootPathView appRoot,
                       std::string_view family,

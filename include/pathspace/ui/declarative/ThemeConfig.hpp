@@ -9,7 +9,7 @@
 
 namespace SP::UI::Declarative::ThemeConfig {
 
-using WidgetTheme = SP::UI::Builders::Widgets::WidgetTheme;
+using WidgetTheme = SP::UI::Runtime::Widgets::WidgetTheme;
 
 struct ThemePaths {
     SP::App::ConcretePath root;

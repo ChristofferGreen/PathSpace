@@ -1,6 +1,6 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/HtmlAdapter.hpp>
 #include <pathspace/ui/HtmlRunner.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
@@ -18,7 +18,7 @@
 
 using namespace SP;
 using namespace SP::UI;
-using namespace SP::UI::Builders;
+using namespace SP::UI::Runtime;
 namespace Runtime = SP::UI::Runtime;
 namespace UIScene = SP::UI::Scene;
 
@@ -54,7 +54,7 @@ auto create_scene(RendererFixture& fx,
         .name = name,
         .description = "HTML replay example scene",
     };
-    auto scene = Builders::Scene::Create(fx.space, fx.root_view(), params);
+    auto scene = Runtime::Scene::Create(fx.space, fx.root_view(), params);
     assert(scene.has_value());
     fx.publish_snapshot(*scene, std::move(bucket));
     return *scene;

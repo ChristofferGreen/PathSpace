@@ -1,6 +1,6 @@
 #include "PathRenderer2DDetail.hpp"
 
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 
 #include <algorithm>
 #include <array>
@@ -145,19 +145,19 @@ auto set_last_error(PathSpace& space,
                     SP::ConcretePathStringView targetPath,
                     std::string const& message,
                     std::uint64_t revision,
-                    Builders::Diagnostics::PathSpaceError::Severity severity,
+                    Runtime::Diagnostics::PathSpaceError::Severity severity,
                     int code) -> SP::Expected<void> {
     if (message.empty()) {
-        return Builders::Diagnostics::ClearTargetError(space, targetPath);
+        return Runtime::Diagnostics::ClearTargetError(space, targetPath);
     }
 
-    Builders::Diagnostics::PathSpaceError error{};
+    Runtime::Diagnostics::PathSpaceError error{};
     error.code = code;
     error.severity = severity;
     error.message = message;
     error.path = std::string(targetPath.getPath());
     error.revision = revision;
-    return Builders::Diagnostics::WriteTargetError(space, targetPath, error);
+    return Runtime::Diagnostics::WriteTargetError(space, targetPath, error);
 }
 
 auto pipeline_flags_for(Scene::DrawableBucketSnapshot const& bucket,
@@ -311,7 +311,7 @@ auto schedule_focus_pulse_render(PathSpace& space,
     }
 
     // Enqueue an auto-render request so the pulse keeps animating.
-    Builders::AutoRenderRequestEvent event{
+    Runtime::AutoRenderRequestEvent event{
         .sequence = sequence.fetch_add(1, std::memory_order_relaxed) + 1,
         .reason = "focus-pulse",
         .frame_index = frame_index,
@@ -340,7 +340,7 @@ auto schedule_focus_pulse_render(PathSpace& space,
     }
 
     std::array<SP::UI::Runtime::DirtyRectHint, 1> hints{hint};
-    (void)Builders::Renderer::SubmitDirtyRects(space,
+    (void)Runtime::Renderer::SubmitDirtyRects(space,
                                                targetPath,
                                                std::span<const SP::UI::Runtime::DirtyRectHint>(hints.data(), hints.size()));
 }

@@ -24,8 +24,8 @@ namespace SP::UI::Declarative {
 namespace {
 
 namespace Detail = SP::UI::Declarative::Detail;
-namespace BuilderWidgets = SP::UI::Builders::Widgets;
-namespace BuilderScene = SP::UI::Builders::Scene;
+namespace BuilderWidgets = SP::UI::Runtime::Widgets;
+namespace BuilderScene = SP::UI::Runtime::Scene;
 namespace SceneData = SP::UI::Scene;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
 namespace DescriptorDetail = SP::UI::Declarative::DescriptorDetail;
@@ -153,7 +153,7 @@ auto load_stack_child_bucket(PathSpace& space,
         return std::unexpected(scene_error);
     }
 
-    auto descriptor = LoadWidgetDescriptor(space, SP::UI::Builders::WidgetPath{child.widget_path});
+    auto descriptor = LoadWidgetDescriptor(space, SP::UI::Runtime::WidgetPath{child.widget_path});
     if (!descriptor) {
         return std::unexpected(descriptor.error());
     }
@@ -455,7 +455,7 @@ struct BucketVisitor {
 } // namespace
 
 auto LoadWidgetDescriptor(PathSpace& space,
-                          SP::UI::Builders::WidgetPath const& widget)
+                          SP::UI::Runtime::WidgetPath const& widget)
     -> SP::Expected<WidgetDescriptor> {
     auto root = widget.getPath();
     auto removed_value = space.read<bool, std::string>(root + "/state/removed");

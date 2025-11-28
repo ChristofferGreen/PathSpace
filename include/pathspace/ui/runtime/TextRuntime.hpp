@@ -2,7 +2,7 @@
 
 #include <pathspace/ui/declarative/Text.hpp>
 
-namespace SP::UI::Builders {
+namespace SP::UI::Runtime {
 
 namespace Widgets {
 struct TypographyStyle;
@@ -39,4 +39,4 @@ inline auto BuildTextBucket(std::string_view text,
 
 } // namespace Text
 
-} // namespace SP::UI::Builders
+} // namespace SP::UI::Runtime

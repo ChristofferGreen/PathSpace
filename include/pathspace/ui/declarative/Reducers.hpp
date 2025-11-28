@@ -9,12 +9,12 @@
 
 namespace SP::UI::Declarative::Reducers {
 
-using WidgetPath = SP::UI::Builders::WidgetPath;
-using WidgetAction = SP::UI::Builders::Widgets::Reducers::WidgetAction;
-using ProcessActionsResult = SP::UI::Builders::Widgets::Reducers::ProcessActionsResult;
-using ConcretePath = SP::UI::Builders::ConcretePath;
-using ConcretePathView = SP::UI::Builders::ConcretePathView;
-using WidgetOp = SP::UI::Builders::Widgets::Bindings::WidgetOp;
+using WidgetPath = SP::UI::Runtime::WidgetPath;
+using WidgetAction = SP::UI::Runtime::Widgets::Reducers::WidgetAction;
+using ProcessActionsResult = SP::UI::Runtime::Widgets::Reducers::ProcessActionsResult;
+using ConcretePath = SP::UI::Runtime::ConcretePath;
+using ConcretePathView = SP::UI::Runtime::ConcretePathView;
+using WidgetOp = SP::UI::Runtime::Widgets::Bindings::WidgetOp;
 
 auto MakeWidgetAction(WidgetOp const& op) -> WidgetAction;
 

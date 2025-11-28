@@ -1,7 +1,7 @@
 #pragma once
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 
 #include <chrono>
 #include <functional>
@@ -20,7 +20,7 @@ struct WidgetEventTrellisOptions {
     std::string log_root = "/system/widgets/runtime/events/log";
     std::string state_path = "/system/widgets/runtime/events/state/running";
 
-    using HitTestOverride = std::function<SP::Expected<SP::UI::Builders::Scene::HitTestResult>(
+    using HitTestOverride = std::function<SP::Expected<SP::UI::Runtime::Scene::HitTestResult>(
         PathSpace& space,
         std::string const& scene_path,
         float scene_x,

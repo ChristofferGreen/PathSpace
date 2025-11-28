@@ -2,8 +2,8 @@
 
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
-namespace SP::UI::Builders {
+namespace SP::UI::Runtime {
 
 using namespace SP::UI::Runtime;
 
-} // namespace SP::UI::Builders
+} // namespace SP::UI::Runtime

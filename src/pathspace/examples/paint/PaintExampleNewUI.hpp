@@ -10,7 +10,7 @@
 namespace PathSpaceExamples::PaintExampleNew {
 
 struct ButtonUiResult {
-    SP::UI::Builders::WidgetPath stack_path;
+    SP::UI::Runtime::WidgetPath stack_path;
     std::string button_path;
     float layout_width = 0.0f;
     float layout_height = 0.0f;

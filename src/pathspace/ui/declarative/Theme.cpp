@@ -270,7 +270,7 @@ auto seed_color_tokens(PathSpace& space,
 auto load_theme_value(PathSpace& space,
                       SP::App::AppRootPathView app_root,
                       std::string const& sanitized) -> SP::Expected<WidgetTheme> {
-    auto defaults = SP::UI::Builders::Widgets::MakeDefaultWidgetTheme();
+    auto defaults = SP::UI::Runtime::Widgets::MakeDefaultWidgetTheme();
     auto paths = ThemeConfig::Ensure(space, app_root, sanitized, defaults);
     if (!paths) {
         return std::unexpected(paths.error());
@@ -298,7 +298,7 @@ auto Create(PathSpace& space,
         sanitized_inherits = ThemeConfig::SanitizeName(*options.inherits);
     }
 
-    WidgetTheme seed = options.seed_theme.value_or(SP::UI::Builders::Widgets::MakeDefaultWidgetTheme());
+    WidgetTheme seed = options.seed_theme.value_or(SP::UI::Runtime::Widgets::MakeDefaultWidgetTheme());
     if (sanitized_inherits) {
         auto parent_theme = load_theme_value(space, app_root, *sanitized_inherits);
         if (!parent_theme) {

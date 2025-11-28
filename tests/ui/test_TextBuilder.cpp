@@ -2,17 +2,17 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/FontManager.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
-#include <pathspace/ui/TextBuilder.hpp>
+#include <pathspace/ui/runtime/TextRuntime.hpp>
 
 #include <array>
 
 namespace {
 
-using namespace SP::UI::Builders;
-namespace Text = SP::UI::Builders::Text;
+using namespace SP::UI::Runtime;
+namespace Text = SP::UI::Runtime::Text;
 
 auto default_typography() -> Widgets::TypographyStyle {
     Widgets::TypographyStyle typography{};
@@ -105,7 +105,7 @@ TEST_CASE("TextBuilder builds shaped bucket when shaping context available") {
     SP::App::AppRootPathView app_view{app_root.getPath()};
 
     SP::UI::FontManager manager(space);
-    SP::UI::Builders::Resources::Fonts::RegisterFontParams params{
+    SP::UI::Runtime::Resources::Fonts::RegisterFontParams params{
         .family = "DemoSans",
         .style = "Regular",
         .weight = "400",

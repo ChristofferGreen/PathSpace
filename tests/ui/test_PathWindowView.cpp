@@ -1,7 +1,7 @@
 #include "third_party/doctest.h"
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
@@ -390,7 +390,7 @@ TEST_CASE("WritePresentMetrics stores presenter results in PathSpace") {
     policy.frame_timeout_ms_value = 33.0;
 
     auto targetPath = ConcretePathString{"/renderers/r/targets/surfaces/main"};
-    auto writeStatus = Builders::Diagnostics::WritePresentMetrics(
+    auto writeStatus = Runtime::Diagnostics::WritePresentMetrics(
         space,
         ConcretePathStringView{targetPath.getPath()},
         stats,
@@ -428,7 +428,7 @@ TEST_CASE("WritePresentMetrics stores presenter results in PathSpace") {
     REQUIRE(lastError);
     CHECK(*lastError == "ok");
 
-    auto diag = Builders::Diagnostics::ReadTargetError(
+    auto diag = Runtime::Diagnostics::ReadTargetError(
         space,
         ConcretePathStringView{targetPath.getPath()});
     REQUIRE(diag);
@@ -494,7 +494,7 @@ TEST_CASE("WriteWindowPresentMetrics mirrors presenter stats to window diagnosti
     policy.vsync_align = true;
 
     auto windowPath = ConcretePathString{"/windows/main"};
-    auto writeStatus = Builders::Diagnostics::WriteWindowPresentMetrics(space,
+    auto writeStatus = Runtime::Diagnostics::WriteWindowPresentMetrics(space,
                                                                         ConcretePathStringView{windowPath.getPath()},
                                                                         "view",
                                                                         stats,

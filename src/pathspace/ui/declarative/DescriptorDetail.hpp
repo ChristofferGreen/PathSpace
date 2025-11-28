@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/core/Error.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
 
 #include <optional>
@@ -11,7 +11,7 @@
 
 namespace SP::UI::Declarative::DescriptorDetail {
 
-namespace BuilderWidgets = SP::UI::Builders::Widgets;
+namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 
 struct ThemeContext {
     BuilderWidgets::WidgetTheme theme{};
@@ -25,7 +25,7 @@ auto MakeDescriptorError(std::string message,
 auto KindFromString(std::string_view raw) -> std::optional<WidgetKind>;
 
 auto ResolveThemeForWidget(PathSpace& space,
-                           SP::UI::Builders::WidgetPath const& widget)
+                           SP::UI::Runtime::WidgetPath const& widget)
     -> SP::Expected<ThemeContext>;
 
 void ApplyThemeOverride(ThemeContext const& theme, WidgetDescriptor& descriptor);
@@ -45,7 +45,7 @@ auto ReadStackDescriptor(PathSpace& space, std::string const& root)
 auto ReadLabelDescriptor(PathSpace& space, std::string const& root)
     -> SP::Expected<LabelDescriptor>;
 auto ReadInputFieldDescriptor(PathSpace& space,
-                              SP::UI::Builders::WidgetPath const& widget,
+                              SP::UI::Runtime::WidgetPath const& widget,
                               BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<InputFieldDescriptor>;
 auto ReadPaintSurfaceDescriptor(PathSpace& space, std::string const& root)

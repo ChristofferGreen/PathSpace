@@ -1,9 +1,5 @@
 #pragma once
 
-#if defined(PATHSPACE_DISABLE_LEGACY_BUILDERS) && !defined(PATHSPACE_LEGACY_ALLOW_BUILDERS_HEADER)
-#error "Legacy widget builders have been disabled (set PATHSPACE_DISABLE_LEGACY_BUILDERS=OFF or migrate to SP::UI::Declarative)."
-#endif
-
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/task/Future.hpp>
@@ -11,7 +7,7 @@
 #include <pathspace/ui/HtmlSerialization.hpp>
 #include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
-#include <pathspace/ui/SurfaceTypes.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 #include <pathspace/ui/runtime/RenderSettings.hpp>
 
 #include <algorithm>
@@ -31,19 +27,13 @@
 #include <vector>
 
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
-#include <pathspace/ui/TextBuilder.hpp>
+#include <pathspace/ui/runtime/TextRuntime.hpp>
 #include <pathspace/ui/LocalWindowBridge.hpp>
-#include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/ui/WidgetSharedTypes.hpp>
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
 
-namespace SP::UI::Builders {
-
-using Runtime::DirtyRectHint;
-using Runtime::MakeDirtyRectHint;
-using Runtime::RenderSettings;
-using Runtime::RendererKind;
+namespace SP::UI::Runtime {
 
 struct SceneParams {
     std::string name;
@@ -574,4 +564,4 @@ auto WriteResidencyMetrics(PathSpace& space,
 
 } // namespace Diagnostics
 
-} // namespace SP::UI::Builders
+} // namespace SP::UI::Runtime

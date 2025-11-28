@@ -1,10 +1,9 @@
 #include "third_party/doctest.h"
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
-#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -20,7 +19,7 @@
 namespace {
 
 using namespace SP;
-using namespace SP::UI::Builders;
+using namespace SP::UI::Runtime;
 using namespace SP::UI::Scene;
 
 struct SnapshotFixture {
@@ -352,7 +351,6 @@ TEST_CASE("rapid publishes maintain retention and latest revision") {
     };
 
     auto publish_worker = [&](int thread_id) {
-        SP::UI::LegacyBuilders::ScopedAllow legacy_allow;
         for (int i = 0; i < kPublishesPerThread; ++i) {
             auto bucket = make_bucket(2, 2);
             SnapshotPublishOptions opts{};

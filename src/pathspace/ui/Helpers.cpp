@@ -1,20 +1,19 @@
 #include "Helpers.hpp"
 
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
-#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/declarative/Detail.hpp>
 
 namespace SP::UI {
 
 namespace {
 
-auto root_view(AppRootPath const& root) -> Builders::AppRootPathView {
-    return Builders::AppRootPathView{root.getPath()};
+auto root_view(AppRootPath const& root) -> Runtime::AppRootPathView {
+    return Runtime::AppRootPathView{root.getPath()};
 }
 
-auto path_view(ConcretePath const& path) -> Builders::ConcretePathView {
-    return Builders::ConcretePathView{path.getPath()};
+auto path_view(ConcretePath const& path) -> Runtime::ConcretePathView {
+    return Runtime::ConcretePathView{path.getPath()};
 }
 
 auto relative_to_root(SP::App::AppRootPathView root,
@@ -44,11 +43,11 @@ auto relative_to_root(SP::App::AppRootPathView root,
 namespace Scene {
 
 auto Create(PathSpace& space, AppRootPath const& appRoot, SceneParams const& params) -> SP::Expected<ScenePath> {
-    return Builders::Scene::Create(space, root_view(appRoot), params);
+    return Runtime::Scene::Create(space, root_view(appRoot), params);
 }
 
 auto EnsureAuthoringRoot(PathSpace& space, ScenePath const& scenePath) -> SP::Expected<void> {
-    return Builders::Scene::EnsureAuthoringRoot(space, scenePath);
+    return Runtime::Scene::EnsureAuthoringRoot(space, scenePath);
 }
 
 auto PublishRevision(PathSpace& space,
@@ -56,18 +55,17 @@ auto PublishRevision(PathSpace& space,
                      SceneRevisionDesc const& revision,
                      std::span<std::byte const> drawableBucket,
                      std::span<std::byte const> metadata) -> SP::Expected<void> {
-    SP::UI::LegacyBuilders::ScopedAllow publish_allow{};
-    return Builders::Scene::PublishRevision(space, scenePath, revision, drawableBucket, metadata);
+    return Runtime::Scene::PublishRevision(space, scenePath, revision, drawableBucket, metadata);
 }
 
 auto ReadCurrentRevision(PathSpace const& space, ScenePath const& scenePath) -> SP::Expected<SceneRevisionDesc> {
-    return Builders::Scene::ReadCurrentRevision(space, scenePath);
+    return Runtime::Scene::ReadCurrentRevision(space, scenePath);
 }
 
 auto WaitUntilReady(PathSpace& space,
                     ScenePath const& scenePath,
                     std::chrono::milliseconds timeout) -> SP::Expected<void> {
-    return Builders::Scene::WaitUntilReady(space, scenePath, timeout);
+    return Runtime::Scene::WaitUntilReady(space, scenePath, timeout);
 }
 
 } // namespace Scene
@@ -77,31 +75,31 @@ namespace Renderer {
 auto Create(PathSpace& space,
             AppRootPath const& appRoot,
             RendererParams const& params) -> SP::Expected<RendererPath> {
-    return Builders::Renderer::Create(space, root_view(appRoot), params);
+    return Runtime::Renderer::Create(space, root_view(appRoot), params);
 }
 
 auto ResolveTargetBase(PathSpace const& space,
                        AppRootPath const& appRoot,
                        RendererPath const& rendererPath,
                        std::string_view targetSpec) -> SP::Expected<ConcretePath> {
-    return Builders::Renderer::ResolveTargetBase(space, root_view(appRoot), rendererPath, targetSpec);
+    return Runtime::Renderer::ResolveTargetBase(space, root_view(appRoot), rendererPath, targetSpec);
 }
 
 auto UpdateSettings(PathSpace& space,
                     ConcretePath const& targetPath,
                     RenderSettings const& settings) -> SP::Expected<void> {
-    return Builders::Renderer::UpdateSettings(space, path_view(targetPath), settings);
+    return Runtime::Renderer::UpdateSettings(space, path_view(targetPath), settings);
 }
 
 auto ReadSettings(PathSpace const& space,
                   ConcretePath const& targetPath) -> SP::Expected<RenderSettings> {
-    return Builders::Renderer::ReadSettings(space, path_view(targetPath));
+    return Runtime::Renderer::ReadSettings(space, path_view(targetPath));
 }
 
 auto TriggerRender(PathSpace& space,
                    ConcretePath const& targetPath,
                    RenderSettings const& settings) -> SP::Expected<SP::FutureAny> {
-    return Builders::Renderer::TriggerRender(space, path_view(targetPath), settings);
+    return Runtime::Renderer::TriggerRender(space, path_view(targetPath), settings);
 }
 
 } // namespace Renderer
@@ -111,7 +109,7 @@ namespace Surface {
 auto Create(PathSpace& space,
             AppRootPath const& appRoot,
             SurfaceParams const& params) -> SP::Expected<SurfacePath> {
-    return Builders::Surface::Create(space, root_view(appRoot), params);
+    return Runtime::Surface::Create(space, root_view(appRoot), params);
 }
 
 auto SetScene(PathSpace& space,
@@ -166,7 +164,7 @@ auto SetScene(PathSpace& space,
 auto RenderOnce(PathSpace& space,
                 SurfacePath const& surfacePath,
                 std::optional<RenderSettings> settingsOverride) -> SP::Expected<SP::FutureAny> {
-    return Builders::Surface::RenderOnce(space, surfacePath, settingsOverride);
+    return Runtime::Surface::RenderOnce(space, surfacePath, settingsOverride);
 }
 
 } // namespace Surface
@@ -176,27 +174,27 @@ namespace Window {
 auto Create(PathSpace& space,
             AppRootPath const& appRoot,
             WindowParams const& params) -> SP::Expected<WindowPath> {
-    return Builders::Window::Create(space, root_view(appRoot), params);
+    return Runtime::Window::Create(space, root_view(appRoot), params);
 }
 
 auto AttachSurface(PathSpace& space,
                    WindowPath const& windowPath,
                    std::string_view viewName,
                    SurfacePath const& surfacePath) -> SP::Expected<void> {
-    return Builders::Window::AttachSurface(space, windowPath, viewName, surfacePath);
+    return Runtime::Window::AttachSurface(space, windowPath, viewName, surfacePath);
 }
 
 auto AttachHtmlTarget(PathSpace& space,
                       WindowPath const& windowPath,
                       std::string_view viewName,
                       HtmlTargetPath const& targetPath) -> SP::Expected<void> {
-    return Builders::Window::AttachHtmlTarget(space, windowPath, viewName, targetPath);
+    return Runtime::Window::AttachHtmlTarget(space, windowPath, viewName, targetPath);
 }
 
 auto Present(PathSpace& space,
              WindowPath const& windowPath,
-             std::string_view viewName) -> SP::Expected<Builders::Window::WindowPresentResult> {
-    return Builders::Window::Present(space, windowPath, viewName);
+             std::string_view viewName) -> SP::Expected<Runtime::Window::WindowPresentResult> {
+    return Runtime::Window::Present(space, windowPath, viewName);
 }
 
 } // namespace Window
@@ -205,12 +203,12 @@ namespace Diagnostics {
 
 auto ReadTargetMetrics(PathSpace const& space,
                        ConcretePath const& targetPath) -> SP::Expected<TargetMetrics> {
-    return Builders::Diagnostics::ReadTargetMetrics(space, path_view(targetPath));
+    return Runtime::Diagnostics::ReadTargetMetrics(space, path_view(targetPath));
 }
 
 auto ClearTargetError(PathSpace& space,
                       ConcretePath const& targetPath) -> SP::Expected<void> {
-    return Builders::Diagnostics::ClearTargetError(space, path_view(targetPath));
+    return Runtime::Diagnostics::ClearTargetError(space, path_view(targetPath));
 }
 
 } // namespace Diagnostics

@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/Helpers.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 
 #include <chrono>
 #include <cstddef>
@@ -35,7 +35,7 @@ TEST_CASE("Scene::Create returns canonical scene path") {
     REQUIRE(helperResult.has_value());
     CHECK(helperResult->getPath() == "/system/applications/test_app/scenes/main");
 
-    auto builderResult = SP::UI::Builders::Scene::Create(fx.space, fx.root_view(), params);
+    auto builderResult = SP::UI::Runtime::Scene::Create(fx.space, fx.root_view(), params);
     REQUIRE(builderResult.has_value());
     CHECK(builderResult->getPath() == helperResult->getPath());
 }
@@ -50,7 +50,7 @@ TEST_CASE("Scene::Create rejects invalid scene name") {
     auto helperResult = Scene::Create(fx.space, fx.app_root, params);
     CHECK_FALSE(helperResult.has_value());
 
-    auto builderResult = SP::UI::Builders::Scene::Create(fx.space, fx.root_view(), params);
+    auto builderResult = SP::UI::Runtime::Scene::Create(fx.space, fx.root_view(), params);
     CHECK_FALSE(builderResult.has_value());
 }
 
@@ -63,13 +63,13 @@ TEST_CASE("Renderer::ResolveTargetBase builds relative target path") {
     };
     auto helperRenderer = Renderer::Create(fx.space, fx.app_root, rendererParams);
     REQUIRE(helperRenderer.has_value());
-    auto builderRenderer = SP::UI::Builders::Renderer::Create(fx.space, fx.root_view(), rendererParams);
+    auto builderRenderer = SP::UI::Runtime::Renderer::Create(fx.space, fx.root_view(), rendererParams);
     REQUIRE(builderRenderer.has_value());
     CHECK(builderRenderer->getPath() == helperRenderer->getPath());
 
     auto helperTarget = Renderer::ResolveTargetBase(fx.space, fx.app_root, *helperRenderer, "targets/surfaces/editor/settings");
     REQUIRE(helperTarget.has_value());
-    auto builderTarget = SP::UI::Builders::Renderer::ResolveTargetBase(fx.space, fx.root_view(), *helperRenderer, "targets/surfaces/editor/settings");
+    auto builderTarget = SP::UI::Runtime::Renderer::ResolveTargetBase(fx.space, fx.root_view(), *helperRenderer, "targets/surfaces/editor/settings");
     REQUIRE(builderTarget.has_value());
     CHECK(builderTarget->getPath() == helperTarget->getPath());
 }
@@ -112,7 +112,7 @@ TEST_CASE("Window::Create returns canonical path") {
     REQUIRE(helperWindow.has_value());
     CHECK(helperWindow->getPath() == "/system/applications/test_app/windows/MainWindow");
 
-    auto builderWindow = SP::UI::Builders::Window::Create(fx.space, fx.root_view(), params);
+    auto builderWindow = SP::UI::Runtime::Window::Create(fx.space, fx.root_view(), params);
     REQUIRE(builderWindow.has_value());
     CHECK(builderWindow->getPath() == helperWindow->getPath());
 }

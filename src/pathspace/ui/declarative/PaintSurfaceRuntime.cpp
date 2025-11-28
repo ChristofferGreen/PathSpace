@@ -4,7 +4,7 @@
 
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/path/ConcretePath.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 
 #include <algorithm>
 #include <array>
@@ -24,7 +24,7 @@ namespace {
 namespace WidgetDetail = SP::UI::Declarative::Detail;
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
 using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
-using SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
+using SP::UI::Runtime::Widgets::Bindings::WidgetOpKind;
 
 constexpr std::string_view kStrokePrefix{"paint_surface/stroke/"};
 constexpr std::size_t kMaxPendingDirty = 32;

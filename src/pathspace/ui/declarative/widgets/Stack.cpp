@@ -8,8 +8,8 @@
 namespace SP::UI::Declarative {
 
 namespace WidgetDetail = SP::UI::Declarative::Detail;
-using SP::UI::Builders::WidgetPath;
-namespace BuilderWidgets = SP::UI::Builders::Widgets;
+using SP::UI::Runtime::WidgetPath;
+namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
 
 namespace {

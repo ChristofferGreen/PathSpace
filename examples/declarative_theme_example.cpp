@@ -128,7 +128,7 @@ int main() {
     auto button_theme_paths = unwrap_or_exit(
         ThemeConfig::Resolve(app_view, sunset_theme.canonical_name),
         "Resolve sunset theme");
-    auto compiled = unwrap_or_exit(space.read<SP::UI::Builders::Widgets::WidgetTheme, std::string>(
+    auto compiled = unwrap_or_exit(space.read<SP::UI::Runtime::Widgets::WidgetTheme, std::string>(
                                       button_theme_paths.value.getPath()),
                                    "Read compiled sunset theme");
 
@@ -145,7 +145,7 @@ int main() {
     auto updated_paths = unwrap_or_exit(
         ThemeConfig::Resolve(app_view, base_theme.canonical_name),
         "Resolve sunrise theme");
-    auto updated = unwrap_or_exit(space.read<SP::UI::Builders::Widgets::WidgetTheme, std::string>(
+    auto updated = unwrap_or_exit(space.read<SP::UI::Runtime::Widgets::WidgetTheme, std::string>(
                                       updated_paths.value.getPath()),
                                    "Read compiled sunrise theme");
     std::cout << "Now active theme: " << base_theme.canonical_name << '\n'

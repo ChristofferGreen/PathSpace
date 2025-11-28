@@ -1,7 +1,7 @@
 #include "third_party/doctest.h"
 
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
@@ -9,7 +9,7 @@
 #include <thread>
 
 TEST_CASE("InputTask updates per-widget handler metrics") {
-    using WidgetOp = SP::UI::Builders::Widgets::Bindings::WidgetOp;
+    using WidgetOp = SP::UI::Runtime::Widgets::Bindings::WidgetOp;
     using HandlerBinding = SP::UI::Declarative::HandlerBinding;
     using HandlerKind = SP::UI::Declarative::HandlerKind;
 
@@ -24,7 +24,7 @@ TEST_CASE("InputTask updates per-widget handler metrics") {
     REQUIRE(space.insert(widget_path + "/events/press/handler", binding).errors.empty());
 
     WidgetOp op{};
-    op.kind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate;
+    op.kind = SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Activate;
     op.widget_path = widget_path;
     op.target_id = "button/background";
     REQUIRE(space.insert(widget_path + "/ops/inbox/queue", op).errors.empty());

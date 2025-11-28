@@ -1,8 +1,7 @@
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
-#include <pathspace/ui/LegacyBuildersDeprecation.hpp>
 
 #include "SceneSnapshotBuilderDetail.hpp"
 
@@ -284,7 +283,7 @@ auto SceneSnapshotBuilder::next_revision(std::optional<std::uint64_t> requested)
 auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
                                         DrawableBucketSnapshot const& bucket,
                                         SnapshotMetadata const& metadata) -> Expected<void> {
-    auto revisionDesc = Builders::SceneRevisionDesc{};
+    auto revisionDesc = Runtime::SceneRevisionDesc{};
     revisionDesc.revision     = revision;
     revisionDesc.published_at = metadata.created_at;
     revisionDesc.author       = metadata.author;
@@ -507,8 +506,7 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
         return status;
     }
 
-    SP::UI::LegacyBuilders::ScopedAllow publish_allow{};
-    auto publish = Builders::Scene::PublishRevision(space_,
+    auto publish = Runtime::Scene::PublishRevision(space_,
                                                     scene_path_,
                                                     revisionDesc,
                                                     to_view(*encodedManifest),

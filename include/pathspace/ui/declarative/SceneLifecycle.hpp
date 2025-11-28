@@ -57,21 +57,21 @@ auto StopAll(PathSpace& space) -> void;
 
 [[nodiscard]] auto MarkDirty(PathSpace& space,
                              SP::UI::ScenePath const& scene_path,
-                             SP::UI::Builders::Scene::DirtyKind kinds,
+                             SP::UI::Runtime::Scene::DirtyKind kinds,
                              std::chrono::system_clock::time_point timestamp = std::chrono::system_clock::now())
     -> SP::Expected<std::uint64_t>;
 
 [[nodiscard]] auto ClearDirty(PathSpace& space,
                               SP::UI::ScenePath const& scene_path,
-                              SP::UI::Builders::Scene::DirtyKind kinds) -> SP::Expected<void>;
+                              SP::UI::Runtime::Scene::DirtyKind kinds) -> SP::Expected<void>;
 
 [[nodiscard]] auto ReadDirtyState(PathSpace const& space,
                                   SP::UI::ScenePath const& scene_path)
-    -> SP::Expected<SP::UI::Builders::Scene::DirtyState>;
+    -> SP::Expected<SP::UI::Runtime::Scene::DirtyState>;
 
 [[nodiscard]] auto TakeDirtyEvent(PathSpace& space,
                                   SP::UI::ScenePath const& scene_path,
                                   std::chrono::milliseconds timeout)
-    -> SP::Expected<SP::UI::Builders::Scene::DirtyEvent>;
+    -> SP::Expected<SP::UI::Runtime::Scene::DirtyEvent>;
 
 } // namespace SP::UI::Declarative::SceneLifecycle

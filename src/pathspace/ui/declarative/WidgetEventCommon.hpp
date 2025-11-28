@@ -2,7 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/io/IoEvents.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/declarative/WidgetEventTrellis.hpp>
 
 #include <cstdint>
@@ -14,9 +14,9 @@
 
 namespace SP::UI::Declarative {
 
-namespace BuilderWidgets = SP::UI::Builders::Widgets;
-namespace WidgetBindings = SP::UI::Builders::Widgets::Bindings;
-namespace BuildersScene = SP::UI::Builders::Scene;
+namespace BuilderWidgets = SP::UI::Runtime::Widgets;
+namespace WidgetBindings = SP::UI::Runtime::Widgets::Bindings;
+namespace BuildersScene = SP::UI::Runtime::Scene;
 
 inline constexpr std::string_view kWidgetEventsLogQueue =
     "/system/widgets/runtime/events/log/errors/queue";

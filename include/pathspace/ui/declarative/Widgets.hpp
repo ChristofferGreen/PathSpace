@@ -18,7 +18,7 @@
 
 namespace SP::UI::Declarative {
 
-namespace BuilderWidgets = SP::UI::Builders::Widgets;
+namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 
 struct FragmentContext {
     PathSpace& space;
@@ -77,23 +77,23 @@ auto MountFragment(PathSpace& space,
                    SP::App::ConcretePathView parent,
                    std::string_view name,
                    WidgetFragment const& fragment,
-                   MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
+                   MountOptions const& options = {}) -> SP::Expected<SP::UI::Runtime::WidgetPath>;
 
-auto Remove(PathSpace& space, SP::UI::Builders::WidgetPath const& widget) -> SP::Expected<void>;
+auto Remove(PathSpace& space, SP::UI::Runtime::WidgetPath const& widget) -> SP::Expected<void>;
 
 auto Move(PathSpace& space,
-          SP::UI::Builders::WidgetPath const& widget,
+          SP::UI::Runtime::WidgetPath const& widget,
           SP::App::ConcretePathView new_parent,
           std::string_view new_name,
-          MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
+          MountOptions const& options = {}) -> SP::Expected<SP::UI::Runtime::WidgetPath>;
 
 struct WidgetContext {
-    WidgetContext(PathSpace& space_in, SP::UI::Builders::WidgetPath widget_in)
+    WidgetContext(PathSpace& space_in, SP::UI::Runtime::WidgetPath widget_in)
         : space(space_in)
         , widget(std::move(widget_in)) {}
 
     PathSpace& space;
-    SP::UI::Builders::WidgetPath widget;
+    SP::UI::Runtime::WidgetPath widget;
 };
 
 struct ButtonContext : WidgetContext {
@@ -184,17 +184,17 @@ namespace Handlers {
 using HandlerTransformer = std::function<HandlerVariant(HandlerVariant const&)>;
 
 auto Read(PathSpace& space,
-          SP::UI::Builders::WidgetPath const& widget,
+          SP::UI::Runtime::WidgetPath const& widget,
           std::string_view event) -> SP::Expected<std::optional<HandlerVariant>>;
 
 auto Replace(PathSpace& space,
-             SP::UI::Builders::WidgetPath const& widget,
+             SP::UI::Runtime::WidgetPath const& widget,
              std::string_view event,
              HandlerKind kind,
              HandlerVariant handler) -> SP::Expected<HandlerOverrideToken>;
 
 auto Wrap(PathSpace& space,
-          SP::UI::Builders::WidgetPath const& widget,
+          SP::UI::Runtime::WidgetPath const& widget,
           std::string_view event,
           HandlerKind kind,
           HandlerTransformer const& transformer) -> SP::Expected<HandlerOverrideToken>;
@@ -208,7 +208,7 @@ namespace Button {
 struct Args {
     std::string label = "Button";
     bool enabled = true;
-    SP::UI::Builders::Widgets::ButtonStyle style{};
+    SP::UI::Runtime::Widgets::ButtonStyle style{};
     std::optional<std::string> theme;
     std::optional<ButtonHandler> on_press;
     std::vector<std::pair<std::string, WidgetFragment>> children;
@@ -219,7 +219,7 @@ auto Create(PathSpace& space,
             SP::App::ConcretePathView parent,
             std::string_view name,
             Args args = {},
-            MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
+            MountOptions const& options = {}) -> SP::Expected<SP::UI::Runtime::WidgetPath>;
 
 template <typename Label,
           typename = std::enable_if_t<std::is_convertible_v<Label, std::string_view>>>
@@ -227,7 +227,7 @@ inline auto Create(PathSpace& space,
                    SP::App::ConcretePathView parent,
                    std::string_view name,
                    Label&& label,
-                   ButtonHandler handler = {}) -> SP::Expected<SP::UI::Builders::WidgetPath> {
+                   ButtonHandler handler = {}) -> SP::Expected<SP::UI::Runtime::WidgetPath> {
     Args args{};
     args.label = std::string(std::string_view{label});
     if (handler) {
@@ -235,9 +235,9 @@ inline auto Create(PathSpace& space,
     }
     return Create(space, parent, name, std::move(args));
 }
-auto SetLabel(PathSpace& space, SP::UI::Builders::WidgetPath const& widget, std::string_view label)
+auto SetLabel(PathSpace& space, SP::UI::Runtime::WidgetPath const& widget, std::string_view label)
     -> SP::Expected<void>;
-auto SetEnabled(PathSpace& space, SP::UI::Builders::WidgetPath const& widget, bool enabled)
+auto SetEnabled(PathSpace& space, SP::UI::Runtime::WidgetPath const& widget, bool enabled)
     -> SP::Expected<void>;
 
 } // namespace Button
@@ -247,7 +247,7 @@ namespace Toggle {
 struct Args {
     bool enabled = true;
     bool checked = false;
-    SP::UI::Builders::Widgets::ToggleStyle style{};
+    SP::UI::Runtime::Widgets::ToggleStyle style{};
     std::optional<ToggleHandler> on_toggle;
     std::vector<std::pair<std::string, WidgetFragment>> children;
 };
@@ -257,8 +257,8 @@ auto Create(PathSpace& space,
             SP::App::ConcretePathView parent,
             std::string_view name,
             Args args = {},
-            MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
-auto SetChecked(PathSpace& space, SP::UI::Builders::WidgetPath const& widget, bool checked)
+            MountOptions const& options = {}) -> SP::Expected<SP::UI::Runtime::WidgetPath>;
+auto SetChecked(PathSpace& space, SP::UI::Runtime::WidgetPath const& widget, bool checked)
     -> SP::Expected<void>;
 
 } // namespace Toggle
@@ -271,7 +271,7 @@ struct Args {
     float value = 0.5f;
     float step = 0.0f;
     bool enabled = true;
-    SP::UI::Builders::Widgets::SliderStyle style{};
+    SP::UI::Runtime::Widgets::SliderStyle style{};
     std::optional<SliderHandler> on_change;
 };
 
@@ -280,8 +280,8 @@ auto Create(PathSpace& space,
             SP::App::ConcretePathView parent,
             std::string_view name,
             Args args = {},
-            MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
-auto SetValue(PathSpace& space, SP::UI::Builders::WidgetPath const& widget, float value)
+            MountOptions const& options = {}) -> SP::Expected<SP::UI::Runtime::WidgetPath>;
+auto SetValue(PathSpace& space, SP::UI::Runtime::WidgetPath const& widget, float value)
     -> SP::Expected<void>;
 
 } // namespace Slider
@@ -290,7 +290,7 @@ namespace Label {
 
 struct Args {
     std::string text;
-    SP::UI::Builders::Widgets::TypographyStyle typography{};
+    SP::UI::Runtime::Widgets::TypographyStyle typography{};
     std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
     std::optional<LabelHandler> on_activate;
 };
@@ -300,30 +300,30 @@ auto Create(PathSpace& space,
             SP::App::ConcretePathView parent,
             std::string_view name,
             Args args,
-            MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
+            MountOptions const& options = {}) -> SP::Expected<SP::UI::Runtime::WidgetPath>;
 
 template <typename Text,
           typename = std::enable_if_t<std::is_convertible_v<Text, std::string_view>>>
 inline auto Create(PathSpace& space,
                    SP::App::ConcretePathView parent,
                    std::string_view name,
-                   Text&& text) -> SP::Expected<SP::UI::Builders::WidgetPath> {
+                   Text&& text) -> SP::Expected<SP::UI::Runtime::WidgetPath> {
     Args args{};
     args.text = std::string(std::string_view{text});
     return Create(space, parent, name, std::move(args));
 }
-auto SetText(PathSpace& space, SP::UI::Builders::WidgetPath const& widget, std::string_view text)
+auto SetText(PathSpace& space, SP::UI::Runtime::WidgetPath const& widget, std::string_view text)
     -> SP::Expected<void>;
 
 } // namespace Label
 
 namespace List {
 
-using ListItem = SP::UI::Builders::Widgets::ListItem;
+using ListItem = SP::UI::Runtime::Widgets::ListItem;
 
 struct Args {
     std::vector<ListItem> items;
-    SP::UI::Builders::Widgets::ListStyle style{};
+    SP::UI::Runtime::Widgets::ListStyle style{};
     std::optional<ListChildHandler> on_child_event;
     std::vector<std::pair<std::string, WidgetFragment>> children;
 };
@@ -333,20 +333,20 @@ auto Create(PathSpace& space,
             SP::App::ConcretePathView parent,
             std::string_view name,
             Args args = {},
-            MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
+            MountOptions const& options = {}) -> SP::Expected<SP::UI::Runtime::WidgetPath>;
 auto SetItems(PathSpace& space,
-              SP::UI::Builders::WidgetPath const& widget,
+              SP::UI::Runtime::WidgetPath const& widget,
               std::vector<ListItem> items) -> SP::Expected<void>;
 
 } // namespace List
 
 namespace Tree {
 
-using TreeNode = SP::UI::Builders::Widgets::TreeNode;
+using TreeNode = SP::UI::Runtime::Widgets::TreeNode;
 
 struct Args {
     std::vector<TreeNode> nodes;
-    SP::UI::Builders::Widgets::TreeStyle style{};
+    SP::UI::Runtime::Widgets::TreeStyle style{};
     std::optional<TreeNodeHandler> on_node_event;
 };
 
@@ -355,9 +355,9 @@ auto Create(PathSpace& space,
             SP::App::ConcretePathView parent,
             std::string_view name,
             Args args = {},
-            MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
+            MountOptions const& options = {}) -> SP::Expected<SP::UI::Runtime::WidgetPath>;
 auto SetNodes(PathSpace& space,
-              SP::UI::Builders::WidgetPath const& widget,
+              SP::UI::Runtime::WidgetPath const& widget,
               std::vector<TreeNode> nodes) -> SP::Expected<void>;
 
 } // namespace Tree
@@ -381,9 +381,9 @@ auto Create(PathSpace& space,
             SP::App::ConcretePathView parent,
             std::string_view name,
             Args args,
-            MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
+            MountOptions const& options = {}) -> SP::Expected<SP::UI::Runtime::WidgetPath>;
 auto SetActivePanel(PathSpace& space,
-                    SP::UI::Builders::WidgetPath const& widget,
+                    SP::UI::Runtime::WidgetPath const& widget,
                     std::string_view panel_id) -> SP::Expected<void>;
 
 } // namespace Stack
@@ -403,8 +403,8 @@ auto Create(PathSpace& space,
             SP::App::ConcretePathView parent,
             std::string_view name,
             Args args = {},
-            MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
-auto SetText(PathSpace& space, SP::UI::Builders::WidgetPath const& widget, std::string_view text)
+            MountOptions const& options = {}) -> SP::Expected<SP::UI::Runtime::WidgetPath>;
+auto SetText(PathSpace& space, SP::UI::Runtime::WidgetPath const& widget, std::string_view text)
     -> SP::Expected<void>;
 
 } // namespace InputField
@@ -426,7 +426,7 @@ auto Create(PathSpace& space,
             SP::App::ConcretePathView parent,
             std::string_view name,
             Args args = {},
-            MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
+            MountOptions const& options = {}) -> SP::Expected<SP::UI::Runtime::WidgetPath>;
 
 } // namespace PaintSurface
 
@@ -436,13 +436,13 @@ auto Mount(PathSpace& space,
            SP::App::ConcretePathView parent,
            std::string_view name,
            WidgetFragment const& fragment,
-           MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath>;
+           MountOptions const& options = {}) -> SP::Expected<SP::UI::Runtime::WidgetPath>;
 
 inline auto Move(PathSpace& space,
-                 SP::UI::Builders::WidgetPath const& widget,
+                 SP::UI::Runtime::WidgetPath const& widget,
                  SP::App::ConcretePathView new_parent,
                  std::string_view new_name,
-                 MountOptions const& options = {}) -> SP::Expected<SP::UI::Builders::WidgetPath> {
+                 MountOptions const& options = {}) -> SP::Expected<SP::UI::Runtime::WidgetPath> {
     return SP::UI::Declarative::Move(space, widget, new_parent, new_name, options);
 }
 

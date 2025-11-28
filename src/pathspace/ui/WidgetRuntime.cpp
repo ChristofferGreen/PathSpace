@@ -1,10 +1,10 @@
 #include "WidgetDetail.hpp"
 
-#include <pathspace/ui/TextBuilder.hpp>
+#include <pathspace/ui/runtime/TextRuntime.hpp>
 
 #include <cstring>
 
-namespace SP::UI::Builders::Widgets {
+namespace SP::UI::Runtime::Widgets {
 
 using namespace Detail;
 
@@ -259,7 +259,6 @@ auto ResolveHitTarget(Scene::HitTestResult const& hit) -> std::optional<HitTarge
 auto CreateButton(PathSpace& space,
                   AppRootPathView appRoot,
                   ButtonParams const& params) -> SP::Expected<ButtonPaths> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateButton");
     if (auto status = ensure_identifier(params.name, "widget name"); !status) {
         return std::unexpected(status.error());
     }
@@ -343,7 +342,6 @@ auto ensure_toggle_scene(PathSpace& space,
 auto CreateToggle(PathSpace& space,
                   AppRootPathView appRoot,
                   Widgets::ToggleParams const& params) -> SP::Expected<Widgets::TogglePaths> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateToggle");
     if (auto status = ensure_identifier(params.name, "widget name"); !status) {
         return std::unexpected(status.error());
     }
@@ -385,7 +383,6 @@ auto CreateToggle(PathSpace& space,
 auto CreateSlider(PathSpace& space,
                   AppRootPathView appRoot,
                   Widgets::SliderParams const& params) -> SP::Expected<Widgets::SliderPaths> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateSlider");
     if (auto status = ensure_identifier(params.name, "widget name"); !status) {
         return std::unexpected(status.error());
     }
@@ -462,7 +459,6 @@ auto CreateSlider(PathSpace& space,
 auto CreateList(PathSpace& space,
                 AppRootPathView appRoot,
                 Widgets::ListParams const& params) -> SP::Expected<Widgets::ListPaths> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateList");
     if (auto status = ensure_identifier(params.name, "widget name"); !status) {
         return std::unexpected(status.error());
     }
@@ -552,7 +548,6 @@ auto CreateList(PathSpace& space,
 auto CreateTree(PathSpace& space,
                 AppRootPathView appRoot,
                 Widgets::TreeParams const& params) -> SP::Expected<Widgets::TreePaths> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateTree");
     if (auto status = ensure_identifier(params.name, "widget name"); !status) {
         return std::unexpected(status.error());
     }
@@ -620,7 +615,6 @@ auto CreateTree(PathSpace& space,
 auto CreateTextField(PathSpace& space,
                      AppRootPathView appRoot,
                      Widgets::TextFieldParams const& params) -> SP::Expected<Widgets::TextFieldPaths> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateTextField");
     if (auto status = ensure_identifier(params.name, "widget name"); !status) {
         return std::unexpected(status.error());
     }
@@ -670,7 +664,6 @@ auto CreateTextField(PathSpace& space,
 auto CreateTextArea(PathSpace& space,
                     AppRootPathView appRoot,
                     Widgets::TextAreaParams const& params) -> SP::Expected<Widgets::TextAreaPaths> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateTextArea");
     if (auto status = ensure_identifier(params.name, "widget name"); !status) {
         return std::unexpected(status.error());
     }
@@ -721,7 +714,6 @@ auto CreateTextArea(PathSpace& space,
 auto UpdateButtonState(PathSpace& space,
                        Widgets::ButtonPaths const& paths,
                        Widgets::ButtonState const& new_state) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::UpdateButtonState");
     auto statePath = std::string(paths.state.getPath());
     auto current = read_optional<Widgets::ButtonState>(space, statePath);
     if (!current) {
@@ -774,7 +766,6 @@ auto UpdateButtonState(PathSpace& space,
 auto SetExclusiveButtonFocus(PathSpace& space,
                              std::span<Widgets::ButtonPaths const> buttons,
                              std::optional<std::size_t> focused_index) -> SP::Expected<void> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::SetExclusiveButtonFocus");
     for (std::size_t i = 0; i < buttons.size(); ++i) {
         auto const& paths = buttons[i];
         auto statePath = std::string(paths.state.getPath());
@@ -802,7 +793,6 @@ auto SetExclusiveButtonFocus(PathSpace& space,
 auto UpdateToggleState(PathSpace& space,
                        Widgets::TogglePaths const& paths,
                        Widgets::ToggleState const& new_state) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::UpdateToggleState");
     auto statePath = std::string(paths.state.getPath());
     auto current = read_optional<Widgets::ToggleState>(space, statePath);
     if (!current) {
@@ -844,7 +834,6 @@ auto UpdateToggleState(PathSpace& space,
 auto UpdateSliderState(PathSpace& space,
                        Widgets::SliderPaths const& paths,
                        Widgets::SliderState const& new_state) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::UpdateSliderState");
     auto rangePath = std::string(paths.range.getPath());
     auto rangeValue = read_optional<Widgets::SliderRange>(space, rangePath);
     if (!rangeValue) {
@@ -1043,10 +1032,10 @@ auto Input::FocusHighlightPadding() -> float {
     return Detail::kFocusHighlightExpand + Detail::kFocusHighlightThickness;
 }
 
-auto Input::MakeDirtyHint(Input::WidgetBounds const& bounds) -> Builders::DirtyRectHint {
+auto Input::MakeDirtyHint(Input::WidgetBounds const& bounds) -> Runtime::DirtyRectHint {
     Input::WidgetBounds normalized = bounds;
     normalized.normalize();
-    Builders::DirtyRectHint hint{};
+    Runtime::DirtyRectHint hint{};
     hint.min_x = normalized.min_x;
     hint.min_y = normalized.min_y;
     hint.max_x = normalized.max_x;
@@ -1074,7 +1063,6 @@ auto Input::TranslateTreeLayout(TreeLayout& layout, float dx, float dy) -> void 
 auto UpdateListState(PathSpace& space,
                      Widgets::ListPaths const& paths,
                      Widgets::ListState const& new_state) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::UpdateListState");
     auto itemsPath = std::string(paths.root.getPath()) + "/meta/items";
     auto itemsValue = read_optional<std::vector<Widgets::ListItem>>(space, itemsPath);
     if (!itemsValue) {
@@ -1361,7 +1349,6 @@ auto BuildStackPreview(Widgets::StackLayoutStyle const& style_input,
 auto UpdateTreeState(PathSpace& space,
                      Widgets::TreePaths const& paths,
                      Widgets::TreeState const& new_state) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::UpdateTreeState");
     auto nodesValue = space.read<std::vector<TreeNode>, std::string>(paths.nodes.getPath());
     if (!nodesValue) {
         return std::unexpected(nodesValue.error());
@@ -1414,7 +1401,6 @@ auto UpdateTreeState(PathSpace& space,
 auto UpdateTextFieldState(PathSpace& space,
                           Widgets::TextFieldPaths const& paths,
                           Widgets::TextFieldState const& new_state) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::UpdateTextFieldState");
     auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
     auto styleValue = space.read<Widgets::TextFieldStyle, std::string>(stylePath);
     if (!styleValue) {
@@ -1465,7 +1451,6 @@ auto UpdateTextFieldState(PathSpace& space,
 auto UpdateTextAreaState(PathSpace& space,
                          Widgets::TextAreaPaths const& paths,
                          Widgets::TextAreaState const& new_state) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::UpdateTextAreaState");
     auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
     auto styleValue = space.read<Widgets::TextAreaStyle, std::string>(stylePath);
     if (!styleValue) {
@@ -1705,7 +1690,6 @@ auto MakeSunsetWidgetTheme() -> WidgetTheme {
 auto LoadTheme(PathSpace& space,
                AppRootPathView appRoot,
                std::string_view requested_name) -> SP::Expected<ThemeSelection> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::LoadTheme");
     ThemeSelection selection{};
 
     std::string requested{requested_name};
@@ -1875,7 +1859,6 @@ inline auto stack_paths_from_root(std::string const& rootPath) -> StackPaths {
 auto CreateStack(PathSpace& space,
                  AppRootPathView appRoot,
                  Widgets::StackLayoutParams const& params) -> SP::Expected<Widgets::StackPaths> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::CreateStack");
     if (auto status = ensure_identifier(params.name, "stack name"); !status) {
         return std::unexpected(status.error());
     }
@@ -1930,7 +1913,6 @@ auto CreateStack(PathSpace& space,
 
 auto ReadStackLayout(PathSpace const& space,
                      Widgets::StackPaths const& paths) -> SP::Expected<Widgets::StackLayoutState> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::ReadStackLayout");
     auto state = space.read<Widgets::StackLayoutState, std::string>(paths.computed.getPath());
     if (!state) {
         return std::unexpected(state.error());
@@ -1940,7 +1922,6 @@ auto ReadStackLayout(PathSpace const& space,
 
 auto DescribeStack(PathSpace const& space,
                    Widgets::StackPaths const& paths) -> SP::Expected<Widgets::StackLayoutParams> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::DescribeStack");
     Widgets::StackLayoutParams params{};
 
     auto style = space.read<Widgets::StackLayoutStyle, std::string>(paths.style.getPath());
@@ -1968,7 +1949,6 @@ auto DescribeStack(PathSpace const& space,
 auto UpdateStackLayout(PathSpace& space,
                        Widgets::StackPaths const& paths,
                        Widgets::StackLayoutParams const& params) -> SP::Expected<bool> {
-    PATHSPACE_LEGACY_BUILDER_GUARD(space, "Widgets::UpdateStackLayout");
     auto appRootPath = derive_app_root_for(ConcretePathView{paths.root.getPath()});
     if (!appRootPath) {
         return std::unexpected(appRootPath.error());
@@ -2510,4 +2490,4 @@ auto update_widget_focus(PathSpace& space,
 
 } // namespace
 
-} // namespace SP::UI::Builders::Widgets
+} // namespace SP::UI::Runtime::Widgets

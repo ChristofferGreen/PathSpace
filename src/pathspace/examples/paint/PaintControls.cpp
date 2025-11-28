@@ -23,7 +23,7 @@ constexpr std::array<PaletteEntryMeta, 6> kDefaultPaletteMeta{ {
 } };
 
 auto palette_button_text_color(std::array<float, 4> const& background,
-                               SP::UI::Builders::Widgets::WidgetTheme const& theme)
+                               SP::UI::Runtime::Widgets::WidgetTheme const& theme)
     -> std::array<float, 4> {
     auto luminance = background[0] * 0.299f + background[1] * 0.587f + background[2] * 0.114f;
     if (luminance > 0.65f) {
@@ -74,14 +74,14 @@ auto ComputeLayoutMetrics(int window_width, int window_height) -> PaintLayoutMet
     return metrics;
 }
 
-auto BuildDefaultPaletteEntries(SP::UI::Builders::Widgets::WidgetTheme const& theme)
+auto BuildDefaultPaletteEntries(SP::UI::Runtime::Widgets::WidgetTheme const& theme)
     -> std::vector<PaletteEntry> {
     std::vector<PaletteEntry> colors;
     colors.reserve(kDefaultPaletteMeta.size());
     for (std::size_t i = 0; i < kDefaultPaletteMeta.size(); ++i) {
         auto color = theme.palette_swatches[i];
         if (color[3] <= 0.0f) {
-            color = SP::UI::Builders::Widgets::kDefaultPaletteSwatches[i];
+            color = SP::UI::Runtime::Widgets::kDefaultPaletteSwatches[i];
         }
         colors.push_back(PaletteEntry{
             kDefaultPaletteMeta[i].id,
@@ -92,8 +92,8 @@ auto BuildDefaultPaletteEntries(SP::UI::Builders::Widgets::WidgetTheme const& th
     return colors;
 }
 
-SP::UI::Builders::Widgets::TypographyStyle MakeTypography(float font_size, float line_height) {
-    SP::UI::Builders::Widgets::TypographyStyle style{};
+SP::UI::Runtime::Widgets::TypographyStyle MakeTypography(float font_size, float line_height) {
+    SP::UI::Runtime::Widgets::TypographyStyle style{};
     style.font_size = font_size;
     style.line_height = line_height;
     style.letter_spacing = 0.0f;
@@ -111,19 +111,19 @@ void EnsureActivePanel(SP::UI::Declarative::Stack::Args& args) {
 auto BuildPaletteFragment(PaletteComponentConfig const& config)
     -> SP::UI::Declarative::WidgetFragment {
     SP::UI::Declarative::Stack::Args column{};
-    column.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
+    column.style.axis = SP::UI::Runtime::Widgets::StackAxis::Vertical;
     auto vertical_spacing = std::max(config.layout.palette_row_spacing, 8.0f);
     column.style.spacing = vertical_spacing;
-    column.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
+    column.style.align_cross = SP::UI::Runtime::Widgets::StackAlignCross::Stretch;
     auto column_width = std::max(config.layout.controls_content_width, 240.0f);
     column.style.width = column_width;
 
     int row_index = 0;
     for (std::size_t index = 0; index < config.entries.size();) {
         SP::UI::Declarative::Stack::Args row{};
-        row.style.axis = SP::UI::Builders::Widgets::StackAxis::Horizontal;
+        row.style.axis = SP::UI::Runtime::Widgets::StackAxis::Horizontal;
         row.style.spacing = std::max(10.0f, 14.0f * config.layout.controls_scale);
-        row.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
+        row.style.align_cross = SP::UI::Runtime::Widgets::StackAlignCross::Stretch;
         auto total_spacing = row.style.spacing * static_cast<float>(kButtonsPerRow - 1);
         auto available_width = std::max(column_width - total_spacing,
                                         96.0f * static_cast<float>(kButtonsPerRow));
@@ -195,9 +195,9 @@ auto BuildBrushSliderFragment(BrushSliderConfig const& config)
 auto BuildHistoryActionsFragment(HistoryActionsConfig const& config)
     -> SP::UI::Declarative::WidgetFragment {
     SP::UI::Declarative::Stack::Args row{};
-    row.style.axis = SP::UI::Builders::Widgets::StackAxis::Horizontal;
+    row.style.axis = SP::UI::Runtime::Widgets::StackAxis::Horizontal;
     row.style.spacing = std::max(config.layout.actions_row_spacing, 8.0f);
-    row.style.align_cross = SP::UI::Builders::Widgets::StackAlignCross::Stretch;
+    row.style.align_cross = SP::UI::Runtime::Widgets::StackAlignCross::Stretch;
     row.style.padding_main_start = config.layout.section_padding_main;
     row.style.padding_main_end = config.layout.section_padding_main;
     row.style.padding_cross_start = config.layout.section_padding_cross;

@@ -18,8 +18,8 @@
 
 using namespace std::chrono_literals;
 using namespace SP;
-namespace BuilderWidgets = SP::UI::Builders::Widgets;
-using WidgetOp = SP::UI::Builders::Widgets::Bindings::WidgetOp;
+namespace BuilderWidgets = SP::UI::Runtime::Widgets;
+using WidgetOp = SP::UI::Runtime::Widgets::Bindings::WidgetOp;
 using WidgetAction = SP::UI::Declarative::Reducers::WidgetAction;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
 
@@ -58,8 +58,8 @@ TEST_CASE("WidgetEventTrellis routes pointer and button events to WidgetOps") {
         [widget_path](PathSpace&,
                       std::string const&,
                       float scene_x,
-                      float scene_y) -> SP::Expected<SP::UI::Builders::Scene::HitTestResult> {
-            SP::UI::Builders::Scene::HitTestResult result{};
+                      float scene_y) -> SP::Expected<SP::UI::Runtime::Scene::HitTestResult> {
+            SP::UI::Runtime::Scene::HitTestResult result{};
             result.hit = true;
             result.target.authoring_node_id = widget_path + "/authoring/button/background";
             result.position.scene_x = scene_x;
@@ -78,12 +78,12 @@ TEST_CASE("WidgetEventTrellis routes pointer and button events to WidgetOps") {
     move.motion.absolute_y = 48.0f;
     (void)space.insert(pointer_queue, move);
 
-    using WidgetOp = SP::UI::Builders::Widgets::Bindings::WidgetOp;
+    using WidgetOp = SP::UI::Runtime::Widgets::Bindings::WidgetOp;
     auto hover = space.take<WidgetOp, std::string>(
         widget_ops_queue,
         SP::Out{} & SP::Block{200ms});
     REQUIRE(hover);
-    CHECK(hover->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::HoverEnter);
+    CHECK(hover->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::HoverEnter);
 
     SP::IO::ButtonEvent press{};
     press.source = SP::IO::ButtonSource::Mouse;
@@ -101,19 +101,19 @@ TEST_CASE("WidgetEventTrellis routes pointer and button events to WidgetOps") {
         widget_ops_queue,
         SP::Out{} & SP::Block{200ms});
     REQUIRE(next_op);
-    CHECK(next_op->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Press);
+    CHECK(next_op->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Press);
 
     auto release_op = space.take<WidgetOp, std::string>(
         widget_ops_queue,
         SP::Out{} & SP::Block{200ms});
     REQUIRE(release_op);
-    CHECK(release_op->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Release);
+    CHECK(release_op->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Release);
 
     auto activate_op = space.take<WidgetOp, std::string>(
         widget_ops_queue,
         SP::Out{} & SP::Block{200ms});
     REQUIRE(activate_op);
-    CHECK(activate_op->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate);
+    CHECK(activate_op->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Activate);
 
     SP::UI::Declarative::ShutdownWidgetEventTrellis(space);
 }
@@ -167,30 +167,30 @@ TEST_CASE("WidgetEventTrellis handles keyboard button activation") {
     release.state.pressed = false;
     (void)space.insert(button_queue, release);
 
-    using WidgetOp = SP::UI::Builders::Widgets::Bindings::WidgetOp;
+    using WidgetOp = SP::UI::Runtime::Widgets::Bindings::WidgetOp;
     auto press_op = space.take<WidgetOp, std::string>(
         widget_ops_queue,
         SP::Out{} & SP::Block{200ms});
     REQUIRE(press_op);
-    CHECK(press_op->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Press);
+    CHECK(press_op->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Press);
 
     auto release_op = space.take<WidgetOp, std::string>(
         widget_ops_queue,
         SP::Out{} & SP::Block{200ms});
     REQUIRE(release_op);
-    CHECK(release_op->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Release);
+    CHECK(release_op->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Release);
 
     auto activate_op = space.take<WidgetOp, std::string>(
         widget_ops_queue,
         SP::Out{} & SP::Block{200ms});
     REQUIRE(activate_op);
-    CHECK(activate_op->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::Activate);
+    CHECK(activate_op->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Activate);
 
     SP::UI::Declarative::ShutdownWidgetEventTrellis(space);
 }
 
 TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widgets") {
-    using WidgetOp = SP::UI::Builders::Widgets::Bindings::WidgetOp;
+    using WidgetOp = SP::UI::Runtime::Widgets::Bindings::WidgetOp;
 
     auto setup_window = [](PathSpace& space,
                            std::string const& app_root,
@@ -255,12 +255,12 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
             widget_ops_queue,
             SP::Out{} & SP::Block{200ms});
         REQUIRE(update);
-        CHECK(update->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::SliderUpdate);
+        CHECK(update->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::SliderUpdate);
         auto commit = space.take<WidgetOp, std::string>(
             widget_ops_queue,
             SP::Out{} & SP::Block{200ms});
         REQUIRE(commit);
-        CHECK(commit->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::SliderCommit);
+        CHECK(commit->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::SliderCommit);
 
         auto new_state = space.read<BuilderWidgets::SliderState, std::string>(slider_path + "/state");
         REQUIRE(new_state);
@@ -319,12 +319,12 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
             widget_ops_queue,
             SP::Out{} & SP::Block{200ms});
         REQUIRE(hover);
-        CHECK(hover->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::ListHover);
+        CHECK(hover->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::ListHover);
         auto select = space.take<WidgetOp, std::string>(
             widget_ops_queue,
             SP::Out{} & SP::Block{200ms});
         REQUIRE(select);
-        CHECK(select->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::ListSelect);
+        CHECK(select->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::ListSelect);
         CHECK(select->value == 1.0f);
 
         send_key(0x24); // return
@@ -332,7 +332,7 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
             widget_ops_queue,
             SP::Out{} & SP::Block{200ms});
         REQUIRE(activate);
-        CHECK(activate->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::ListActivate);
+        CHECK(activate->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::ListActivate);
 
         auto new_state = space.read<BuilderWidgets::ListState, std::string>(list_path + "/state");
         REQUIRE(new_state);
@@ -388,7 +388,7 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
             tree_path + "/ops/inbox/queue",
             SP::Out{} & SP::Block{200ms});
         REQUIRE(toggle);
-        CHECK(toggle->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::TreeToggle);
+        CHECK(toggle->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::TreeToggle);
 
         // Move to child
         send_key(0x7C);
@@ -396,12 +396,12 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
             tree_path + "/ops/inbox/queue",
             SP::Out{} & SP::Block{200ms});
         REQUIRE(hover);
-        CHECK(hover->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::TreeHover);
+        CHECK(hover->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::TreeHover);
         auto select = space.take<WidgetOp, std::string>(
             tree_path + "/ops/inbox/queue",
             SP::Out{} & SP::Block{200ms});
         REQUIRE(select);
-        CHECK(select->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::TreeSelect);
+        CHECK(select->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::TreeSelect);
 
         auto updated_state = space.read<BuilderWidgets::TreeState, std::string>(tree_path + "/state");
         REQUIRE(updated_state);
@@ -457,21 +457,21 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
             widget_ops_queue,
             SP::Out{} & SP::Block{200ms});
         REQUIRE(delete_op);
-        CHECK(delete_op->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::TextDelete);
+        CHECK(delete_op->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::TextDelete);
 
         send_key(0x7B); // move cursor left
         auto move = space.take<WidgetOp, std::string>(
             widget_ops_queue,
             SP::Out{} & SP::Block{200ms});
         REQUIRE(move);
-        CHECK(move->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::TextMoveCursor);
+        CHECK(move->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::TextMoveCursor);
 
         send_key(0x24); // submit
         auto submit = space.take<WidgetOp, std::string>(
             widget_ops_queue,
             SP::Out{} & SP::Block{200ms});
         REQUIRE(submit);
-        CHECK(submit->kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::TextSubmit);
+        CHECK(submit->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::TextSubmit);
 
         auto new_state = space.read<BuilderWidgets::TextFieldState, std::string>(input_path + "/state");
         REQUIRE(new_state);
@@ -534,8 +534,8 @@ TEST_CASE("WidgetEventTrellis fuzzes declarative paint stroke ops") {
         [widget_path](PathSpace&,
                       std::string const&,
                       float scene_x,
-                      float scene_y) -> SP::Expected<SP::UI::Builders::Scene::HitTestResult> {
-            SP::UI::Builders::Scene::HitTestResult result{};
+                      float scene_y) -> SP::Expected<SP::UI::Runtime::Scene::HitTestResult> {
+            SP::UI::Runtime::Scene::HitTestResult result{};
             result.hit = true;
             result.target.authoring_node_id = widget_path + "/authoring/paint_surface/canvas";
             result.position.scene_x = scene_x;
@@ -608,7 +608,7 @@ TEST_CASE("WidgetEventTrellis fuzzes declarative paint stroke ops") {
             action.pointer = op->pointer;
             auto handled = PaintRuntime::HandleAction(space, action);
             REQUIRE(handled);
-            if (action.kind == SP::UI::Builders::Widgets::Bindings::WidgetOpKind::PaintStrokeCommit) {
+            if (action.kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::PaintStrokeCommit) {
                 ++commit_count;
             }
         }

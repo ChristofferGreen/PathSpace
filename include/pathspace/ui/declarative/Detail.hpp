@@ -26,13 +26,13 @@
 #include <vector>
 #include <span>
 
-namespace SP::UI::Builders::Detail {
+namespace SP::UI::Runtime::Detail {
 struct SurfaceRenderContext;
 }
 
 namespace SP::UI::Declarative::Detail {
 
-using SurfacePath = SP::UI::Builders::SurfacePath;
+using SurfacePath = SP::UI::Runtime::SurfacePath;
 using RenderSettings = SP::UI::Runtime::RenderSettings;
 using SurfaceDesc = SP::UI::Runtime::SurfaceDesc;
 using RendererKind = SP::UI::Runtime::RendererKind;
@@ -153,7 +153,7 @@ inline auto to_epoch_ns(std::chrono::system_clock::time_point tp) -> std::uint64
 inline std::atomic<std::uint64_t>& g_widget_op_sequence =
     SP::UI::DetailShared::widget_op_sequence();
 
-namespace Widgets = SP::UI::Builders::Widgets;
+namespace Widgets = SP::UI::Runtime::Widgets;
 
 [[nodiscard]] auto prepare_surface_render_context(PathSpace& space,
                                                   SurfacePath const& surface,

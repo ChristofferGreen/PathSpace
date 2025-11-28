@@ -22,7 +22,7 @@
 
 namespace SP::UI::Declarative::Text {
 
-namespace Widgets = SP::UI::Builders::Widgets;
+namespace Widgets = SP::UI::Runtime::Widgets;
 
 namespace {
 

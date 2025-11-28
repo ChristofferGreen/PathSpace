@@ -1,6 +1,6 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/HtmlAdapter.hpp>
 #include <pathspace/ui/HtmlRunner.hpp>
@@ -29,7 +29,7 @@ using namespace SP;
 using namespace SP::UI;
 namespace Runtime = SP::UI::Runtime;
 namespace SceneData = SP::UI::Scene;
-namespace WidgetBuilders = SP::UI::Builders::Widgets;
+namespace WidgetBuilders = SP::UI::Runtime::Widgets;
 
 namespace {
 
@@ -336,9 +336,9 @@ struct BucketBuilder {
 struct RenderHarness {
     PathSpace space{};
     SP::App::AppRootPath app_root{"/system/applications/html_canvas_verify"};
-    Builders::ScenePath scene;
-    Builders::RendererPath renderer;
-    Builders::SurfacePath surface;
+    Runtime::ScenePath scene;
+    Runtime::RendererPath renderer;
+    Runtime::SurfacePath surface;
     SP::ConcretePathString target;
     Runtime::SurfaceDesc surface_desc{};
     Runtime::RenderSettings settings{};
@@ -359,23 +359,23 @@ struct RenderHarness {
     }
 
     [[nodiscard]] auto initialise() -> bool {
-        Builders::SceneParams scene_params{
+        Runtime::SceneParams scene_params{
             .name = "html_canvas_verify_scene",
             .description = "HtmlCanvasVerify bucket",
         };
-        auto scene_result = Builders::Scene::Create(space, root_view(), scene_params);
+        auto scene_result = Runtime::Scene::Create(space, root_view(), scene_params);
         if (!scene_result) {
             std::cerr << "Failed to create scene: " << scene_result.error().message.value_or("<unspecified>") << "\n";
             return false;
         }
         scene = *scene_result;
 
-        Builders::RendererParams renderer_params{
+        Runtime::RendererParams renderer_params{
             .name = "html_canvas_verify_renderer",
             .kind = SP::UI::Runtime::RendererKind::Software2D,
             .description = "HtmlCanvasVerify renderer",
         };
-        auto renderer_result = Builders::Renderer::Create(space, root_view(), renderer_params);
+        auto renderer_result = Runtime::Renderer::Create(space, root_view(), renderer_params);
         if (!renderer_result) {
             std::cerr << "Failed to create renderer: " << renderer_result.error().message.value_or("<unspecified>") << "\n";
             return false;
@@ -389,19 +389,19 @@ struct RenderHarness {
         surface_desc.premultiplied_alpha = true;
         surface_desc.progressive_tile_size_px = 32;
 
-        Builders::SurfaceParams surface_params{};
+        Runtime::SurfaceParams surface_params{};
         surface_params.name = "html_canvas_verify_surface";
         surface_params.desc = surface_desc;
         surface_params.renderer = std::string("renderers/") + renderer_params.name;
 
-        auto surface_result = Builders::Surface::Create(space, root_view(), surface_params);
+        auto surface_result = Runtime::Surface::Create(space, root_view(), surface_params);
         if (!surface_result) {
             std::cerr << "Failed to create surface: " << surface_result.error().message.value_or("<unspecified>") << "\n";
             return false;
         }
         surface = *surface_result;
 
-        auto set_scene = Builders::Surface::SetScene(space, surface, scene);
+        auto set_scene = Runtime::Surface::SetScene(space, surface, scene);
         if (!set_scene) {
             std::cerr << "Failed to attach scene to surface: " << set_scene.error().message.value_or("<unspecified>") << "\n";
             return false;

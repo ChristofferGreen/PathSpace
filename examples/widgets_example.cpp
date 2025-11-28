@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
     }
     auto app_root = *app;
     auto app_root_view = SP::App::AppRootPathView{app_root.getPath()};
-    auto theme_selection = SP::UI::Builders::Widgets::LoadTheme(space, app_root_view, "");
+    auto theme_selection = SP::UI::Runtime::Widgets::LoadTheme(space, app_root_view, "");
     if (!theme_selection) {
         std::cerr << "widgets_example: failed to load theme\n";
         return 1;
@@ -320,7 +320,7 @@ int main(int argc, char** argv) {
     };
 
     SP::UI::Declarative::Stack::Args paint_controls_stack{};
-    paint_controls_stack.style.axis = SP::UI::Builders::Widgets::StackAxis::Vertical;
+    paint_controls_stack.style.axis = SP::UI::Runtime::Widgets::StackAxis::Vertical;
     paint_controls_stack.style.spacing = std::max(10.0f, paint_controls_layout.controls_spacing * 0.5f);
     paint_controls_stack.style.padding_main_start = paint_controls_layout.controls_padding_main;
     paint_controls_stack.style.padding_main_end = paint_controls_layout.controls_padding_main;

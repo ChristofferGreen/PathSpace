@@ -4,7 +4,7 @@
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/core/Error.hpp>
 #include <pathspace/runtime/IOPump.hpp>
-#include <pathspace/ui/BuildersShared.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/LocalWindowBridge.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
@@ -511,7 +511,7 @@ inline auto force_window_software_renderer(SP::PathSpace& space,
     renderer_abs.push_back('/');
     renderer_abs.append(*renderer_rel);
     auto renderer_view = SP::ConcretePathStringView{renderer_abs};
-    auto settings = SP::UI::Builders::Renderer::ReadSettings(space, renderer_view);
+    auto settings = SP::UI::Runtime::Renderer::ReadSettings(space, renderer_view);
     if (!settings) {
         return std::unexpected(settings.error());
     }
@@ -519,7 +519,7 @@ inline auto force_window_software_renderer(SP::PathSpace& space,
         return {};
     }
     settings->renderer.metal_uploads_enabled = false;
-    return SP::UI::Builders::Renderer::UpdateSettings(space, renderer_view, *settings);
+    return SP::UI::Runtime::Renderer::UpdateSettings(space, renderer_view, *settings);
 }
 
 inline auto count_window_widgets(SP::PathSpace& space,
