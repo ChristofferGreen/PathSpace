@@ -197,6 +197,7 @@ if(PATHSPACE_ENABLE_UI)
         examples/paint/PaintExampleNewUI.cpp
         ui/screenshot/ScreenshotService.cpp
         ui/screenshot/DeclarativeScreenshot.cpp
+        ui/screenshot/DeclarativeScreenshotCli.cpp
         $<$<BOOL:APPLE>:ui/LocalWindowBridge.mm>
         $<$<BOOL:APPLE>:ui/PathWindowView.mm>
         $<$<NOT:$<BOOL:APPLE>>:ui/PathWindowView.cpp>

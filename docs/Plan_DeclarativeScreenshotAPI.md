@@ -76,8 +76,9 @@ auto CaptureDeclarative(SP::PathSpace& space,
      `pathspace_screenshot_cli` ride the helper already. This follow-up wires the
      remaining declarative demos through the same path: `examples/widgets_example.cpp`,
      `examples/declarative_hello_example.cpp`, and `examples/devices_example.cpp`
-     now share a headless CLI (`examples/declarative_example_shared.hpp`) that
-     parses `--screenshot*` flags, resolves telemetry defaults, and calls
+     now share a headless CLI implemented in
+     `<pathspace/ui/screenshot/DeclarativeScreenshotCli.hpp>` that parses
+     `--screenshot*` flags, resolves telemetry defaults, and calls
      `CaptureDeclarative` through a single helper.
    - Every demo can capture a screenshot (with optional compare/diff/metrics
      arguments) in ≤10 LOC, and the shared helper enforces readiness + telemetry

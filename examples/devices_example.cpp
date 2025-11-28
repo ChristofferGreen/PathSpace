@@ -7,6 +7,7 @@
 #include <pathspace/layer/io/PathIOKeyboard.hpp>
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
+#include <pathspace/ui/screenshot/DeclarativeScreenshotCli.hpp>
 
 #include <algorithm>
 #include <array>
@@ -29,6 +30,7 @@ using namespace SP;
 using namespace std::chrono_literals;
 namespace PaintControlsNS = SP::Examples::PaintControls;
 using PaintControlsNS::BrushState;
+namespace ScreenshotCli = SP::UI::Screenshot;
 
 static std::atomic<bool> g_running{true};
 
@@ -36,7 +38,7 @@ struct CommandLineOptions {
     int width = 1280;
     int height = 800;
     bool paint_controls_demo = false;
-    PathSpaceExamples::ScreenshotCliOptions screenshot;
+    ScreenshotCli::DeclarativeScreenshotCliOptions screenshot;
 };
 
 static auto parse_options(int argc, char** argv) -> CommandLineOptions {
@@ -48,14 +50,14 @@ static auto parse_options(int argc, char** argv) -> CommandLineOptions {
     cli.add_flag("--paint-controls-demo", {.on_set = [&] { opts.paint_controls_demo = true; }});
     cli.add_int("--width", {.on_value = [&](int value) { opts.width = value; }});
     cli.add_int("--height", {.on_value = [&](int value) { opts.height = value; }});
-    PathSpaceExamples::register_screenshot_cli_options(cli, opts.screenshot);
+    ScreenshotCli::RegisterDeclarativeScreenshotCliOptions(cli, opts.screenshot);
 
     (void)cli.parse(argc, argv);
 
     opts.width = std::max(640, opts.width);
     opts.height = std::max(480, opts.height);
-    PathSpaceExamples::apply_screenshot_env_overrides(opts.screenshot);
-    if (PathSpaceExamples::screenshot_requested(opts.screenshot)) {
+    ScreenshotCli::ApplyDeclarativeScreenshotEnvOverrides(opts.screenshot);
+    if (ScreenshotCli::DeclarativeScreenshotRequested(opts.screenshot)) {
         opts.paint_controls_demo = true;
     }
     return opts;
@@ -393,15 +395,15 @@ int main(int argc, char** argv) {
         }
         sink.status_label = demo->status_label;
 
-        if (PathSpaceExamples::screenshot_requested(options.screenshot)) {
-            auto capture = PathSpaceExamples::capture_screenshot_if_requested(space,
-                                                                              demo->scene_path,
-                                                                              demo->window_path,
-                                                                              demo->view_name,
-                                                                              options.width,
-                                                                              options.height,
-                                                                              "devices_example",
-                                                                              options.screenshot);
+        if (ScreenshotCli::DeclarativeScreenshotRequested(options.screenshot)) {
+            auto capture = ScreenshotCli::CaptureDeclarativeScreenshotIfRequested(space,
+                                                                                  demo->scene_path,
+                                                                                  demo->window_path,
+                                                                                  demo->view_name,
+                                                                                  options.width,
+                                                                                  options.height,
+                                                                                  "devices_example",
+                                                                                  options.screenshot);
             if (!capture) {
                 log_expected_error("screenshot capture", capture.error());
                 SP::System::ShutdownDeclarativeRuntime(space);

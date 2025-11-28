@@ -1,6 +1,7 @@
 #include "declarative_example_shared.hpp"
 
 #include <pathspace/ui/declarative/Widgets.hpp>
+#include <pathspace/ui/screenshot/DeclarativeScreenshotCli.hpp>
 
 #include <algorithm>
 #include <iostream>
@@ -9,13 +10,14 @@
 #include <vector>
 
 using namespace PathSpaceExamples;
+namespace ScreenshotCli = SP::UI::Screenshot;
 
 namespace {
 
 struct CommandLineOptions {
     int width = 800;
     int height = 520;
-    PathSpaceExamples::ScreenshotCliOptions screenshot;
+    ScreenshotCli::DeclarativeScreenshotCliOptions screenshot;
 };
 
 auto parse_options(int argc, char** argv) -> CommandLineOptions {
@@ -25,13 +27,13 @@ auto parse_options(int argc, char** argv) -> CommandLineOptions {
     cli.set_program_name("declarative_hello_example");
     cli.add_int("--width", {.on_value = [&](int value) { opts.width = value; }});
     cli.add_int("--height", {.on_value = [&](int value) { opts.height = value; }});
-    PathSpaceExamples::register_screenshot_cli_options(cli, opts.screenshot);
+    ScreenshotCli::RegisterDeclarativeScreenshotCliOptions(cli, opts.screenshot);
 
     (void)cli.parse(argc, argv);
 
     opts.width = std::max(640, opts.width);
     opts.height = std::max(480, opts.height);
-    PathSpaceExamples::apply_screenshot_env_overrides(opts.screenshot);
+    ScreenshotCli::ApplyDeclarativeScreenshotEnvOverrides(opts.screenshot);
     return opts;
 }
 
@@ -178,7 +180,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    if (PathSpaceExamples::screenshot_requested(options.screenshot)) {
+    if (ScreenshotCli::DeclarativeScreenshotRequested(options.screenshot)) {
         auto pose = [&]() -> SP::Expected<void> {
             if (!status_label) {
                 return SP::Expected<void>{};
@@ -187,15 +189,15 @@ int main(int argc, char** argv) {
                                                        *status_label,
                                                        "Screenshot capture ready");
         };
-        auto capture = PathSpaceExamples::capture_screenshot_if_requested(space,
-                                                                          scene->path,
-                                                                          window->path,
-                                                                          window->view_name,
-                                                                          options.width,
-                                                                          options.height,
-                                                                          "declarative_hello_example",
-                                                                          options.screenshot,
-                                                                          pose);
+        auto capture = ScreenshotCli::CaptureDeclarativeScreenshotIfRequested(space,
+                                                                              scene->path,
+                                                                              window->path,
+                                                                              window->view_name,
+                                                                              options.width,
+                                                                              options.height,
+                                                                              "declarative_hello_example",
+                                                                              options.screenshot,
+                                                                              pose);
         if (!capture) {
             std::cerr << "declarative_hello_example: screenshot capture failed: "
                       << SP::describeError(capture.error()) << "\n";

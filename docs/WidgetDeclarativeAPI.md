@@ -120,11 +120,12 @@ auto result = SP::UI::Screenshot::CaptureDeclarative(space, scene.path, window.p
 The helper enforces the same `SceneLifecycle` contract as the compile-loop
 tests, so new demos inherit deterministic screenshot behaviour automatically.
 
-When wiring CLIs, reuse the glue in `examples/declarative_example_shared.hpp`:
-`PathSpaceExamples::ScreenshotCliOptions` captures the common `--screenshot*`
-flags, `register_screenshot_cli_options` registers them with
-`SP::Examples::CLI::ExampleCli`, and
-`capture_screenshot_if_requested` bridges the parsed flags into
+When wiring CLIs, include `<pathspace/ui/screenshot/DeclarativeScreenshotCli.hpp>`:
+`SP::UI::Screenshot::DeclarativeScreenshotCliOptions` captures the common
+`--screenshot*` flags, `RegisterDeclarativeScreenshotCliOptions` wires them into
+`SP::Examples::CLI::ExampleCli`, `ApplyDeclarativeScreenshotEnvOverrides`
+honors `PATHSPACE_SCREENSHOT_FORCE_SOFTWARE`, and
+`CaptureDeclarativeScreenshotIfRequested` bridges the parsed flags into
 `CaptureDeclarative`. The widgets/hello/devices demos all share this helper, so
 future samples can expose the same headless capture workflow with only a few
 lines of code.
