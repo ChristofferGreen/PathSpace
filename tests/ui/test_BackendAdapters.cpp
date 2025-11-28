@@ -9,6 +9,7 @@
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <array>
 #include <chrono>
@@ -20,6 +21,7 @@
 
 using namespace SP;
 using namespace SP::UI;
+namespace Runtime = SP::UI::Runtime;
 namespace UIScene = SP::UI::Scene;
 
 namespace {
@@ -142,7 +144,7 @@ Builders::RendererPath create_renderer(BackendFixture& fx,
 
 Builders::SurfacePath create_surface(BackendFixture& fx,
                                      std::string const& name,
-                                     Builders::SurfaceDesc desc,
+                                     Runtime::SurfaceDesc desc,
                                      std::string const& renderer) {
     Builders::SurfaceParams params{};
     params.name = name;
@@ -164,7 +166,7 @@ auto resolve_target(BackendFixture& fx,
 
 std::vector<std::uint8_t> render_bucket_to_buffer(PathRenderer2D& renderer,
                                                   SP::ConcretePathString const& target_path,
-                                                  Builders::SurfaceDesc const& desc,
+                                                  Runtime::SurfaceDesc const& desc,
                                                   Builders::RenderSettings const& settings,
                                                   UIScene::DrawableBucketSnapshot const& bucket,
                                                   BackendFixture& fx,
@@ -212,11 +214,11 @@ TEST_CASE("Renderer integration replay retains framebuffer parity") {
     auto scene = create_scene(fx, "integration_replay_scene", bucket);
     auto renderer_path = create_renderer(fx, "integration_renderer", Builders::RendererKind::Software2D);
 
-    Builders::SurfaceDesc surface_desc{};
+    Runtime::SurfaceDesc surface_desc{};
     surface_desc.size_px.width = 96;
     surface_desc.size_px.height = 64;
-    surface_desc.pixel_format = Builders::PixelFormat::RGBA8Unorm_sRGB;
-    surface_desc.color_space = Builders::ColorSpace::sRGB;
+    surface_desc.pixel_format = Runtime::PixelFormat::RGBA8Unorm_sRGB;
+    surface_desc.color_space = Runtime::ColorSpace::sRGB;
     surface_desc.premultiplied_alpha = true;
 
     auto surface = create_surface(fx, "integration_surface", surface_desc, renderer_path.getPath());

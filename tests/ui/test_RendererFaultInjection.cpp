@@ -8,6 +8,7 @@
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <algorithm>
 #include <array>
@@ -26,6 +27,7 @@
 using namespace SP;
 using namespace SP::UI;
 using namespace SP::UI::Builders;
+namespace Runtime = SP::UI::Runtime;
 namespace UIScene = SP::UI::Scene;
 
 namespace {
@@ -189,7 +191,7 @@ auto create_renderer(RendererFixture& fx,
 
 auto create_surface(RendererFixture& fx,
                     std::string const& name,
-                    Builders::SurfaceDesc desc,
+                    Runtime::SurfaceDesc desc,
                     std::string const& rendererName) -> SurfacePath {
     SurfaceParams params{};
     params.name = name;
@@ -215,7 +217,7 @@ struct SimpleRenderFixture {
     RendererPath renderer;
     SurfacePath surface;
     SP::ConcretePathString target_path;
-    Builders::SurfaceDesc surface_desc{};
+    Runtime::SurfaceDesc surface_desc{};
 
     SimpleRenderFixture(RendererKind kind = RendererKind::Software2D) {
         auto bucket = make_rect_bucket({RectDrawableDef{
@@ -234,8 +236,8 @@ struct SimpleRenderFixture {
         renderer = create_renderer(fx, "renderer", kind);
 
         surface_desc.size_px = {.width = 128, .height = 128};
-        surface_desc.pixel_format = Builders::PixelFormat::RGBA8Unorm;
-        surface_desc.color_space = Builders::ColorSpace::sRGB;
+        surface_desc.pixel_format = Runtime::PixelFormat::RGBA8Unorm;
+        surface_desc.color_space = Runtime::ColorSpace::sRGB;
         surface_desc.premultiplied_alpha = true;
         surface = create_surface(fx, "surface", surface_desc, renderer.getPath());
         target_path = resolve_target(fx, surface);
@@ -245,7 +247,7 @@ struct SimpleRenderFixture {
     }
 };
 
-auto default_render_settings(Builders::SurfaceDesc const& desc) -> Builders::RenderSettings {
+auto default_render_settings(Runtime::SurfaceDesc const& desc) -> Builders::RenderSettings {
     Builders::RenderSettings settings{};
     settings.surface.size_px.width = desc.size_px.width;
     settings.surface.size_px.height = desc.size_px.height;

@@ -7,6 +7,10 @@
 namespace SP::UI::PathRenderer2DDetail {
 namespace {
 
+using Runtime::ColorSpace;
+using Runtime::PixelFormat;
+using Runtime::SurfaceDesc;
+
 auto srgb_to_linear(float value) -> float {
     value = clamp_unit(value);
     if (value <= 0.04045f) {
@@ -61,19 +65,19 @@ auto to_array(LinearStraightColor const& color) -> std::array<float, 4> {
     return {color.r, color.g, color.b, color.a};
 }
 
-auto needs_srgb_encode(Builders::SurfaceDesc const& desc) -> bool {
+auto needs_srgb_encode(SurfaceDesc const& desc) -> bool {
     switch (desc.pixel_format) {
-    case Builders::PixelFormat::RGBA8Unorm_sRGB:
-    case Builders::PixelFormat::BGRA8Unorm_sRGB:
+    case PixelFormat::RGBA8Unorm_sRGB:
+    case PixelFormat::BGRA8Unorm_sRGB:
         return true;
     default:
         break;
     }
-    return desc.color_space == Builders::ColorSpace::sRGB;
+    return desc.color_space == ColorSpace::sRGB;
 }
 
 auto encode_pixel(float const* linear_premul,
-                  Builders::SurfaceDesc const& desc,
+                  SurfaceDesc const& desc,
                   bool encode_srgb) -> std::array<std::uint8_t, 4> {
     auto alpha = clamp_unit(linear_premul[3]);
 
@@ -115,7 +119,7 @@ auto encode_pixel(float const* linear_premul,
 }
 
 auto encode_linear_color_to_output(LinearPremulColor const& color,
-                                   Builders::SurfaceDesc const& desc) -> std::array<float, 4> {
+                                   SurfaceDesc const& desc) -> std::array<float, 4> {
     std::array<float, 4> premul{
         clamp_unit(color.r),
         clamp_unit(color.g),
@@ -132,4 +136,3 @@ auto encode_linear_color_to_output(LinearPremulColor const& color,
 }
 
 } // namespace SP::UI::PathRenderer2DDetail
-

@@ -1249,7 +1249,7 @@ Source layout (proposed):
   - `surface/PathSurface.hpp`
   - `surface/PathSurfaceSoftware.{hpp,cpp}`
   - `surface/PathSurfaceMetal.{hpp,mm}` (ObjC++ on Apple)
-  - `surface/SurfaceTypes.hpp`
+  - `runtime/SurfaceTypes.hpp`
   - `window/PathWindow.{hpp,mm}`
   - `window/PathWindowView.{hpp,cpp|mm}`
   - `platform/macos/...`, `platform/win32/...`, `platform/x11|wayland/...`
@@ -1270,7 +1270,7 @@ if(PATHSPACE_ENABLE_UI)
     src/pathspace/ui/renderer/DrawableBucket.hpp
     src/pathspace/ui/scene/SceneSnapshotBuilder.cpp
     src/pathspace/ui/scene/SceneSnapshotBuilder.hpp
-    src/pathspace/ui/surface/SurfaceTypes.hpp
+    src/pathspace/ui/runtime/SurfaceTypes.hpp
   )
   if(PATHSPACE_UI_SOFTWARE)
     target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_SOFTWARE=1)

@@ -4,6 +4,7 @@
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/LegacyBuildersDeprecation.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <third_party/stb_image_write.h>
@@ -51,6 +52,7 @@ int main() {
 
 using namespace SP;
 using namespace SP::UI;
+namespace Runtime = SP::UI::Runtime;
 namespace Builders = SP::UI::Builders;
 namespace UIScene = SP::UI::Scene;
 
@@ -131,7 +133,7 @@ auto severity_to_string(Builders::Diagnostics::PathSpaceError::Severity severity
     return "unknown";
 }
 
-void write_frame_capture_png_or_exit(Builders::SoftwareFramebuffer const& framebuffer,
+void write_frame_capture_png_or_exit(Runtime::SoftwareFramebuffer const& framebuffer,
                                      std::filesystem::path const& output_path) {
     if (framebuffer.width <= 0 || framebuffer.height <= 0) {
         std::cerr << "pixel_noise_example: framebuffer capture has invalid dimensions "

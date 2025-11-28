@@ -17,6 +17,7 @@
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <algorithm>
 #include <array>
@@ -30,17 +31,18 @@
 #include <vector>
 
 using namespace SP::UI;
+namespace Runtime = SP::UI::Runtime;
 namespace UIScene = SP::UI::Scene;
 using SP::UI::Builders::Diagnostics::PathSpaceError;
 
 namespace {
 
-auto make_surface_desc() -> Builders::SurfaceDesc {
-    Builders::SurfaceDesc desc{};
+auto make_surface_desc() -> Runtime::SurfaceDesc {
+    Runtime::SurfaceDesc desc{};
     desc.size_px.width = 4;
     desc.size_px.height = 4;
-    desc.pixel_format = Builders::PixelFormat::BGRA8Unorm;
-    desc.color_space = Builders::ColorSpace::sRGB;
+    desc.pixel_format = Runtime::PixelFormat::BGRA8Unorm;
+    desc.color_space = Runtime::ColorSpace::sRGB;
     desc.premultiplied_alpha = true;
     return desc;
 }
@@ -238,7 +240,7 @@ auto create_renderer(MetalBuildersFixture& fx,
 
 auto create_surface(MetalBuildersFixture& fx,
                     std::string const& name,
-                    Builders::SurfaceDesc desc,
+                    Runtime::SurfaceDesc desc,
                     std::string const& rendererName) -> Builders::SurfacePath {
     Builders::SurfaceParams params{};
     params.name = name;
@@ -291,9 +293,9 @@ TEST_CASE("PathWindowView presents Metal texture when uploads enabled") {
         PathWindowView::ConfigureMetalPresenter(config);
 
         auto desc = make_surface_desc();
-        desc.metal.storage_mode = Builders::MetalStorageMode::Shared;
-        desc.metal.texture_usage = static_cast<std::uint8_t>(Builders::MetalTextureUsage::ShaderRead)
-                                   | static_cast<std::uint8_t>(Builders::MetalTextureUsage::RenderTarget);
+        desc.metal.storage_mode = Runtime::MetalStorageMode::Shared;
+        desc.metal.texture_usage = static_cast<std::uint8_t>(Runtime::MetalTextureUsage::ShaderRead)
+                                   | static_cast<std::uint8_t>(Runtime::MetalTextureUsage::RenderTarget);
         PathSurfaceSoftware software{desc};
         PathSurfaceMetal metal{desc};
 
@@ -387,12 +389,12 @@ TEST_CASE("PathRenderer2DMetal honors material blending state") {
             return;
         }
 
-        Builders::SurfaceDesc desc{};
+        Runtime::SurfaceDesc desc{};
         desc.size_px.width = 4;
         desc.size_px.height = 4;
-        desc.pixel_format = Builders::PixelFormat::RGBA32F;
-        desc.color_space = Builders::ColorSpace::Linear;
-        desc.metal.storage_mode = Builders::MetalStorageMode::Shared;
+        desc.pixel_format = Runtime::PixelFormat::RGBA32F;
+        desc.color_space = Runtime::ColorSpace::Linear;
+        desc.metal.storage_mode = Runtime::MetalStorageMode::Shared;
 
         PathSurfaceMetal surface{desc};
         PathRenderer2DMetal renderer;
@@ -595,9 +597,9 @@ TEST_CASE("Metal pipeline publishes residency metrics and material descriptors")
         desc.size_px.width = 8;
         desc.size_px.height = 8;
         desc.metal.iosurface_backing = true;
-        desc.metal.storage_mode = Builders::MetalStorageMode::Shared;
-        desc.metal.texture_usage = static_cast<std::uint8_t>(Builders::MetalTextureUsage::ShaderRead)
-                                   | static_cast<std::uint8_t>(Builders::MetalTextureUsage::RenderTarget);
+        desc.metal.storage_mode = Runtime::MetalStorageMode::Shared;
+        desc.metal.texture_usage = static_cast<std::uint8_t>(Runtime::MetalTextureUsage::ShaderRead)
+                                   | static_cast<std::uint8_t>(Runtime::MetalTextureUsage::RenderTarget);
 
         auto surface = create_surface(fx, "surface_metal_metrics", desc, renderer.getPath());
         REQUIRE(Builders::Surface::SetScene(fx.space, surface, scene));
@@ -744,9 +746,9 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
         desc.size_px.width = 16;
         desc.size_px.height = 16;
         desc.metal.iosurface_backing = true;
-        desc.metal.storage_mode = Builders::MetalStorageMode::Shared;
-        desc.metal.texture_usage = static_cast<std::uint8_t>(Builders::MetalTextureUsage::ShaderRead)
-                                   | static_cast<std::uint8_t>(Builders::MetalTextureUsage::RenderTarget);
+        desc.metal.storage_mode = Runtime::MetalStorageMode::Shared;
+        desc.metal.texture_usage = static_cast<std::uint8_t>(Runtime::MetalTextureUsage::ShaderRead)
+                                   | static_cast<std::uint8_t>(Runtime::MetalTextureUsage::RenderTarget);
 
         auto surface = create_surface(fx, "surface_metal_image_metrics", desc, renderer.getPath());
         REQUIRE(Builders::Surface::SetScene(fx.space, surface, scene));
@@ -882,11 +884,11 @@ TEST_CASE("PathSurfaceMetal allocates IOSurface-backed textures when requested")
             return;
         }
 
-        Builders::SurfaceDesc desc{};
+        Runtime::SurfaceDesc desc{};
         desc.size_px.width = 16;
         desc.size_px.height = 16;
-        desc.pixel_format = Builders::PixelFormat::BGRA8Unorm;
-        desc.metal.storage_mode = Builders::MetalStorageMode::Shared;
+        desc.pixel_format = Runtime::PixelFormat::BGRA8Unorm;
+        desc.metal.storage_mode = Runtime::MetalStorageMode::Shared;
         desc.metal.iosurface_backing = true;
 
         PathSurfaceMetal surface{desc};

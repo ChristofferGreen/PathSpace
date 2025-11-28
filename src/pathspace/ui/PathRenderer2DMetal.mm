@@ -24,6 +24,10 @@
 
 namespace SP::UI {
 
+using Runtime::ColorSpace;
+using Runtime::PixelFormat;
+using Runtime::SurfaceDesc;
+
 namespace {
 
 constexpr std::uint32_t kDrawModeSolid = 0u;
@@ -80,33 +84,33 @@ auto encode_clear_color(std::array<float, 4> rgba) -> MTLClearColor {
     return MTLClearColorMake(rgba[0], rgba[1], rgba[2], rgba[3]);
 }
 
-auto to_pixel_format(Builders::PixelFormat format) -> MTLPixelFormat {
+auto to_pixel_format(PixelFormat format) -> MTLPixelFormat {
     switch (format) {
-    case Builders::PixelFormat::RGBA8Unorm:
+    case PixelFormat::RGBA8Unorm:
         return MTLPixelFormatRGBA8Unorm;
-    case Builders::PixelFormat::BGRA8Unorm:
+    case PixelFormat::BGRA8Unorm:
         return MTLPixelFormatBGRA8Unorm;
-    case Builders::PixelFormat::RGBA8Unorm_sRGB:
+    case PixelFormat::RGBA8Unorm_sRGB:
         return MTLPixelFormatRGBA8Unorm_sRGB;
-    case Builders::PixelFormat::BGRA8Unorm_sRGB:
+    case PixelFormat::BGRA8Unorm_sRGB:
         return MTLPixelFormatBGRA8Unorm_sRGB;
-    case Builders::PixelFormat::RGBA16F:
+    case PixelFormat::RGBA16F:
         return MTLPixelFormatRGBA16Float;
-    case Builders::PixelFormat::RGBA32F:
+    case PixelFormat::RGBA32F:
         return MTLPixelFormatRGBA32Float;
     }
     return MTLPixelFormatInvalid;
 }
 
-auto needs_srgb_encode(Builders::SurfaceDesc const& desc) -> bool {
+auto needs_srgb_encode(SurfaceDesc const& desc) -> bool {
     switch (desc.pixel_format) {
-    case Builders::PixelFormat::RGBA8Unorm_sRGB:
-    case Builders::PixelFormat::BGRA8Unorm_sRGB:
+    case PixelFormat::RGBA8Unorm_sRGB:
+    case PixelFormat::BGRA8Unorm_sRGB:
         return true;
     default:
         break;
     }
-    return desc.color_space == Builders::ColorSpace::sRGB;
+    return desc.color_space == ColorSpace::sRGB;
 }
 
 auto compile_pipeline(id<MTLDevice> device,
@@ -377,7 +381,7 @@ struct PathRenderer2DMetal::Impl {
     id<MTLSamplerState> sampler = nil;
     id<MTLBuffer> frame_uniform_buffer = nil;
     id<MTLBuffer> vertex_buffer = nil;
-    Builders::SurfaceDesc desc{};
+    SurfaceDesc desc{};
     std::vector<Vertex> vertices{};
     std::vector<DrawCall> draw_calls{};
     std::unordered_map<std::uint64_t, ImageEntry> image_textures{};
@@ -419,7 +423,7 @@ PathRenderer2DMetal::PathRenderer2DMetal(PathRenderer2DMetal&& other) noexcept =
 auto PathRenderer2DMetal::operator=(PathRenderer2DMetal&& other) noexcept -> PathRenderer2DMetal& = default;
 
 auto PathRenderer2DMetal::begin_frame(PathSurfaceMetal& surface,
-                                      Builders::SurfaceDesc const& desc,
+                                      SurfaceDesc const& desc,
                                       std::array<float, 4> clear_rgba) -> bool {
     auto* impl = impl_.get();
     if (!impl) {

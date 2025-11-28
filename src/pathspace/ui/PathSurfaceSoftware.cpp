@@ -16,6 +16,8 @@
 
 namespace SP::UI {
 
+using Runtime::SurfaceDesc;
+
 namespace {
 
 constexpr std::size_t kBytesPerPixel = 4u;
@@ -25,13 +27,13 @@ auto clamp_non_negative(int value) -> int {
     return value < 0 ? 0 : value;
 }
 
-auto frame_bytes_for(Builders::SurfaceDesc const& desc) -> std::size_t {
+auto frame_bytes_for(SurfaceDesc const& desc) -> std::size_t {
     auto const width = clamp_non_negative(desc.size_px.width);
     auto const height = clamp_non_negative(desc.size_px.height);
     return static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * kBytesPerPixel;
 }
 
-auto stride_for(Builders::SurfaceDesc const& desc) -> std::size_t {
+auto stride_for(SurfaceDesc const& desc) -> std::size_t {
     auto const width = clamp_non_negative(desc.size_px.width);
     return static_cast<std::size_t>(width) * kBytesPerPixel;
 }
@@ -275,10 +277,10 @@ void PathSurfaceSoftware::IOSurfaceHolder::swap(IOSurfaceHolder& other) noexcept
 }
 #endif
 
-PathSurfaceSoftware::PathSurfaceSoftware(Builders::SurfaceDesc desc)
+PathSurfaceSoftware::PathSurfaceSoftware(SurfaceDesc desc)
     : PathSurfaceSoftware(std::move(desc), Options{}) {}
 
-PathSurfaceSoftware::PathSurfaceSoftware(Builders::SurfaceDesc desc, Options options)
+PathSurfaceSoftware::PathSurfaceSoftware(SurfaceDesc desc, Options options)
     : desc_(std::move(desc))
     , options_(options) {
     options_.progressive_tile_size_px = std::max(64, options_.progressive_tile_size_px);
@@ -287,7 +289,7 @@ PathSurfaceSoftware::PathSurfaceSoftware(Builders::SurfaceDesc desc, Options opt
     reset_progressive();
 }
 
-void PathSurfaceSoftware::resize(Builders::SurfaceDesc const& desc) {
+void PathSurfaceSoftware::resize(SurfaceDesc const& desc) {
     desc_ = desc;
     options_.progressive_tile_size_px = std::max(64, options_.progressive_tile_size_px);
     reallocate_buffers();

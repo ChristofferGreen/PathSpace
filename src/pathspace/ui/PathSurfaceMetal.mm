@@ -18,19 +18,23 @@ namespace SP::UI {
 
 namespace {
 
-auto to_pixel_format(Builders::PixelFormat format) -> MTLPixelFormat {
+using Runtime::MetalTextureUsage;
+using Runtime::PixelFormat;
+using Runtime::SurfaceDesc;
+
+auto to_pixel_format(PixelFormat format) -> MTLPixelFormat {
     switch (format) {
-    case Builders::PixelFormat::RGBA8Unorm:
+    case PixelFormat::RGBA8Unorm:
         return MTLPixelFormatRGBA8Unorm;
-    case Builders::PixelFormat::BGRA8Unorm:
+    case PixelFormat::BGRA8Unorm:
         return MTLPixelFormatBGRA8Unorm;
-    case Builders::PixelFormat::RGBA8Unorm_sRGB:
+    case PixelFormat::RGBA8Unorm_sRGB:
         return MTLPixelFormatRGBA8Unorm_sRGB;
-    case Builders::PixelFormat::BGRA8Unorm_sRGB:
+    case PixelFormat::BGRA8Unorm_sRGB:
         return MTLPixelFormatBGRA8Unorm_sRGB;
-    case Builders::PixelFormat::RGBA16F:
+    case PixelFormat::RGBA16F:
         return MTLPixelFormatRGBA16Float;
-    case Builders::PixelFormat::RGBA32F:
+    case PixelFormat::RGBA32F:
         return MTLPixelFormatRGBA32Float;
     }
     return MTLPixelFormatInvalid;
@@ -43,19 +47,19 @@ auto clamp_dimension(int value) -> NSUInteger {
     return static_cast<NSUInteger>(value);
 }
 
-auto to_mtl_storage_mode(Builders::MetalStorageMode mode) -> MTLStorageMode {
+auto to_mtl_storage_mode(Runtime::MetalStorageMode mode) -> MTLStorageMode {
     switch (mode) {
-    case Builders::MetalStorageMode::Private:
+    case Runtime::MetalStorageMode::Private:
         return MTLStorageModePrivate;
-    case Builders::MetalStorageMode::Shared:
+    case Runtime::MetalStorageMode::Shared:
         return MTLStorageModeShared;
-    case Builders::MetalStorageMode::Managed:
+    case Runtime::MetalStorageMode::Managed:
 #if TARGET_OS_OSX
         return MTLStorageModeManaged;
 #else
         return MTLStorageModeShared;
 #endif
-    case Builders::MetalStorageMode::Memoryless:
+    case Runtime::MetalStorageMode::Memoryless:
 #if TARGET_OS_IPHONE
         return MTLStorageModeMemoryless;
 #else
@@ -67,17 +71,17 @@ auto to_mtl_storage_mode(Builders::MetalStorageMode mode) -> MTLStorageMode {
 
 auto to_mtl_usage(std::uint8_t usageFlags) -> MTLTextureUsage {
     MTLTextureUsage usage = 0;
-    if (Builders::metal_usage_contains(usageFlags, Builders::MetalTextureUsage::ShaderRead)) {
+    if (Runtime::metal_usage_contains(usageFlags, MetalTextureUsage::ShaderRead)) {
         usage |= MTLTextureUsageShaderRead;
     }
-    if (Builders::metal_usage_contains(usageFlags, Builders::MetalTextureUsage::ShaderWrite)) {
+    if (Runtime::metal_usage_contains(usageFlags, MetalTextureUsage::ShaderWrite)) {
         usage |= MTLTextureUsageShaderWrite;
     }
-    if (Builders::metal_usage_contains(usageFlags, Builders::MetalTextureUsage::RenderTarget)) {
+    if (Runtime::metal_usage_contains(usageFlags, MetalTextureUsage::RenderTarget)) {
         usage |= MTLTextureUsageRenderTarget;
     }
 #ifdef MTLTextureUsageBlit
-    if (Builders::metal_usage_contains(usageFlags, Builders::MetalTextureUsage::Blit)) {
+    if (Runtime::metal_usage_contains(usageFlags, MetalTextureUsage::Blit)) {
         usage |= MTLTextureUsageBlit;
     }
 #endif
@@ -103,21 +107,21 @@ struct IOSurfacePixelFormatInfo {
     std::size_t bytes_per_element = 0;
 };
 
-auto iosurface_pixel_format(Builders::PixelFormat format)
+auto iosurface_pixel_format(PixelFormat format)
     -> std::optional<IOSurfacePixelFormatInfo> {
     switch (format) {
-    case Builders::PixelFormat::RGBA8Unorm:
-    case Builders::PixelFormat::RGBA8Unorm_sRGB:
+    case PixelFormat::RGBA8Unorm:
+    case PixelFormat::RGBA8Unorm_sRGB:
         return IOSurfacePixelFormatInfo{.pixel_format = kCVPixelFormatType_32RGBA,
                                         .bytes_per_element = 4};
-    case Builders::PixelFormat::BGRA8Unorm:
-    case Builders::PixelFormat::BGRA8Unorm_sRGB:
+    case PixelFormat::BGRA8Unorm:
+    case PixelFormat::BGRA8Unorm_sRGB:
         return IOSurfacePixelFormatInfo{.pixel_format = kCVPixelFormatType_32BGRA,
                                         .bytes_per_element = 4};
-    case Builders::PixelFormat::RGBA16F:
+    case PixelFormat::RGBA16F:
         return IOSurfacePixelFormatInfo{.pixel_format = kCVPixelFormatType_64RGBAHalf,
                                         .bytes_per_element = 8};
-    case Builders::PixelFormat::RGBA32F:
+    case PixelFormat::RGBA32F:
         return IOSurfacePixelFormatInfo{.pixel_format = kCVPixelFormatType_128RGBAFloat,
                                         .bytes_per_element = 16};
     }
@@ -194,7 +198,7 @@ auto make_iosurface(NSUInteger width,
 } // namespace
 
 struct PathSurfaceMetal::Impl {
-    Builders::SurfaceDesc desc{};
+    SurfaceDesc desc{};
     id<MTLDevice> device = nil;
     id<MTLCommandQueue> command_queue = nil;
     id<MTLTexture> texture = nil;
@@ -206,7 +210,7 @@ struct PathSurfaceMetal::Impl {
     std::vector<MaterialShaderKey> shader_keys{};
     std::vector<MaterialResourceResidency> material_resources{};
 
-    explicit Impl(Builders::SurfaceDesc d)
+    explicit Impl(SurfaceDesc d)
         : desc(d)
         , device(MTLCreateSystemDefaultDevice())
         , command_queue([device newCommandQueue]) {
@@ -283,7 +287,7 @@ struct PathSurfaceMetal::Impl {
     }
 };
 
-PathSurfaceMetal::PathSurfaceMetal(Builders::SurfaceDesc desc)
+PathSurfaceMetal::PathSurfaceMetal(SurfaceDesc desc)
     : impl_(std::make_unique<Impl>(desc)) {
 }
 
@@ -292,7 +296,7 @@ PathSurfaceMetal::~PathSurfaceMetal() = default;
 PathSurfaceMetal::PathSurfaceMetal(PathSurfaceMetal&& other) noexcept = default;
 auto PathSurfaceMetal::operator=(PathSurfaceMetal&& other) noexcept -> PathSurfaceMetal& = default;
 
-void PathSurfaceMetal::resize(Builders::SurfaceDesc const& desc) {
+void PathSurfaceMetal::resize(SurfaceDesc const& desc) {
     if (!impl_) {
         return;
     }
@@ -300,7 +304,7 @@ void PathSurfaceMetal::resize(Builders::SurfaceDesc const& desc) {
     impl_->ensure_texture();
 }
 
-auto PathSurfaceMetal::desc() const -> Builders::SurfaceDesc const& {
+auto PathSurfaceMetal::desc() const -> SurfaceDesc const& {
     return impl_->desc;
 }
 

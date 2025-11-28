@@ -4,6 +4,7 @@
 #include <pathspace/ui/BuildersShared.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <algorithm>
 #include <array>
@@ -17,18 +18,19 @@
 #endif
 
 using namespace SP::UI;
+namespace Runtime = SP::UI::Runtime;
 using SP::ConcretePathString;
 using SP::ConcretePathStringView;
 using SP::PathSpace;
 
 namespace {
 
-auto make_desc(int width, int height) -> Builders::SurfaceDesc {
-    Builders::SurfaceDesc desc;
+auto make_desc(int width, int height) -> Runtime::SurfaceDesc {
+    Runtime::SurfaceDesc desc;
     desc.size_px.width = width;
     desc.size_px.height = height;
-    desc.pixel_format = Builders::PixelFormat::RGBA8Unorm_sRGB;
-    desc.color_space = Builders::ColorSpace::sRGB;
+    desc.pixel_format = Runtime::PixelFormat::RGBA8Unorm_sRGB;
+    desc.color_space = Runtime::ColorSpace::sRGB;
     desc.premultiplied_alpha = true;
     return desc;
 }

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <pathspace/ui/ProgressiveSurfaceBuffer.hpp>
-#include <pathspace/ui/SurfaceTypes.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <atomic>
 #include <cstddef>
@@ -16,6 +16,8 @@ typedef struct __IOSurface* IOSurfaceRef;
 #endif
 
 namespace SP::UI {
+
+using Runtime::SurfaceDesc;
 
 class PathSurfaceSoftware {
 public:
@@ -35,13 +37,13 @@ public:
         FrameInfo info{};
     };
 
-    PathSurfaceSoftware(Builders::SurfaceDesc desc);
-    PathSurfaceSoftware(Builders::SurfaceDesc desc, Options options);
+    PathSurfaceSoftware(SurfaceDesc desc);
+    PathSurfaceSoftware(SurfaceDesc desc, Options options);
 
-    auto desc() const -> Builders::SurfaceDesc const& { return desc_; }
+    auto desc() const -> SurfaceDesc const& { return desc_; }
     auto options() const -> Options const& { return options_; }
 
-    void resize(Builders::SurfaceDesc const& desc);
+    void resize(SurfaceDesc const& desc);
 
     [[nodiscard]] auto progressive_tile_size() const -> int;
     void ensure_progressive_tile_size(int tile_size_px);
@@ -115,7 +117,7 @@ private:
                                         int height);
 #endif
 
-    Builders::SurfaceDesc desc_{};
+    SurfaceDesc desc_{};
     Options options_{};
     int configured_progressive_tile_size_px_ = 64;
 

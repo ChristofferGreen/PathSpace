@@ -5,10 +5,12 @@
 #include <cstdint>
 #include <memory>
 
-#include <pathspace/ui/SurfaceTypes.hpp>
 #include <pathspace/ui/MaterialDescriptor.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 namespace SP::UI {
+
+using Runtime::SurfaceDesc;
 
 class PathSurfaceMetal;
 
@@ -37,7 +39,7 @@ public:
     PathRenderer2DMetal& operator=(PathRenderer2DMetal&&) noexcept;
 
     auto begin_frame(PathSurfaceMetal& surface,
-                     Builders::SurfaceDesc const& desc,
+                     SurfaceDesc const& desc,
                      std::array<float, 4> clear_rgba) -> bool;
 
     auto draw_rect(Rect const& rect,

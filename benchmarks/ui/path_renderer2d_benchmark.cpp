@@ -6,6 +6,7 @@
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <path/UnvalidatedPath.hpp>
 
@@ -33,6 +34,7 @@
 
 using namespace SP;
 using namespace SP::UI;
+namespace Runtime = SP::UI::Runtime;
 namespace UIScene = SP::UI::Scene;
 
 namespace {
@@ -741,11 +743,11 @@ int main(int argc, char** argv) try {
         throw std::runtime_error(renderer_path.error().message.value_or("failed to create renderer"));
     }
 
-    Builders::SurfaceDesc surface_desc{};
+    Runtime::SurfaceDesc surface_desc{};
     surface_desc.size_px.width = canvas_width;
     surface_desc.size_px.height = canvas_height;
-    surface_desc.pixel_format = Builders::PixelFormat::BGRA8Unorm;
-    surface_desc.color_space = Builders::ColorSpace::sRGB;
+    surface_desc.pixel_format = Runtime::PixelFormat::BGRA8Unorm;
+    surface_desc.color_space = Runtime::ColorSpace::sRGB;
     surface_desc.premultiplied_alpha = true;
 
     Builders::SurfaceParams surface_params{};
@@ -993,11 +995,11 @@ int main(int argc, char** argv) try {
             throw std::runtime_error("failed to create small renderer");
         }
 
-        Builders::SurfaceDesc sp_desc{};
+        Runtime::SurfaceDesc sp_desc{};
         sp_desc.size_px.width = 8;
         sp_desc.size_px.height = 8;
-        sp_desc.pixel_format = Builders::PixelFormat::RGBA8Unorm_sRGB;
-        sp_desc.color_space = Builders::ColorSpace::sRGB;
+        sp_desc.pixel_format = Runtime::PixelFormat::RGBA8Unorm_sRGB;
+        sp_desc.color_space = Runtime::ColorSpace::sRGB;
         sp_desc.premultiplied_alpha = true;
 
         Builders::SurfaceParams sp_surface_params{};

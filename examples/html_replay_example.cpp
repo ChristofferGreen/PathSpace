@@ -7,6 +7,7 @@
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <cassert>
 #include <chrono>
@@ -17,6 +18,7 @@
 using namespace SP;
 using namespace SP::UI;
 using namespace SP::UI::Builders;
+namespace Runtime = SP::UI::Runtime;
 namespace UIScene = SP::UI::Scene;
 
 namespace {
@@ -70,7 +72,7 @@ auto create_renderer(RendererFixture& fx, std::string const& name) -> RendererPa
 
 auto create_surface(RendererFixture& fx,
                     std::string const& name,
-                    Builders::SurfaceDesc desc,
+                    Runtime::SurfaceDesc desc,
                     std::string const& rendererName) -> SurfacePath {
     SurfaceParams params{};
     params.name = name;
@@ -168,7 +170,7 @@ auto make_sample_bucket() -> UIScene::DrawableBucketSnapshot {
 auto render_to_buffer(RendererFixture& fx,
                       PathRenderer2D& renderer,
                       SP::ConcretePathString const& targetPath,
-                      Builders::SurfaceDesc const& desc,
+                      Runtime::SurfaceDesc const& desc,
                       Builders::RenderSettings const& settings,
                       UIScene::DrawableBucketSnapshot const& bucket,
                       UIScene::ScenePath const& scenePath) -> std::vector<std::uint8_t> {
@@ -206,7 +208,7 @@ int main() {
     auto scenePath = create_scene(fx, "html_replay_example_scene", bucket);
     auto rendererPath = create_renderer(fx, "html_replay_example_renderer");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 128;
     surfaceDesc.size_px.height = 96;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;

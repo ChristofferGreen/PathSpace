@@ -1,19 +1,21 @@
 #include "third_party/doctest.h"
 
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <vector>
 
 using namespace SP::UI;
+namespace Runtime = SP::UI::Runtime;
 
 namespace {
 
-auto make_desc(int width, int height) -> Builders::SurfaceDesc {
-    Builders::SurfaceDesc desc;
+auto make_desc(int width, int height) -> Runtime::SurfaceDesc {
+    Runtime::SurfaceDesc desc;
     desc.size_px.width = width;
     desc.size_px.height = height;
-    desc.pixel_format = Builders::PixelFormat::RGBA8Unorm_sRGB;
-    desc.color_space = Builders::ColorSpace::sRGB;
+    desc.pixel_format = Runtime::PixelFormat::RGBA8Unorm_sRGB;
+    desc.color_space = Runtime::ColorSpace::sRGB;
     desc.premultiplied_alpha = true;
     return desc;
 }

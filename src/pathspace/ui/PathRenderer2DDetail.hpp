@@ -22,6 +22,8 @@
 
 namespace SP::UI {
 
+using Runtime::SurfaceDesc;
+
 class ProgressiveSurfaceBuffer;
 
 namespace PathRenderer2DInternal {
@@ -89,9 +91,9 @@ auto make_linear_color(std::array<float, 4> const& rgba) -> LinearPremulColor;
 auto to_array(LinearPremulColor const& color) -> std::array<float, 4>;
 auto to_array(LinearStraightColor const& color) -> std::array<float, 4>;
 
-auto needs_srgb_encode(Builders::SurfaceDesc const& desc) -> bool;
+auto needs_srgb_encode(SurfaceDesc const& desc) -> bool;
 auto encode_linear_color_to_output(LinearPremulColor const& color,
-                                   Builders::SurfaceDesc const& desc) -> std::array<float, 4>;
+                                   SurfaceDesc const& desc) -> std::array<float, 4>;
 
 struct EncodeJob {
     int min_x = 0;
@@ -110,7 +112,7 @@ struct EncodeContext {
     float const* linear = nullptr;
     int width = 0;
     int height = 0;
-    Builders::SurfaceDesc const* desc = nullptr;
+    SurfaceDesc const* desc = nullptr;
     bool encode_srgb = false;
     bool is_bgra = false;
 };
@@ -138,7 +140,7 @@ auto build_encode_jobs(PathRenderer2DInternal::DamageRegion const& damage,
 auto run_encode_jobs(std::span<EncodeJob const> jobs, EncodeContext const& ctx) -> EncodeRunStats;
 
 auto encode_pixel(float const* linear_premul,
-                  Builders::SurfaceDesc const& desc,
+                  SurfaceDesc const& desc,
                   bool encode_srgb) -> std::array<std::uint8_t, 4>;
 
 auto draw_rect_command(Scene::RectCommand const& command,

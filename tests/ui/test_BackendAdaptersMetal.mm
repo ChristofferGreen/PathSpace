@@ -9,7 +9,7 @@
 #include <pathspace/ui/PathSurfaceMetal.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
-#include <pathspace/ui/SurfaceTypes.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <algorithm>
 #include <array>
@@ -81,15 +81,15 @@ TEST_CASE("PathSurfaceMetal integrates with ObjC++ presenter harness") {
         };
         SP::UI::PathWindowView::ConfigureMetalPresenter(config);
 
-        SP::UI::Builders::SurfaceDesc desc{};
+        SP::UI::Runtime::SurfaceDesc desc{};
         desc.size_px.width = 8;
         desc.size_px.height = 8;
-        desc.pixel_format = SP::UI::Builders::PixelFormat::BGRA8Unorm;
-        desc.color_space = SP::UI::Builders::ColorSpace::sRGB;
+        desc.pixel_format = SP::UI::Runtime::PixelFormat::BGRA8Unorm;
+        desc.color_space = SP::UI::Runtime::ColorSpace::sRGB;
         desc.premultiplied_alpha = true;
-        desc.metal.storage_mode = SP::UI::Builders::MetalStorageMode::Shared;
-        desc.metal.texture_usage = static_cast<std::uint8_t>(SP::UI::Builders::MetalTextureUsage::ShaderRead)
-                                   | static_cast<std::uint8_t>(SP::UI::Builders::MetalTextureUsage::RenderTarget);
+        desc.metal.storage_mode = SP::UI::Runtime::MetalStorageMode::Shared;
+        desc.metal.texture_usage = static_cast<std::uint8_t>(SP::UI::Runtime::MetalTextureUsage::ShaderRead)
+                                   | static_cast<std::uint8_t>(SP::UI::Runtime::MetalTextureUsage::RenderTarget);
         desc.metal.iosurface_backing = true;
 
         SP::UI::PathSurfaceMetal metal{desc};

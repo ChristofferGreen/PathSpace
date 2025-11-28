@@ -7,6 +7,7 @@
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <algorithm>
 #include <array>
@@ -25,6 +26,7 @@
 
 using namespace SP;
 using namespace SP::UI;
+namespace Runtime = SP::UI::Runtime;
 namespace SceneData = SP::UI::Scene;
 namespace WidgetBuilders = SP::UI::Builders::Widgets;
 
@@ -337,7 +339,7 @@ struct RenderHarness {
     Builders::RendererPath renderer;
     Builders::SurfacePath surface;
     SP::ConcretePathString target;
-    Builders::SurfaceDesc surface_desc{};
+    Runtime::SurfaceDesc surface_desc{};
     Builders::RenderSettings settings{};
     PathRenderer2D renderer2d;
     std::uint64_t frame_index = 0;
@@ -381,8 +383,8 @@ struct RenderHarness {
 
         surface_desc.size_px.width = 512;
         surface_desc.size_px.height = 360;
-        surface_desc.pixel_format = Builders::PixelFormat::RGBA8Unorm_sRGB;
-        surface_desc.color_space = Builders::ColorSpace::sRGB;
+        surface_desc.pixel_format = Runtime::PixelFormat::RGBA8Unorm_sRGB;
+        surface_desc.color_space = Runtime::ColorSpace::sRGB;
         surface_desc.premultiplied_alpha = true;
         surface_desc.progressive_tile_size_px = 32;
 

@@ -10,20 +10,21 @@
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/PathRenderer2DMetal.hpp>
 #include <pathspace/ui/PathSurfaceMetal.hpp>
-#include <pathspace/ui/SurfaceTypes.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 using namespace SP::UI;
+namespace Runtime = SP::UI::Runtime;
 
 TEST_CASE("PathRenderer2DMetal encodes rounded, text, and image commands") {
-    Builders::SurfaceDesc desc{};
+    Runtime::SurfaceDesc desc{};
     desc.size_px.width = 8;
     desc.size_px.height = 8;
-    desc.pixel_format = Builders::PixelFormat::BGRA8Unorm;
-    desc.color_space = Builders::ColorSpace::sRGB;
+    desc.pixel_format = Runtime::PixelFormat::BGRA8Unorm;
+    desc.color_space = Runtime::ColorSpace::sRGB;
     desc.premultiplied_alpha = true;
-    desc.metal.texture_usage = static_cast<std::uint8_t>(Builders::MetalTextureUsage::RenderTarget)
-                               | static_cast<std::uint8_t>(Builders::MetalTextureUsage::ShaderRead);
-    desc.metal.storage_mode = Builders::MetalStorageMode::Shared;
+    desc.metal.texture_usage = static_cast<std::uint8_t>(Runtime::MetalTextureUsage::RenderTarget)
+                               | static_cast<std::uint8_t>(Runtime::MetalTextureUsage::ShaderRead);
+    desc.metal.storage_mode = Runtime::MetalStorageMode::Shared;
     desc.metal.iosurface_backing = true;
 
     PathSurfaceMetal surface(desc);

@@ -10,6 +10,7 @@
 #include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/MaterialShaderKey.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <algorithm>
 #include <array>
@@ -40,6 +41,7 @@
 using namespace SP;
 using namespace SP::UI;
 using namespace SP::UI::Builders;
+namespace Runtime = SP::UI::Runtime;
 using SP::UI::MaterialResourceResidency;
 using SP::UI::Scene::BoundingBox;
 using SP::UI::Scene::BoundingSphere;
@@ -149,7 +151,7 @@ auto create_renderer(RendererFixture& fx, std::string const& name) -> RendererPa
 
 auto create_surface(RendererFixture& fx,
                     std::string const& name,
-                    Builders::SurfaceDesc desc,
+                    Runtime::SurfaceDesc desc,
                     std::string const& rendererName) -> SurfacePath {
     SurfaceParams params{};
     params.name = name;
@@ -444,7 +446,7 @@ auto blend(LinearColor dest, LinearColor src) -> LinearColor {
 }
 
 auto encode_linear_to_bytes(LinearColor color,
-                            Builders::SurfaceDesc const& desc,
+                            Runtime::SurfaceDesc const& desc,
                             bool encode_srgb) -> std::array<std::uint8_t, 4> {
     auto alpha = std::clamp(color.a, 0.0f, 1.0f);
     std::array<float, 3> premul{
@@ -611,7 +613,7 @@ auto read_golden(std::string_view name) -> std::optional<GoldenBuffer> {
 }
 
 void write_golden(std::string_view name,
-                  Builders::SurfaceDesc const& desc,
+                  Runtime::SurfaceDesc const& desc,
                   std::span<std::uint8_t const> bytes) {
     auto dir = golden_dir();
     std::filesystem::create_directories(dir);
@@ -645,7 +647,7 @@ auto join_strings(std::vector<std::string> const& parts) -> std::string {
 }
 
 void expect_matches_golden(std::string_view name,
-                           Builders::SurfaceDesc const& desc,
+                           Runtime::SurfaceDesc const& desc,
                            std::span<std::uint8_t const> buffer,
                            std::uint8_t tolerance = 1) {
     if (env_update_goldens()) {
@@ -744,7 +746,7 @@ TEST_CASE("render executes rect commands across passes and encodes pixels") {
     auto scenePath = create_scene(fx, "scene_rects", bucket);
     auto rendererPath = create_renderer(fx, "renderer_rects");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 4;
     surfaceDesc.size_px.height = 4;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -916,7 +918,7 @@ TEST_CASE("progressive tile size widens for high resolution surfaces") {
     auto scenePath = create_scene(fx, "scene_large_surface", bucket);
     auto rendererPath = create_renderer(fx, "renderer_large_surface");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = kWidth;
     surfaceDesc.size_px.height = kHeight;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
@@ -1015,7 +1017,7 @@ TEST_CASE("progressive tile size collapses after localized damage") {
     auto scenePath = create_scene(fx, "scene_tile_retarget", initial_bucket);
     auto rendererPath = create_renderer(fx, "renderer_tile_retarget");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = kWidth;
     surfaceDesc.size_px.height = kHeight;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
@@ -1130,7 +1132,7 @@ TEST_CASE("damage metrics reflect localized drawable updates") {
     auto scenePath = create_scene(fx, "scene_damage_metrics", initial_bucket);
     auto rendererPath = create_renderer(fx, "renderer_damage_metrics");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = kWidth;
     surfaceDesc.size_px.height = kHeight;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -1265,7 +1267,7 @@ TEST_CASE("damage metrics capture drawable removal") {
     auto scenePath = create_scene(fx, "scene_damage_removal", initial);
     auto rendererPath = create_renderer(fx, "renderer_damage_removal");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = kWidth;
     surfaceDesc.size_px.height = kHeight;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
@@ -1403,7 +1405,7 @@ TEST_CASE("damage metrics detect clear color repaint") {
     auto scenePath = create_scene(fx, "scene_clear_color_damage", bucket);
     auto rendererPath = create_renderer(fx, "renderer_clear_color_damage");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = kWidth;
     surfaceDesc.size_px.height = kHeight;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
@@ -1525,7 +1527,7 @@ TEST_CASE("damage metrics respect dirty rect hints") {
     auto scenePath = create_scene(fx, "scene_dirty_rect_hints", bucket);
     auto rendererPath = create_renderer(fx, "renderer_dirty_rect_hints");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = kWidth;
     surfaceDesc.size_px.height = kHeight;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -1752,7 +1754,7 @@ TEST_CASE("progressive repaint keeps backdrop when dirty hints cover a tile") {
 
     auto rendererPath = create_renderer(fx, "renderer_progressive_dirty_tile");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = kWidth;
     surfaceDesc.size_px.height = kHeight;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
@@ -1883,7 +1885,7 @@ TEST_CASE("pipeline flags partition passes when snapshot lacks explicit indices"
     auto scenePath = create_scene(fx, "scene_pipeline_flags", bucket);
     auto rendererPath = create_renderer(fx, "renderer_pipeline_flags");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 3;
     surfaceDesc.size_px.height = 3;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -1962,7 +1964,7 @@ TEST_CASE("incremental damage tracking limits progressive tiles") {
     auto scenePath = create_scene(fx, "scene_damage_tiles", bucket_initial);
     auto rendererPath = create_renderer(fx, "renderer_damage_tiles");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 8;
     surfaceDesc.size_px.height = 8;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -2060,7 +2062,7 @@ TEST_CASE("renderer skips repaint when drawable id changes but content matches")
     auto scenePath = create_scene(fx, "scene_id_change", bucket_initial);
     auto rendererPath = create_renderer(fx, "renderer_id_change");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 8;
     surfaceDesc.size_px.height = 8;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -2152,7 +2154,7 @@ TEST_CASE("dirty rect hints trigger repaint for unchanged snapshot") {
     auto scenePath = create_scene(fx, "scene_hint_damage", bucket);
     auto rendererPath = create_renderer(fx, "renderer_hint_damage");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 8;
     surfaceDesc.size_px.height = 8;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -2250,7 +2252,7 @@ TEST_CASE("clear color change triggers full-surface repaint") {
     auto scenePath = create_scene(fx, "scene_clear_color_damage", bucket);
     auto rendererPath = create_renderer(fx, "renderer_clear_color_damage");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 8;
     surfaceDesc.size_px.height = 8;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -2353,7 +2355,7 @@ TEST_CASE("records opaque sort violations when indices are unsorted") {
     auto scenePath = create_scene(fx, "scene_opaque_sort_violation", bucket);
     auto rendererPath = create_renderer(fx, "renderer_opaque_sort_violation");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 4;
     surfaceDesc.size_px.height = 4;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -2431,7 +2433,7 @@ TEST_CASE("records alpha sort violations when depth is front-to-back") {
     auto scenePath = create_scene(fx, "scene_alpha_sort_violation", bucket);
     auto rendererPath = create_renderer(fx, "renderer_alpha_sort_violation");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 4;
     surfaceDesc.size_px.height = 4;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -2506,7 +2508,7 @@ TEST_CASE("renders png image command") {
 
     auto rendererPath = create_renderer(fx, "renderer_image");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -2612,7 +2614,7 @@ TEST_CASE("render executes text glyphs command") {
     auto scenePath = create_scene(fx, "scene_text", bucket);
     auto rendererPath = create_renderer(fx, "renderer_text");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -2690,7 +2692,7 @@ TEST_CASE("text fallback engages when shaped pipeline requested") {
     auto scenePath = create_scene(fx, "scene_text_fallback", bucket);
     auto rendererPath = create_renderer(fx, "renderer_text_fallback");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -2770,7 +2772,7 @@ TEST_CASE("render executes path command using fill color") {
     auto scenePath = create_scene(fx, "scene_path", bucket);
     auto rendererPath = create_renderer(fx, "renderer_path");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -2835,7 +2837,7 @@ TEST_CASE("render executes mesh command using drawable bounds") {
     auto scenePath = create_scene(fx, "scene_mesh", bucket);
     auto rendererPath = create_renderer(fx, "renderer_mesh");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -2911,7 +2913,7 @@ TEST_CASE("render executes stroke command draws polyline") {
     auto scenePath = create_scene(fx, "scene_stroke", bucket);
     auto rendererPath = create_renderer(fx, "renderer_stroke");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 8;
     surfaceDesc.size_px.height = 8;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -2998,7 +3000,7 @@ TEST_CASE("render tracks culled drawables and executed commands") {
     auto scenePath = create_scene(fx, "scene_cull", bucket);
     auto rendererPath = create_renderer(fx, "renderer_cull");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 4;
     surfaceDesc.size_px.height = 4;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
@@ -3057,7 +3059,7 @@ TEST_CASE("unsupported commands fall back to bounds and report metrics") {
     auto scenePath = create_scene(fx, "scene_mesh_fallback", bucket);
     auto rendererPath = create_renderer(fx, "renderer_mesh_fallback");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
@@ -3100,7 +3102,7 @@ TEST_CASE("render reports error when target scene binding missing") {
     auto scenePath = create_scene(fx, "scene_error", bucket);
     auto rendererPath = create_renderer(fx, "renderer_error");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
@@ -3165,7 +3167,7 @@ TEST_CASE("Surface::RenderOnce drives renderer and stores metrics") {
     auto scenePath = create_scene(fx, "scene_surface", bucket);
     auto rendererPath = create_renderer(fx, "renderer_surface");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
@@ -3216,7 +3218,7 @@ TEST_CASE("PathRenderer2D records material descriptors metrics") {
     auto scenePath = create_scene(fx, "scene_material_metrics", bucket);
     auto rendererPath = create_renderer(fx, "renderer_material_metrics");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 4;
     surfaceDesc.size_px.height = 4;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
@@ -3281,7 +3283,7 @@ TEST_CASE("PathRenderer2D pulses focus highlight color over time") {
     auto scenePath = create_scene(fx, "scene_focus_pulse", bucket);
     auto rendererPath = create_renderer(fx, "renderer_focus_pulse");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 64;
     surfaceDesc.size_px.height = 32;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -3371,7 +3373,7 @@ TEST_CASE("Surface::RenderOnce handles repeated loop renders") {
     auto scenePath = create_scene(fx, "scene_surface_loop", bucket);
     auto rendererPath = create_renderer(fx, "renderer_surface_loop");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -3431,7 +3433,7 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     auto scenePath = create_scene(fx, "scene_window", bucket);
     auto rendererPath = create_renderer(fx, "renderer_window");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -3503,7 +3505,7 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK(lastError->empty());
 
     auto framebufferPath = std::string(targetPath.getPath()) + "/output/v1/software/framebuffer";
-    auto storedFramebuffer = fx.space.read<Builders::SoftwareFramebuffer, std::string>(framebufferPath);
+    auto storedFramebuffer = fx.space.read<Runtime::SoftwareFramebuffer, std::string>(framebufferPath);
     REQUIRE(storedFramebuffer);
     CHECK(storedFramebuffer->width == surfaceDesc.size_px.width);
     CHECK(storedFramebuffer->height == surfaceDesc.size_px.height);
@@ -3537,7 +3539,7 @@ TEST_CASE("Window::Present skips framebuffer serialization when capture disabled
     auto scenePath = create_scene(fx, "scene_no_capture", bucket);
     auto rendererPath = create_renderer(fx, "renderer_no_capture");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 4;
     surfaceDesc.size_px.height = 4;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
@@ -3566,7 +3568,7 @@ TEST_CASE("Window::Present skips framebuffer serialization when capture disabled
 
     auto targetPath = resolve_target(fx, surfacePath);
     auto framebufferPath = std::string(targetPath.getPath()) + "/output/v1/software/framebuffer";
-    auto storedFramebuffer = fx.space.read<Builders::SoftwareFramebuffer, std::string>(framebufferPath);
+    auto storedFramebuffer = fx.space.read<Runtime::SoftwareFramebuffer, std::string>(framebufferPath);
     REQUIRE_FALSE(storedFramebuffer);
     auto const code = storedFramebuffer.error().code;
     bool const absent = code == SP::Error::Code::NoObjectFound
@@ -3598,7 +3600,7 @@ TEST_CASE("Window::Present software path publishes residency watermarks") {
     auto scenePath = create_scene(fx, "scene_software_residency", bucket);
     auto rendererPath = create_renderer(fx, "renderer_software_residency");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 4;
     surfaceDesc.size_px.height = 4;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
@@ -3718,7 +3720,7 @@ TEST_CASE("Window::Present progressive updates preserve prior content") {
                                   }));
     auto rendererPath = create_renderer(fx, "renderer_window_progressive");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 128;
     surfaceDesc.size_px.height = 96;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -3757,7 +3759,7 @@ TEST_CASE("Window::Present progressive updates preserve prior content") {
     auto red_bytes = color_to_bytes(rect_a);
     auto blue_bytes = color_to_bytes(rect_b);
 
-    auto sample_pixel = [](Builders::SoftwareFramebuffer const& fb, int x, int y) {
+    auto sample_pixel = [](Runtime::SoftwareFramebuffer const& fb, int x, int y) {
         auto stride = static_cast<std::size_t>(fb.row_stride_bytes);
         auto offset = stride * static_cast<std::size_t>(y) + static_cast<std::size_t>(x) * 4u;
         return std::array<std::uint8_t, 4>{
@@ -3775,7 +3777,7 @@ TEST_CASE("Window::Present progressive updates preserve prior content") {
     CHECK(present_first->stats.presented);
 
     auto framebufferPath = std::string(targetPath.getPath()) + "/output/v1/software/framebuffer";
-    auto framebuffer_first = fx.space.read<Builders::SoftwareFramebuffer, std::string>(framebufferPath);
+    auto framebuffer_first = fx.space.read<Runtime::SoftwareFramebuffer, std::string>(framebufferPath);
     REQUIRE(framebuffer_first);
 
     auto center_a_x = static_cast<int>((rect_a.min_x + rect_a.max_x) * 0.5f);
@@ -3807,7 +3809,7 @@ TEST_CASE("Window::Present progressive updates preserve prior content") {
     CHECK(present_second->stats.presented);
     CHECK(present_second->stats.progressive_tiles_copied >= 1);
 
-    auto framebuffer_second = fx.space.read<Builders::SoftwareFramebuffer, std::string>(framebufferPath);
+    auto framebuffer_second = fx.space.read<Runtime::SoftwareFramebuffer, std::string>(framebufferPath);
     REQUIRE(framebuffer_second);
 
     auto center_b_x = static_cast<int>((rect_b.min_x + rect_b.max_x) * 0.5f);
@@ -3859,7 +3861,7 @@ TEST_CASE("Window::Present handles repeated loop without dropping metrics") {
     auto scenePath = create_scene(fx, "scene_window_loop", bucket);
     auto rendererPath = create_renderer(fx, "renderer_window_loop");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -3901,7 +3903,7 @@ TEST_CASE("Window::Present handles repeated loop without dropping metrics") {
     CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/stale").value());
 
     auto framebufferPath = std::string(targetPath.getPath()) + "/output/v1/software/framebuffer";
-    auto storedFramebuffer = fx.space.read<Builders::SoftwareFramebuffer, std::string>(framebufferPath);
+    auto storedFramebuffer = fx.space.read<Runtime::SoftwareFramebuffer, std::string>(framebufferPath);
     REQUIRE(storedFramebuffer);
     auto storedStride = storedFramebuffer->row_stride_bytes;
     CHECK(storedStride >= surfaceDesc.size_px.width * 4);
@@ -3947,7 +3949,7 @@ TEST_CASE("Window::Present handles multiple renderer targets") {
                                    }));
     auto rendererPath = create_renderer(fx, "renderer_multi_target");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 4;
     surfaceDesc.size_px.height = 4;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -3983,7 +3985,7 @@ TEST_CASE("Window::Present handles multiple renderer targets") {
                                                        surfaceDesc,
                                                        true);
 
-    auto sample_pixel = [](Builders::SoftwareFramebuffer const& fb, int x, int y) {
+    auto sample_pixel = [](Runtime::SoftwareFramebuffer const& fb, int x, int y) {
         auto stride = static_cast<std::size_t>(fb.row_stride_bytes);
         auto offset = stride * static_cast<std::size_t>(y) + static_cast<std::size_t>(x) * 4u;
         return std::array<std::uint8_t, 4>{
@@ -4064,7 +4066,7 @@ TEST_CASE("Window::Present handles multi-window multi-surface wiring") {
                                   }));
     auto rendererPath = create_renderer(fx, "renderer_multi_window");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 4;
     surfaceDesc.size_px.height = 4;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -4111,7 +4113,7 @@ TEST_CASE("Window::Present handles multi-window multi-surface wiring") {
                                                       surfaceDesc,
                                                       true);
 
-    auto sample_pixel = [](Builders::SoftwareFramebuffer const& fb, int x, int y) {
+    auto sample_pixel = [](Runtime::SoftwareFramebuffer const& fb, int x, int y) {
         auto stride = static_cast<std::size_t>(fb.row_stride_bytes);
         auto offset = stride * static_cast<std::size_t>(y) + static_cast<std::size_t>(x) * 4u;
         return std::array<std::uint8_t, 4>{
@@ -4194,7 +4196,7 @@ TEST_CASE("Window::Present reads present policy overrides from PathSpace") {
     auto scenePath = create_scene(fx, "scene_policy", bucket);
     auto rendererPath = create_renderer(fx, "renderer_policy");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -4240,7 +4242,7 @@ TEST_CASE("Window::Present reads present policy overrides from PathSpace") {
     CHECK_FALSE(fx.space.read<bool, std::string>(metricsBase + "/stale").value());
 
     auto framebufferPath = std::string(targetPath.getPath()) + "/output/v1/software/framebuffer";
-    auto storedFramebuffer = fx.space.read<Builders::SoftwareFramebuffer, std::string>(framebufferPath);
+    auto storedFramebuffer = fx.space.read<Runtime::SoftwareFramebuffer, std::string>(framebufferPath);
     REQUIRE(storedFramebuffer);
     CHECK(storedFramebuffer->width == surfaceDesc.size_px.width);
     CHECK(storedFramebuffer->height == surfaceDesc.size_px.height);
@@ -4278,7 +4280,7 @@ TEST_CASE("Window auto render scheduling enqueues render request when frame stay
 
     auto scenePath = create_scene(fx, "scene_auto_render", bucket);
     auto rendererPath = create_renderer(fx, "renderer_auto_render");
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -4360,7 +4362,7 @@ TEST_CASE("Window auto render scheduling no-ops when disabled") {
 
     auto scenePath = create_scene(fx, "scene_auto_render_disabled", bucket);
     auto rendererPath = create_renderer(fx, "renderer_auto_render_disabled");
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -4442,7 +4444,7 @@ TEST_CASE("PathWindowView reports progressive seqlock skips") {
     auto scenePath = create_scene(fx, "scene_seqlock", bucket);
     auto rendererPath = create_renderer(fx, "renderer_seqlock");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -4525,7 +4527,7 @@ TEST_CASE("Window::Present records progressive seqlock metrics") {
     auto scenePath = create_scene(fx, "scene_window_seqlock", bucket);
     auto rendererPath = create_renderer(fx, "renderer_window_seqlock");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -4608,7 +4610,7 @@ TEST_CASE("Window::Present AlwaysFresh skip records deadline metrics") {
     auto scenePath = create_scene(fx, "scene_window_always_fresh", bucket);
     auto rendererPath = create_renderer(fx, "renderer_window_always_fresh");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -4701,7 +4703,7 @@ TEST_CASE("Window::Present progressive diagnostics reflect dirty hints") {
                                   }));
     auto rendererPath = create_renderer(fx, "renderer_window_progressive_diagnostics");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 4;
     surfaceDesc.size_px.height = 4;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -4837,7 +4839,7 @@ TEST_CASE("rounded rectangles respect per-corner radii") {
     auto scenePath = create_scene(fx, "scene_round", bucket);
     auto rendererPath = create_renderer(fx, "renderer_round");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 5;
     surfaceDesc.size_px.height = 5;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
@@ -4935,7 +4937,7 @@ TEST_CASE("linear BGRA framebuffer respects color management settings") {
     auto scenePath = create_scene(fx, "scene_bgra", bucket);
     auto rendererPath = create_renderer(fx, "renderer_bgra");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 3;
     surfaceDesc.size_px.height = 3;
     surfaceDesc.pixel_format = PixelFormat::BGRA8Unorm;
@@ -5026,7 +5028,7 @@ TEST_CASE("progressive-only surfaces present via progressive path") {
     auto scenePath = create_scene(fx, "scene_progressive_only", bucket);
     auto rendererPath = create_renderer(fx, "renderer_progressive_only");
 
-    Builders::SurfaceDesc surfaceDesc{};
+    Runtime::SurfaceDesc surfaceDesc{};
     surfaceDesc.size_px.width = 2;
     surfaceDesc.size_px.height = 2;
     surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;

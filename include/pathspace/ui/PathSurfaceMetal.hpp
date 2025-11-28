@@ -2,7 +2,7 @@
 
 #include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/MaterialShaderKey.hpp>
-#include <pathspace/ui/SurfaceTypes.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <cstdint>
 #include <span>
@@ -12,6 +12,8 @@
 #include <string>
 
 namespace SP::UI {
+
+using Runtime::SurfaceDesc;
 
 struct PathSurfaceMetalTextureInfo {
     void* texture = nullptr;
@@ -27,7 +29,7 @@ class PathSurfaceMetal {
 public:
     using TextureInfo = PathSurfaceMetalTextureInfo;
 
-    explicit PathSurfaceMetal(Builders::SurfaceDesc desc);
+    explicit PathSurfaceMetal(SurfaceDesc desc);
     ~PathSurfaceMetal();
 
     PathSurfaceMetal(PathSurfaceMetal const&) = delete;
@@ -35,9 +37,9 @@ public:
     PathSurfaceMetal(PathSurfaceMetal&&) noexcept;
     PathSurfaceMetal& operator=(PathSurfaceMetal&&) noexcept;
 
-    void resize(Builders::SurfaceDesc const& desc);
+    void resize(SurfaceDesc const& desc);
 
-    [[nodiscard]] auto desc() const -> Builders::SurfaceDesc const&;
+    [[nodiscard]] auto desc() const -> SurfaceDesc const&;
     [[nodiscard]] auto acquire_texture() -> TextureInfo;
     void update_from_rgba8(std::span<std::uint8_t const> pixels,
                            std::size_t bytes_per_row,
@@ -68,11 +70,11 @@ class PathSurfaceMetal {
 public:
     using TextureInfo = PathSurfaceMetalTextureInfo;
 
-    explicit PathSurfaceMetal(Builders::SurfaceDesc) {
+    explicit PathSurfaceMetal(SurfaceDesc) {
         throw std::runtime_error("PathSurfaceMetal is only available on Apple platforms.");
     }
-    void resize(Builders::SurfaceDesc const&) {}
-    [[nodiscard]] auto desc() const -> Builders::SurfaceDesc const& {
+    void resize(SurfaceDesc const&) {}
+    [[nodiscard]] auto desc() const -> SurfaceDesc const& {
         throw std::runtime_error("PathSurfaceMetal is only available on Apple platforms.");
     }
     [[nodiscard]] auto acquire_texture() -> TextureInfo {

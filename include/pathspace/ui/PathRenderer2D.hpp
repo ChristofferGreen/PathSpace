@@ -8,6 +8,7 @@
 #include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/MaterialShaderKey.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <array>
 #include <chrono>
@@ -18,6 +19,8 @@
 #include <parallel_hashmap/phmap.h>
 
 namespace SP::UI {
+
+using Runtime::SurfaceDesc;
 
 class PathSurfaceMetal;
 
@@ -94,7 +97,7 @@ private:
     using MaterialDescriptorMap = phmap::flat_hash_map<std::uint32_t, MaterialDescriptor>;
 
     struct TargetState {
-        Builders::SurfaceDesc desc{};
+        SurfaceDesc desc{};
         std::array<float, 4> clear_color{0.0f, 0.0f, 0.0f, 0.0f};
         DrawableStateMap drawable_states;
         std::vector<float> linear_buffer;

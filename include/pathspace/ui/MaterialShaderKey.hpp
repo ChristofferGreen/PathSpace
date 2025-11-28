@@ -1,10 +1,12 @@
 #pragma once
 
 #include <pathspace/ui/MaterialDescriptor.hpp>
-#include <pathspace/ui/SurfaceTypes.hpp>
 #include <pathspace/ui/PipelineFlags.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 namespace SP::UI {
+
+using Runtime::SurfaceDesc;
 
 struct MaterialShaderKey {
     std::uint32_t pipeline_flags = 0;
@@ -29,6 +31,6 @@ struct MaterialResourceResidency {
 };
 
 [[nodiscard]] auto make_shader_key(MaterialDescriptor const& material,
-                                   Builders::SurfaceDesc const& surface) -> MaterialShaderKey;
+                                   SurfaceDesc const& surface) -> MaterialShaderKey;
 
 } // namespace SP::UI
