@@ -71,6 +71,7 @@ struct ScreenshotRequest {
     std::string telemetry_namespace = "default";
     bool force_software = false;
     bool allow_software_fallback = false;
+    bool present_when_force_software = false;
 };
 
 struct ScreenshotResult {

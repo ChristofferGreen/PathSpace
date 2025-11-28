@@ -1,6 +1,8 @@
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Detail.hpp>
 
+#include "../RuntimeDetail.hpp"
+
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/Helpers.hpp>
 #include <pathspace/ui/LocalWindowBridge.hpp>
@@ -521,21 +523,14 @@ auto ensure_view_binding(PathSpace& space,
 
 auto read_present_policy(SP::PathSpace& space,
                          SP::UI::WindowPath const& window,
-                         std::string const& view_name) -> SP::UI::PathWindowPresentPolicy {
-    SP::UI::PathWindowPresentPolicy policy{};
-    auto present_mode_path = std::string(window.getPath()) + "/views/" + view_name + "/present/policy";
-    auto present_mode = space.read<std::string, std::string>(present_mode_path);
-    if (present_mode) {
-        auto const& mode = *present_mode;
-        if (mode == "AlwaysFresh") {
-            policy.mode = SP::UI::PathWindowPresentMode::AlwaysFresh;
-        } else if (mode == "PreferLatestCompleteWithBudget") {
-            policy.mode = SP::UI::PathWindowPresentMode::PreferLatestCompleteWithBudget;
-        } else {
-            policy.mode = SP::UI::PathWindowPresentMode::AlwaysLatestComplete;
-        }
+                         std::string const& view_name)
+    -> SP::Expected<SP::UI::PathWindowPresentPolicy> {
+    auto view_base = std::string(window.getPath()) + "/views/" + view_name;
+    auto policy = SP::UI::Runtime::Detail::read_present_policy(space, view_base);
+    if (!policy) {
+        return std::unexpected(policy.error());
     }
-    return policy;
+    return *policy;
 }
 
 auto build_present_handles(SP::PathSpace& space,
@@ -666,7 +661,11 @@ auto ResizePresentSurface(SP::PathSpace& space,
 
 auto PresentWindowFrame(SP::PathSpace& space,
                         PresentHandles const& handles) -> SP::Expected<PresentFrame> {
-    auto present_policy = read_present_policy(space, handles.window, handles.view_name);
+    auto present_policy_result = read_present_policy(space, handles.window, handles.view_name);
+    if (!present_policy_result) {
+        return std::unexpected(present_policy_result.error());
+    }
+    auto present_policy = *present_policy_result;
 
     auto context = prepare_surface_render_context(space, handles.surface, std::nullopt);
     if (!context) {

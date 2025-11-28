@@ -210,6 +210,7 @@ auto CaptureDeclarative(SP::PathSpace& space,
         .telemetry_namespace = *telemetry_namespace,
         .force_software = options.force_software,
         .allow_software_fallback = options.allow_software_fallback,
+        .present_when_force_software = options.present_when_force_software,
     };
 
     request.telemetry_root = options.telemetry_root.value_or("/diagnostics/ui/screenshot");

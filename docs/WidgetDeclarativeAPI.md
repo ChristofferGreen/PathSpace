@@ -137,6 +137,13 @@ environment variable `PATHSPACE_HELLO_SCREENSHOT=<png>` (and optional
 env hook falls back to a deterministic reference render so onboarding docs
 retain a screenshot without extra CLI plumbing.
 
+`PresentWindowFrame` once again consumes `/present/params/capture_framebuffer`,
+and `ScreenshotService::Capture` now always runs a present pass even when the
+caller sets `force_software`, so headless/CI runs that export
+`PATHSPACE_SCREENSHOT_FORCE_SOFTWARE=1` still dump the real declarative UI. The
+deterministic fallback writer remains as the last resort when both hardware and
+software readbacks fail.
+
 7. Include `<pathspace/ui/declarative/ThemeConfig.hpp>` whenever you need to
    provision, load, or switch themes outside the higher-level
    `SP::UI::Declarative::Theme::{Create,SetColor,RebuildValue}` helpers.

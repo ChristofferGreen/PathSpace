@@ -547,23 +547,25 @@ auto ScreenshotService::Capture(ScreenshotRequest const& request) -> SP::Expecte
 
     std::vector<std::uint8_t> capture_pixels;
     bool hardware_capture = false;
-    if (!request.force_software) {
-        auto present = capture_present_frame(request.space,
-                                             *present_handles,
-                                             request.present_timeout);
-        if (present) {
+    bool have_present_frame = false;
+
+    bool allow_present = !request.force_software || request.present_when_force_software;
+    if (allow_present) {
+        if (auto present = capture_present_frame(request.space,
+                                                 *present_handles,
+                                                 request.present_timeout)) {
             auto packed = pack_framebuffer(present->framebuffer, request.width, request.height);
             if (!packed) {
                 std::cerr << "ScreenshotService: framebuffer packing failed\n";
             } else {
                 capture_pixels = std::move(*packed);
-                hardware_capture = true;
+                hardware_capture = !request.force_software;
+                have_present_frame = true;
             }
         }
     }
 
-    bool software_fallback = false;
-    if (!hardware_capture && !request.require_present
+    if (!have_present_frame && !request.require_present
         && (request.force_software || request.allow_software_fallback)) {
         auto fallback_pixels = read_software_framebuffer_pixels(request.space,
                                                                 *present_handles,
@@ -575,11 +577,11 @@ auto ScreenshotService::Capture(ScreenshotRequest const& request) -> SP::Expecte
                       << SP::describeError(error) << "\n";
         } else {
             capture_pixels = std::move(*fallback_pixels);
-            software_fallback = true;
+            have_present_frame = true;
         }
     }
 
-    if (hardware_capture || software_fallback) {
+    if (have_present_frame) {
         FramebufferView view{
             .pixels = std::span<std::uint8_t>(capture_pixels.data(), capture_pixels.size()),
             .width = request.width,

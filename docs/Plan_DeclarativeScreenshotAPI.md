@@ -115,6 +115,12 @@ auto CaptureDeclarative(SP::PathSpace& space,
   helper, while `declarative_hello_example` remains CLI-free but now honors the
   `PATHSPACE_HELLO_SCREENSHOT` env var (complete with a deterministic fallback)
   to route through the same helper for the quickstart PNG.
+- ✅ Declarative presents re-read `/present/params/*` (including
+  `capture_framebuffer`) and `ScreenshotService::Capture` always runs a present
+  pass—even when `force_software` is set—so env-driven captures now emit the
+  real framebuffer instead of falling back to the placeholder PNG. The
+  deterministic fallback still triggers only when both hardware and software
+  readbacks fail.
 - 🔄 Remaining follow-ups: land the focused helper test suite. (Doc coverage is
   up to date; Widget API/onboarding/debugging guides now mention the helper and
   env hook.)

@@ -486,6 +486,7 @@ int main() {
         }
         screenshot.force_software = force_software;
         screenshot.allow_software_fallback = false;
+        screenshot.present_when_force_software = true;
         screenshot.telemetry_namespace = std::string{"declarative_hello_example"};
         auto screenshot_target = std::filesystem::path{path_string};
         if (!screenshot.hooks) {
