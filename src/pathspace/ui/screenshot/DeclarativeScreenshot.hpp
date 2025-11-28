@@ -30,6 +30,8 @@ struct DeclarativeScreenshotOptions {
     bool force_software = false;
     bool allow_software_fallback = false;
     bool present_when_force_software = false;
+    bool enable_capture_framebuffer = true;
+    bool present_before_capture = true;
     std::chrono::milliseconds readiness_timeout{std::chrono::milliseconds{3000}};
     std::chrono::milliseconds publish_timeout{std::chrono::milliseconds{2000}};
     std::chrono::milliseconds present_timeout{std::chrono::milliseconds{2000}};

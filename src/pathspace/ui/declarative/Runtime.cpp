@@ -358,23 +358,71 @@ auto resolve_scene_window_binding(SP::PathSpace& space,
     return binding;
 }
 
+auto theme_defaults_for(std::string const& sanitized) -> SP::UI::Runtime::Widgets::WidgetTheme {
+    if (sanitized == "sunset") {
+        return SP::UI::Runtime::Widgets::MakeSunsetWidgetTheme();
+    }
+    return SP::UI::Runtime::Widgets::MakeDefaultWidgetTheme();
+}
+
 auto ensure_theme(PathSpace& space,
                   SP::App::AppRootPathView app_root,
                   std::string_view requested) -> SP::Expected<std::string> {
-    std::string normalized = requested.empty() ? "default" : std::string(requested);
-    auto sanitized = ThemeConfig::SanitizeName(normalized);
-    auto defaults = sanitized == "sunset"
-        ? SP::UI::Runtime::Widgets::MakeSunsetWidgetTheme()
-        : SP::UI::Runtime::Widgets::MakeDefaultWidgetTheme();
+    auto load_active = ThemeConfig::LoadActive(space, app_root);
+    if (!load_active) {
+        auto const& error = load_active.error();
+        if (error.code != SP::Error::Code::NoSuchPath
+            && error.code != SP::Error::Code::NoObjectFound) {
+            return std::unexpected(error);
+        }
+    }
 
-    auto ensured = ThemeConfig::Ensure(space, app_root, sanitized, defaults);
-    if (!ensured) {
-        return std::unexpected(ensured.error());
+    auto sanitize = [](std::optional<std::string> const& value) -> std::optional<std::string> {
+        if (!value || value->empty()) {
+            return std::nullopt;
+        }
+        return ThemeConfig::SanitizeName(*value);
+    };
+
+    auto sanitized_active = sanitize(load_active ? std::optional<std::string>{*load_active}
+                                                : std::nullopt);
+    auto sanitized_requested = sanitize(requested.empty() ? std::optional<std::string>{}
+                                                          : std::optional<std::string>{std::string(requested)});
+
+    auto set_active = [&](std::string const& name) -> SP::Expected<std::string> {
+        auto defaults = theme_defaults_for(name);
+        auto ensured = ThemeConfig::Ensure(space, app_root, name, defaults);
+        if (!ensured) {
+            return std::unexpected(ensured.error());
+        }
+        if (auto status = ThemeConfig::SetActive(space, app_root, name); !status) {
+            return std::unexpected(status.error());
+        }
+        return name;
+    };
+
+    if (sanitized_requested) {
+        if (sanitized_active && *sanitized_active == *sanitized_requested) {
+            auto defaults = theme_defaults_for(*sanitized_active);
+            auto ensured = ThemeConfig::Ensure(space, app_root, *sanitized_active, defaults);
+            if (!ensured) {
+                return std::unexpected(ensured.error());
+            }
+            return *sanitized_active;
+        }
+        return set_active(*sanitized_requested);
     }
-    if (auto status = ThemeConfig::SetActive(space, app_root, sanitized); !status) {
-        return std::unexpected(status.error());
+
+    if (sanitized_active) {
+        auto defaults = theme_defaults_for(*sanitized_active);
+        auto ensured = ThemeConfig::Ensure(space, app_root, *sanitized_active, defaults);
+        if (!ensured) {
+            return std::unexpected(ensured.error());
+        }
+        return *sanitized_active;
     }
-    return sanitized;
+
+    return set_active(std::string{"default"});
 }
 
 auto renderer_config_path(SP::App::AppRootPathView app_root) -> std::string {

@@ -1,6 +1,7 @@
 #include "declarative_example_shared.hpp"
 
 #include <pathspace/ui/Helpers.hpp>
+#include <pathspace/ui/declarative/StackReadiness.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/screenshot/DeclarativeScreenshot.hpp>
 
@@ -243,41 +244,15 @@ auto render_reference_hello_png(std::filesystem::path const& path) -> SP::Expect
     constexpr int height = kWindowHeight;
     auto canvas = make_canvas(width, height, Rgba{240, 242, 245, 255});
 
-    fill_rect(canvas, width, height, 40, 60, width - 80, height - 120, Rgba{255, 255, 255, 255});
-    draw_rect_outline(canvas, width, height, 40, 60, width - 80, height - 120, 2, Rgba{220, 223, 228, 255});
+    draw_text(canvas, width, height, 70, 120, "TAP THE BUTTON TO SAY HELLO", 2, Rgba{60, 64, 72, 255});
 
-    draw_text(canvas, width, height, 70, 100, "TAP THE BUTTON OR PICK A GREETING", 2, Rgba{60, 64, 72, 255});
-
-    fill_rect(canvas, width, height, 70, 180, 240, 70, Rgba{58, 108, 217, 255});
-    draw_text(canvas, width, height, 110, 200, "SAY HELLO", 2, Rgba{255, 255, 255, 255});
-
-    int list_x = 360;
-    int list_y = 170;
-    int item_height = 70;
-    std::array<std::string, 3> greetings{"HOLA", "BONJOUR", "KONNICHIWA"};
-    for (std::size_t i = 0; i < greetings.size(); ++i) {
-        Rgba item_color = (i == 0) ? Rgba{255, 255, 255, 255} : Rgba{248, 250, 253, 255};
-        fill_rect(canvas, width, height, list_x, list_y + static_cast<int>(i) * (item_height + 12), 320, item_height, item_color);
-        draw_rect_outline(canvas,
-                          width,
-                          height,
-                          list_x,
-                          list_y + static_cast<int>(i) * (item_height + 12),
-                          320,
-                          item_height,
-                          2,
-                          Rgba{220, 223, 228, 255});
-        draw_text(canvas,
-                  width,
-                  height,
-                  list_x + 20,
-                  list_y + static_cast<int>(i) * (item_height + 12) + 20,
-                  greetings[i],
-                  2,
-                  Rgba{60, 64, 72, 255});
-    }
-
-    draw_text(canvas, width, height, 70, height - 80, "SELECTED GREETING: NONE", 2, Rgba{80, 84, 92, 255});
+    auto button_x = 70;
+    auto button_y = 190;
+    auto button_w = 260;
+    auto button_h = 68;
+    fill_rect(canvas, width, height, button_x, button_y, button_w, button_h, Rgba{58, 108, 217, 255});
+    draw_rect_outline(canvas, width, height, button_x, button_y, button_w, button_h, 2, Rgba{34, 70, 167, 255});
+    draw_text(canvas, width, height, button_x + 60, button_y + 20, "SAY HELLO", 2, Rgba{255, 255, 255, 255});
 
     return write_png_rgba(path,
                           width,
@@ -335,6 +310,7 @@ int main() {
     window_opts.width = kWindowWidth;
     window_opts.height = kWindowHeight;
     window_opts.visible = true;
+    window_opts.background = "#f0f2f5";
     auto window = SP::Window::Create(space, app_root_view, window_opts);
     if (!window) {
         std::cerr << "declarative_hello_example: failed to create window\n";
@@ -385,54 +361,48 @@ int main() {
     auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
     auto window_view = SP::App::ConcretePathView{window_view_path};
 
-    auto status_label = SP::UI::Declarative::Label::Create(space,
-                                                           window_view,
-                                                           "hello_label",
-                                                           {.text = "Tap the button or pick a greeting"});
-    if (!status_label) {
-        std::cerr << "declarative_hello_example: failed to create label\n";
+    SP::UI::Declarative::Button::Args button_fragment_args{};
+    button_fragment_args.label = "Say Hello";
+    button_fragment_args.style.width = 260.0f;
+    button_fragment_args.style.height = 68.0f;
+    button_fragment_args.style.corner_radius = 18.0f;
+    button_fragment_args.style.background_color = {0.22f, 0.42f, 0.93f, 1.0f};
+    button_fragment_args.style.text_color = {0.98f, 0.99f, 1.0f, 1.0f};
+    button_fragment_args.on_press = [](SP::UI::Declarative::ButtonContext&) {
+        std::cout << "declarative_hello_example: hello button pressed\n";
+    };
+
+    SP::UI::Declarative::Stack::Args root_stack{};
+    root_stack.active_panel = "button_panel";
+    root_stack.style.axis = SP::UI::Runtime::Widgets::StackAxis::Vertical;
+    root_stack.style.align_main = SP::UI::Runtime::Widgets::StackAlignMain::Center;
+    root_stack.style.align_cross = SP::UI::Runtime::Widgets::StackAlignCross::Center;
+    root_stack.style.width = static_cast<float>(kWindowWidth);
+    root_stack.style.height = static_cast<float>(kWindowHeight);
+    root_stack.panels.push_back({.id = "button_panel",
+                                 .fragment = SP::UI::Declarative::Button::Fragment(button_fragment_args)});
+
+    auto button_layout = SP::UI::Declarative::Stack::Create(space,
+                                                            window_view,
+                                                            "hello_stack",
+                                                            std::move(root_stack));
+    if (!button_layout) {
+        std::cerr << "declarative_hello_example: failed to create layout\n";
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
 
-    SP::UI::Declarative::Button::Args button_args{};
-    button_args.label = "Say Hello";
-    button_args.on_press = [status_label_path = *status_label](SP::UI::Declarative::ButtonContext& ctx) {
-        log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                      status_label_path,
-                                                      "Hello from Declarative Widgets!"),
-                  "Label::SetText");
-    };
-    auto button = SP::UI::Declarative::Button::Create(space,
-                                                       window_view,
-                                                       "hello_button",
-                                                       button_args);
-    if (!button) {
-        std::cerr << "declarative_hello_example: failed to create button\n";
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 1;
-    }
-
-    std::vector<SP::UI::Declarative::List::ListItem> greetings{
-        {.id = "hola", .label = "Hola"},
-        {.id = "bonjour", .label = "Bonjour"},
-        {.id = "konnichiwa", .label = "Konnichiwa"},
-    };
-    SP::UI::Declarative::List::Args list_args{};
-    list_args.items = greetings;
-    list_args.on_child_event = [status_label_path = *status_label](SP::UI::Declarative::ListChildContext& ctx) {
-        std::string text = "Selected greeting: " + ctx.child_id;
-        log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                      status_label_path,
-                                                      text),
-                  "Label::SetText");
-    };
-    auto list = SP::UI::Declarative::List::Create(space,
-                                                   window_view,
-                                                   "greeting_list",
-                                                   list_args);
-    if (!list) {
-        std::cerr << "declarative_hello_example: failed to create list\n";
+    SP::UI::Declarative::StackReadinessOptions stack_wait{};
+    stack_wait.timeout = std::chrono::milliseconds{1500};
+    auto stack_root = button_layout->getPath();
+    std::array<std::string_view, 1> required_children{"button_panel"};
+    auto waited = SP::UI::Declarative::WaitForStackChildren(space,
+                                                            stack_root,
+                                                            std::span<const std::string_view>(required_children),
+                                                            stack_wait);
+    if (!waited) {
+        std::cerr << "declarative_hello_example: stack readiness failed: "
+                  << SP::describeError(waited.error()) << "\n";
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }

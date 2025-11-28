@@ -210,6 +210,17 @@ if(BUILD_PATHSPACE_EXAMPLES)
         target_compile_definitions(declarative_theme_example PRIVATE PATHIO_BACKEND_MACOS=1)
     endif()
 
+    add_executable(declarative_button_example examples/declarative_button_example.cpp)
+    target_link_libraries(declarative_button_example PRIVATE PathSpace)
+    if(APPLE)
+        target_link_libraries(declarative_button_example PRIVATE
+            "-framework Cocoa"
+            "-framework Metal"
+            "-framework QuartzCore"
+            "-framework IOSurface")
+        target_compile_definitions(declarative_button_example PRIVATE PATHIO_BACKEND_MACOS=1)
+    endif()
+
     add_executable(declarative_hello_example examples/declarative_hello_example.cpp)
     target_link_libraries(declarative_hello_example PRIVATE PathSpace)
     if(APPLE)

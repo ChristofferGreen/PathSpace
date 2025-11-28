@@ -4,6 +4,7 @@
 #include <pathspace/core/Error.hpp>
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
+#include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/runtime/UIRuntime.hpp>
 
 #include <algorithm>
@@ -36,6 +37,32 @@ auto resolve_view_name(SP::PathSpace& space,
         return std::unexpected(make_invalid_argument_error("window has multiple views; specify view_name"));
     }
     return views.front();
+}
+
+auto enable_capture_framebuffer(SP::PathSpace& space,
+                                SP::UI::WindowPath const& window,
+                                std::string const& view_name,
+                                bool enabled) -> SP::Expected<void> {
+    auto path = std::string(window.getPath()) + "/views/" + view_name + "/present/params/capture_framebuffer";
+    auto inserted = space.insert(path, enabled);
+    if (!inserted.errors.empty()) {
+        return std::unexpected(inserted.errors.front());
+    }
+    return {};
+}
+
+auto build_present_handles_for_window(SP::PathSpace& space,
+                                      SP::UI::WindowPath const& window,
+                                      std::string const& view_name)
+    -> SP::Expected<SP::UI::Declarative::PresentHandles> {
+    auto app_root = SP::App::derive_app_root(SP::App::ConcretePathView{window.getPath()});
+    if (!app_root) {
+        return std::unexpected(app_root.error());
+    }
+    return SP::UI::Declarative::BuildPresentHandles(space,
+                                                    SP::App::AppRootPathView{app_root->getPath()},
+                                                    window,
+                                                    view_name);
 }
 
 auto app_component_from_window(std::string const& window_path) -> std::optional<std::string> {
@@ -166,6 +193,24 @@ auto CaptureDeclarative(SP::PathSpace& space,
                                                                                   wait_floor);
         if (!ready_revision) {
             return std::unexpected(ready_revision.error());
+        }
+    }
+
+    if (options.enable_capture_framebuffer) {
+        auto capture_flag = enable_capture_framebuffer(space, window, *view_name, true);
+        if (!capture_flag) {
+            return std::unexpected(capture_flag.error());
+        }
+    }
+
+    if (options.present_before_capture) {
+        auto handles = build_present_handles_for_window(space, window, *view_name);
+        if (!handles) {
+            return std::unexpected(handles.error());
+        }
+        auto present_frame = SP::UI::Declarative::PresentWindowFrame(space, *handles);
+        if (!present_frame) {
+            return std::unexpected(present_frame.error());
         }
     }
 

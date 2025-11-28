@@ -26,6 +26,27 @@
 - `paint_example_new.cpp` and `paint_example.cpp` replicate: readiness → force publish → wait for revision → create request → capture → log result.
 - Tests (`PaintExampleScreenshot*`, `PathSpaceUITests` pointer flows) call into the samples, so the screenshot boilerplate impacts CI readability.
 
+## Top Priority: Unblock Headless Declarative Captures
+The env-driven screenshot hooks in the tiny declarative samples (e.g., `declarative_button_example`) currently emit the deterministic fallback PNG instead of the live UI because no framebuffer ever exists when `CaptureDeclarative` runs. To restore determinism we need the helper to guarantee that a framebuffer is produced (hardware or software) before it calls `ScreenshotService`.
+
+### Action Plan
+1. **Always enable framebuffer capture before screenshot mode**
+   - `CaptureDeclarative` (or the shared helper it uses) must set `/present/params/capture_framebuffer=true` before invoking `ScreenshotService::Capture`. Today the responsibility is on callers, so small examples forget to toggle it and the software fallback path has nothing to read.
+   - Add a helper (`EnsureFramebufferCaptureEnabled`) under `src/pathspace/ui/declarative/Runtime.cpp` so both CLI helpers and env flows can reuse the same code.
+
+2. **Produce at least one present frame before capture**
+   - Extend `CaptureDeclarative` with an optional `PresentBeforeCapture` step that issues `PresentWindowFrame` once (respecting timeouts) to seed the `/output/v1/software/framebuffer` queue. When screenshots run headless, there is no loop to drive presents, so without this step `Window::Present` just times out.
+   - If `PresentWindowFrame` fails, fall back to the deterministic PNG but surface a clear error in telemetry so we know captures are relying on the fallback.
+
+3. **Update minimal examples + docs**
+   - Switch `examples/declarative_button_example.cpp` (and friends) to rely on the improved helper instead of manually toggling capture flags.
+   - Document the requirement in `docs/WidgetDeclarativeAPI.md` so future samples know the canonical flow.
+
+4. **Test coverage**
+   - Add a unit/functional test that boots a tiny declarative scene, requests `--screenshot`, and asserts the PNG contains >N unique colors. This guards against regressions where we silently fall back to the deterministic art again.
+
+This headless-capture fix is the top priority for the plan until the minimal example and screenshot CLI produce live UIs without resorting to the fallback renderer.
+
 ## Proposed API Surface
 ```cpp
 namespace SP::UI::Screenshot {
@@ -114,7 +135,9 @@ auto CaptureDeclarative(SP::PathSpace& space,
   standard `--screenshot*` flags and call `CaptureDeclarative` through the
   helper, while `declarative_hello_example` remains CLI-free but now honors the
   `PATHSPACE_HELLO_SCREENSHOT` env var (complete with a deterministic fallback)
-  to route through the same helper for the quickstart PNG.
+  to route through the same helper for the quickstart PNG. The hello sample is
+  intentionally minimal again—it only mounts a single button so the docs can
+  point at the smallest possible declarative program.
 - ✅ Declarative presents re-read `/present/params/*` (including
   `capture_framebuffer`) and `ScreenshotService::Capture` always runs a present
   pass—even when `force_software` is set—so env-driven captures now emit the
