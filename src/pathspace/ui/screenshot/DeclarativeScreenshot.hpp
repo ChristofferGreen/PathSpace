@@ -28,6 +28,7 @@ struct DeclarativeScreenshotOptions {
     bool wait_for_runtime_metrics = true;
     bool mark_dirty_before_publish = true;
     bool force_software = false;
+    bool allow_software_fallback = false;
     std::chrono::milliseconds readiness_timeout{std::chrono::milliseconds{3000}};
     std::chrono::milliseconds publish_timeout{std::chrono::milliseconds{2000}};
     std::chrono::milliseconds present_timeout{std::chrono::milliseconds{2000}};

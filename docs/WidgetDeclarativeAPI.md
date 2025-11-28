@@ -128,8 +128,14 @@ honors `PATHSPACE_SCREENSHOT_FORCE_SOFTWARE`, and
 `CaptureDeclarativeScreenshotIfRequested` bridges the parsed flags into
 `CaptureDeclarative`. The widgets and devices demos share this helper, so future
 samples can expose the same headless capture workflow with only a few lines of
-code. `examples/declarative_hello_example` intentionally skips the CLI helper to
-remain the literal quickstart described earlier.
+code. `examples/declarative_hello_example` still skips the CLI helper so the
+source stays identical to the onboarding quickstart, but it now honors the
+environment variable `PATHSPACE_HELLO_SCREENSHOT=<png>` (and optional
+`PATHSPACE_HELLO_SCREENSHOT_FORCE_SOFTWARE=1`) to call
+`SP::UI::Screenshot::CaptureDeclarative` once the scene is ready. When
+`Window::Present` never yields a framebuffer (common on headless hosts), the
+env hook falls back to a deterministic reference render so onboarding docs
+retain a screenshot without extra CLI plumbing.
 
 7. Include `<pathspace/ui/declarative/ThemeConfig.hpp>` whenever you need to
    provision, load, or switch themes outside the higher-level
@@ -245,6 +251,10 @@ remain the literal quickstart described earlier.
    ```
 5. Take screenshots or run GPU smoke tests via the shared CLI wrappers (`paint_example`,
    `pathspace_screenshot_cli`) so readiness gates, overlay hooks, and telemetry stay uniform.
+   `examples/declarative_hello_example` follows the same readiness flow but relies on the
+   `PATHSPACE_HELLO_SCREENSHOT` env var instead of a CLI flag to keep the binary focused on
+   the quickstart scenario, and it draws a deterministic fallback PNG if the presenter never
+   produces a hardware framebuffer.
 
 ## 6. Testing & Validation
 - **Build**: `cmake --build build -j`

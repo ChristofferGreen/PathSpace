@@ -1,6 +1,7 @@
 #include "ScreenshotService.hpp"
 
 #include <pathspace/core/Error.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 
 #include <algorithm>
 #include <charconv>
@@ -116,6 +117,45 @@ auto pack_framebuffer(std::vector<std::uint8_t> const& framebuffer,
         std::memcpy(dst, src, row_pixels);
     }
     return packed;
+}
+
+auto pack_software_framebuffer(SP::UI::Runtime::SoftwareFramebuffer const& framebuffer,
+                               int width,
+                               int height) -> SP::Expected<std::vector<std::uint8_t>> {
+    if (framebuffer.width != width || framebuffer.height != height) {
+        return std::unexpected(make_error("software framebuffer dimensions mismatch"));
+    }
+    if (framebuffer.row_stride_bytes <= 0) {
+        return std::unexpected(make_error("software framebuffer stride missing"));
+    }
+    auto row_pixels = static_cast<std::size_t>(width) * 4u;
+    auto row_stride = static_cast<std::size_t>(framebuffer.row_stride_bytes);
+    if (row_stride < row_pixels) {
+        return std::unexpected(make_error("software framebuffer stride smaller than row size"));
+    }
+    auto required = row_pixels * static_cast<std::size_t>(height);
+    if (framebuffer.pixels.size() < row_stride * static_cast<std::size_t>(std::max(height, 0))) {
+        return std::unexpected(make_error("software framebuffer truncated"));
+    }
+    std::vector<std::uint8_t> packed(required);
+    for (int y = 0; y < height; ++y) {
+        auto const* src = framebuffer.pixels.data() + row_stride * static_cast<std::size_t>(y);
+        auto* dst = packed.data() + row_pixels * static_cast<std::size_t>(y);
+        std::memcpy(dst, src, row_pixels);
+    }
+    return packed;
+}
+
+auto read_software_framebuffer_pixels(SP::PathSpace& space,
+                                      SP::UI::Declarative::PresentHandles const& handles,
+                                      int width,
+                                      int height) -> SP::Expected<std::vector<std::uint8_t>> {
+    auto framebuffer = SP::UI::Runtime::Diagnostics::ReadSoftwareFramebuffer(space,
+                                                                             SP::UI::ConcretePathView{handles.target.getPath()});
+    if (!framebuffer) {
+        return std::unexpected(framebuffer.error());
+    }
+    return pack_software_framebuffer(*framebuffer, width, height);
 }
 
 auto capture_present_frame(SP::PathSpace& space,
@@ -522,7 +562,24 @@ auto ScreenshotService::Capture(ScreenshotRequest const& request) -> SP::Expecte
         }
     }
 
-    if (hardware_capture) {
+    bool software_fallback = false;
+    if (!hardware_capture && !request.require_present
+        && (request.force_software || request.allow_software_fallback)) {
+        auto fallback_pixels = read_software_framebuffer_pixels(request.space,
+                                                                *present_handles,
+                                                                request.width,
+                                                                request.height);
+        if (!fallback_pixels) {
+            auto const& error = fallback_pixels.error();
+            std::cerr << "ScreenshotService: software framebuffer fallback failed: "
+                      << SP::describeError(error) << "\n";
+        } else {
+            capture_pixels = std::move(*fallback_pixels);
+            software_fallback = true;
+        }
+    }
+
+    if (hardware_capture || software_fallback) {
         FramebufferView view{
             .pixels = std::span<std::uint8_t>(capture_pixels.data(), capture_pixels.size()),
             .width = request.width,

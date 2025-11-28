@@ -129,6 +129,7 @@ auto CaptureDeclarativeScreenshotIfRequested(
     options.max_mean_error = cli_options.max_mean_error;
     options.require_present = cli_options.require_present || options.baseline_png.has_value();
     options.force_software = cli_options.force_software;
+    options.allow_software_fallback = cli_options.allow_software_fallback;
     options.wait_for_runtime_metrics = cli_options.wait_for_runtime_metrics;
     options.mark_dirty_before_publish = cli_options.mark_dirty_before_publish;
     options.view_name = std::string(view_name);
@@ -154,4 +155,3 @@ auto CaptureDeclarativeScreenshotIfRequested(
 }
 
 } // namespace SP::UI::Screenshot
-

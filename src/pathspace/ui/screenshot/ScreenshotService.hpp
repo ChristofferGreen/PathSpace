@@ -70,6 +70,7 @@ struct ScreenshotRequest {
     std::string telemetry_root = "/diagnostics/ui/screenshot";
     std::string telemetry_namespace = "default";
     bool force_software = false;
+    bool allow_software_fallback = false;
 };
 
 struct ScreenshotResult {

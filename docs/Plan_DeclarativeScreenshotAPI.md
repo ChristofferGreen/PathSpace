@@ -79,10 +79,13 @@ auto CaptureDeclarative(SP::PathSpace& space,
      `<pathspace/ui/screenshot/DeclarativeScreenshotCli.hpp>` that parses
      `--screenshot*` flags, resolves telemetry defaults, and calls
      `CaptureDeclarative` through a single helper.
-   - `examples/declarative_hello_example.cpp` intentionally remains the literal
-     quickstart (no CLI, no screenshot automation) per the onboarding docs, so
-     new contributors see the smallest possible declarative app without extra
-     flags.
+   - `examples/declarative_hello_example.cpp` stays the literal quickstart
+     (still no CLI parsing) so new contributors see the smallest declarative
+     app, but it now honors `PATHSPACE_HELLO_SCREENSHOT=<png>` (plus the optional
+     `PATHSPACE_HELLO_SCREENSHOT_FORCE_SOFTWARE=1`) and funnels the request
+     through `CaptureDeclarative` to dump the reference PNG after readiness. When
+     `Window::Present` cannot deliver a framebuffer, the env hook renders a
+     deterministic fallback PNG so docs always have a screenshot to reference.
    - The demos that need screenshots can now capture a PNG (with optional
      compare/diff/metrics arguments) in ≤10 LOC, and the shared helper enforces
      readiness + telemetry consistency automatically.
@@ -91,9 +94,12 @@ auto CaptureDeclarative(SP::PathSpace& space,
    - Add targeted unit/UITest coverage: e.g., `tests/ui/test_ScreenshotHelper.cpp` exercising success, readiness timeout, forced publish error.
    - Update `PaintExampleScreenshot*` CTests to validate they still pass (loop harness already covers them).
 
-4. **Documentation**
-   - Update `docs/WidgetDeclarativeAPI.md` (New section: “Capturing Screenshots”) with sample code showing the one-call helper.
-   - Mention the helper in `docs/AI_Onboarding.md` and `docs/Memory.md` for future maintainers.
+4. **Documentation** — ✅ November 28, 2025
+   - `docs/WidgetDeclarativeAPI.md`, `docs/AI_Debugging_Playbook.md`, and
+     `docs/AI_Onboarding_Next.md` now describe the shared CLI helper plus the
+     env-driven capture hook in `declarative_hello_example`.
+   - `docs/Memory.md` tracks the rollout so future maintainers can discover the
+     helper without chasing commit history.
 
 ## Validation Plan
 - Local runs: `PATHSPACE_SCREENSHOT_FORCE_SOFTWARE=1 ./scripts/compile.sh --clean --test --loop=5 --release` after callsite changes.
@@ -106,11 +112,12 @@ auto CaptureDeclarative(SP::PathSpace& space,
 - ✅ Declarative demos now expose shared screenshot CLIs where needed:
   `widgets_example` and `devices_example --paint-controls-demo` both parse the
   standard `--screenshot*` flags and call `CaptureDeclarative` through the
-  helper, while `declarative_hello_example` intentionally remains the
-  screenshot-free quickstart sample referenced in the docs.
-- 🔄 Remaining follow-ups: land the focused helper test suite and document the
-  shared CLI helper in the migration tracker/Widget API guide (docs work is
-  underway here, but the dedicated UITest still needs to be written).
+  helper, while `declarative_hello_example` remains CLI-free but now honors the
+  `PATHSPACE_HELLO_SCREENSHOT` env var (complete with a deterministic fallback)
+  to route through the same helper for the quickstart PNG.
+- 🔄 Remaining follow-ups: land the focused helper test suite. (Doc coverage is
+  up to date; Widget API/onboarding/debugging guides now mention the helper and
+  env hook.)
 
 ## Risks & Mitigations
 - **Readiness regressions**: consolidate readiness logic into one helper to avoid divergence; keep `DeclarativeReadinessOptions` override hooks exposed via `DeclarativeScreenshotOptions` if specialized tests need them.
