@@ -5,7 +5,7 @@
 #include <pathspace/ui/Helpers.hpp>
 #include <pathspace/ui/LocalWindowBridge.hpp>
 #include <pathspace/ui/LegacyBuildersDeprecation.hpp>
-#include <pathspace/ui/SurfaceTypes.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
@@ -40,9 +40,9 @@ using SP::PathSpace;
 using ScenePath = SP::UI::ScenePath;
 using WindowPath = SP::UI::WindowPath;
 using RenderSettings = SP::UI::Builders::RenderSettings;
-using SurfaceDesc = SP::UI::Builders::SurfaceDesc;
+using SurfaceDesc = SP::UI::Runtime::SurfaceDesc;
 using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
-using SoftwareFramebuffer = SP::UI::Builders::SoftwareFramebuffer;
+using SoftwareFramebuffer = SP::UI::Runtime::SoftwareFramebuffer;
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 
 std::mutex g_io_trellis_mutex;
@@ -1425,7 +1425,7 @@ auto RunUI(SP::PathSpace& space,
     install_local_window_bridge(bridge);
 
     auto surface_desc =
-        space.read<SP::UI::Builders::SurfaceDesc, std::string>(std::string(present_handles->surface.getPath()) + "/desc");
+        space.read<SP::UI::Runtime::SurfaceDesc, std::string>(std::string(present_handles->surface.getPath()) + "/desc");
     if (!surface_desc) {
         return std::unexpected(surface_desc.error());
     }

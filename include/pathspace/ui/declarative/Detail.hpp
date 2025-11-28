@@ -9,6 +9,7 @@
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/WidgetSharedTypes.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #if PATHSPACE_UI_METAL
 #include <pathspace/ui/PathSurfaceMetal.hpp>
@@ -32,7 +33,7 @@ namespace SP::UI::Declarative::Detail {
 
 using SurfacePath = SP::UI::Builders::SurfacePath;
 using RenderSettings = SP::UI::Builders::RenderSettings;
-using SurfaceDesc = SP::UI::Builders::SurfaceDesc;
+using SurfaceDesc = SP::UI::Runtime::SurfaceDesc;
 using RendererKind = SP::UI::Builders::RendererKind;
 using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
 
