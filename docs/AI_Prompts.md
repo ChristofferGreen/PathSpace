@@ -6,11 +6,11 @@ Current_Plan_Doc is ./docs/Plan_WidgetDeclarativeAPI.md
 
 Coding preference: avoid C++ exceptions entirely. When representing failures, use existing `std::expected`/`Error` returns, status objects, or other explicit error channels instead of `throw`. Introduce exceptions only when integrating unavoidable third-party APIs, and document any such cases.
 
-1. Implement the change, rebuild (`cmake --build build -j`), execute ./scripts/compile.sh --clean --test --loop=5 --release (unless maintainer-approved skips are set), and report results. Use Conventional Commit format when committing.
+1. Implement the change
 2. Update all relevant docs under docs/ to reflect the new status and decisions (mention specific files touched). Summarize remaining TODOs.
 3. If Current_Plan_Docis complete, verify references (use rg), append _Finished to its name, move it into docs/finished/, and update any docs linking to it.
 4. Write down anything you learn that is of interest in ./docs/Memory.md
-5. If we made a new commit we shall perform: "git push origin master" and fix any issues it shows.
+5. run `scripts/workflow_commit.sh "type(scope): subject" "body text"` once your changes are ready. The script always executes `cmake --build build -j`, the mandated `./scripts/compile.sh --clean --test --loop=5 --release`, stages every modification, commits with the provided Conventional Commit title/body, and pushes to `origin master`. Both arguments are mandatory so every run records the required metadata.
 6. Provide a final recap: code changes, test evidence, doc updates, next recommended task.
 7. If it was not possible to make a commit due to test failures then update the Current_Plan_Doc with a plan to fix the tests that give an error and make a commit without running tests.
 
