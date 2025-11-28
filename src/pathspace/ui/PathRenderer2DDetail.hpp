@@ -37,7 +37,7 @@ auto make_error(std::string message, SP::Error::Code code) -> SP::Error;
 
 auto damage_metrics_enabled() -> bool;
 
-auto determine_text_pipeline(Builders::RenderSettings const& settings)
+auto determine_text_pipeline(SP::UI::Runtime::RenderSettings const& settings)
     -> std::pair<PathRenderer2D::TextPipeline, bool>;
 
 auto format_revision(std::uint64_t revision) -> std::string;
@@ -204,8 +204,8 @@ auto pulse_focus_highlight_color(std::array<float, 4> const& srgb,
 
 auto schedule_focus_pulse_render(PathSpace& space,
                                  SP::ConcretePathStringView targetPath,
-                                 Builders::RenderSettings const& settings,
-                                 std::optional<Builders::DirtyRectHint> focus_hint,
+                                 SP::UI::Runtime::RenderSettings const& settings,
+                                 std::optional<SP::UI::Runtime::DirtyRectHint> focus_hint,
                                  std::uint64_t frame_index) -> void;
 
 #if defined(__APPLE__) && PATHSPACE_UI_METAL

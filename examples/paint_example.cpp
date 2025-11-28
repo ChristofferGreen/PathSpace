@@ -18,6 +18,7 @@
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/Reducers.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
+#include <pathspace/ui/runtime/RenderSettings.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -286,7 +287,7 @@ auto log_expected_error(std::string const& context, SP::Error const& error) -> v
 
 using WidgetAction = SP::UI::Declarative::Reducers::WidgetAction;
 using WidgetOpKind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
-using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
+using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
 
 auto make_paint_action(std::string const& widget_path,
                        WidgetOpKind kind,

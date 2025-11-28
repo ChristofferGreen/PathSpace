@@ -43,7 +43,7 @@ namespace {
 
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
 namespace BuilderRenderer = SP::UI::Builders::Renderer;
-using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
+using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
 namespace Telemetry = SP::UI::Declarative::Telemetry;
 constexpr std::string_view kPublishAuthor = "declarative-runtime";
 

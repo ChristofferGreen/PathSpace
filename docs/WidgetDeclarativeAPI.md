@@ -33,6 +33,12 @@ plus tests in sync. Read it before touching declarative UI code or examples.
    `BuildersShared.hpp`/`WidgetSharedTypes.hpp`. Declarative headers/tests now pull from these headers so you can
    manipulate widget data and telemetry independently of the legacy builder
    functions.
+4. Include `<pathspace/ui/runtime/RenderSettings.hpp>` when you need renderer
+   knobs outside of legacy builders. The header exposes
+   `SP::UI::Runtime::{RendererKind,RenderSettings,DirtyRectHint}` so renderer
+   helpers, presenter code, and tests can depend on the runtime namespace
+   directly. `Builders.hpp` simply aliases the runtime types for compatibility,
+   so new code should prefer the runtime header.
 2. `SP::App::Create` returns the canonical app root and registers renderer/theme
    defaults. `SP::Window::Create` mounts the window under the app, seeds
    `views/<view>/{scene,surface,renderer}` bindings, and registers device

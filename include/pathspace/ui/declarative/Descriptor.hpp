@@ -84,7 +84,7 @@ struct PaintSurfaceDescriptor {
     PaintBufferMetrics buffer{};
     PaintBufferViewport viewport{};
     std::uint64_t buffer_revision = 0;
-    std::vector<Builders::DirtyRectHint> pending_dirty;
+    std::vector<SP::UI::Runtime::DirtyRectHint> pending_dirty;
     std::optional<PaintTexturePayload> texture;
     PaintGpuStats gpu_stats{};
     std::vector<PaintSurfaceStrokeDescriptor> strokes;

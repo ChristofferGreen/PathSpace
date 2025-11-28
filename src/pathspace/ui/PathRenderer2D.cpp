@@ -203,7 +203,7 @@ auto const start = std::chrono::steady_clock::now();
 
     bool metal_active = false;
 #if defined(__APPLE__) && PATHSPACE_UI_METAL
-    bool prefer_metal_backend = params.backend_kind == Builders::RendererKind::Metal2D
+    bool prefer_metal_backend = params.backend_kind == SP::UI::Runtime::RendererKind::Metal2D
                                 && params.metal_surface != nullptr;
     std::unique_ptr<PathRenderer2DMetal> metal_backend;
     std::array<float, 4> metal_clear_rgba{};
@@ -254,15 +254,15 @@ auto const start = std::chrono::steady_clock::now();
         }
     }
 
-    std::vector<Builders::DirtyRectHint> dirty_rect_hints;
+    std::vector<SP::UI::Runtime::DirtyRectHint> dirty_rect_hints;
     std::vector<DamageRect> hint_rects;
     std::vector<std::uint32_t> hint_tile_indices;
     std::vector<std::uint32_t> damage_tile_indices;
     std::vector<DamageRect> damage_tile_rects;
-    std::vector<Builders::DirtyRectHint> damage_tile_hints;
+    std::vector<SP::UI::Runtime::DirtyRectHint> damage_tile_hints;
     {
         auto hints_path = target_key + "/hints/dirtyRects";
-        auto hints = space_.take<std::vector<Builders::DirtyRectHint>>(hints_path);
+        auto hints = space_.take<std::vector<SP::UI::Runtime::DirtyRectHint>>(hints_path);
         if (hints) {
             dirty_rect_hints = std::move(*hints);
         } else {
@@ -536,7 +536,7 @@ auto const start = std::chrono::steady_clock::now();
                     continue;
                 }
                 damage_tile_rects.push_back(rect);
-                Builders::DirtyRectHint hint{};
+                SP::UI::Runtime::DirtyRectHint hint{};
                 hint.min_x = static_cast<float>(rect.min_x);
                 hint.min_y = static_cast<float>(rect.min_y);
                 hint.max_x = static_cast<float>(rect.max_x);
@@ -554,7 +554,7 @@ auto const start = std::chrono::steady_clock::now();
         auto rects = damage.rectangles();
         damage_tile_hints.reserve(rects.size());
         for (auto const& rect : rects) {
-            Builders::DirtyRectHint hint{};
+            SP::UI::Runtime::DirtyRectHint hint{};
             hint.min_x = static_cast<float>(rect.min_x);
             hint.min_y = static_cast<float>(rect.min_y);
             hint.max_x = static_cast<float>(rect.max_x);
@@ -681,7 +681,7 @@ auto const start = std::chrono::steady_clock::now();
     std::uint64_t opaque_sort_violations = 0;
     std::uint64_t alpha_sort_violations = 0;
     bool has_focus_pulse = false;
-    std::optional<Builders::DirtyRectHint> focus_dirty;
+    std::optional<SP::UI::Runtime::DirtyRectHint> focus_dirty;
     double approx_area_total = 0.0;
     double approx_area_opaque = 0.0;
     double approx_area_alpha = 0.0;
@@ -742,7 +742,7 @@ auto const start = std::chrono::steady_clock::now();
             if (drawable_index < bounds_by_index.size()) {
                 auto const& maybe_bounds = bounds_by_index[drawable_index];
                 if (maybe_bounds && !maybe_bounds->empty()) {
-                    Builders::DirtyRectHint bounds_hint{};
+                    SP::UI::Runtime::DirtyRectHint bounds_hint{};
                     bounds_hint.min_x = static_cast<float>(maybe_bounds->min_x);
                     bounds_hint.min_y = static_cast<float>(maybe_bounds->min_y);
                     bounds_hint.max_x = static_cast<float>(maybe_bounds->max_x);
@@ -1433,7 +1433,7 @@ EncodeRunStats encode_stats{};
     bool render_error_recorded = false;
 
 #if PATHSPACE_UI_METAL
-    if (params.backend_kind == Builders::RendererKind::Metal2D && params.metal_surface != nullptr) {
+    if (params.backend_kind == SP::UI::Runtime::RendererKind::Metal2D && params.metal_surface != nullptr) {
         params.metal_surface->update_material_descriptors(material_list);
         params.metal_surface->update_resource_residency(resource_list);
         bool metal_updated = false;

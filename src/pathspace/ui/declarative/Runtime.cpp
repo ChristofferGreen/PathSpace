@@ -5,6 +5,7 @@
 #include <pathspace/ui/Helpers.hpp>
 #include <pathspace/ui/LocalWindowBridge.hpp>
 #include <pathspace/ui/LegacyBuildersDeprecation.hpp>
+#include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
@@ -39,9 +40,9 @@ using namespace SP::UI::Declarative::Detail;
 using SP::PathSpace;
 using ScenePath = SP::UI::ScenePath;
 using WindowPath = SP::UI::WindowPath;
-using RenderSettings = SP::UI::Builders::RenderSettings;
+using RenderSettings = SP::UI::Runtime::RenderSettings;
 using SurfaceDesc = SP::UI::Runtime::SurfaceDesc;
-using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
+using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
 using SoftwareFramebuffer = SP::UI::Runtime::SoftwareFramebuffer;
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 
@@ -390,7 +391,7 @@ auto ensure_renderer(PathSpace& space,
                      std::string_view renderer_name) -> SP::Expected<RendererBootstrap> {
     SP::UI::Builders::RendererParams params{};
     params.name = renderer_name.empty() ? std::string{kDefaultRendererName} : std::string(renderer_name);
-    params.kind = SP::UI::Builders::RendererKind::Software2D;
+    params.kind = SP::UI::Runtime::RendererKind::Software2D;
     params.description = "Declarative widget renderer";
     SP::UI::LegacyBuilders::ScopedAllow renderer_allow{};
     auto renderer = SP::UI::Builders::Renderer::Create(space, app_root, params);
@@ -488,12 +489,12 @@ auto ensure_view_binding(PathSpace& space,
     }
 
     auto settings_path = std::string(target_absolute->getPath()) + "/settings";
-    auto existing_settings = read_optional<SP::UI::Builders::RenderSettings>(space, settings_path);
+    auto existing_settings = read_optional<SP::UI::Runtime::RenderSettings>(space, settings_path);
     if (!existing_settings) {
         return std::unexpected(existing_settings.error());
     }
     if (!existing_settings->has_value()) {
-        SP::UI::Builders::RenderSettings defaults{};
+        SP::UI::Runtime::RenderSettings defaults{};
         defaults.surface.size_px.width = surface_params.desc.size_px.width > 0
             ? surface_params.desc.size_px.width
             : (width > 0 ? width : 1280);
@@ -502,7 +503,7 @@ auto ensure_view_binding(PathSpace& space,
             : (height > 0 ? height : 720);
         defaults.surface.dpi_scale = 1.0f;
         defaults.surface.visibility = true;
-        defaults.renderer.backend_kind = SP::UI::Builders::RendererKind::Software2D;
+        defaults.renderer.backend_kind = SP::UI::Runtime::RendererKind::Software2D;
         defaults.renderer.metal_uploads_enabled = false;
         defaults.clear_color = {0.11f, 0.12f, 0.15f, 1.0f};
 

@@ -455,7 +455,7 @@ TEST_CASE("PaintSurfaceRuntime marks GPU state and dirty hints") {
     CHECK_EQ(*gpu_state, "DirtyPartial");
 
     auto pending_path = std::string(paint->getPath()) + "/render/buffer/pendingDirty";
-    auto pending = DetailNS::read_optional<std::vector<Builders::DirtyRectHint>>(fx.space, pending_path);
+    auto pending = DetailNS::read_optional<std::vector<SP::UI::Runtime::DirtyRectHint>>(fx.space, pending_path);
     REQUIRE(pending.has_value());
     REQUIRE(pending->has_value());
     CHECK_FALSE((*pending)->empty());

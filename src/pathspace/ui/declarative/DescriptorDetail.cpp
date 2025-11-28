@@ -513,12 +513,12 @@ auto ReadPaintSurfaceDescriptor(PathSpace& space, std::string const& root)
         return std::unexpected(buffer_metrics.error());
     }
     descriptor.buffer = buffer_metrics->value_or(PaintBufferMetrics{});
-    auto dirty_rects = ReadOptionalValue<std::vector<SP::UI::Builders::DirtyRectHint>>(space,
+    auto dirty_rects = ReadOptionalValue<std::vector<SP::UI::Runtime::DirtyRectHint>>(space,
                                                                                       root + "/render/buffer/pendingDirty");
     if (!dirty_rects) {
         return std::unexpected(dirty_rects.error());
     }
-    descriptor.pending_dirty = dirty_rects->value_or(std::vector<SP::UI::Builders::DirtyRectHint>{});
+    descriptor.pending_dirty = dirty_rects->value_or(std::vector<SP::UI::Runtime::DirtyRectHint>{});
     auto viewport = ReadOptionalValue<PaintBufferViewport>(space, root + "/render/buffer/viewport");
     if (!viewport) {
         return std::unexpected(viewport.error());

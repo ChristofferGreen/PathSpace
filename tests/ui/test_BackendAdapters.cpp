@@ -9,6 +9,7 @@
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <array>
@@ -131,7 +132,7 @@ Builders::ScenePath create_scene(BackendFixture& fx,
 
 Builders::RendererPath create_renderer(BackendFixture& fx,
                                        std::string const& name,
-                                       Builders::RendererKind kind) {
+                                       SP::UI::Runtime::RendererKind kind) {
     Builders::RendererParams params{
         .name = name,
         .kind = kind,
@@ -167,7 +168,7 @@ auto resolve_target(BackendFixture& fx,
 std::vector<std::uint8_t> render_bucket_to_buffer(PathRenderer2D& renderer,
                                                   SP::ConcretePathString const& target_path,
                                                   Runtime::SurfaceDesc const& desc,
-                                                  Builders::RenderSettings const& settings,
+                                                  Runtime::RenderSettings const& settings,
                                                   UIScene::DrawableBucketSnapshot const& bucket,
                                                   BackendFixture& fx,
                                                   Builders::ScenePath const& scene_path) {
@@ -194,7 +195,7 @@ std::vector<std::uint8_t> render_bucket_to_buffer(PathRenderer2D& renderer,
         .target_path = SP::ConcretePathStringView{target_path.getPath()},
         .settings = settings,
         .surface = surface,
-        .backend_kind = Builders::RendererKind::Software2D,
+        .backend_kind = SP::UI::Runtime::RendererKind::Software2D,
     });
     REQUIRE(render_result);
 
@@ -212,7 +213,7 @@ TEST_CASE("Renderer integration replay retains framebuffer parity") {
 
     auto bucket = make_integration_bucket();
     auto scene = create_scene(fx, "integration_replay_scene", bucket);
-    auto renderer_path = create_renderer(fx, "integration_renderer", Builders::RendererKind::Software2D);
+    auto renderer_path = create_renderer(fx, "integration_renderer", SP::UI::Runtime::RendererKind::Software2D);
 
     Runtime::SurfaceDesc surface_desc{};
     surface_desc.size_px.width = 96;
@@ -225,11 +226,11 @@ TEST_CASE("Renderer integration replay retains framebuffer parity") {
     REQUIRE(Builders::Surface::SetScene(fx.space, surface, scene));
     auto target_path = resolve_target(fx, surface);
 
-    Builders::RenderSettings settings{};
+    Runtime::RenderSettings settings{};
     settings.surface.size_px.width = surface_desc.size_px.width;
     settings.surface.size_px.height = surface_desc.size_px.height;
     settings.surface.dpi_scale = 1.0f;
-    settings.renderer.backend_kind = Builders::RendererKind::Software2D;
+    settings.renderer.backend_kind = SP::UI::Runtime::RendererKind::Software2D;
     settings.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
     settings.time.frame_index = 0;
 

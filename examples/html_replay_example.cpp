@@ -7,6 +7,7 @@
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <cassert>
@@ -171,7 +172,7 @@ auto render_to_buffer(RendererFixture& fx,
                       PathRenderer2D& renderer,
                       SP::ConcretePathString const& targetPath,
                       Runtime::SurfaceDesc const& desc,
-                      Builders::RenderSettings const& settings,
+                      Runtime::RenderSettings const& settings,
                       UIScene::DrawableBucketSnapshot const& bucket,
                       UIScene::ScenePath const& scenePath) -> std::vector<std::uint8_t> {
     fx.publish_snapshot(scenePath, bucket);

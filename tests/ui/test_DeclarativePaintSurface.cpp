@@ -20,7 +20,7 @@ namespace {
 
 using WidgetAction = SP::UI::Declarative::Reducers::WidgetAction;
 using WidgetOpKind = SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
-using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
+using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
 namespace BuilderDetail = SP::UI::Declarative::Detail;
 

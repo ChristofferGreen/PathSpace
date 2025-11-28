@@ -4,6 +4,7 @@
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/LegacyBuildersDeprecation.hpp>
+#include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -1026,8 +1027,8 @@ int main(int argc, char** argv) {
     Builders::App::BootstrapParams bootstrap_params{};
     bootstrap_params.renderer.name = options.use_metal_backend ? "noise_renderer_metal" : "noise_renderer";
     bootstrap_params.renderer.kind = options.use_metal_backend
-                                         ? Builders::RendererKind::Metal2D
-                                         : Builders::RendererKind::Software2D;
+                                         ? SP::UI::Runtime::RendererKind::Metal2D
+                                         : SP::UI::Runtime::RendererKind::Software2D;
     bootstrap_params.renderer.description = options.use_metal_backend
                                                 ? "pixel noise renderer (Metal2D)"
                                                 : "pixel noise renderer";

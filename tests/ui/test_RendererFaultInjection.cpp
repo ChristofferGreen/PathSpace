@@ -8,6 +8,7 @@
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
+#include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <algorithm>
@@ -247,8 +248,8 @@ struct SimpleRenderFixture {
     }
 };
 
-auto default_render_settings(Runtime::SurfaceDesc const& desc) -> Builders::RenderSettings {
-    Builders::RenderSettings settings{};
+auto default_render_settings(Runtime::SurfaceDesc const& desc) -> Runtime::RenderSettings {
+    Runtime::RenderSettings settings{};
     settings.surface.size_px.width = desc.size_px.width;
     settings.surface.size_px.height = desc.size_px.height;
     return settings;

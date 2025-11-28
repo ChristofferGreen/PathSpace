@@ -8,6 +8,7 @@
 #include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/MaterialShaderKey.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
+#include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <array>
@@ -21,6 +22,9 @@
 namespace SP::UI {
 
 using Runtime::SurfaceDesc;
+using RenderSettings = Runtime::RenderSettings;
+using RendererKind = Runtime::RendererKind;
+using DirtyRectHint = Runtime::DirtyRectHint;
 
 class PathSurfaceMetal;
 
@@ -44,9 +48,9 @@ public:
 
     struct RenderParams {
         SP::ConcretePathStringView target_path;
-        Builders::RenderSettings const& settings;
+        RenderSettings const& settings;
         PathSurfaceSoftware& surface;
-        Builders::RendererKind backend_kind = Builders::RendererKind::Software2D;
+        RendererKind backend_kind = RendererKind::Software2D;
         PathSurfaceMetal* metal_surface = nullptr;
     };
 
@@ -74,11 +78,11 @@ public:
         std::uint64_t text_fallback_count = 0;
         TextPipeline text_pipeline = TextPipeline::GlyphQuads;
         bool text_fallback_allowed = true;
-        Builders::RendererKind backend_kind = Builders::RendererKind::Software2D;
+        RendererKind backend_kind = RendererKind::Software2D;
         std::uint64_t resource_cpu_bytes = 0;
         std::uint64_t resource_gpu_bytes = 0;
         std::uint64_t texture_gpu_bytes = 0;
-        std::vector<Builders::DirtyRectHint> damage_tiles;
+        std::vector<DirtyRectHint> damage_tiles;
         std::vector<MaterialDescriptor> materials;
         std::vector<MaterialResourceResidency> resource_residency;
     };

@@ -10,6 +10,7 @@
 #include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/MaterialShaderKey.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <algorithm>
@@ -804,7 +805,7 @@ TEST_CASE("render executes rect commands across passes and encodes pixels") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveBytesCopied").value() > 0);
     auto damageRects = fx.space.read<uint64_t>(metricsBase + "/damageRectangles");
     REQUIRE(damageRects);
-    auto damageTiles = fx.space.read<std::vector<Builders::DirtyRectHint>>(metricsBase + "/damageTiles");
+    auto damageTiles = fx.space.read<std::vector<Runtime::DirtyRectHint>>(metricsBase + "/damageTiles");
     REQUIRE(damageTiles);
     CHECK(damageTiles->size() == *damageRects);
     auto damageCoverage = fx.space.read<double>(metricsBase + "/damageCoverageRatio");
@@ -1181,7 +1182,7 @@ TEST_CASE("damage metrics reflect localized drawable updates") {
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
     auto damageRects = fx.space.read<uint64_t>(metricsBase + "/damageRectangles");
     REQUIRE(damageRects);
-    auto damageTilesRemoval = fx.space.read<std::vector<Builders::DirtyRectHint>>(metricsBase + "/damageTiles");
+    auto damageTilesRemoval = fx.space.read<std::vector<Runtime::DirtyRectHint>>(metricsBase + "/damageTiles");
     REQUIRE(damageTilesRemoval);
     CHECK(damageTilesRemoval->size() == *damageRects);
 
@@ -1349,7 +1350,7 @@ TEST_CASE("damage metrics capture drawable removal") {
 
     auto damageRects = fx.space.read<uint64_t>(metricsBase + "/damageRectangles");
     REQUIRE(damageRects);
-    auto damageTilesFull = fx.space.read<std::vector<Builders::DirtyRectHint>>(metricsBase + "/damageTiles");
+    auto damageTilesFull = fx.space.read<std::vector<Runtime::DirtyRectHint>>(metricsBase + "/damageTiles");
     REQUIRE(damageTilesFull);
     CHECK(damageTilesFull->size() == *damageRects);
 
@@ -1452,7 +1453,7 @@ TEST_CASE("damage metrics detect clear color repaint") {
     auto metricsBase = std::string(targetPath.getPath()) + "/output/v1/common";
     auto damageRects = fx.space.read<uint64_t>(metricsBase + "/damageRectangles");
     REQUIRE(damageRects);
-    auto repaintTiles = fx.space.read<std::vector<Builders::DirtyRectHint>>(metricsBase + "/damageTiles");
+    auto repaintTiles = fx.space.read<std::vector<Runtime::DirtyRectHint>>(metricsBase + "/damageTiles");
     REQUIRE(repaintTiles);
     CHECK(repaintTiles->size() == *damageRects);
 
@@ -1560,12 +1561,12 @@ TEST_CASE("damage metrics respect dirty rect hints") {
     });
     REQUIRE(first);
 
-    Builders::DirtyRectHint hint{};
+    Runtime::DirtyRectHint hint{};
     hint.min_x = 64.0f;
     hint.min_y = 64.0f;
     hint.max_x = 128.0f;
     hint.max_y = 128.0f;
-    std::vector<Builders::DirtyRectHint> hints{hint};
+    std::vector<Runtime::DirtyRectHint> hints{hint};
     auto hintsPath = std::string(targetPath.getPath()) + "/hints/dirtyRects";
     auto insert = fx.space.insert(hintsPath, hints);
     REQUIRE(insert.errors.empty());
@@ -1588,7 +1589,7 @@ TEST_CASE("damage metrics respect dirty rect hints") {
 
     auto rects = fx.space.read<uint64_t>(metricsBase + "/damageRectangles");
     REQUIRE(rects);
-    auto hintTiles = fx.space.read<std::vector<Builders::DirtyRectHint>>(metricsBase + "/damageTiles");
+    auto hintTiles = fx.space.read<std::vector<Runtime::DirtyRectHint>>(metricsBase + "/damageTiles");
     REQUIRE(hintTiles);
     CHECK(hintTiles->size() == *rects);
 
@@ -1792,7 +1793,7 @@ TEST_CASE("progressive repaint keeps backdrop when dirty hints cover a tile") {
     auto revision2 = fx.publish_snapshot(*scene, make_overlay_bucket());
     REQUIRE(revision2 > revision1);
 
-    Builders::DirtyRectHint hint{};
+    Runtime::DirtyRectHint hint{};
     hint.min_x = 0.0f;
     hint.min_y = 0.0f;
     hint.max_x = static_cast<float>(kTile);
@@ -1800,7 +1801,7 @@ TEST_CASE("progressive repaint keeps backdrop when dirty hints cover a tile") {
     std::array hints{hint};
     auto submitted = Renderer::SubmitDirtyRects(fx.space,
                                                 SP::ConcretePathStringView{targetPath.getPath()},
-                                                std::span<const Builders::DirtyRectHint>{hints});
+                                                std::span<const Runtime::DirtyRectHint>{hints});
     REQUIRE(submitted);
 
     PathRenderer2D renderer_second{fx.space};
@@ -3624,7 +3625,7 @@ TEST_CASE("Window::Present software path publishes residency watermarks") {
     constexpr std::uint64_t kGpuSoftBytes = 512;
     constexpr std::uint64_t kGpuHardBytes = 1024;
 
-    Builders::RenderSettings overrides{};
+    Runtime::RenderSettings overrides{};
     overrides.surface.size_px.width = surfaceDesc.size_px.width;
     overrides.surface.size_px.height = surfaceDesc.size_px.height;
     overrides.surface.dpi_scale = 1.0f;
@@ -3634,7 +3635,7 @@ TEST_CASE("Window::Present software path publishes residency watermarks") {
     overrides.time.delta_ms = 16.0;
     overrides.time.frame_index = 0;
     overrides.time.time_ms = 0.0;
-    overrides.renderer.backend_kind = Builders::RendererKind::Software2D;
+    overrides.renderer.backend_kind = SP::UI::Runtime::RendererKind::Software2D;
     overrides.renderer.metal_uploads_enabled = false;
     overrides.cache.cpu_soft_bytes = kCpuSoftBytes;
     overrides.cache.cpu_hard_bytes = kCpuHardBytes;
@@ -3683,7 +3684,7 @@ TEST_CASE("Window::Present software path publishes residency watermarks") {
 
     auto settings = Builders::Renderer::ReadSettings(fx.space, SP::ConcretePathStringView{targetPath.getPath()});
     REQUIRE(settings);
-    CHECK(settings->renderer.backend_kind == Builders::RendererKind::Software2D);
+    CHECK(settings->renderer.backend_kind == SP::UI::Runtime::RendererKind::Software2D);
     CHECK_FALSE(settings->renderer.metal_uploads_enabled);
     CHECK(settings->cache.cpu_soft_bytes == kCpuSoftBytes);
     CHECK(settings->cache.cpu_hard_bytes == kCpuHardBytes);

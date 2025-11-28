@@ -5,9 +5,7 @@
 #include <string_view>
 #include <vector>
 
-namespace SP::UI::Builders {
-struct DirtyRectHint;
-}
+#include <pathspace/ui/runtime/RenderSettings.hpp>
 
 namespace SP::UI::Declarative {
 
@@ -100,7 +98,7 @@ struct PaintTexturePayload {
 };
 
 struct PaintDirtyBatch {
-    std::vector<SP::UI::Builders::DirtyRectHint> rects;
+    std::vector<SP::UI::Runtime::DirtyRectHint> rects;
 };
 
 } // namespace SP::UI::Declarative

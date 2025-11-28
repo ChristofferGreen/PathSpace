@@ -7,6 +7,7 @@
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <algorithm>
@@ -340,7 +341,7 @@ struct RenderHarness {
     Builders::SurfacePath surface;
     SP::ConcretePathString target;
     Runtime::SurfaceDesc surface_desc{};
-    Builders::RenderSettings settings{};
+    Runtime::RenderSettings settings{};
     PathRenderer2D renderer2d;
     std::uint64_t frame_index = 0;
     bool ready = false;
@@ -371,7 +372,7 @@ struct RenderHarness {
 
         Builders::RendererParams renderer_params{
             .name = "html_canvas_verify_renderer",
-            .kind = Builders::RendererKind::Software2D,
+            .kind = SP::UI::Runtime::RendererKind::Software2D,
             .description = "HtmlCanvasVerify renderer",
         };
         auto renderer_result = Builders::Renderer::Create(space, root_view(), renderer_params);
@@ -422,7 +423,7 @@ struct RenderHarness {
         settings.surface.size_px.height = surface_desc.size_px.height;
         settings.surface.dpi_scale = 1.0f;
         settings.surface.visibility = true;
-        settings.renderer.backend_kind = Builders::RendererKind::Software2D;
+        settings.renderer.backend_kind = SP::UI::Runtime::RendererKind::Software2D;
         settings.renderer.metal_uploads_enabled = false;
         settings.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
         return true;
@@ -459,7 +460,7 @@ struct RenderHarness {
             .target_path = SP::ConcretePathStringView{target.getPath()},
             .settings = settings,
             .surface = surface_instance,
-            .backend_kind = Builders::RendererKind::Software2D,
+            .backend_kind = SP::UI::Runtime::RendererKind::Software2D,
         });
         if (!render_result) {
             std::cerr << "Renderer failed: " << render_result.error().message.value_or("<unspecified>") << "\n";

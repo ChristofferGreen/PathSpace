@@ -6,6 +6,7 @@
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <path/UnvalidatedPath.hpp>
@@ -353,7 +354,7 @@ auto render_frame(PathRenderer2D& renderer,
                   PathSurfaceSoftware& surface,
                   PathSpace& space,
                   Builders::ConcretePathView targetPath,
-                  Builders::RenderSettings& settings,
+                  Runtime::RenderSettings& settings,
                   std::uint64_t frame_index,
                   bool collect_damage_metrics) -> FrameMetrics {
     using namespace std::chrono_literals;
@@ -735,7 +736,7 @@ int main(int argc, char** argv) try {
     // Renderer + surface setup
     Builders::RendererParams renderer_params{
         .name = "renderer_bench",
-        .kind = Builders::RendererKind::Software2D,
+        .kind = SP::UI::Runtime::RendererKind::Software2D,
         .description = "Benchmark renderer",
     };
     auto renderer_path = Builders::Renderer::Create(space, root_view, renderer_params);
@@ -785,7 +786,7 @@ int main(int argc, char** argv) try {
     };
     PathSurfaceSoftware surface{surface_desc, surface_options};
 
-    Builders::RenderSettings render_settings{};
+    Runtime::RenderSettings render_settings{};
     render_settings.surface.size_px.width = canvas_width;
     render_settings.surface.size_px.height = canvas_height;
     render_settings.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -823,7 +824,7 @@ int main(int argc, char** argv) try {
     };
 
     publish_scene();
-    replace_value<std::vector<Builders::DirtyRectHint>>(space, hints_path, {});
+    replace_value<std::vector<Runtime::DirtyRectHint>>(space, hints_path, {});
 
     std::vector<FrameMetrics> full_frames;
     full_frames.reserve(4);
@@ -863,12 +864,12 @@ int main(int argc, char** argv) try {
 
         publish_scene();
 
-        Builders::DirtyRectHint hint{};
+        Runtime::DirtyRectHint hint{};
         hint.min_x = stroke.rect.min_x - 1.0f;
         hint.min_y = stroke.rect.min_y - 1.0f;
         hint.max_x = stroke.rect.max_x + 1.0f;
         hint.max_y = stroke.rect.max_y + 1.0f;
-        std::vector<Builders::DirtyRectHint> hints{hint};
+        std::vector<Runtime::DirtyRectHint> hints{hint};
         replace_value(space, hints_path, hints);
 
         auto frame = render_frame(renderer, surface, space, target_path_view, render_settings, frame_index++, enable_metrics);
@@ -880,7 +881,7 @@ int main(int argc, char** argv) try {
 
     // Force a full repaint by clearing hints and changing clear color.
     render_settings.clear_color = {0.02f, 0.02f, 0.02f, 1.0f};
-    replace_value<std::vector<Builders::DirtyRectHint>>(space, hints_path, {});
+    replace_value<std::vector<Runtime::DirtyRectHint>>(space, hints_path, {});
     publish_scene();
     {
         auto frame = render_frame(renderer, surface, space, target_path_view, render_settings, frame_index++, enable_metrics);
@@ -987,7 +988,7 @@ int main(int argc, char** argv) try {
 
         Builders::RendererParams sp_renderer_params{
             .name = "small_renderer",
-            .kind = Builders::RendererKind::Software2D,
+            .kind = SP::UI::Runtime::RendererKind::Software2D,
             .description = "",
         };
         auto sp_renderer = Builders::Renderer::Create(small_space, small_root_view, sp_renderer_params);
@@ -1023,7 +1024,7 @@ int main(int argc, char** argv) try {
         PathSurfaceSoftware::Options sp_opts_surface{.enable_progressive = true, .enable_buffered = false, .progressive_tile_size_px = 2};
         PathSurfaceSoftware sp_surface{sp_desc, sp_opts_surface};
 
-        Builders::RenderSettings sp_settings{};
+        Runtime::RenderSettings sp_settings{};
         sp_settings.surface.size_px.width = sp_desc.size_px.width;
         sp_settings.surface.size_px.height = sp_desc.size_px.height;
         sp_settings.clear_color = {0.1f, 0.1f, 0.1f, 1.0f};

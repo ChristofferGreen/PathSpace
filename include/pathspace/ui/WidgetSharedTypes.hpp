@@ -7,6 +7,7 @@
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/TextBuilder.hpp>
+#include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/layer/io/PathIOMouse.hpp>
 
 #include <algorithm>
@@ -86,21 +87,8 @@ using SurfacePath = ConcretePath;
 using WindowPath = ConcretePath;
 using HtmlTargetPath = ConcretePath;
 using WidgetPath = ConcretePath;
-
-
-struct DirtyRectHint {
-    float min_x = 0.0f;
-    float min_y = 0.0f;
-    float max_x = 0.0f;
-    float max_y = 0.0f;
-};
-
-[[nodiscard]] inline auto MakeDirtyRectHint(float min_x,
-                                            float min_y,
-                                            float max_x,
-                                            float max_y) -> DirtyRectHint {
-    return DirtyRectHint{min_x, min_y, max_x, max_y};
-}
+using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
+using SP::UI::Runtime::MakeDirtyRectHint;
 
 enum class ParamUpdateMode {
     Queue,
@@ -1532,7 +1520,7 @@ auto MakeTreeLayout(Widgets::TreePreviewLayout const& layout) -> std::optional<T
 
 auto ExpandForFocusHighlight(WidgetBounds& bounds) -> void;
 auto FocusHighlightPadding() -> float;
-auto MakeDirtyHint(WidgetBounds const& bounds) -> Builders::DirtyRectHint;
+auto MakeDirtyHint(WidgetBounds const& bounds) -> DirtyRectHint;
 auto TranslateTreeLayout(TreeLayout& layout, float dx, float dy) -> void;
 
 } // namespace Input

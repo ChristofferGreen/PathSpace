@@ -96,7 +96,7 @@ auto damage_metrics_enabled() -> bool {
     return false;
 }
 
-auto determine_text_pipeline(Builders::RenderSettings const& settings)
+auto determine_text_pipeline(SP::UI::Runtime::RenderSettings const& settings)
     -> std::pair<PathRenderer2D::TextPipeline, bool> {
     auto pipeline = PathRenderer2D::TextPipeline::GlyphQuads;
     bool allow_fallback = true;
@@ -109,10 +109,10 @@ auto determine_text_pipeline(Builders::RenderSettings const& settings)
     }
 
     if (settings.debug.enabled) {
-        if ((settings.debug.flags & Builders::RenderSettings::Debug::kForceShapedText) != 0) {
+        if ((settings.debug.flags & SP::UI::Runtime::RenderSettings::Debug::kForceShapedText) != 0) {
             pipeline = PathRenderer2D::TextPipeline::Shaped;
         }
-        if ((settings.debug.flags & Builders::RenderSettings::Debug::kDisableTextFallback) != 0) {
+        if ((settings.debug.flags & SP::UI::Runtime::RenderSettings::Debug::kDisableTextFallback) != 0) {
             allow_fallback = false;
         }
     }
@@ -282,8 +282,8 @@ auto pulse_focus_highlight_color(std::array<float, 4> const& srgb,
 
 auto schedule_focus_pulse_render(PathSpace& space,
                                  SP::ConcretePathStringView targetPath,
-                                 Builders::RenderSettings const& settings,
-                                 std::optional<Builders::DirtyRectHint> focus_hint,
+                                 SP::UI::Runtime::RenderSettings const& settings,
+                                 std::optional<SP::UI::Runtime::DirtyRectHint> focus_hint,
                                  std::uint64_t frame_index) -> void {
     static std::mutex mutex;
     static std::unordered_map<std::string, std::chrono::steady_clock::time_point> last_schedule;
@@ -320,7 +320,7 @@ auto schedule_focus_pulse_render(PathSpace& space,
     auto inserted = space.insert(queuePath, event);
     (void)inserted;
 
-    Builders::DirtyRectHint hint{};
+    SP::UI::Runtime::DirtyRectHint hint{};
     if (focus_hint.has_value()) {
         hint = *focus_hint;
     } else {
@@ -339,10 +339,10 @@ auto schedule_focus_pulse_render(PathSpace& space,
         return;
     }
 
-    std::array<Builders::DirtyRectHint, 1> hints{hint};
+    std::array<SP::UI::Runtime::DirtyRectHint, 1> hints{hint};
     (void)Builders::Renderer::SubmitDirtyRects(space,
                                                targetPath,
-                                               std::span<const Builders::DirtyRectHint>(hints.data(), hints.size()));
+                                               std::span<const SP::UI::Runtime::DirtyRectHint>(hints.data(), hints.size()));
 }
 
 #if defined(__APPLE__) && PATHSPACE_UI_METAL

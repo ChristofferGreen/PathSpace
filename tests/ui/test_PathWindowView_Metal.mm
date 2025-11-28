@@ -17,6 +17,7 @@
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <algorithm>
@@ -227,7 +228,7 @@ auto create_scene(MetalBuildersFixture& fx,
 
 auto create_renderer(MetalBuildersFixture& fx,
                      std::string const& name,
-                     Builders::RendererKind kind) -> Builders::RendererPath {
+                     SP::UI::Runtime::RendererKind kind) -> Builders::RendererPath {
     Builders::RendererParams params{
         .name = name,
         .kind = kind,
@@ -591,7 +592,7 @@ TEST_CASE("Metal pipeline publishes residency metrics and material descriptors")
         MetalBuildersFixture fx;
 
         auto scene = create_scene(fx, "scene_metal_metrics");
-        auto renderer = create_renderer(fx, "renderer_metal_metrics", Builders::RendererKind::Metal2D);
+        auto renderer = create_renderer(fx, "renderer_metal_metrics", SP::UI::Runtime::RendererKind::Metal2D);
 
         auto desc = make_surface_desc();
         desc.size_px.width = 8;
@@ -671,7 +672,7 @@ TEST_CASE("Metal pipeline publishes residency metrics and material descriptors")
         auto settings = Builders::Renderer::ReadSettings(fx.space,
                                                          Builders::ConcretePathView{targetPath.getPath()});
         REQUIRE(settings);
-        CHECK(settings->renderer.backend_kind == Builders::RendererKind::Metal2D);
+        CHECK(settings->renderer.backend_kind == SP::UI::Runtime::RendererKind::Metal2D);
         CHECK(settings->renderer.metal_uploads_enabled);
 
         PathWindowView::ResetMetalPresenter();
@@ -715,7 +716,7 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
         MetalBuildersFixture fx;
 
         auto scene = create_scene(fx, "scene_metal_image_metrics");
-        auto renderer = create_renderer(fx, "renderer_metal_image_metrics", Builders::RendererKind::Metal2D);
+        auto renderer = create_renderer(fx, "renderer_metal_image_metrics", SP::UI::Runtime::RendererKind::Metal2D);
 
         constexpr std::uint64_t kImageFingerprint = 0x0CDEF1234567890ull;
         auto imageBucket = make_image_bucket(kImageFingerprint);
@@ -770,7 +771,7 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
         constexpr std::uint64_t kGpuSoftBytes = 2048;
         constexpr std::uint64_t kGpuHardBytes = 4096;
 
-        Builders::RenderSettings overrides{};
+        SP::UI::Runtime::RenderSettings overrides{};
         overrides.surface.size_px.width = desc.size_px.width;
         overrides.surface.size_px.height = desc.size_px.height;
         overrides.surface.dpi_scale = 1.0f;
@@ -780,7 +781,7 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
         overrides.time.delta_ms = 16.0;
         overrides.time.frame_index = 0;
         overrides.time.time_ms = 0.0;
-        overrides.renderer.backend_kind = Builders::RendererKind::Metal2D;
+        overrides.renderer.backend_kind = SP::UI::Runtime::RendererKind::Metal2D;
         overrides.renderer.metal_uploads_enabled = true;
         overrides.cache.cpu_soft_bytes = kCpuSoftBytes;
         overrides.cache.cpu_hard_bytes = kCpuHardBytes;
@@ -859,7 +860,7 @@ TEST_CASE("Metal pipeline publishes image residency watermarks") {
         auto settings = Builders::Renderer::ReadSettings(fx.space,
                                                          Builders::ConcretePathView{targetPath.getPath()});
         REQUIRE(settings);
-        CHECK(settings->renderer.backend_kind == Builders::RendererKind::Metal2D);
+        CHECK(settings->renderer.backend_kind == SP::UI::Runtime::RendererKind::Metal2D);
         CHECK(settings->renderer.metal_uploads_enabled);
         CHECK(settings->cache.cpu_soft_bytes == kCpuSoftBytes);
         CHECK(settings->cache.cpu_hard_bytes == kCpuHardBytes);

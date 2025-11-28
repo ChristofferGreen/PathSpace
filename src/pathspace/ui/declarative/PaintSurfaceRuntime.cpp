@@ -23,7 +23,7 @@ namespace {
 
 namespace WidgetDetail = SP::UI::Declarative::Detail;
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
-using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
+using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
 using SP::UI::Builders::Widgets::Bindings::WidgetOpKind;
 
 constexpr std::string_view kStrokePrefix{"paint_surface/stroke/"};

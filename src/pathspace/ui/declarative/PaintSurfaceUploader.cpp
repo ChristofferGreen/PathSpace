@@ -29,7 +29,7 @@ namespace SP::UI::Declarative {
 namespace {
 
 namespace Detail = SP::UI::Declarative::Detail;
-using DirtyRectHint = SP::UI::Builders::DirtyRectHint;
+using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
 
 constexpr std::string_view kAppsRoot = "/system/applications";
 
