@@ -1,45 +1,30 @@
-#include "declarative_example_shared.hpp"
-
-#include <pathspace/examples/cli/ExampleCli.hpp>
+#include <pathspace/PathSpace.hpp>
+#include <pathspace/core/Error.hpp>
+#include <pathspace/system/Standard.hpp>
+#include <pathspace/ui/Helpers.hpp>
+#include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
-#include <algorithm>
-#include <cstdlib>
-#include <iomanip>
 #include <iostream>
-#include <memory>
-#include <span>
-#include <sstream>
+#include <optional>
 #include <string>
-#include <system_error>
-
-using namespace PathSpaceExamples;
+#include <string_view>
+#include <vector>
 
 namespace {
 
-struct Options {
-    int width = 960;
-    int height = 600;
-};
+constexpr int kWindowWidth = 960;
+constexpr int kWindowHeight = 600;
+constexpr std::string_view kAppName = "widgets_example_minimal";
 
-auto parse_options(int argc, char** argv) -> Options {
-    Options opts;
-    using ExampleCli = SP::Examples::CLI::ExampleCli;
-    ExampleCli cli;
-    cli.set_program_name("widgets_example_minimal");
-
-    cli.add_int("--width", {.on_value = [&](int value) { opts.width = value; }});
-    cli.add_int("--height", {.on_value = [&](int value) { opts.height = value; }});
-
-    (void)cli.parse(argc, argv);
-
-    opts.width = std::max(640, opts.width);
-    opts.height = std::max(480, opts.height);
-    return opts;
-}
-
-auto fail(SP::PathSpace& space, std::string_view message) -> int {
-    std::cerr << "widgets_example_minimal: " << message << "\n";
+auto fail(SP::PathSpace& space,
+          std::string_view message,
+          std::optional<SP::Error> error = std::nullopt) -> int {
+    std::cerr << "widgets_example_minimal: " << message;
+    if (error) {
+        std::cerr << ": " << SP::describeError(*error);
+    }
+    std::cerr << "\n";
     SP::System::ShutdownDeclarativeRuntime(space);
     return 1;
 }
@@ -58,140 +43,129 @@ auto log_error(SP::Expected<void> const& status, std::string const& context) -> 
 
 } // namespace
 
-int main(int argc, char** argv) {
-    auto opts = parse_options(argc, argv);
-
+int main() {
     SP::PathSpace space;
+
     auto launch = SP::System::LaunchStandard(space);
     if (!launch) {
-        return fail(space, "failed to launch declarative runtime");
+        return fail(space, "failed to launch declarative runtime", launch.error());
     }
 
     auto app = SP::App::Create(space,
-                               "widgets_example_minimal",
+                               kAppName,
                                {.title = "Declarative Widgets Minimal"});
     if (!app) {
-        return fail(space, "failed to create app");
+        return fail(space, "failed to create app", app.error());
     }
     auto app_root = *app;
     auto app_root_view = SP::App::AppRootPathView{app_root.getPath()};
 
-    SP::Window::CreateOptions window_opts{};
-    window_opts.name = "minimal_window";
-    window_opts.title = "PathSpace Minimal";
-    window_opts.width = opts.width;
-    window_opts.height = opts.height;
-    window_opts.visible = true;
-    auto window = SP::Window::Create(space, app_root_view, window_opts);
+    auto window = SP::Window::Create(space,
+                                     app_root,
+                                     "Declarative Widgets Minimal",
+                                     kWindowWidth,
+                                     kWindowHeight);
     if (!window) {
-        return fail(space, "failed to create window");
+        return fail(space, "failed to create window", window.error());
     }
 
-    SP::Scene::CreateOptions scene_opts{};
-    scene_opts.name = "minimal_scene";
-    scene_opts.description = "Declarative minimal example";
-    auto scene = SP::Scene::Create(space, app_root_view, window->path, scene_opts);
+    SP::Scene::CreateOptions scene_options{};
+    scene_options.name = "minimal_scene";
+    scene_options.description = "Plan doc sample";
+    scene_options.view = window->view_name;
+    auto scene = SP::Scene::Create(space, app_root, window->path, scene_options);
     if (!scene) {
-        return fail(space, "failed to create scene");
+        return fail(space, "failed to create scene", scene.error());
     }
-
-    auto present_handles = SP::UI::Declarative::BuildPresentHandles(space,
-                                                                    app_root_view,
-                                                                    window->path,
-                                                                    window->view_name);
-    if (!present_handles) {
-        return fail(space, "failed to prepare presenter bootstrap");
-    }
-
-    constexpr std::string_view kPointerDevice = "/system/devices/in/pointer/default";
-    constexpr std::string_view kKeyboardDevice = "/system/devices/in/text/default";
-    ensure_device_push_config(space, std::string{kPointerDevice}, "widgets_example_minimal");
-    ensure_device_push_config(space, std::string{kKeyboardDevice}, "widgets_example_minimal");
-    auto pointer_devices = std::vector<std::string>{std::string{kPointerDevice}};
-    auto keyboard_devices = std::vector<std::string>{std::string{kKeyboardDevice}};
-    subscribe_window_devices(space,
-                             window->path,
-                             std::span<const std::string>(pointer_devices),
-                             std::span<const std::string>{},
-                             std::span<const std::string>(keyboard_devices));
 
     auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
     auto window_view = SP::App::ConcretePathView{window_view_path};
 
-    auto status_label = SP::UI::Declarative::Label::Create(space,
-                                                           window_view,
-                                                           "status",
-                                                           {.text = "Adjust the slider"});
+    auto surface_rel = space.read<std::string, std::string>(window_view_path + "/surface");
+    if (!surface_rel) {
+        return fail(space, "failed to read surface binding", surface_rel.error());
+    }
+    auto surface_abs = SP::App::resolve_app_relative(app_root_view, *surface_rel);
+    if (!surface_abs) {
+        return fail(space, "failed to resolve surface path", surface_abs.error());
+    }
+    auto bind_scene = SP::UI::Surface::SetScene(space,
+                                                SP::UI::SurfacePath{surface_abs->getPath()},
+                                                scene->path);
+    if (!bind_scene) {
+        return fail(space, "failed to bind surface scene", bind_scene.error());
+    }
+
+    using namespace SP::UI::Declarative;
+
+    auto status_label = Label::Create(space,
+                                      window_view,
+                                      "status_label",
+                                      "Tap the button or pick a greeting");
     if (!status_label) {
-        return fail(space, "failed to create label");
+        return fail(space, "failed to create label", status_label.error());
     }
 
-    auto slider_value = std::make_shared<float>(25.0f);
-    SP::UI::Declarative::Slider::Args slider_args{};
-    slider_args.minimum = 0.0f;
-    slider_args.maximum = 100.0f;
-    slider_args.value = *slider_value;
-    slider_args.on_change = [slider_value,
-                             status_label_path = *status_label](SP::UI::Declarative::SliderContext& ctx) {
-        *slider_value = ctx.value;
-        std::ostringstream stream;
-        stream << "Slider value = " << std::fixed << std::setprecision(1) << ctx.value;
-        log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                      status_label_path,
-                                                      stream.str()),
+    Button::Args button_args{};
+    button_args.label = "Say Hello!";
+    button_args.on_press = [status_label_path = *status_label](ButtonContext& ctx) {
+        log_error(Label::SetText(ctx.space,
+                                 status_label_path,
+                                 "Hello from PathSpace!"),
                   "Label::SetText");
+        std::cout << "Hello button pressed" << std::endl;
     };
-    auto slider = SP::UI::Declarative::Slider::Create(space,
-                                                       window_view,
-                                                       "primary_slider",
-                                                       slider_args);
-    if (!slider) {
-        return fail(space, "failed to create slider");
+    auto hello_button = Button::Create(space,
+                                       window_view,
+                                       "hello_button",
+                                       button_args);
+    if (!hello_button) {
+        return fail(space, "failed to create button", hello_button.error());
     }
 
-    SP::UI::Declarative::Button::Args button_args{};
-    button_args.label = "Reset";
-    button_args.on_press = [slider_value,
-                            slider_path = *slider,
-                            status_label_path = *status_label](SP::UI::Declarative::ButtonContext& ctx) {
-        *slider_value = 25.0f;
-        log_error(SP::UI::Declarative::Slider::SetValue(ctx.space, slider_path, *slider_value),
-                  "Slider::SetValue");
-        log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                      status_label_path,
-                                                      "Slider reset to 25"),
-                  "Label::SetText");
+    List::Args list_args{};
+    list_args.items = {
+        {.id = "hello", .label = "Hello"},
+        {.id = "bonjour", .label = "Bonjour"},
+        {.id = "konnichiwa", .label = "Konnichiwa"},
     };
-    auto button = SP::UI::Declarative::Button::Create(space,
-                                                       window_view,
-                                                       "reset_button",
-                                                       button_args);
-    if (!button) {
-        return fail(space, "failed to create button");
+    list_args.on_child_event = [status_label_path = *status_label](ListChildContext& ctx) {
+        auto text = std::string{"Selected greeting: "} + ctx.child_id;
+        log_error(Label::SetText(ctx.space, status_label_path, text), "Label::SetText");
+    };
+    list_args.children = {
+        {"hello_fragment", Label::Fragment(Label::Args{.text = "Hello from ListArgs"})},
+        {"bonus_button",
+         Button::Fragment(Button::Args{
+             .label = "Bonus",
+             .on_press = [](ButtonContext&) {
+                 std::cout << "Bonus button clicked!" << std::endl;
+             },
+         })},
+    };
+    auto greetings_list = List::Create(space,
+                                       window_view,
+                                       "greetings_list",
+                                       list_args);
+    if (!greetings_list) {
+        return fail(space, "failed to create list", greetings_list.error());
     }
 
-    auto readiness = ensure_declarative_scene_ready(space,
-                                                    scene->path,
-                                                    window->path,
-                                                    window->view_name);
-    if (!readiness) {
-        std::cerr << "widgets_example_minimal: scene readiness failed: "
-                  << SP::describeError(readiness.error()) << "\n";
-        return fail(space, "scene readiness failed");
+    auto list_view = SP::App::ConcretePathView{greetings_list->getPath()};
+    auto hi_item = Label::Create(space, list_view, "hi_item", "Hi there");
+    if (!hi_item) {
+        return fail(space, "failed to add list child", hi_item.error());
     }
 
-    LocalInputBridge bridge{};
-    bridge.space = &space;
-    install_local_window_bridge(bridge);
-
-    PresentLoopHooks hooks{};
-    run_present_loop(space,
-                     window->path,
-                     window->view_name,
-                     *present_handles,
-                     opts.width,
-                     opts.height,
-                     hooks);
+    auto run = SP::App::RunUI(space,
+                              *scene,
+                              *window,
+                              {.window_width = kWindowWidth,
+                               .window_height = kWindowHeight,
+                               .window_title = "Declarative Widgets Minimal"});
+    if (!run) {
+        return fail(space, "App::RunUI failed", run.error());
+    }
 
     SP::System::ShutdownDeclarativeRuntime(space);
     return 0;
