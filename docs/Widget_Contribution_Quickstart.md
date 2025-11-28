@@ -7,7 +7,7 @@ UI stack. Follow it before touching the widget builders so the PathSpace trie
 layout, interaction queues, reducers, and diagnostics stay aligned across
 examples, tests, and tooling.
 
-> **Declarative-first policy (November 25, 2025):** All new widgets, samples, and tests must use the declarative runtime (`include/pathspace/ui/declarative/**`). The legacy imperative builders under `src/pathspace/ui/Widget*.cpp` remain in the tree for compatibility with consumers that have not migrated yet; only touch them when backporting critical fixes or deleting dead code as part of the deprecation plan documented in `docs/Plan_WidgetDeclarativeAPI.md`.
+> **Declarative-first policy (November 25, 2025):** All new widgets, samples, and tests must use the declarative runtime (`include/pathspace/ui/declarative/**`). The legacy imperative builders under `src/pathspace/ui/Widget*.cpp` remain in the tree for compatibility with consumers that have not migrated yet; only touch them when backporting critical fixes or deleting dead code as part of the deprecation plan documented in `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`.
 
 > **Deprecation telemetry:** Legacy builder usage now increments counters under
 > `/_system/diagnostics/legacy_widget_builders/<entry>/`. The default enforcement

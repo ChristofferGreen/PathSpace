@@ -15,7 +15,7 @@
 5. Document the pipeline and surface configuration hooks (per-provider throttles, telemetry toggles, launch options).
 
 ## Non-Objectives
-- Replacing the existing declarative reducers/handler bindings (those arrive in Phase 1 item 5 of `Plan_WidgetDeclarativeAPI`).
+- Replacing the existing declarative reducers/handler bindings (those arrive in Phase 1 item 5 of `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`).
 - Rewriting PathIO providers to depend on platform-specific event loops (they still expose standard `insert`/`take`).
 - Introducing new input device kinds beyond pointer/text/gamepad (those can piggyback later).
 
@@ -198,7 +198,7 @@ Key helpers referenced above:
 ## Deliverables
 - `include/pathspace/runtime/IOPump.hpp` + `src/pathspace/runtime/IOPump.cpp` exporting `CreateIOPump`/`ShutdownIOPump` plus `MakeRuntimeWindowToken`.
 - IO Trellis + routing Trellis helpers (header + source) inside `src/pathspace/ui/declarative`.
-- Updated docs: `Plan_WidgetDeclarativeAPI.md`, `Plan_WidgetDeclarativeAPI_EventRouting.md`, `AI_PATHS.md`, `AI_ARCHITECTURE.md`, plus this plan.
+- Updated docs: `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`, `docs/finished/Plan_WidgetDeclarativeAPI_EventRouting_Finished.md`, `AI_PATHS.md`, `AI_ARCHITECTURE.md`, plus this plan.
 - Telemetry/throttling config nodes under `/system/devices/in/<class>/<id>/config/*` with shared documentation.
 - Runtime subscription surface: `/system/widgets/runtime/windows/<token>` stores `window` (absolute window path) and `subscriptions/{pointer,button,text}/devices` vectors so OS/window bridges can register interested device paths.
 - Per-window queues live under `/system/widgets/runtime/events/<token>/{pointer,button,text}/queue` with `global/*` fallbacks for tools that have not registered their windows yet.

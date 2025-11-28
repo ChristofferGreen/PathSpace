@@ -21,7 +21,7 @@
 - Replacing app-defined shortcuts/menus (future extensions may hook menu bars).
 
 ## Dependencies
-- Declarative widget runtime (`Plan_WidgetDeclarativeAPI.md`) for chrome controls and dock widgets.
+- Declarative widget runtime (`docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`) for chrome controls and dock widgets.
 - UI renderer/presenter stack (`Plan_SceneGraph_Renderer.md`).
 - Standard path schema (`AI_PATHS.md`) — window manager must only touch documented nodes.
 

@@ -33,7 +33,7 @@ Unless noted otherwise, all paths are application-relative and live under `/syst
 | **Scene** | `<app>/scenes/<sceneId>` | `structure/widgets/<widgetPath>`, `structure/window/<windowId>/{focus,current,metrics/dpi}`, `snapshot/<rev>`, `metrics/*`, `events/present/handler`, `views/<viewId>/dirty`, `state/attached`, `render/dirty` | `Scene::Create` spawns the lifecycle worker that drains `render/events/dirty`, rebuilds buckets, and publishes revisions. |
 | **Theme** | `<app>/themes/<name>` | `colors/<token>`, `typography/<token>`, `spacing/<token>`, `style/inherits`, compiled value under `config/theme/<name>/value` | Widgets inherit `style/theme` up the parent → window → app chain before falling back to `/themes/default`; `Theme::{Create,SetColor,RebuildValue}` keep editable + compiled blobs in sync. |
 
-This table mirrors the “Canonical Path Schema” snapshot inside `docs/Plan_WidgetDeclarativeAPI.md`. Whenever the plan gains a row/column, update both this file and `docs/AI_PATHS.md` so downstream contributors always see the live schema.
+This table mirrors the “Canonical Path Schema” snapshot inside `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`. Whenever the plan gains a row/column, update both this file and `docs/AI_PATHS.md` so downstream contributors always see the live schema.
 
 ### Theme resolver (November 18, 2025)
 
@@ -236,6 +236,6 @@ Descriptors, SceneLifecycle, and tooling read paint history through the versione
 - `widgets/<id>/events/inbox/queue` — Canonical event queue emitted by the declarative runtime (same payload as `WidgetAction`).
 - `widgets/<id>/events/<event>/queue` — Filtered queues scoped to a handler name (press, toggle, change, child_event, node_event, submit, draw, etc.).
 - `<target>/events/renderRequested/queue` — Auto-render requests emitted when widgets mutate.
-- `structure/window/<window>/accessibility/dirty` + `widgets/<id>/accessibility/*` — macOS bridge uses these nodes to synchronize with VoiceOver (see `Plan_WidgetDeclarativeAPI.md` for details).
+- `structure/window/<window>/accessibility/dirty` + `widgets/<id>/accessibility/*` — macOS bridge uses these nodes to synchronize with VoiceOver (see `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md` for details).
 
 Keep this reference synchronized with the schema headers whenever you add a widget kind, introduce new metadata, or retire legacy nodes.

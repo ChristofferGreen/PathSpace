@@ -9,7 +9,7 @@ runtime, mounting widgets, wiring handlers, validating buckets, and keeping docs
 plus tests in sync. Read it before touching declarative UI code or examples.
 
 ## 1. Prerequisites
-- Skim `docs/Plan_WidgetDeclarativeAPI.md` plus the renderer plans
+- Skim `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md` plus the renderer plans
   (`docs/Plan_SceneGraph_Renderer.md`, `docs/Plan_SceneGraph.md`).
 - Make sure the Release build tree exists: `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`.
 - Keep `cmake --build build -j` and `./scripts/compile.sh --clean --test --loop=5 --release`
@@ -279,7 +279,7 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 - Whenever declarative widgets gain new namespaces, telemetry, runtime flags, or
   readiness requirements, update this file in the same PR.
 - Cross-link new sections from `docs/AI_Onboarding_Next.md`,
-  `docs/Widget_Contribution_Quickstart.md`, and `docs/Plan_WidgetDeclarativeAPI.md`
+  `docs/Widget_Contribution_Quickstart.md`, and `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`
   so maintainers know the guide exists.
 
 ## 10. Deprecation & Documentation Alignment
@@ -289,7 +289,7 @@ plus tests in sync. Read it before touching declarative UI code or examples.
   instructions by accident.
 - When legacy compatibility shims truly disappear, update `docs/WidgetDeclarativeFeatureParity.md`
   and flip the Phase 3 “documentation alignment” + Phase 4 deprecation bullets inside
-  `docs/Plan_WidgetDeclarativeAPI.md`.
+  `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`.
 - If a doc still references the imperative bucket builders as the preferred
   workflow, treat that as a bug: open an issue or update it immediately as part
   of the declarative deprecation effort.
@@ -300,7 +300,7 @@ plus tests in sync. Read it before touching declarative UI code or examples.
   - `usage_total` — cumulative invocation count (per-space, so clear it before capturing a new baseline).
   - `last_entry`, `last_path`, `last_timestamp_ns` — identify the latest offending builder and widget path.
   - `status/{phase,support_window_expires,plan}` — publishes the active policy (`phase = warning`,
-    `support_window_expires = 2026-02-01T00:00:00Z`, `plan = docs/Plan_WidgetDeclarativeAPI.md` today).
+    `support_window_expires = 2026-02-01T00:00:00Z`, `plan = docs/finished/Plan_WidgetDeclarativeAPI_Finished.md` today).
 - Runtime enforcement is driven by `PATHSPACE_LEGACY_WIDGET_BUILDERS`:
   1. `allow` — counters only, no logs or failures.
   2. `warn` — counters plus a one-time log per entry.
@@ -311,4 +311,4 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 - Expectations before the February 1, 2026 support-window cutoff:
   - Keep the diagnostics tree at zero; CI can scrape `usage_total` to guarantee no regressions slip in.
   - Flip CI/pre-push to `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` once the repo stays clean for a full validation cycle.
-  - Update this guide and `docs/Plan_WidgetDeclarativeAPI.md` if the timeline or enforcement knobs change so downstream teams do not guess.
+  - Update this guide and `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md` if the timeline or enforcement knobs change so downstream teams do not guess.

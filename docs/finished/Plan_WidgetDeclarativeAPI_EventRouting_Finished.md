@@ -1,5 +1,7 @@
 # Widget Declarative API – Event Routing Inventory
 
+> **Status (November 28, 2025):** Archived after Phase 4 of `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`. Declarative widgets now invoke `events/<event>/handler` bindings directly, so this document survives only as historical context for the shelved routing-table experiment.
+
 _Last updated: October 31, 2025_
 
 > **Update (November 14, 2025):** Declarative widgets now register handlers via `HandlerBinding` records. `events/<event>/handler` stores `{ registry_key, kind }` and the helper layer keeps an in-memory registry mapping those ids back to the user-provided lambdas (button press, slider change, etc.). The binding id format is `<widget_path>#<event>#<sequence>` so removals can drop every handler under a widget subtree deterministically. Runtime dispatch will resolve the binding id before running the callback; PathSpace no longer stores `std::function` payloads directly.
