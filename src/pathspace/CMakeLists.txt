@@ -156,6 +156,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/declarative/PaintSurfaceRuntime.cpp
         ui/declarative/PaintSurfaceUploader.cpp
         ui/declarative/StackReadiness.cpp
+        ui/declarative/SceneReadiness.cpp
         ui/declarative/WidgetEventTrellis.cpp
         ui/declarative/WidgetEventTrellisWorker.cpp
         ui/declarative/WidgetEventPointerHandlers.cpp
@@ -195,6 +196,7 @@ if(PATHSPACE_ENABLE_UI)
         examples/paint/PaintControls.cpp
         examples/paint/PaintExampleNewUI.cpp
         ui/screenshot/ScreenshotService.cpp
+        ui/screenshot/DeclarativeScreenshot.cpp
         $<$<BOOL:APPLE>:ui/LocalWindowBridge.mm>
         $<$<BOOL:APPLE>:ui/PathWindowView.mm>
         $<$<NOT:$<BOOL:APPLE>>:ui/PathWindowView.cpp>

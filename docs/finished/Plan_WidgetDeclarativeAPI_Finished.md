@@ -339,7 +339,7 @@ Keep this journal in sync as we chip away at the serialization issue so we can p
    - Port internal tools/examples; offer migration aids.
    - ✅ (November 26, 2025) Landed the initial inspector backend: `InspectorSnapshot` builds typed PathSpace trees and `InspectorHttpServer` serves `/inspector/tree`, `/inspector/node`, and the paint screenshot card JSON so downstream tools no longer need to shell into the legacy builders. `pathspace_inspector_server` hosts the service for demos/tests and apps can embed the server directly next to their declarative PathSpace roots.
    - ✅ (November 26, 2025) Bundled the inspector SPA with `InspectorHttpServer`, so `/` now renders the tree/detail UI (root/depth controls, node viewer, paint screenshot card) without relying on `scripts/paint_example_inspector_panel.py`. Apps can override the assets via `InspectorHttpServer::Options::ui_root`, and the CLI exposes `--ui-root/--no-ui` switches for demos.
-   - ✅ (November 23, 2025) `examples/paint_example_new.cpp` mirrors the doc sketch (LaunchStandard → App::Create → Window::Create → Button::Create → App::RunUI) and wires screenshot capture through `ScreenshotService`, so we can sanity-check the minimalist API with `--screenshot` before touching the heavier paint demo.
+- ✅ (November 23, 2025) `examples/paint_example_new.cpp` mirrors the doc sketch (LaunchStandard → App::Create → Window::Create → Label/Button/List → App::RunUI) and wires screenshot capture through `ScreenshotService`, so we can sanity-check the minimalist API with `--screenshot` before touching the heavier paint demo.
 
 ### Phase 4 – Deprecation & Removal
 1. **Deprecation notice**

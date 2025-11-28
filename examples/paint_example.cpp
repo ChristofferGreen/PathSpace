@@ -3,7 +3,7 @@
 #include <pathspace/examples/cli/ExampleCli.hpp>
 #include <pathspace/examples/paint/PaintControls.hpp>
 #include <pathspace/examples/paint/PaintExampleApp.hpp>
-#include <pathspace/ui/screenshot/ScreenshotService.hpp>
+#include <pathspace/ui/screenshot/DeclarativeScreenshot.hpp>
 
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/core/Error.hpp>
@@ -1789,26 +1789,27 @@ auto RunPaintExample(CommandLineOptions options) -> int {
             SP::System::ShutdownDeclarativeRuntime(space);
             return 1;
         }
-        SP::UI::Screenshot::ScreenshotRequest screenshot_request{
-            .space = space,
-            .window_path = window_result.path,
-            .view_name = window_result.view_name,
-            .width = options.width,
-            .height = options.height,
-            .output_png = *options.screenshot_path,
-            .baseline_png = options.screenshot_compare_path,
-            .diff_png = options.screenshot_diff_path,
-            .metrics_json = options.screenshot_metrics_path,
-            .max_mean_error = options.screenshot_max_mean_error,
-            .require_present = require_live_capture,
-            .present_timeout = std::chrono::milliseconds(1500),
-            .hooks = {},
-            .baseline_metadata = options.baseline_metadata,
-            .telemetry_root = options.screenshot_telemetry_root,
-            .telemetry_namespace = options.screenshot_telemetry_namespace,
-            .force_software = options.screenshot_force_software,
-        };
-        screenshot_request.hooks.ensure_ready = [&]() -> SP::Expected<void> {
+        SP::UI::Screenshot::DeclarativeScreenshotOptions screenshot_options{};
+        screenshot_options.width = options.width;
+        screenshot_options.height = options.height;
+        screenshot_options.output_png = options.screenshot_path;
+        screenshot_options.baseline_png = options.screenshot_compare_path;
+        screenshot_options.diff_png = options.screenshot_diff_path;
+        screenshot_options.metrics_json = options.screenshot_metrics_path;
+        screenshot_options.max_mean_error = options.screenshot_max_mean_error;
+        screenshot_options.require_present = require_live_capture;
+        screenshot_options.view_name = window_result.view_name;
+        screenshot_options.telemetry_namespace = options.screenshot_telemetry_namespace;
+        screenshot_options.telemetry_root = options.screenshot_telemetry_root;
+        screenshot_options.force_software = options.screenshot_force_software;
+        screenshot_options.baseline_metadata = options.baseline_metadata;
+        screenshot_options.present_timeout = std::chrono::milliseconds(1500);
+        screenshot_options.publish_timeout = std::chrono::milliseconds(2000);
+        screenshot_options.readiness_timeout = std::chrono::milliseconds(2000);
+        screenshot_options.wait_for_runtime_metrics = true;
+
+        SP::UI::Screenshot::Hooks hooks{};
+        hooks.ensure_ready = [&]() -> SP::Expected<void> {
             if (!paint_gpu_enabled) {
                 return {};
             }
@@ -1819,8 +1820,7 @@ auto RunPaintExample(CommandLineOptions options) -> int {
             }
             return {};
         };
-        screenshot_request.hooks.postprocess_png =
-            [&](std::filesystem::path const& output_png) -> SP::Expected<void> {
+        hooks.postprocess_png = [&](std::filesystem::path const& output_png) -> SP::Expected<void> {
             if (auto status = overlay_strokes_onto_png(output_png, strokes_preview, layout_metrics); !status) {
                 return status;
             }
@@ -1834,13 +1834,18 @@ auto RunPaintExample(CommandLineOptions options) -> int {
             }
             return apply_controls_shadow_overlay(output_png, layout_metrics, options.width, options.height);
         };
-        screenshot_request.hooks.fallback_writer = [&]() -> SP::Expected<void> {
+        hooks.fallback_writer = [&]() -> SP::Expected<void> {
             if (!write_image_png(strokes_preview, *options.screenshot_path)) {
                 return std::unexpected(make_runtime_error("software fallback write failed"));
             }
             return {};
         };
-        auto capture_result = SP::UI::Screenshot::ScreenshotService::Capture(screenshot_request);
+        screenshot_options.hooks = hooks;
+
+        auto capture_result = SP::UI::Screenshot::CaptureDeclarative(space,
+                                                                     scene_result.path,
+                                                                     window_result.path,
+                                                                     screenshot_options);
         if (!capture_result) {
             std::cerr << "paint_example: screenshot capture failed: "
                       << describeError(capture_result.error()) << "\n";

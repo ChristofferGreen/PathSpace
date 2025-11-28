@@ -1,6 +1,6 @@
 Never create a new git branch, only ever use master.
 Coding preference: avoid C++ exceptions entirely. When representing failures, use existing `std::expected`/`Error` returns, status objects, or other explicit error channels instead of `throw`. Introduce exceptions only when integrating unavoidable third-party APIs, and document any such cases.
-Current_Plan_Doc is ./docs/finished/Plan_WidgetDeclarativeAPI_Finished.md
+Current_Plan_Doc is ./docs/Plan_DeclarativeScreenshotAPI.md
 1. Have a read through of the docs in ./docs.
 2. From Current_Plan_Doc, identify the highest-priority unfinished item (follow its own priority markers or sequencing). Explain why it’s next.
 3. Produce an implementation plan: scope, affected files/modules, validation/tests (include loop expectations), risks, and required doc updates. Ask for confirmation before executing the plan.

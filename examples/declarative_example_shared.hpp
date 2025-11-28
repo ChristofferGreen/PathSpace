@@ -9,6 +9,7 @@
 #include <pathspace/ui/LocalWindowBridge.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
+#include <pathspace/ui/declarative/SceneReadiness.hpp>
 #include <pathspace/path/ConcretePath.hpp>
 
 #include <pathspace/layer/io/PathIOMouse.hpp>
@@ -65,155 +66,6 @@ inline auto utf32_to_utf8(char32_t ch) -> std::string {
 inline auto now_timestamp_ns() -> std::uint64_t {
     auto now = std::chrono::steady_clock::now().time_since_epoch();
     return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
-}
-
-inline auto manual_pump_metrics_requested() -> bool {
-    if (const char* env = std::getenv("PATHSPACE_RECORD_MANUAL_PUMPS")) {
-        if (env[0] == '0' && env[1] == '\0') {
-            return false;
-        }
-        return true;
-    }
-    return false;
-}
-
-inline auto manual_pump_metrics_file_path() -> std::optional<std::string> {
-    if (const char* dir = std::getenv("PATHSPACE_TEST_ARTIFACT_DIR")) {
-        if (*dir == '\0') {
-            return std::nullopt;
-        }
-        std::string path{dir};
-        if (!path.empty() && path.back() != '/') {
-            path.push_back('/');
-        }
-        path.append("manual_pump_metrics.jsonl");
-        return path;
-    }
-    return std::nullopt;
-}
-
-inline auto json_escape(std::string_view value) -> std::string {
-    std::string escaped;
-    escaped.reserve(value.size() + 16);
-    for (char ch : value) {
-        switch (ch) {
-        case '"':
-            escaped.append("\\\"");
-            break;
-        case '\\':
-            escaped.append("\\\\");
-            break;
-        default:
-            escaped.push_back(ch);
-            break;
-        }
-    }
-    return escaped;
-}
-
-inline auto app_component_from_window_path(std::string const& window_path) -> std::optional<std::string> {
-    constexpr char kPrefix[] = "/system/applications/";
-    constexpr std::size_t kPrefixLen = sizeof(kPrefix) - 1;
-    if (window_path.size() < kPrefixLen) {
-        return std::nullopt;
-    }
-    if (window_path.compare(0, kPrefixLen, kPrefix) != 0) {
-        return std::nullopt;
-    }
-    auto remainder = window_path.substr(kPrefixLen);
-    auto slash = remainder.find('/');
-    if (slash == std::string::npos) {
-        return std::nullopt;
-    }
-    return remainder.substr(0, slash);
-}
-
-inline auto read_manual_metric(SP::PathSpace& space,
-                               std::string const& base,
-                               std::string const& leaf) -> std::optional<std::uint64_t> {
-    auto value = space.read<std::uint64_t, std::string>(base + "/" + leaf);
-    if (value) {
-        return *value;
-    }
-    auto const& error = value.error();
-    if (error.code == SP::Error::Code::NoSuchPath
-        || error.code == SP::Error::Code::NoObjectFound) {
-        return std::nullopt;
-    }
-    return std::nullopt;
-}
-
-inline void record_manual_pump_metrics(SP::PathSpace& space,
-                                       SP::UI::WindowPath const& window,
-                                       std::string const& view_name) {
-    if (!manual_pump_metrics_requested()) {
-        return;
-    }
-    auto output_path = manual_pump_metrics_file_path();
-    if (!output_path) {
-        return;
-    }
-    auto app_component = app_component_from_window_path(window.getPath());
-    if (!app_component) {
-        return;
-    }
-    auto window_token = SP::Runtime::MakeRuntimeWindowToken(window.getPath());
-    std::string window_metrics_base = std::string("/system/widgets/runtime/input/windows/") + window_token + "/metrics";
-    std::string app_metrics_base = std::string("/system/widgets/runtime/input/apps/") + *app_component + "/metrics";
-
-    auto collect_metrics = [&](std::string const& base) {
-        std::vector<std::pair<std::string, std::uint64_t>> metrics;
-        auto append_metric = [&](char const* leaf) {
-            if (auto value = read_manual_metric(space, base, leaf)) {
-                metrics.emplace_back(leaf, *value);
-            }
-        };
-        append_metric("widgets_processed_total");
-        append_metric("actions_published_total");
-        append_metric("manual_pumps_total");
-        append_metric("last_manual_pump_ns");
-        return metrics;
-    };
-
-    auto window_metrics = collect_metrics(window_metrics_base);
-    auto app_metrics = collect_metrics(app_metrics_base);
-    if (window_metrics.empty() && app_metrics.empty()) {
-        return;
-    }
-
-    std::ostringstream payload;
-    payload << "{\"timestamp_ns\":" << now_timestamp_ns();
-    payload << ",\"window_path\":\"" << json_escape(window.getPath()) << '"';
-    payload << ",\"window_token\":\"" << json_escape(window_token) << '"';
-    payload << ",\"view\":\"" << json_escape(view_name) << '"';
-    payload << ",\"app_component\":\"" << json_escape(*app_component) << '"';
-
-    auto write_metric_object = [&](char const* key,
-                                   std::vector<std::pair<std::string, std::uint64_t>> const& metrics) {
-        if (metrics.empty()) {
-            return;
-        }
-        payload << ",\"" << key << "\":{";
-        bool first = true;
-        for (auto const& entry : metrics) {
-            if (!first) {
-                payload << ',';
-            }
-            first = false;
-            payload << '"' << entry.first << "\":" << entry.second;
-        }
-        payload << "}";
-    };
-
-    write_metric_object("window_metrics", window_metrics);
-    write_metric_object("app_metrics", app_metrics);
-    payload << "}\n";
-
-    std::ofstream out(*output_path, std::ios::app);
-    if (!out.is_open()) {
-        return;
-    }
-    out << payload.str();
 }
 
 inline auto to_mouse_button(SP::UI::LocalMouseButton button) -> SP::MouseButton {
@@ -426,70 +278,32 @@ inline void run_present_loop(SP::PathSpace& space,
     }
 }
 
-struct DeclarativeReadinessOptions {
-    std::chrono::milliseconds widget_timeout{std::chrono::milliseconds(5000)};
-    std::chrono::milliseconds revision_timeout{std::chrono::milliseconds(3000)};
-    bool wait_for_structure = true;
-    bool wait_for_buckets = true;
-    bool wait_for_revision = true;
-    bool wait_for_runtime_metrics = false;
-    std::chrono::milliseconds runtime_metrics_timeout{std::chrono::milliseconds(2000)};
-    std::optional<std::uint64_t> min_revision;
-    bool ensure_scene_window_mirror = false;
-    std::optional<std::string> scene_window_component_override;
-    std::optional<std::string> scene_view_override;
-    bool force_scene_publish = false;
-    bool pump_scene_before_force_publish = true;
-    SP::UI::Declarative::SceneLifecycle::ManualPumpOptions scene_pump_options{};
-};
-
-struct DeclarativeReadinessResult {
-    std::size_t widget_count = 0;
-    std::optional<std::uint64_t> scene_revision;
-};
+using DeclarativeReadinessOptions = SP::UI::Declarative::DeclarativeReadinessOptions;
+using DeclarativeReadinessResult = SP::UI::Declarative::DeclarativeReadinessResult;
 
 inline auto make_window_view_path(SP::UI::WindowPath const& window,
                                  std::string const& view_name) -> std::string {
-    std::string view_path = std::string(window.getPath());
-    view_path.append("/views/");
-    view_path.append(view_name);
-    return view_path;
+    return SP::UI::Declarative::MakeWindowViewPath(window, view_name);
 }
 
 inline auto window_component_name(std::string const& window_path) -> std::string {
-    auto slash = window_path.find_last_of('/');
-    if (slash == std::string::npos) {
-        return window_path;
-    }
-    return window_path.substr(slash + 1);
+    return SP::UI::Declarative::WindowComponentName(window_path);
 }
 
 inline auto app_root_from_window(SP::UI::WindowPath const& window) -> std::string {
-    auto full = std::string(window.getPath());
-    auto windows_pos = full.find("/windows/");
-    if (windows_pos == std::string::npos) {
-        return {};
-    }
-    return full.substr(0, windows_pos);
+    return SP::UI::Declarative::AppRootFromWindow(window);
 }
 
 inline auto make_scene_widgets_root_components(SP::UI::ScenePath const& scene,
                                                std::string_view window_component,
                                                std::string_view view_name) -> std::string {
-    std::string root = std::string(scene.getPath());
-    root.append("/structure/widgets/windows/");
-    root.append(window_component);
-    root.append("/views/");
-    root.append(view_name);
-    root.append("/widgets");
-    return root;
+    return SP::UI::Declarative::MakeSceneWidgetsRootComponents(scene, window_component, view_name);
 }
 
 inline auto make_scene_widgets_root(SP::UI::ScenePath const& scene,
                                     SP::UI::WindowPath const& window,
                                     std::string const& view_name) -> std::string {
-    auto window_component = window_component_name(std::string(window.getPath()));
-    return make_scene_widgets_root_components(scene, window_component, view_name);
+    return SP::UI::Declarative::MakeSceneWidgetsRoot(scene, window, view_name);
 }
 
 inline auto force_window_software_renderer(SP::PathSpace& space,
@@ -525,9 +339,7 @@ inline auto force_window_software_renderer(SP::PathSpace& space,
 inline auto count_window_widgets(SP::PathSpace& space,
                                  SP::UI::WindowPath const& window,
                                  std::string const& view_name) -> std::size_t {
-    auto widgets_root = make_window_view_path(window, view_name) + "/widgets";
-    auto children = space.listChildren(SP::ConcretePathStringView{widgets_root});
-    return children.size();
+    return SP::UI::Declarative::CountWindowWidgets(space, window, view_name);
 }
 
 inline auto wait_for_runtime_metric_visible(SP::PathSpace& space,
@@ -552,58 +364,27 @@ inline auto wait_for_runtime_metric_visible(SP::PathSpace& space,
 
 inline auto wait_for_runtime_metrics_ready(SP::PathSpace& space,
                                            std::chrono::milliseconds timeout) -> SP::Expected<void> {
-    constexpr std::string_view kInputMetric =
-        "/system/widgets/runtime/input/metrics/widgets_processed_total";
-    constexpr std::string_view kWidgetOpsMetric =
-        "/system/widgets/runtime/events/metrics/widget_ops_total";
-    if (auto status = wait_for_runtime_metric_visible(space, std::string(kInputMetric), timeout);
-        !status) {
-        return status;
-    }
-    return wait_for_runtime_metric_visible(space, std::string(kWidgetOpsMetric), timeout);
+    return SP::UI::Declarative::WaitForRuntimeMetricsReady(space, timeout);
 }
 
 inline auto wait_for_declarative_scene_widgets(SP::PathSpace& space,
                                                std::string const& widgets_root,
                                                std::size_t expected_widgets,
                                                std::chrono::milliseconds timeout) -> SP::Expected<void> {
-    if (expected_widgets == 0) {
-        return {};
-    }
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto children = space.listChildren(SP::ConcretePathStringView{widgets_root});
-        if (children.size() >= expected_widgets) {
-            return {};
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
-    }
-    return std::unexpected(SP::Error{SP::Error::Code::Timeout,
-                                     "scene widget structure did not publish"});
+    return SP::UI::Declarative::WaitForDeclarativeSceneWidgets(space,
+                                                              widgets_root,
+                                                              expected_widgets,
+                                                              timeout);
 }
 
 inline auto wait_for_declarative_widget_buckets(SP::PathSpace& space,
                                                 SP::UI::ScenePath const& scene,
                                                 std::size_t expected_widgets,
                                                 std::chrono::milliseconds timeout) -> SP::Expected<void> {
-    if (expected_widgets == 0) {
-        return {};
-    }
-    auto metrics_base = std::string(scene.getPath()) + "/runtime/lifecycle/metrics";
-    auto widgets_path = metrics_base + "/widgets_with_buckets";
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto buckets = space.read<std::uint64_t, std::string>(widgets_path);
-        if (buckets && *buckets >= expected_widgets) {
-            return {};
-        }
-        if (buckets && *buckets == 0 && expected_widgets == 0) {
-            return {};
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
-    }
-    return std::unexpected(SP::Error{SP::Error::Code::Timeout,
-                                     "widgets never published render buckets"});
+    return SP::UI::Declarative::WaitForDeclarativeWidgetBuckets(space,
+                                                               scene,
+                                                               expected_widgets,
+                                                               timeout);
 }
 
 inline auto wait_for_declarative_scene_revision(SP::PathSpace& space,
@@ -611,52 +392,10 @@ inline auto wait_for_declarative_scene_revision(SP::PathSpace& space,
                                                 std::chrono::milliseconds timeout,
                                                 std::optional<std::uint64_t> min_revision = std::nullopt)
     -> SP::Expected<std::uint64_t> {
-    auto revision_path = std::string(scene.getPath()) + "/current_revision";
-    auto format_revision = [](std::uint64_t revision) {
-        std::ostringstream oss;
-        oss << std::setw(16) << std::setfill('0') << revision;
-        return oss.str();
-    };
-    std::optional<std::uint64_t> ready_revision;
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto revision = space.read<std::uint64_t, std::string>(revision_path);
-        if (revision) {
-            if (*revision != 0
-                && (!min_revision.has_value() || *revision > *min_revision)) {
-                ready_revision = *revision;
-                break;
-            }
-        } else {
-            auto const& error = revision.error();
-            if (error.code != SP::Error::Code::NoSuchPath
-                && error.code != SP::Error::Code::NoObjectFound) {
-                return std::unexpected(error);
-            }
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    if (!ready_revision) {
-        return std::unexpected(SP::Error{SP::Error::Code::Timeout,
-                                         "scene revision did not publish"});
-    }
-    auto revision_str = format_revision(*ready_revision);
-    auto bucket_path = std::string(scene.getPath()) + "/builds/" + revision_str + "/bucket/drawables.bin";
-    auto bucket_deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < bucket_deadline) {
-        auto drawables = space.read<std::vector<std::uint8_t>, std::string>(bucket_path);
-        if (drawables) {
-            return *ready_revision;
-        }
-        auto const& error = drawables.error();
-        if (error.code != SP::Error::Code::NoSuchPath
-            && error.code != SP::Error::Code::NoObjectFound) {
-            return std::unexpected(error);
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    return std::unexpected(SP::Error{SP::Error::Code::Timeout,
-                                     "scene bucket did not publish"});
+    return SP::UI::Declarative::WaitForDeclarativeSceneRevision(space,
+                                                                scene,
+                                                                timeout,
+                                                                min_revision);
 }
 
 inline auto read_scene_lifecycle_diagnostics(SP::PathSpace& space,
@@ -719,170 +458,17 @@ inline auto read_scene_lifecycle_diagnostics(SP::PathSpace& space,
     return oss.str();
 }
 
-inline auto force_scene_publish_with_retry(SP::PathSpace& space,
-                                           SP::UI::ScenePath const& scene,
-                                           std::chrono::milliseconds widget_timeout,
-                                           std::chrono::milliseconds publish_timeout,
-                                           std::optional<std::uint64_t> min_revision,
-                                           DeclarativeReadinessOptions const& readiness_options)
-    -> SP::Expected<std::uint64_t> {
-    auto deadline = std::chrono::steady_clock::now() + widget_timeout;
-    SP::Error last_error{SP::Error::Code::Timeout, "scene force publish timed out"};
-    SP::UI::Declarative::SceneLifecycle::ForcePublishOptions publish_options{};
-    publish_options.wait_timeout = publish_timeout;
-    publish_options.min_revision = min_revision;
-    auto make_pump_options = [&]() {
-        auto pump_options = readiness_options.scene_pump_options;
-        if (pump_options.wait_timeout.count() <= 0) {
-            pump_options.wait_timeout = widget_timeout;
-        }
-        return pump_options;
-    };
-    auto pump_if_needed = [&]() -> SP::Expected<void> {
-        if (!readiness_options.pump_scene_before_force_publish) {
-            return {};
-        }
-        auto pump_options = make_pump_options();
-        auto pump_result = SP::UI::Declarative::SceneLifecycle::PumpSceneOnce(space, scene, pump_options);
-        if (!pump_result) {
-            auto const& error = pump_result.error();
-            if (error.code == SP::Error::Code::Timeout) {
-                return std::unexpected(error);
-            }
-            return std::unexpected(error);
-        }
-        return {};
-    };
-    if (readiness_options.pump_scene_before_force_publish) {
-        auto pump_status = pump_if_needed();
-        if (!pump_status) {
-            last_error = pump_status.error();
-        }
-    }
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto forced = SP::UI::Declarative::SceneLifecycle::ForcePublish(space, scene, publish_options);
-        if (forced) {
-            return forced;
-        }
-        last_error = forced.error();
-        if (last_error.code == SP::Error::Code::NoObjectFound
-            && readiness_options.pump_scene_before_force_publish) {
-            auto pump_status = pump_if_needed();
-            if (!pump_status) {
-                last_error = pump_status.error();
-                if (last_error.code != SP::Error::Code::Timeout
-                    && last_error.code != SP::Error::Code::NoObjectFound) {
-                    return std::unexpected(last_error);
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds{25});
-            continue;
-        }
-        if (last_error.code != SP::Error::Code::NoObjectFound
-            && last_error.code != SP::Error::Code::Timeout) {
-            auto diag = read_scene_lifecycle_diagnostics(space, scene);
-            if (!diag.empty()) {
-                if (last_error.message) {
-                    last_error.message = *last_error.message + "; " + diag;
-                } else {
-                    last_error.message = diag;
-                }
-            }
-            return std::unexpected(last_error);
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds{25});
-    }
-    auto diag = read_scene_lifecycle_diagnostics(space, scene);
-    if (!diag.empty()) {
-        if (last_error.message) {
-            last_error.message = *last_error.message + "; " + diag;
-        } else {
-            last_error.message = diag;
-        }
-    }
-    return std::unexpected(last_error);
-}
-
-inline auto readiness_skip_requested() -> bool {
-    return std::getenv("PATHSPACE_SKIP_UI_READY_WAIT") != nullptr;
-}
-
 inline auto ensure_declarative_scene_ready(SP::PathSpace& space,
                                            SP::UI::ScenePath const& scene,
                                            SP::UI::WindowPath const& window,
                                            std::string const& view_name,
                                            DeclarativeReadinessOptions const& options = {})
     -> SP::Expected<DeclarativeReadinessResult> {
-    DeclarativeReadinessResult result{};
-    result.widget_count = count_window_widgets(space, window, view_name);
-    auto scene_window_component = options.scene_window_component_override
-        ? *options.scene_window_component_override
-        : window_component_name(std::string(window.getPath()));
-    auto scene_view_name = options.scene_view_override
-        ? *options.scene_view_override
-        : view_name;
-    if (options.wait_for_runtime_metrics) {
-        auto metrics_ready = wait_for_runtime_metrics_ready(space, options.runtime_metrics_timeout);
-        if (!metrics_ready) {
-            return std::unexpected(metrics_ready.error());
-        }
-    }
-    if (readiness_skip_requested()) {
-        return result;
-    }
-    if (result.widget_count == 0) {
-        return result;
-    }
-    std::optional<std::uint64_t> publish_revision;
-    if (options.force_scene_publish) {
-        auto forced = force_scene_publish_with_retry(space,
-                                                     scene,
-                                                     options.widget_timeout,
-                                                     options.revision_timeout,
-                                                     options.min_revision,
-                                                     options);
-        if (!forced) {
-            return std::unexpected(forced.error());
-        }
-        publish_revision = *forced;
-    }
-    if (options.wait_for_buckets && !options.force_scene_publish) {
-        auto status = wait_for_declarative_widget_buckets(space,
-                                                          scene,
-                                                          result.widget_count,
-                                                          options.widget_timeout);
-        if (!status) {
-            return std::unexpected(status.error());
-        }
-    }
-    if (options.wait_for_revision) {
-        if (publish_revision) {
-            result.scene_revision = *publish_revision;
-        } else {
-            auto revision = wait_for_declarative_scene_revision(space,
-                                                                scene,
-                                                                options.revision_timeout,
-                                                                options.min_revision);
-            if (!revision) {
-                return std::unexpected(revision.error());
-            }
-            result.scene_revision = *revision;
-        }
-    }
-    if (options.wait_for_structure && !options.force_scene_publish) {
-        auto scene_widgets_root = make_scene_widgets_root_components(scene,
-                                                                     scene_window_component,
-                                                                     scene_view_name);
-        auto status = wait_for_declarative_scene_widgets(space,
-                                                        scene_widgets_root,
-                                                        result.widget_count,
-                                                        options.widget_timeout);
-        if (!status) {
-            return std::unexpected(status.error());
-        }
-    }
-    record_manual_pump_metrics(space, window, view_name);
-    return result;
+    return SP::UI::Declarative::EnsureDeclarativeSceneReady(space,
+                                                            scene,
+                                                            window,
+                                                            view_name,
+                                                            options);
 }
 
 } // namespace PathSpaceExamples

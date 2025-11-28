@@ -85,8 +85,40 @@ plus tests in sync. Read it before touching declarative UI code or examples.
     or CPU framebuffers without including `runtime/UIRuntime.hpp`.
 
    `PathSpaceExamples::run_present_loop` now consumes these handles directly,
-   and the screenshot service (`ScreenshotService::Capture`) calls the same
-   helpers when it needs to read back a framebuffer.
+   and the declarative screenshot helper (`SP::UI::Screenshot::CaptureDeclarative`)
+   reuses the same readiness and present plumbing when it needs to read back a
+   framebuffer.
+
+### Declarative Screenshot Helper
+
+Call `SP::UI::Screenshot::CaptureDeclarative(space, scene_path, window_path, options)`
+to capture a declarative scene without writing 100+ lines of readiness and
+force-publish code. `DeclarativeScreenshotOptions` accepts window/view sizing,
+output/baseline/diff/metrics paths, telemetry overrides, `force_software`, and
+an optional `ScreenshotRequest::Hooks` bundle for post-processing (paint
+overlays, software fallback writers, etc.). The helper:
+
+1. Ensures the window/view widgets exist via
+   `PathSpaceExamples::ensure_declarative_scene_ready` with overridable
+   `DeclarativeReadinessOptions`.
+2. Optionally marks the scene dirty, forces a publish, and waits for the next
+   revision before invoking `ScreenshotService::Capture`.
+3. Infers width/height from the bound surface when the caller leaves them unset
+   and auto-derives the telemetry namespace from the owning app.
+
+Advanced callers (paint example, CLI harnesses) pass `hooks` for overlays and
+baseline diffs, but simple demos only need:
+
+```cpp
+SP::UI::Screenshot::DeclarativeScreenshotOptions screenshot{};
+screenshot.output_png = "build/artifacts/example.png";
+screenshot.baseline_png = "docs/images/example_baseline.png";
+screenshot.view_name = window.view_name;
+auto result = SP::UI::Screenshot::CaptureDeclarative(space, scene.path, window.path, screenshot);
+```
+
+The helper enforces the same `SceneLifecycle` contract as the compile-loop
+tests, so new demos inherit deterministic screenshot behaviour automatically.
 
 7. Include `<pathspace/ui/declarative/ThemeConfig.hpp>` whenever you need to
    provision, load, or switch themes outside the higher-level
