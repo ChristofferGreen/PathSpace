@@ -2,6 +2,7 @@
 
 #include <pathspace/ui/declarative/Widgets.hpp>
 
+#include <algorithm>
 #include <iostream>
 #include <span>
 #include <string>
@@ -10,6 +11,29 @@
 using namespace PathSpaceExamples;
 
 namespace {
+
+struct CommandLineOptions {
+    int width = 800;
+    int height = 520;
+    PathSpaceExamples::ScreenshotCliOptions screenshot;
+};
+
+auto parse_options(int argc, char** argv) -> CommandLineOptions {
+    CommandLineOptions opts;
+    using ExampleCli = SP::Examples::CLI::ExampleCli;
+    ExampleCli cli;
+    cli.set_program_name("declarative_hello_example");
+    cli.add_int("--width", {.on_value = [&](int value) { opts.width = value; }});
+    cli.add_int("--height", {.on_value = [&](int value) { opts.height = value; }});
+    PathSpaceExamples::register_screenshot_cli_options(cli, opts.screenshot);
+
+    (void)cli.parse(argc, argv);
+
+    opts.width = std::max(640, opts.width);
+    opts.height = std::max(480, opts.height);
+    PathSpaceExamples::apply_screenshot_env_overrides(opts.screenshot);
+    return opts;
+}
 
 auto log_error(SP::Expected<void> const& status, std::string const& context) -> void {
     if (status) {
@@ -25,7 +49,8 @@ auto log_error(SP::Expected<void> const& status, std::string const& context) -> 
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    auto options = parse_options(argc, argv);
     SP::PathSpace space;
     auto launch = SP::System::LaunchStandard(space);
     if (!launch) {
@@ -45,8 +70,8 @@ int main() {
     SP::Window::CreateOptions window_opts{};
     window_opts.name = "hello_window";
     window_opts.title = "Declarative Hello";
-    window_opts.width = 800;
-    window_opts.height = 520;
+    window_opts.width = options.width;
+    window_opts.height = options.height;
     window_opts.visible = true;
     auto window = SP::Window::Create(space, app_root_view, window_opts);
     if (!window) {
@@ -153,6 +178,34 @@ int main() {
         return 1;
     }
 
+    if (PathSpaceExamples::screenshot_requested(options.screenshot)) {
+        auto pose = [&]() -> SP::Expected<void> {
+            if (!status_label) {
+                return SP::Expected<void>{};
+            }
+            return SP::UI::Declarative::Label::SetText(space,
+                                                       *status_label,
+                                                       "Screenshot capture ready");
+        };
+        auto capture = PathSpaceExamples::capture_screenshot_if_requested(space,
+                                                                          scene->path,
+                                                                          window->path,
+                                                                          window->view_name,
+                                                                          options.width,
+                                                                          options.height,
+                                                                          "declarative_hello_example",
+                                                                          options.screenshot,
+                                                                          pose);
+        if (!capture) {
+            std::cerr << "declarative_hello_example: screenshot capture failed: "
+                      << SP::describeError(capture.error()) << "\n";
+            SP::System::ShutdownDeclarativeRuntime(space);
+            return 1;
+        }
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return 0;
+    }
+
     LocalInputBridge bridge{};
     bridge.space = &space;
     install_local_window_bridge(bridge);
@@ -162,8 +215,8 @@ int main() {
                      window->path,
                      window->view_name,
                      *present_handles,
-                     window_opts.width,
-                     window_opts.height,
+                     options.width,
+                     options.height,
                      hooks);
 
     SP::System::ShutdownDeclarativeRuntime(space);

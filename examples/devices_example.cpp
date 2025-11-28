@@ -36,6 +36,7 @@ struct CommandLineOptions {
     int width = 1280;
     int height = 800;
     bool paint_controls_demo = false;
+    PathSpaceExamples::ScreenshotCliOptions screenshot;
 };
 
 static auto parse_options(int argc, char** argv) -> CommandLineOptions {
@@ -47,11 +48,16 @@ static auto parse_options(int argc, char** argv) -> CommandLineOptions {
     cli.add_flag("--paint-controls-demo", {.on_set = [&] { opts.paint_controls_demo = true; }});
     cli.add_int("--width", {.on_value = [&](int value) { opts.width = value; }});
     cli.add_int("--height", {.on_value = [&](int value) { opts.height = value; }});
+    PathSpaceExamples::register_screenshot_cli_options(cli, opts.screenshot);
 
     (void)cli.parse(argc, argv);
 
     opts.width = std::max(640, opts.width);
     opts.height = std::max(480, opts.height);
+    PathSpaceExamples::apply_screenshot_env_overrides(opts.screenshot);
+    if (PathSpaceExamples::screenshot_requested(opts.screenshot)) {
+        opts.paint_controls_demo = true;
+    }
     return opts;
 }
 
@@ -135,6 +141,7 @@ static bool drain_device_events(DeviceEventSink& sink) {
 struct PaintControlsDemoHandles {
     SP::UI::WindowPath window_path;
     std::string view_name;
+    SP::UI::ScenePath scene_path;
     SP::UI::Declarative::PresentHandles present_handles;
     SP::UI::Runtime::WidgetPath status_label;
 };
@@ -319,6 +326,7 @@ static std::optional<PaintControlsDemoHandles> launch_paint_controls_demo(PathSp
     PaintControlsDemoHandles handles{
         .window_path = window->path,
         .view_name = window->view_name,
+        .scene_path = scene->path,
         .present_handles = std::move(*present_handles),
         .status_label = *status_label,
     };
@@ -384,6 +392,24 @@ int main(int argc, char** argv) {
             return 1;
         }
         sink.status_label = demo->status_label;
+
+        if (PathSpaceExamples::screenshot_requested(options.screenshot)) {
+            auto capture = PathSpaceExamples::capture_screenshot_if_requested(space,
+                                                                              demo->scene_path,
+                                                                              demo->window_path,
+                                                                              demo->view_name,
+                                                                              options.width,
+                                                                              options.height,
+                                                                              "devices_example",
+                                                                              options.screenshot);
+            if (!capture) {
+                log_expected_error("screenshot capture", capture.error());
+                SP::System::ShutdownDeclarativeRuntime(space);
+                return 1;
+            }
+            SP::System::ShutdownDeclarativeRuntime(space);
+            return 0;
+        }
 
         PathSpaceExamples::LocalInputBridge bridge{};
         bridge.space = &space;

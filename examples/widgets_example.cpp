@@ -25,6 +25,7 @@ struct CommandLineOptions {
     int width = 1280;
     int height = 800;
     bool headless = false;
+    PathSpaceExamples::ScreenshotCliOptions screenshot;
 };
 
 auto parse_options(int argc, char** argv) -> CommandLineOptions {
@@ -36,11 +37,16 @@ auto parse_options(int argc, char** argv) -> CommandLineOptions {
     cli.add_flag("--headless", {.on_set = [&] { opts.headless = true; }});
     cli.add_int("--width", {.on_value = [&](int value) { opts.width = value; }});
     cli.add_int("--height", {.on_value = [&](int value) { opts.height = value; }});
+    PathSpaceExamples::register_screenshot_cli_options(cli, opts.screenshot);
 
     (void)cli.parse(argc, argv);
 
     opts.width = std::max(640, opts.width);
     opts.height = std::max(480, opts.height);
+    PathSpaceExamples::apply_screenshot_env_overrides(opts.screenshot);
+    if (PathSpaceExamples::screenshot_requested(opts.screenshot)) {
+        opts.headless = true;
+    }
     return opts;
 }
 
@@ -362,6 +368,49 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    if (PathSpaceExamples::screenshot_requested(options.screenshot)) {
+        auto pose = [&]() -> SP::Expected<void> {
+            if (slider) {
+                auto set_slider = SP::UI::Declarative::Slider::SetValue(space, *slider, 60.0f);
+                if (!set_slider) {
+                    return set_slider;
+                }
+            }
+            if (toggle) {
+                auto set_toggle = SP::UI::Declarative::Toggle::SetChecked(space, *toggle, true);
+                if (!set_toggle) {
+                    return set_toggle;
+                }
+            }
+            if (status_label) {
+                auto set_label = SP::UI::Declarative::Label::SetText(space,
+                                                                     *status_label,
+                                                                     "Screenshot capture ready");
+                if (!set_label) {
+                    return set_label;
+                }
+            }
+            return SP::Expected<void>{};
+        };
+        auto capture = PathSpaceExamples::capture_screenshot_if_requested(space,
+                                                                          scene->path,
+                                                                          window->path,
+                                                                          window->view_name,
+                                                                          options.width,
+                                                                          options.height,
+                                                                          "widgets_example",
+                                                                          options.screenshot,
+                                                                          pose);
+        if (!capture) {
+            std::cerr << "widgets_example: screenshot capture failed: "
+                      << SP::describeError(capture.error()) << "\n";
+            SP::System::ShutdownDeclarativeRuntime(space);
+            return 1;
+        }
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return 0;
+    }
+
     if (options.headless) {
         std::cout << "widgets_example: headless mode enabled, declarative widgets mounted at\n"
                   << "  " << button->getPath() << "\n"
@@ -383,7 +432,7 @@ int main(int argc, char** argv) {
                      *present_handles,
                      options.width,
                      options.height,
-                     hooks);
+                    hooks);
 
     SP::System::ShutdownDeclarativeRuntime(space);
     return 0;

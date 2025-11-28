@@ -116,6 +116,8 @@ Environment knobs (all respected by the wrapper and the logger):
 
   The binary now runs entirely headless for this mode: it boots the gallery, drives a scripted slider drag to exercise focus/dirty paths, renders a single frame, writes a PNG via `stb_image_write` (creating parent directories when needed), prints the path, and exits. Use this to verify focus highlights, themes, or layout regressions when you can’t interact with the GUI directly. A current sample lives at `docs/images/widgets_gallery_drag.png`.
 
+  The same CLI flags (`--screenshot`, optional `--screenshot-compare/--screenshot-diff/--screenshot-metrics`, `--screenshot-max-mean-error`, `--screenshot-force-software`, `--screenshot-allow-software-fallback`) now apply to `./build/declarative_hello_example` and `./build/devices_example --paint-controls-demo`. Each binary reuses the shared helper in `examples/declarative_example_shared.hpp`, so you can snapshot whichever demo best exercises the widgets you are touching without copying boilerplate.
+
 - Capture the declarative paint demo without opening a window:
 
   ```bash
