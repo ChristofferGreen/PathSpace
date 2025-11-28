@@ -1,41 +1,18 @@
 #include "declarative_example_shared.hpp"
 
 #include <pathspace/ui/declarative/Widgets.hpp>
-#include <pathspace/ui/screenshot/DeclarativeScreenshotCli.hpp>
 
-#include <algorithm>
 #include <iostream>
 #include <span>
 #include <string>
 #include <vector>
 
 using namespace PathSpaceExamples;
-namespace ScreenshotCli = SP::UI::Screenshot;
 
 namespace {
 
-struct CommandLineOptions {
-    int width = 800;
-    int height = 520;
-    ScreenshotCli::DeclarativeScreenshotCliOptions screenshot;
-};
-
-auto parse_options(int argc, char** argv) -> CommandLineOptions {
-    CommandLineOptions opts;
-    using ExampleCli = SP::Examples::CLI::ExampleCli;
-    ExampleCli cli;
-    cli.set_program_name("declarative_hello_example");
-    cli.add_int("--width", {.on_value = [&](int value) { opts.width = value; }});
-    cli.add_int("--height", {.on_value = [&](int value) { opts.height = value; }});
-    ScreenshotCli::RegisterDeclarativeScreenshotCliOptions(cli, opts.screenshot);
-
-    (void)cli.parse(argc, argv);
-
-    opts.width = std::max(640, opts.width);
-    opts.height = std::max(480, opts.height);
-    ScreenshotCli::ApplyDeclarativeScreenshotEnvOverrides(opts.screenshot);
-    return opts;
-}
+constexpr int kWindowWidth = 800;
+constexpr int kWindowHeight = 520;
 
 auto log_error(SP::Expected<void> const& status, std::string const& context) -> void {
     if (status) {
@@ -51,8 +28,7 @@ auto log_error(SP::Expected<void> const& status, std::string const& context) -> 
 
 } // namespace
 
-int main(int argc, char** argv) {
-    auto options = parse_options(argc, argv);
+int main() {
     SP::PathSpace space;
     auto launch = SP::System::LaunchStandard(space);
     if (!launch) {
@@ -72,8 +48,8 @@ int main(int argc, char** argv) {
     SP::Window::CreateOptions window_opts{};
     window_opts.name = "hello_window";
     window_opts.title = "Declarative Hello";
-    window_opts.width = options.width;
-    window_opts.height = options.height;
+    window_opts.width = kWindowWidth;
+    window_opts.height = kWindowHeight;
     window_opts.visible = true;
     auto window = SP::Window::Create(space, app_root_view, window_opts);
     if (!window) {
@@ -180,34 +156,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    if (ScreenshotCli::DeclarativeScreenshotRequested(options.screenshot)) {
-        auto pose = [&]() -> SP::Expected<void> {
-            if (!status_label) {
-                return SP::Expected<void>{};
-            }
-            return SP::UI::Declarative::Label::SetText(space,
-                                                       *status_label,
-                                                       "Screenshot capture ready");
-        };
-        auto capture = ScreenshotCli::CaptureDeclarativeScreenshotIfRequested(space,
-                                                                              scene->path,
-                                                                              window->path,
-                                                                              window->view_name,
-                                                                              options.width,
-                                                                              options.height,
-                                                                              "declarative_hello_example",
-                                                                              options.screenshot,
-                                                                              pose);
-        if (!capture) {
-            std::cerr << "declarative_hello_example: screenshot capture failed: "
-                      << SP::describeError(capture.error()) << "\n";
-            SP::System::ShutdownDeclarativeRuntime(space);
-            return 1;
-        }
-        SP::System::ShutdownDeclarativeRuntime(space);
-        return 0;
-    }
-
     LocalInputBridge bridge{};
     bridge.space = &space;
     install_local_window_bridge(bridge);
@@ -217,8 +165,8 @@ int main(int argc, char** argv) {
                      window->path,
                      window->view_name,
                      *present_handles,
-                     options.width,
-                     options.height,
+                     kWindowWidth,
+                     kWindowHeight,
                      hooks);
 
     SP::System::ShutdownDeclarativeRuntime(space);

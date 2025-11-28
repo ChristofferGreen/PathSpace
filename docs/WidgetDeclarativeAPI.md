@@ -126,9 +126,10 @@ When wiring CLIs, include `<pathspace/ui/screenshot/DeclarativeScreenshotCli.hpp
 `SP::Examples::CLI::ExampleCli`, `ApplyDeclarativeScreenshotEnvOverrides`
 honors `PATHSPACE_SCREENSHOT_FORCE_SOFTWARE`, and
 `CaptureDeclarativeScreenshotIfRequested` bridges the parsed flags into
-`CaptureDeclarative`. The widgets/hello/devices demos all share this helper, so
-future samples can expose the same headless capture workflow with only a few
-lines of code.
+`CaptureDeclarative`. The widgets and devices demos share this helper, so future
+samples can expose the same headless capture workflow with only a few lines of
+code. `examples/declarative_hello_example` intentionally skips the CLI helper to
+remain the literal quickstart described earlier.
 
 7. Include `<pathspace/ui/declarative/ThemeConfig.hpp>` whenever you need to
    provision, load, or switch themes outside the higher-level

@@ -73,16 +73,19 @@ auto CaptureDeclarative(SP::PathSpace& space,
 
 2. **Callsite Updates** — ✅ November 28, 2025
    - `examples/paint_example.cpp`, `examples/paint_example_new.cpp`, and
-     `pathspace_screenshot_cli` ride the helper already. This follow-up wires the
-     remaining declarative demos through the same path: `examples/widgets_example.cpp`,
-     `examples/declarative_hello_example.cpp`, and `examples/devices_example.cpp`
+     `pathspace_screenshot_cli` ride the helper already. The declarative gallery
+     (`examples/widgets_example.cpp`) and devices demo (`examples/devices_example.cpp`)
      now share a headless CLI implemented in
      `<pathspace/ui/screenshot/DeclarativeScreenshotCli.hpp>` that parses
      `--screenshot*` flags, resolves telemetry defaults, and calls
      `CaptureDeclarative` through a single helper.
-   - Every demo can capture a screenshot (with optional compare/diff/metrics
-     arguments) in ≤10 LOC, and the shared helper enforces readiness + telemetry
-     consistency automatically.
+   - `examples/declarative_hello_example.cpp` intentionally remains the literal
+     quickstart (no CLI, no screenshot automation) per the onboarding docs, so
+     new contributors see the smallest possible declarative app without extra
+     flags.
+   - The demos that need screenshots can now capture a PNG (with optional
+     compare/diff/metrics arguments) in ≤10 LOC, and the shared helper enforces
+     readiness + telemetry consistency automatically.
 
 3. **Testing**
    - Add targeted unit/UITest coverage: e.g., `tests/ui/test_ScreenshotHelper.cpp` exercising success, readiness timeout, forced publish error.
@@ -100,10 +103,11 @@ auto CaptureDeclarative(SP::PathSpace& space,
 ### Status (November 28, 2025)
 - ✅ `CaptureDeclarative` helper landed with telemetry defaults, readiness plumbing, and optional screenshot hooks.
 - ✅ `examples/paint_example.cpp`, `examples/paint_example_new.cpp`, and any consumers that route through `PathSpaceExamples::RunPaintExample` now invoke the helper instead of recreating readiness/force-publish logic inline.
-- ✅ Declarative demos now expose shared screenshot CLIs: `widgets_example`,
-  `declarative_hello_example`, and `devices_example --paint-controls-demo`
-  all parse the standard `--screenshot*` flags and call `CaptureDeclarative`
-  through the helper, so docs/onboarding references finally match reality.
+- ✅ Declarative demos now expose shared screenshot CLIs where needed:
+  `widgets_example` and `devices_example --paint-controls-demo` both parse the
+  standard `--screenshot*` flags and call `CaptureDeclarative` through the
+  helper, while `declarative_hello_example` intentionally remains the
+  screenshot-free quickstart sample referenced in the docs.
 - 🔄 Remaining follow-ups: land the focused helper test suite and document the
   shared CLI helper in the migration tracker/Widget API guide (docs work is
   underway here, but the dedicated UITest still needs to be written).
