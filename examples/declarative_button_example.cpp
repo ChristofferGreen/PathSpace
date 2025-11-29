@@ -18,10 +18,14 @@ using namespace SP::UI::Declarative;
 
 int main(int argc, char** argv) {
     std::optional<std::filesystem::path> screenshot_path;
+    bool screenshot_exit = false;
     for (int i = 1; i < argc; ++i) {
         std::string_view arg{argv[i]};
         if (arg == "--screenshot" && i + 1 < argc) {
             screenshot_path = std::filesystem::path{argv[++i]};
+        }
+        if (arg == "--screenshot_exit") {
+            screenshot_exit = true;
         }
     }
 
@@ -69,6 +73,10 @@ int main(int argc, char** argv) {
                                                scene.path,
                                                window.path,
                                                SP::UI::Screenshot::DeclarativeScreenshotOptions{.output_png = *screenshot_path, .view_name = window.view_name, .width = window_width, .height = window_height}).value();
+    }
+    if (screenshot_exit) {
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return 0;
     }
 
     SP::App::RunUI(space,
