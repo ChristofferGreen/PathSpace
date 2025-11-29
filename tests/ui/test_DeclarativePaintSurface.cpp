@@ -374,12 +374,20 @@ TEST_CASE("Paint surface layout resizing updates metrics and viewport") {
 
     auto pending = space.read<std::vector<DirtyRectHint>, std::string>(widget_path + "/render/buffer/pendingDirty");
     REQUIRE(pending);
-    REQUIRE_FALSE(pending->empty());
-    auto const& last_hint = pending->back();
-    CHECK_EQ(last_hint.min_x, doctest::Approx(0.0f));
-    CHECK_EQ(last_hint.min_y, doctest::Approx(0.0f));
-    CHECK_EQ(last_hint.max_x, doctest::Approx(32.0f));
-    CHECK_EQ(last_hint.max_y, doctest::Approx(24.0f));
+    auto verify_hint = [&](DirtyRectHint const& hint) {
+        CHECK_EQ(hint.min_x, doctest::Approx(0.0f));
+        CHECK_EQ(hint.min_y, doctest::Approx(0.0f));
+        CHECK_EQ(hint.max_x, doctest::Approx(32.0f));
+        CHECK_EQ(hint.max_y, doctest::Approx(24.0f));
+    };
+    if (!pending->empty()) {
+        verify_hint(pending->back());
+    } else {
+        auto dirty_queue = widget_path + "/render/gpu/dirtyRects";
+        auto queued = space.take<DirtyRectHint>(dirty_queue, SP::Out{} & SP::Block{std::chrono::milliseconds{200}});
+        REQUIRE(queued);
+        verify_hint(*queued);
+    }
 
     auto gpu_state = space.read<std::string, std::string>(widget_path + "/render/gpu/state");
     REQUIRE(gpu_state);

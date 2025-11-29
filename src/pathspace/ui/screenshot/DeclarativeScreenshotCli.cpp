@@ -56,17 +56,6 @@ void RegisterDeclarativeScreenshotCliOptions(SP::Examples::CLI::ExampleCli& cli,
     add_path_option("--screenshot-diff", options.diff_png);
     add_path_option("--screenshot-metrics", options.metrics_json);
 
-    ExampleCli::ValueOption telemetry_root_option{};
-    telemetry_root_option.on_value = [&](std::optional<std::string_view> value) -> ExampleCli::ParseError {
-        if (!value || value->empty()) {
-            return std::string{"--screenshot-telemetry-root requires a value"};
-        }
-        options.telemetry_root = std::string(*value);
-        return std::nullopt;
-    };
-    telemetry_root_option.value_optional = false;
-    cli.add_value("--screenshot-telemetry-root", std::move(telemetry_root_option));
-
     cli.add_double("--screenshot-max-mean-error", {.on_value = [&](double value) {
                         options.max_mean_error = value;
                     }});
@@ -104,7 +93,6 @@ auto CaptureDeclarativeScreenshotIfRequested(
     std::string_view view_name,
     int width,
     int height,
-    std::string_view telemetry_namespace,
     DeclarativeScreenshotCliOptions const& cli_options,
     std::function<SP::Expected<void>()> pose,
     std::function<void(SP::UI::Screenshot::DeclarativeScreenshotOptions&)> configure)
@@ -133,10 +121,6 @@ auto CaptureDeclarativeScreenshotIfRequested(
     options.wait_for_runtime_metrics = cli_options.wait_for_runtime_metrics;
     options.mark_dirty_before_publish = cli_options.mark_dirty_before_publish;
     options.view_name = std::string(view_name);
-    options.telemetry_namespace = std::string(telemetry_namespace);
-    if (cli_options.telemetry_root) {
-        options.telemetry_root = cli_options.telemetry_root;
-    }
     options.baseline_metadata = cli_options.baseline_metadata;
 
     if (configure) {

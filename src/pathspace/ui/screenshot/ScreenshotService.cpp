@@ -289,78 +289,6 @@ auto compare_png(std::filesystem::path const& baseline_path,
     return stats;
 }
 
-auto replace_value(SP::PathSpace& space, std::string const& path, auto const& value) -> SP::Expected<void> {
-    auto inserted = space.insert(path, value);
-    if (!inserted.errors.empty()) {
-        return std::unexpected(inserted.errors.front());
-    }
-    return {};
-}
-
-auto make_path(std::string base, std::string_view leaf) -> std::string {
-    if (!base.empty() && base.back() != '/') {
-        base.push_back('/');
-    }
-    base.append(leaf.begin(), leaf.end());
-    return base;
-}
-
-auto normalize_root(std::string const& root, std::string const& ns) -> std::string {
-    if (root.empty()) {
-        return ns.empty() ? std::string{"/diagnostics/ui/screenshot"} : "/diagnostics/ui/screenshot/" + ns;
-    }
-    std::string normalized = root;
-    while (!normalized.empty() && normalized.back() == '/') {
-        normalized.pop_back();
-    }
-    if (!ns.empty()) {
-        normalized.push_back('/');
-        normalized.append(ns);
-    }
-    return normalized;
-}
-
-void publish_baseline_metrics(SP::PathSpace& space,
-                              std::string const& root,
-                              BaselineMetadata const& metadata,
-                              double tolerance) {
-    auto baseline_root = make_path(root, "baseline");
-    replace_value(space,
-                  make_path(baseline_root, "manifest_revision"),
-                  static_cast<std::int64_t>(metadata.manifest_revision.value_or(0)));
-    replace_value(space, make_path(baseline_root, "tag"), metadata.tag.value_or(std::string{}));
-    replace_value(space, make_path(baseline_root, "sha256"), metadata.sha256.value_or(std::string{}));
-    replace_value(space,
-                  make_path(baseline_root, "width"),
-                  static_cast<std::int64_t>(metadata.width.value_or(0)));
-    replace_value(space,
-                  make_path(baseline_root, "height"),
-                  static_cast<std::int64_t>(metadata.height.value_or(0)));
-    replace_value(space, make_path(baseline_root, "renderer"), metadata.renderer.value_or(std::string{}));
-    replace_value(space, make_path(baseline_root, "captured_at"), metadata.captured_at.value_or(std::string{}));
-    replace_value(space, make_path(baseline_root, "commit"), metadata.commit.value_or(std::string{}));
-    replace_value(space, make_path(baseline_root, "notes"), metadata.notes.value_or(std::string{}));
-    replace_value(space, make_path(baseline_root, "tolerance"), metadata.tolerance.value_or(tolerance));
-}
-
-void record_last_run_metrics(SP::PathSpace& space,
-                             std::string const& root,
-                             RunMetrics const& metrics) {
-    auto last_run_root = make_path(make_path(root, "baseline"), "last_run");
-    replace_value(space,
-                  make_path(last_run_root, "timestamp_ns"),
-                  static_cast<std::int64_t>(metrics.timestamp_ns));
-    replace_value(space, make_path(last_run_root, "status"), metrics.status);
-    replace_value(space, make_path(last_run_root, "hardware_capture"), metrics.hardware_capture);
-    replace_value(space, make_path(last_run_root, "require_present"), metrics.require_present);
-    replace_value(space, make_path(last_run_root, "mean_error"), metrics.mean_error.value_or(0.0));
-    replace_value(space,
-                  make_path(last_run_root, "max_channel_delta"),
-                  static_cast<std::int64_t>(metrics.max_channel_delta.value_or(0)));
-    replace_value(space, make_path(last_run_root, "screenshot_path"), metrics.screenshot_path.value_or(std::string{}));
-    replace_value(space, make_path(last_run_root, "diff_path"), metrics.diff_path.value_or(std::string{}));
-}
-
 void write_metrics_snapshot(std::filesystem::path const& path,
                             BaselineMetadata const& metadata,
                             RunMetrics const& metrics) {
@@ -503,8 +431,6 @@ auto ScreenshotService::Capture(ScreenshotRequest const& request) -> SP::Expecte
     if (request.width <= 0 || request.height <= 0) {
         return unexpected_capture_failure("invalid screenshot dimensions");
     }
-    auto telemetry_root = normalize_root(request.telemetry_root, request.telemetry_namespace);
-    publish_baseline_metrics(request.space, telemetry_root, request.baseline_metadata, request.max_mean_error);
 
     ScreenshotResult result{};
     result.artifact = request.output_png;
@@ -523,19 +449,10 @@ auto ScreenshotService::Capture(ScreenshotRequest const& request) -> SP::Expecte
         run.hardware_capture = result.hardware_capture;
         run.mean_error = result.mean_error;
         run.max_channel_delta = result.max_channel_delta;
-        record_last_run_metrics(request.space, telemetry_root, run);
         if (request.metrics_json) {
             write_metrics_snapshot(*request.metrics_json, request.baseline_metadata, run);
         }
     };
-
-    if (request.hooks.ensure_ready) {
-        auto ready = request.hooks.ensure_ready();
-        if (!ready) {
-            emit_metrics("ensure_ready_failed");
-            return std::unexpected(ready.error());
-        }
-    }
 
     auto present_handles = SP::UI::Declarative::BuildPresentHandles(request.space,
                                                                     request.window_path,
@@ -545,12 +462,23 @@ auto ScreenshotService::Capture(ScreenshotRequest const& request) -> SP::Expecte
         return std::unexpected(present_handles.error());
     }
 
-    std::vector<std::uint8_t> capture_pixels;
+    std::span<std::uint8_t> capture_pixels{};
+    std::vector<std::uint8_t> owned_pixels;
     bool hardware_capture = false;
-    bool have_present_frame = false;
+
+    if (!request.provided_framebuffer.empty()) {
+        capture_pixels = request.provided_framebuffer;
+        hardware_capture = request.provided_framebuffer_is_hardware;
+    }
+
+    auto adopt_pixels = [&](std::vector<std::uint8_t>&& source, bool hardware) {
+        owned_pixels = std::move(source);
+        capture_pixels = std::span<std::uint8_t>(owned_pixels.data(), owned_pixels.size());
+        hardware_capture = hardware;
+    };
 
     bool allow_present = !request.force_software || request.present_when_force_software;
-    if (allow_present) {
+    if (capture_pixels.empty() && allow_present) {
         if (auto present = capture_present_frame(request.space,
                                                  *present_handles,
                                                  request.present_timeout)) {
@@ -558,14 +486,12 @@ auto ScreenshotService::Capture(ScreenshotRequest const& request) -> SP::Expecte
             if (!packed) {
                 std::cerr << "ScreenshotService: framebuffer packing failed\n";
             } else {
-                capture_pixels = std::move(*packed);
-                hardware_capture = !request.force_software;
-                have_present_frame = true;
+                adopt_pixels(std::move(*packed), !request.force_software);
             }
         }
     }
 
-    if (!have_present_frame && !request.require_present
+    if (capture_pixels.empty() && !request.require_present
         && (request.force_software || request.allow_software_fallback)) {
         auto fallback_pixels = read_software_framebuffer_pixels(request.space,
                                                                 *present_handles,
@@ -576,58 +502,27 @@ auto ScreenshotService::Capture(ScreenshotRequest const& request) -> SP::Expecte
             std::cerr << "ScreenshotService: software framebuffer fallback failed: "
                       << SP::describeError(error) << "\n";
         } else {
-            capture_pixels = std::move(*fallback_pixels);
-            have_present_frame = true;
+            adopt_pixels(std::move(*fallback_pixels), false);
         }
     }
 
-    if (have_present_frame) {
-        FramebufferView view{
-            .pixels = std::span<std::uint8_t>(capture_pixels.data(), capture_pixels.size()),
-            .width = request.width,
-            .height = request.height,
-        };
-        if (request.hooks.postprocess_framebuffer) {
-            auto post = request.hooks.postprocess_framebuffer(view);
-            if (!post) {
-                emit_metrics("postprocess_failed");
-                return std::unexpected(post.error());
-            }
-        }
-        auto write_status = write_png(view.pixels, view.width, view.height, request.output_png);
+    if (!capture_pixels.empty()) {
+        FramebufferView view{capture_pixels, request.width, request.height};
+        auto write_status = write_png(std::span<const std::uint8_t>(view.pixels.data(), view.pixels.size()),
+                                      view.width,
+                                      view.height,
+                                      request.output_png);
         if (!write_status) {
             emit_metrics("write_failed");
             return std::unexpected(write_status.error());
-        }
-        if (request.hooks.postprocess_png) {
-            auto post_file = request.hooks.postprocess_png(request.output_png);
-            if (!post_file) {
-                emit_metrics("postprocess_failed");
-                return std::unexpected(post_file.error());
-            }
         }
     } else {
         if (request.require_present) {
             emit_metrics("capture_failed");
             return unexpected_capture_failure("hardware capture required but Window::Present failed");
         }
-        if (request.hooks.fallback_writer) {
-            auto fallback = request.hooks.fallback_writer();
-            if (!fallback) {
-                emit_metrics("fallback_failed");
-                return std::unexpected(fallback.error());
-            }
-            if (request.hooks.postprocess_png) {
-                auto post_file = request.hooks.postprocess_png(request.output_png);
-                if (!post_file) {
-                    emit_metrics("postprocess_failed");
-                    return std::unexpected(post_file.error());
-                }
-            }
-        } else {
-            emit_metrics("fallback_unavailable");
-            return unexpected_capture_failure("no hardware capture and no fallback writer available");
-        }
+        emit_metrics("capture_failed");
+        return unexpected_capture_failure("failed to capture screenshot");
     }
 
     result.hardware_capture = hardware_capture;

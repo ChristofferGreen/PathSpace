@@ -1571,6 +1571,7 @@ struct ThemeSelection {
 
 auto MakeDefaultWidgetTheme() -> WidgetTheme;
 auto MakeSunsetWidgetTheme() -> WidgetTheme;
+auto MakeSunriseWidgetTheme() -> WidgetTheme;
 auto LoadTheme(PathSpace& space,
                AppRootPathView appRoot,
                std::string_view requested_name) -> SP::Expected<ThemeSelection>;

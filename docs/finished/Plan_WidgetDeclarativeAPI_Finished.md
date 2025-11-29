@@ -270,7 +270,7 @@ Fragment helpers (e/g., `Label::Fragment`, `Button::Fragment`) provide convenien
 
 ### Phase 1/1 – Theme Runtime
 1. **Theme resolution helpers**
-   - ✅ (November 15, 2025) Theme resolver walks widget → parent widget → window → app default (`/themes/default`) and loads the resolved `WidgetTheme` on demand so descriptors do not need to duplicate style blobs.
+   - ✅ (November 15, 2025) Theme resolver walks widget → parent widget → window → the system default pointer (`/system/themes/_active`) and loads the resolved `WidgetTheme` on demand so descriptors do not need to duplicate style blobs.
    - ✅ (November 18, 2025) Theme resolver now walks `config/theme/<name>/style/inherits` chains (up to 16 levels), falling back to the nearest ancestor that provides a `WidgetTheme` payload when the derived layer omits `value`, and raises `InvalidType` when a cycle is detected.
 2. **Theme editing API**
    - ✅ (November 19, 2025) Added `SP::UI::Declarative::Theme::{Create,SetColor,RebuildValue}` plus doctest coverage. `Create` seeds `/themes/<name>/{colors,style/inherits}` from a caller-provided or default `WidgetTheme` and keeps `config/theme/<name>/value` in sync. `SetColor` validates canonical tokens (button/background, slider/thumb, text_field/caret, etc.), persists RGBA arrays under `/themes/<name>/colors/...`, recompiles the serialized `WidgetTheme`, and notifies `SceneLifecycle::InvalidateThemes` so buckets pick up edits immediately.

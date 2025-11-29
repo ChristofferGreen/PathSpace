@@ -355,8 +355,6 @@ int main(int argc, char** argv) {
     options.baseline_metadata.commit = entry.value("commit", std::string{});
     options.baseline_metadata.notes = entry.value("notes", std::string{});
     options.baseline_metadata.tolerance = tolerance;
-    options.screenshot_telemetry_namespace = "paint_example";
-    options.screenshot_telemetry_root = "/diagnostics/ui/screenshot";
 
     setenv("PATHSPACE_ENABLE_METAL_UPLOADS", "1", 1);
     setenv("PATHSPACE_UI_METAL", "ON", 1);

@@ -257,7 +257,7 @@ software readbacks fail.
                                        loop_config.window_height);
    ```
 5. Take screenshots or run GPU smoke tests via the shared CLI wrappers (`paint_example`,
-   `pathspace_screenshot_cli`) so readiness gates, overlay hooks, and telemetry stay uniform.
+   `pathspace_screenshot_cli`) so readiness gates stay uniform.
    `examples/declarative_hello_example` follows the same readiness flow but relies on the
    `PATHSPACE_HELLO_SCREENSHOT` env var instead of a CLI flag to keep the binary focused on
    the quickstart scenario, and it draws a deterministic fallback PNG if the presenter never

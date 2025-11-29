@@ -20,9 +20,8 @@ struct DeclarativeScreenshotOptions {
     std::optional<std::filesystem::path> diff_png;
     std::optional<std::filesystem::path> metrics_json;
     std::optional<double> max_mean_error;
-    std::optional<std::string> telemetry_namespace;
-    std::optional<std::string> telemetry_root;
     std::optional<std::string> view_name;
+    std::optional<std::string> theme_override;
     bool require_present = false;
     bool force_publish = true;
     bool wait_for_runtime_metrics = true;
@@ -37,7 +36,6 @@ struct DeclarativeScreenshotOptions {
     std::chrono::milliseconds present_timeout{std::chrono::milliseconds{2000}};
     SP::UI::Declarative::DeclarativeReadinessOptions readiness_options{};
     SP::UI::Screenshot::BaselineMetadata baseline_metadata;
-    std::optional<Hooks> hooks;
 };
 
 auto CaptureDeclarative(SP::PathSpace& space,

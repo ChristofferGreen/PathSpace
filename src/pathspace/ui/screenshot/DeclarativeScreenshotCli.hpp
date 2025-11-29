@@ -17,7 +17,6 @@ struct DeclarativeScreenshotCliOptions {
     std::optional<std::filesystem::path> baseline_png;
     std::optional<std::filesystem::path> diff_png;
     std::optional<std::filesystem::path> metrics_json;
-    std::optional<std::string> telemetry_root;
     double max_mean_error = 0.0015;
     bool require_present = false;
     bool force_software = false;
@@ -41,11 +40,9 @@ auto CaptureDeclarativeScreenshotIfRequested(
     std::string_view view_name,
     int width,
     int height,
-    std::string_view telemetry_namespace,
     DeclarativeScreenshotCliOptions const& options,
     std::function<SP::Expected<void>()> pose = {},
     std::function<void(SP::UI::Screenshot::DeclarativeScreenshotOptions&)> configure = {})
     -> SP::Expected<void>;
 
 } // namespace SP::UI::Screenshot
-

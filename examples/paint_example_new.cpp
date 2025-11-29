@@ -148,7 +148,6 @@ auto capture_screenshot(SP::PathSpace& space,
     screenshot_options.require_present = options.screenshot_require_present
                                          || options.screenshot_compare_path.has_value();
     screenshot_options.view_name = window.view_name;
-    screenshot_options.telemetry_namespace = "paint_example_new";
     screenshot_options.force_publish = true;
     screenshot_options.wait_for_runtime_metrics = true;
 

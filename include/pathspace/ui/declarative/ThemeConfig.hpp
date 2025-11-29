@@ -36,4 +36,6 @@ auto SetActive(PathSpace& space,
 auto LoadActive(PathSpace& space,
                 SP::App::AppRootPathView app_root) -> SP::Expected<std::string>;
 
+auto LoadSystemActive(PathSpace& space) -> SP::Expected<std::string>;
+
 } // namespace SP::UI::Declarative::ThemeConfig

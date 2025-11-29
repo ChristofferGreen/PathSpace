@@ -6,7 +6,6 @@
 
 #include <chrono>
 #include <filesystem>
-#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -17,13 +16,6 @@ struct FramebufferView {
     std::span<std::uint8_t> pixels;
     int width = 0;
     int height = 0;
-};
-
-struct Hooks {
-    std::function<SP::Expected<void>()> ensure_ready;
-    std::function<SP::Expected<void>(FramebufferView&)> postprocess_framebuffer;
-    std::function<SP::Expected<void>(std::filesystem::path const&)> postprocess_png;
-    std::function<SP::Expected<void>()> fallback_writer;
 };
 
 struct OverlayRegion {
@@ -65,13 +57,13 @@ struct ScreenshotRequest {
     double max_mean_error = 0.0015;
     bool require_present = false;
     std::chrono::milliseconds present_timeout{1500};
-    Hooks hooks;
     BaselineMetadata baseline_metadata;
-    std::string telemetry_root = "/diagnostics/ui/screenshot";
-    std::string telemetry_namespace = "default";
     bool force_software = false;
     bool allow_software_fallback = false;
     bool present_when_force_software = false;
+    std::span<std::uint8_t> provided_framebuffer;
+    bool provided_framebuffer_is_hardware = false;
+    std::optional<std::string> theme_override;
 };
 
 struct ScreenshotResult {

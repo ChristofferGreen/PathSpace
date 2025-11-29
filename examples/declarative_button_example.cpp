@@ -68,6 +68,25 @@ int main(int argc, char** argv) {
                                             {.id = "goodbye_button", .fragment = Button::Fragment(Button::Args{.label = "Say Goodbye"})},
                                        }}).value();
 
+    auto window_theme_path = std::string(window.path.getPath()) + "/style/theme";
+    if (auto theme_value = space.read<std::string, std::string>(window_theme_path)) {
+        std::cout << "[debug] window theme: " << *theme_value << '\n';
+    } else {
+        std::cout << "[debug] failed to read window theme: "
+                  << static_cast<int>(theme_value.error().code) << '\n';
+    }
+
+    auto button_root = std::string(window_view.getPath()) + "/widgets/button_column/children/hello_button";
+    auto button_style_path = button_root + "/meta/style";
+    if (auto button_style = space.read<SP::UI::Runtime::Widgets::ButtonStyle, std::string>(button_style_path)) {
+        auto const& color = button_style->background_color;
+        std::cout << "[debug] button bg color: " << color[0] << ", " << color[1]
+                  << ", " << color[2] << '\n';
+    } else {
+        std::cout << "[debug] failed to read button style: "
+                  << static_cast<int>(button_style.error().code) << '\n';
+    }
+
     if (screenshot_path) {
         SP::UI::Screenshot::CaptureDeclarative(space,
                                                scene.path,

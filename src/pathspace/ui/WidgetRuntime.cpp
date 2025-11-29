@@ -1,5 +1,6 @@
 #include "WidgetDetail.hpp"
 
+#include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/runtime/TextRuntime.hpp>
 
 #include <cstring>
@@ -1500,7 +1501,7 @@ auto UpdateTextAreaState(PathSpace& space,
 
 namespace {
 
-auto make_blue_theme() -> WidgetTheme {
+auto make_sunrise_theme() -> WidgetTheme {
     WidgetTheme theme{};
     theme.button.width = 200.0f;
     theme.button.height = 48.0f;
@@ -1624,26 +1625,42 @@ auto make_blue_theme() -> WidgetTheme {
     return theme;
 }
 
-auto make_orange_theme() -> WidgetTheme {
-    WidgetTheme theme = make_blue_theme();
+auto make_sunset_theme() -> WidgetTheme {
+    WidgetTheme theme{};
+
+    theme.button.width = 200.0f;
+    theme.button.height = 48.0f;
+    theme.button.corner_radius = 8.0f;
     theme.button.background_color = {0.882f, 0.424f, 0.310f, 1.0f};
-    theme.button.text_color = {1.0f, 0.984f, 0.945f, 1.0f};
+    theme.button.text_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.button.typography.font_size = 28.0f;
+    theme.button.typography.line_height = 28.0f;
+    theme.button.typography.letter_spacing = 1.0f;
+    theme.button.typography.baseline_shift = 0.0f;
+
+    theme.toggle.width = 56.0f;
+    theme.toggle.height = 32.0f;
+    theme.toggle.track_off_color = {0.40f, 0.26f, 0.22f, 1.0f};
     theme.toggle.track_on_color = {0.882f, 0.424f, 0.310f, 1.0f};
-    theme.toggle.track_off_color = {0.60f, 0.44f, 0.38f, 1.0f};
     theme.toggle.thumb_color = {0.996f, 0.949f, 0.902f, 1.0f};
+
+    theme.slider.width = 240.0f;
+    theme.slider.height = 32.0f;
+    theme.slider.track_height = 6.0f;
+    theme.slider.thumb_radius = 10.0f;
+    theme.slider.track_color = {0.322f, 0.231f, 0.196f, 1.0f};
     theme.slider.fill_color = {0.882f, 0.424f, 0.310f, 1.0f};
     theme.slider.thumb_color = {0.996f, 0.949f, 0.902f, 1.0f};
-    theme.text_field.background_color = {0.145f, 0.102f, 0.086f, 1.0f};
-    theme.text_field.border_color = {0.322f, 0.231f, 0.196f, 1.0f};
-    theme.text_field.selection_color = {0.690f, 0.361f, 0.259f, 0.65f};
-    theme.text_field.composition_color = {0.784f, 0.427f, 0.302f, 0.55f};
-    theme.text_field.caret_color = {0.996f, 0.949f, 0.902f, 1.0f};
-    theme.text_area.background_color = {0.132f, 0.090f, 0.075f, 1.0f};
-    theme.text_area.border_color = {0.302f, 0.212f, 0.184f, 1.0f};
-    theme.text_area.selection_color = {0.690f, 0.361f, 0.259f, 0.65f};
-    theme.text_area.composition_color = {0.784f, 0.427f, 0.302f, 0.55f};
-    theme.text_area.caret_color = {0.996f, 0.949f, 0.902f, 1.0f};
-    theme.slider.label_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.slider.label_color = {0.965f, 0.886f, 0.812f, 1.0f};
+    theme.slider.label_typography.font_size = 24.0f;
+    theme.slider.label_typography.line_height = 28.0f;
+    theme.slider.label_typography.letter_spacing = 1.0f;
+    theme.slider.label_typography.baseline_shift = 0.0f;
+
+    theme.list.width = 240.0f;
+    theme.list.item_height = 36.0f;
+    theme.list.corner_radius = 8.0f;
+    theme.list.border_thickness = 1.0f;
     theme.list.background_color = {0.215f, 0.128f, 0.102f, 1.0f};
     theme.list.border_color = {0.365f, 0.231f, 0.201f, 1.0f};
     theme.list.item_color = {0.266f, 0.166f, 0.138f, 1.0f};
@@ -1651,6 +1668,17 @@ auto make_orange_theme() -> WidgetTheme {
     theme.list.item_selected_color = {0.882f, 0.424f, 0.310f, 1.0f};
     theme.list.separator_color = {0.365f, 0.231f, 0.201f, 1.0f};
     theme.list.item_text_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.list.item_typography.font_size = 21.0f;
+    theme.list.item_typography.line_height = 24.0f;
+    theme.list.item_typography.letter_spacing = 1.0f;
+    theme.list.item_typography.baseline_shift = 0.0f;
+
+    theme.tree.width = 280.0f;
+    theme.tree.row_height = 32.0f;
+    theme.tree.corner_radius = 8.0f;
+    theme.tree.border_thickness = 1.0f;
+    theme.tree.indent_per_level = 18.0f;
+    theme.tree.toggle_icon_size = 12.0f;
     theme.tree.background_color = {0.215f, 0.128f, 0.102f, 1.0f};
     theme.tree.border_color = {0.365f, 0.231f, 0.201f, 1.0f};
     theme.tree.row_color = {0.266f, 0.166f, 0.138f, 1.0f};
@@ -1660,6 +1688,57 @@ auto make_orange_theme() -> WidgetTheme {
     theme.tree.connector_color = {0.365f, 0.231f, 0.201f, 1.0f};
     theme.tree.toggle_color = {0.996f, 0.949f, 0.902f, 1.0f};
     theme.tree.text_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.tree.label_typography.font_size = 20.0f;
+    theme.tree.label_typography.line_height = 24.0f;
+    theme.tree.label_typography.letter_spacing = 0.8f;
+    theme.tree.label_typography.baseline_shift = 0.0f;
+
+    theme.text_field.width = 320.0f;
+    theme.text_field.height = 48.0f;
+    theme.text_field.corner_radius = 6.0f;
+    theme.text_field.border_thickness = 1.5f;
+    theme.text_field.background_color = {0.145f, 0.102f, 0.086f, 1.0f};
+    theme.text_field.border_color = {0.322f, 0.231f, 0.196f, 1.0f};
+    theme.text_field.text_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.text_field.placeholder_color = {0.855f, 0.698f, 0.612f, 1.0f};
+    theme.text_field.selection_color = {0.690f, 0.361f, 0.259f, 0.65f};
+    theme.text_field.composition_color = {0.784f, 0.427f, 0.302f, 0.55f};
+    theme.text_field.caret_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.text_field.padding_x = 14.0f;
+    theme.text_field.padding_y = 12.0f;
+    theme.text_field.typography.font_size = 24.0f;
+    theme.text_field.typography.line_height = 28.0f;
+    theme.text_field.typography.letter_spacing = 0.6f;
+    theme.text_field.typography.baseline_shift = 0.0f;
+
+    theme.text_area.width = 420.0f;
+    theme.text_area.height = 220.0f;
+    theme.text_area.corner_radius = 6.0f;
+    theme.text_area.border_thickness = 1.5f;
+    theme.text_area.background_color = {0.132f, 0.090f, 0.075f, 1.0f};
+    theme.text_area.border_color = {0.302f, 0.212f, 0.184f, 1.0f};
+    theme.text_area.text_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.text_area.placeholder_color = {0.855f, 0.698f, 0.612f, 1.0f};
+    theme.text_area.selection_color = {0.690f, 0.361f, 0.259f, 0.65f};
+    theme.text_area.composition_color = {0.784f, 0.427f, 0.302f, 0.55f};
+    theme.text_area.caret_color = {0.996f, 0.949f, 0.902f, 1.0f};
+    theme.text_area.padding_x = 14.0f;
+    theme.text_area.padding_y = 12.0f;
+    theme.text_area.min_height = 180.0f;
+    theme.text_area.line_spacing = 6.0f;
+    theme.text_area.typography.font_size = 22.0f;
+    theme.text_area.typography.line_height = 28.0f;
+    theme.text_area.typography.letter_spacing = 0.4f;
+    theme.text_area.typography.baseline_shift = 0.0f;
+
+    theme.heading.font_size = 32.0f;
+    theme.heading.line_height = 36.0f;
+    theme.heading.letter_spacing = 1.0f;
+    theme.heading.baseline_shift = 0.0f;
+    theme.caption.font_size = 24.0f;
+    theme.caption.line_height = 28.0f;
+    theme.caption.letter_spacing = 1.0f;
+    theme.caption.baseline_shift = 0.0f;
     theme.heading_color = {0.996f, 0.949f, 0.902f, 1.0f};
     theme.caption_color = {0.965f, 0.886f, 0.812f, 1.0f};
     theme.accent_text_color = {0.996f, 0.949f, 0.902f, 1.0f};
@@ -1670,8 +1749,8 @@ auto make_orange_theme() -> WidgetTheme {
         {0.894f, 0.286f, 0.204f, 1.0f},
         {0.973f, 0.490f, 0.184f, 1.0f},
         {0.992f, 0.771f, 0.263f, 1.0f},
-        {0.255f, 0.682f, 0.356f, 1.0f},
-        {0.118f, 0.475f, 0.678f, 1.0f},
+        {0.502f, 0.278f, 0.220f, 1.0f},
+        {0.431f, 0.196f, 0.176f, 1.0f},
         {0.624f, 0.258f, 0.584f, 1.0f},
     }};
     return theme;
@@ -1679,12 +1758,16 @@ auto make_orange_theme() -> WidgetTheme {
 
 } // namespace
 
-auto MakeDefaultWidgetTheme() -> WidgetTheme {
-    return make_blue_theme();
+auto MakeSunriseWidgetTheme() -> WidgetTheme {
+    return make_sunrise_theme();
 }
 
 auto MakeSunsetWidgetTheme() -> WidgetTheme {
-    return make_orange_theme();
+    return make_sunset_theme();
+}
+
+auto MakeDefaultWidgetTheme() -> WidgetTheme {
+    return MakeSunsetWidgetTheme();
 }
 
 auto LoadTheme(PathSpace& space,
@@ -1694,13 +1777,24 @@ auto LoadTheme(PathSpace& space,
 
     std::string requested{requested_name};
     if (requested.empty()) {
-        if (auto active = Config::Theme::LoadActive(space, appRoot)) {
+        auto active = Config::Theme::LoadActive(space, appRoot);
+        if (active) {
             requested = *active;
+        } else {
+            auto const& error = active.error();
+            if (error.code != SP::Error::Code::NoSuchPath
+                && error.code != SP::Error::Code::NoObjectFound) {
+                return std::unexpected(error);
+            }
         }
     }
 
     if (requested.empty()) {
-        requested = "sunset";
+        auto system_theme = SP::UI::Declarative::ThemeConfig::LoadSystemActive(space);
+        if (!system_theme) {
+            return std::unexpected(system_theme.error());
+        }
+        requested = *system_theme;
     }
 
     std::string normalized = requested;
@@ -1711,14 +1805,14 @@ auto LoadTheme(PathSpace& space,
 
     bool recognized = true;
     std::string canonical = normalized;
-    WidgetTheme defaults = MakeSunsetWidgetTheme();
+    WidgetTheme defaults = MakeDefaultWidgetTheme();
 
-    if (normalized == "sunset") {
+    if (normalized == "sunset" || normalized == "default") {
         canonical = "sunset";
         defaults = MakeSunsetWidgetTheme();
-    } else if (normalized == "skylight" || normalized == "default") {
-        canonical = "skylight";
-        defaults = MakeDefaultWidgetTheme();
+    } else if (normalized == "sunrise" || normalized == "skylight") {
+        canonical = "sunrise";
+        defaults = MakeSunriseWidgetTheme();
     } else {
         recognized = false;
         canonical = Config::Theme::SanitizeName(normalized);

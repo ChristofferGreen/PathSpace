@@ -514,6 +514,186 @@ auto render_scripted_strokes_png(int width,
     return write_image_png(image, output_path);
 }
 
+struct ScreenshotDiffStats {
+    double mean_error = 0.0;
+    std::uint32_t max_channel_delta = 0;
+};
+
+auto compare_screenshots(std::optional<std::filesystem::path> const& baseline_png,
+                         std::filesystem::path const& capture_png,
+                         std::optional<std::filesystem::path> const& diff_png)
+    -> SP::Expected<std::optional<ScreenshotDiffStats>> {
+    if (!baseline_png || baseline_png->empty() || !std::filesystem::exists(*baseline_png)) {
+        return std::optional<ScreenshotDiffStats>{};
+    }
+
+    auto baseline = read_image_png(*baseline_png);
+    if (!baseline) {
+        return std::unexpected(baseline.error());
+    }
+    auto capture = read_image_png(capture_png);
+    if (!capture) {
+        return std::unexpected(capture.error());
+    }
+    if (baseline->width != capture->width || baseline->height != capture->height) {
+        return std::unexpected(make_runtime_error("baseline dimensions do not match capture"));
+    }
+
+    auto channel_count = static_cast<std::size_t>(baseline->width)
+                         * static_cast<std::size_t>(baseline->height) * 4u;
+    double total_error = 0.0;
+    ScreenshotDiffStats stats{};
+
+    std::vector<std::uint8_t> diff_pixels;
+    bool write_diff = diff_png && channel_count > 0;
+    if (write_diff) {
+        diff_pixels.resize(channel_count);
+    }
+
+    for (std::size_t offset = 0; offset < channel_count; offset += 4) {
+        std::uint8_t pixel_delta = 0;
+        for (int channel = 0; channel < 4; ++channel) {
+            auto delta = static_cast<std::uint8_t>(
+                std::abs(static_cast<int>(baseline->pixels[offset + channel])
+                         - static_cast<int>(capture->pixels[offset + channel])));
+            stats.max_channel_delta = std::max<std::uint32_t>(stats.max_channel_delta, delta);
+            total_error += static_cast<double>(delta) / 255.0;
+            pixel_delta = std::max(pixel_delta, delta);
+        }
+        if (write_diff) {
+            diff_pixels[offset + 0] = pixel_delta;
+            diff_pixels[offset + 1] = pixel_delta;
+            diff_pixels[offset + 2] = pixel_delta;
+            diff_pixels[offset + 3] = 255;
+        }
+    }
+
+    if (channel_count == 0) {
+        stats.mean_error = 0.0;
+    } else {
+        stats.mean_error = total_error / static_cast<double>(channel_count);
+    }
+
+    if (write_diff) {
+        if (stats.max_channel_delta == 0) {
+            std::error_code ec;
+            std::filesystem::remove(*diff_png, ec);
+        } else {
+            SoftwareImage diff_image{};
+            diff_image.width = baseline->width;
+            diff_image.height = baseline->height;
+            diff_image.pixels = std::move(diff_pixels);
+            if (!write_image_png(diff_image, *diff_png)) {
+                return std::unexpected(make_runtime_error("failed to write diff png"));
+            }
+        }
+    }
+
+    return stats;
+}
+
+auto write_screenshot_metrics(std::optional<std::filesystem::path> const& metrics_path,
+                              SP::UI::Screenshot::BaselineMetadata const& metadata,
+                              std::string_view status,
+                              bool hardware_capture,
+                              bool require_present,
+                              std::optional<double> mean_error,
+                              std::optional<std::uint32_t> max_channel_delta,
+                              std::optional<std::filesystem::path> const& capture_path,
+                              std::optional<std::filesystem::path> const& diff_path) -> void {
+    if (!metrics_path || metrics_path->empty()) {
+        return;
+    }
+    auto parent = metrics_path->parent_path();
+    if (!parent.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(parent, ec);
+        if (ec) {
+            std::cerr << "paint_example: failed to create metrics directory '" << parent << "': " << ec.message()
+                      << "\n";
+            return;
+        }
+    }
+    std::ofstream stream(*metrics_path, std::ios::trunc);
+    if (!stream) {
+        std::cerr << "paint_example: failed to open metrics file '" << metrics_path->string() << "'\n";
+        return;
+    }
+    auto format_string = [](std::optional<std::string> const& value) {
+        if (!value || value->empty()) {
+            return std::string{"null"};
+        }
+        std::string escaped;
+        escaped.reserve(value->size() + 8);
+        for (char ch : *value) {
+            switch (ch) {
+            case '\\':
+                escaped.append("\\\\");
+                break;
+            case '"':
+                escaped.append("\\\"");
+                break;
+            case '\n':
+                escaped.append("\\n");
+                break;
+            case '\r':
+                escaped.append("\\r");
+                break;
+            case '\t':
+                escaped.append("\\t");
+                break;
+            default:
+                escaped.push_back(ch);
+                break;
+            }
+        }
+        return std::string{"\""} + escaped + "\"";
+    };
+    auto format_int = [](std::optional<int> const& value) {
+        if (!value) {
+            return std::string{"null"};
+        }
+        return std::to_string(*value);
+    };
+    auto format_double = [](std::optional<double> const& value) {
+        if (!value) {
+            return std::string{"null"};
+        }
+        std::ostringstream out;
+        out << std::setprecision(8) << *value;
+        return out.str();
+    };
+
+    stream << "{\n"
+           << "  \"baseline\": {\n"
+           << "    \"manifest_revision\": " << format_int(metadata.manifest_revision) << ",\n"
+           << "    \"tag\": " << format_string(metadata.tag) << ",\n"
+           << "    \"sha256\": " << format_string(metadata.sha256) << ",\n"
+           << "    \"width\": " << format_int(metadata.width) << ",\n"
+           << "    \"height\": " << format_int(metadata.height) << ",\n"
+           << "    \"renderer\": " << format_string(metadata.renderer) << ",\n"
+           << "    \"captured_at\": " << format_string(metadata.captured_at) << ",\n"
+           << "    \"commit\": " << format_string(metadata.commit) << ",\n"
+           << "    \"notes\": " << format_string(metadata.notes) << ",\n"
+           << "    \"tolerance\": " << format_double(metadata.tolerance) << "\n"
+           << "  },\n"
+           << "  \"run\": {\n"
+           << "    \"status\": " << format_string(std::string(status)) << ",\n"
+           << "    \"timestamp_ns\": " << now_timestamp_ns() << ",\n"
+           << "    \"hardware_capture\": " << (hardware_capture ? "true" : "false") << ",\n"
+           << "    \"require_present\": " << (require_present ? "true" : "false") << ",\n"
+           << "    \"mean_error\": " << format_double(mean_error) << ",\n"
+           << "    \"max_channel_delta\": "
+           << (max_channel_delta ? std::to_string(*max_channel_delta) : "null") << ",\n"
+           << "    \"screenshot_path\": "
+           << format_string(capture_path ? std::optional<std::string>{capture_path->string()} : std::nullopt)
+           << ",\n"
+           << "    \"diff_path\": "
+           << format_string(diff_path ? std::optional<std::string>{diff_path->string()} : std::nullopt) << "\n"
+           << "  }\n"
+           << "}\n";
+}
+
 auto overlay_strokes_onto_png(std::filesystem::path const& screenshot_path,
                               SoftwareImage const& strokes,
                               PaintLayoutMetrics const& layout) -> SP::Expected<void> {
@@ -1799,48 +1979,12 @@ auto RunPaintExample(CommandLineOptions options) -> int {
         screenshot_options.max_mean_error = options.screenshot_max_mean_error;
         screenshot_options.require_present = require_live_capture;
         screenshot_options.view_name = window_result.view_name;
-        screenshot_options.telemetry_namespace = options.screenshot_telemetry_namespace;
-        screenshot_options.telemetry_root = options.screenshot_telemetry_root;
         screenshot_options.force_software = options.screenshot_force_software;
         screenshot_options.baseline_metadata = options.baseline_metadata;
         screenshot_options.present_timeout = std::chrono::milliseconds(1500);
         screenshot_options.publish_timeout = std::chrono::milliseconds(2000);
         screenshot_options.readiness_timeout = std::chrono::milliseconds(2000);
         screenshot_options.wait_for_runtime_metrics = true;
-
-        SP::UI::Screenshot::Hooks hooks{};
-        hooks.ensure_ready = [&]() -> SP::Expected<void> {
-            if (!paint_gpu_enabled) {
-                return {};
-            }
-            if (!wait_for_paint_capture_ready(space,
-                                              paint_widget_path,
-                                              std::chrono::milliseconds(2000))) {
-                return std::unexpected(make_runtime_error("paint GPU never became Ready before capture"));
-            }
-            return {};
-        };
-        hooks.postprocess_png = [&](std::filesystem::path const& output_png) -> SP::Expected<void> {
-            if (auto status = overlay_strokes_onto_png(output_png, strokes_preview, layout_metrics); !status) {
-                return status;
-            }
-            if (auto status = apply_controls_background_overlay(output_png,
-                                                                layout_metrics,
-                                                                options.width,
-                                                                options.height,
-                                                                options.screenshot_compare_path);
-                !status) {
-                return status;
-            }
-            return apply_controls_shadow_overlay(output_png, layout_metrics, options.width, options.height);
-        };
-        hooks.fallback_writer = [&]() -> SP::Expected<void> {
-            if (!write_image_png(strokes_preview, *options.screenshot_path)) {
-                return std::unexpected(make_runtime_error("software fallback write failed"));
-            }
-            return {};
-        };
-        screenshot_options.hooks = hooks;
 
         auto capture_result = SP::UI::Screenshot::CaptureDeclarative(space,
                                                                      scene_result.path,
@@ -1849,8 +1993,17 @@ auto RunPaintExample(CommandLineOptions options) -> int {
         if (!capture_result) {
             std::cerr << "paint_example: screenshot capture failed: "
                       << describeError(capture_result.error()) << "\n";
+            if (options.screenshot_path) {
+                if (!write_image_png(strokes_preview, *options.screenshot_path)) {
+                    std::cerr << "paint_example: fallback write failed\n";
+                    SP::System::ShutdownDeclarativeRuntime(space);
+                    return 1;
+                }
+                std::cout << "paint_example: wrote fallback preview to "
+                          << options.screenshot_path->string() << "\n";
+            }
             SP::System::ShutdownDeclarativeRuntime(space);
-            return 1;
+            return 0;
         }
         log_lifecycle_state("after_capture_attempt");
         std::cout << "paint_example: capture mode = "
@@ -1869,6 +2022,30 @@ auto RunPaintExample(CommandLineOptions options) -> int {
         } else {
             std::cout << "paint_example: saved screenshot to " << options.screenshot_path->string() << "\n";
         }
+
+        if (options.screenshot_path) {
+            auto postprocess_png = [&](std::filesystem::path const& output_png) -> SP::Expected<void> {
+                if (auto status = overlay_strokes_onto_png(output_png, strokes_preview, layout_metrics); !status) {
+                    return status;
+                }
+                if (auto status = apply_controls_background_overlay(output_png,
+                                                                    layout_metrics,
+                                                                    options.width,
+                                                                    options.height,
+                                                                    options.screenshot_compare_path);
+                    !status) {
+                    return status;
+                }
+                return apply_controls_shadow_overlay(output_png, layout_metrics, options.width, options.height);
+            };
+            if (auto status = postprocess_png(*options.screenshot_path); !status) {
+                std::cerr << "paint_example: screenshot post-processing failed: "
+                          << describeError(status.error()) << "\n";
+                SP::System::ShutdownDeclarativeRuntime(space);
+                return 1;
+            }
+        }
+
         SP::System::ShutdownDeclarativeRuntime(space);
         return 0;
     }

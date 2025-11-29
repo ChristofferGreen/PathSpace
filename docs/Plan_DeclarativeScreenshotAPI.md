@@ -1,7 +1,7 @@
 # Plan: Declarative Screenshot Helper API
 
 ## Motivation
-- `examples/paint_example_new.cpp` and sibling samples currently spend ~150 LOC preparing screenshots (scene readiness, force-publish, request wiring, telemetry logging). This boilerplate obscures the declarative quickstart the examples are meant to showcase.
+- `examples/paint_example_new.cpp` and sibling samples currently spend ~150 LOC preparing screenshots (scene readiness, force-publish, request wiring). This boilerplate obscures the declarative quickstart the examples are meant to showcase.
 - The low-level `SP::UI::Screenshot::ScreenshotService::Capture` API forces every caller to replicate identical readiness + capture logic. As more demos, tests, and automation hooks (e.g., `pathspace_screenshot_cli`) adopt screenshots, the duplication becomes a maintenance risk.
 - We need a first-class helper that turns “capture a declarative scene to PNG” into a single call, while still allowing advanced callers to override timeouts/layout.
 
@@ -21,7 +21,7 @@
 - Solving headless GPU presenter issues beyond wiring `PATHSPACE_SCREENSHOT_FORCE_SOFTWARE` through the helper.
 
 ## Current State Snapshot
-- `ScreenshotService::Capture(ScreenshotRequest)` expects callers to populate every field, including telemetry namespace and readiness gating.
+- `ScreenshotService::Capture(ScreenshotRequest)` expects callers to populate every field, including readiness gating.
 - `PathSpaceExamples::ensure_declarative_scene_ready` already packages readiness logic, but each example wires it manually.
 - `paint_example_new.cpp` and `paint_example.cpp` replicate: readiness → force publish → wait for revision → create request → capture → log result.
 - Tests (`PaintExampleScreenshot*`, `PathSpaceUITests` pointer flows) call into the samples, so the screenshot boilerplate impacts CI readability.
@@ -36,7 +36,7 @@ The env-driven screenshot hooks in the tiny declarative samples (e.g., `declarat
 
 2. **Produce at least one present frame before capture**
    - Extend `CaptureDeclarative` with an optional `PresentBeforeCapture` step that issues `PresentWindowFrame` once (respecting timeouts) to seed the `/output/v1/software/framebuffer` queue. When screenshots run headless, there is no loop to drive presents, so without this step `Window::Present` just times out.
-   - If `PresentWindowFrame` fails, fall back to the deterministic PNG but surface a clear error in telemetry so we know captures are relying on the fallback.
+   - If `PresentWindowFrame` fails, fall back to the deterministic PNG but surface a clear error so we know captures are relying on the fallback.
 
 3. **Update minimal examples + docs**
    - Switch `examples/declarative_button_example.cpp` (and friends) to rely on the improved helper instead of manually toggling capture flags.
@@ -63,7 +63,6 @@ struct DeclarativeScreenshotOptions {
     bool force_publish = true;
     std::chrono::milliseconds readiness_timeout{3000};
     bool wait_for_runtime_metrics = true;
-    std::string telemetry_namespace; // auto-filled if empty
 };
 
 auto CaptureDeclarative(SP::PathSpace& space,
@@ -78,19 +77,15 @@ auto CaptureDeclarative(SP::PathSpace& space,
 1. **API & Plumbing** — ✅ November 28, 2025
    - `DeclarativeScreenshotOptions` + `CaptureDeclarative` now live in
      `src/pathspace/ui/screenshot/DeclarativeScreenshot.{hpp,cpp}`. The helper
-     wraps readiness, force-publish, surface-dimension discovery, telemetry
-     defaults, and delegates to `ScreenshotService::Capture` with optional
-     hooks.
+     wraps readiness, force-publish, surface-dimension discovery, and delegates
+     to `ScreenshotService::Capture` without needing per-call telemetry or hook
+     plumbing.
    - Readiness utilities (`DeclarativeReadinessOptions`,
      `ensure_declarative_scene_ready`, bucket/revision waits, manual pump
      metrics) moved from `examples/declarative_example_shared.hpp` into the new
      `src/pathspace/ui/declarative/SceneReadiness.{hpp,cpp}` module so library
      code can reuse them without including the example header. The header keeps
      inline wrappers for legacy call sites.
-   - `CaptureDeclarative` derives `telemetry_namespace` from the app component
-     portion of the window path when the caller leaves it empty and accepts
-     optional overrides for telemetry root, screenshot hooks, and readiness
-     options.
 
 2. **Callsite Updates** — ✅ November 28, 2025
    - `examples/paint_example.cpp`, `examples/paint_example_new.cpp`, and
@@ -98,8 +93,7 @@ auto CaptureDeclarative(SP::PathSpace& space,
      (`examples/widgets_example.cpp`) and devices demo (`examples/devices_example.cpp`)
      now share a headless CLI implemented in
      `<pathspace/ui/screenshot/DeclarativeScreenshotCli.hpp>` that parses
-     `--screenshot*` flags, resolves telemetry defaults, and calls
-     `CaptureDeclarative` through a single helper.
+     `--screenshot*` flags and calls `CaptureDeclarative` through a single helper.
    - `examples/declarative_hello_example.cpp` stays the literal quickstart
      (still no CLI parsing) so new contributors see the smallest declarative
      app, but it now honors `PATHSPACE_HELLO_SCREENSHOT=<png>` (plus the optional
@@ -109,7 +103,7 @@ auto CaptureDeclarative(SP::PathSpace& space,
      deterministic fallback PNG so docs always have a screenshot to reference.
    - The demos that need screenshots can now capture a PNG (with optional
      compare/diff/metrics arguments) in ≤10 LOC, and the shared helper enforces
-     readiness + telemetry consistency automatically.
+     readiness consistently.
 
 3. **Testing**
    - Add targeted unit/UITest coverage: e.g., `tests/ui/test_ScreenshotHelper.cpp` exercising success, readiness timeout, forced publish error.
@@ -128,7 +122,7 @@ auto CaptureDeclarative(SP::PathSpace& space,
 - CI: rely on existing screenshot CTests plus new helper-centric test.
 
 ### Status (November 28, 2025)
-- ✅ `CaptureDeclarative` helper landed with telemetry defaults, readiness plumbing, and optional screenshot hooks.
+- ✅ `CaptureDeclarative` helper landed with readiness plumbing.
 - ✅ `examples/paint_example.cpp`, `examples/paint_example_new.cpp`, and any consumers that route through `PathSpaceExamples::RunPaintExample` now invoke the helper instead of recreating readiness/force-publish logic inline.
 - ✅ Declarative demos now expose shared screenshot CLIs where needed:
   `widgets_example` and `devices_example --paint-controls-demo` both parse the
@@ -144,6 +138,11 @@ auto CaptureDeclarative(SP::PathSpace& space,
   real framebuffer instead of falling back to the placeholder PNG. The
   deterministic fallback still triggers only when both hardware and software
   readbacks fail.
+- ✅ `CaptureDeclarative` now reuses the framebuffer from the warm-up
+  `PresentWindowFrame` when `present_before_capture` is enabled, passing those
+  pixels directly into `ScreenshotService`. This removes the redundant second
+  render path, so screenshot PNGs represent the exact “next” frame that the UI
+  would show instead of diverging in theme or state.
 - 🔄 Remaining follow-ups: land the focused helper test suite. (Doc coverage is
   up to date; Widget API/onboarding/debugging guides now mention the helper and
   env hook.)
@@ -151,7 +150,7 @@ auto CaptureDeclarative(SP::PathSpace& space,
 ## Risks & Mitigations
 - **Readiness regressions**: consolidate readiness logic into one helper to avoid divergence; keep `DeclarativeReadinessOptions` override hooks exposed via `DeclarativeScreenshotOptions` if specialized tests need them.
 - **API surface creep**: keep options minimal; direct callers needing bespoke flows can still call `ScreenshotService::Capture`.
-- **Telemetry drift**: ensure helper defaults are documented and optionally allow overriding `telemetry_namespace`.
+- **Readiness drift**: ensure helper defaults stay in sync with declarative lifecycle changes.
 
 ## Deliverables & Timeline
 1. Helper implementation + unit test scaffold (1 day).

@@ -69,25 +69,11 @@ function rgbaString(channels) {
   return `rgba(${channels.r},${channels.g},${channels.b},${channels.a})`;
 }
 
-const defaultTheme = {
-  buttonBackground: [0.176, 0.353, 0.914, 1.0],
-  toggleTrack: [0.176, 0.353, 0.914, 1.0],
-  toggleThumb: [1.0, 1.0, 1.0, 1.0],
-  sliderTrack: [0.75, 0.75, 0.78, 1.0],
-  sliderFill: [0.176, 0.353, 0.914, 1.0],
-  sliderThumb: [1.0, 1.0, 1.0, 1.0],
-  listBackground: [0.121, 0.129, 0.145, 1.0],
-  listHover: [0.247, 0.278, 0.349, 1.0],
-  listSelected: [0.176, 0.353, 0.914, 1.0],
-  listItem: [0.176, 0.184, 0.204, 1.0],
-  listSeparator: [0.224, 0.231, 0.247, 1.0],
-};
-
 const sunsetTheme = {
   buttonBackground: [0.882, 0.424, 0.310, 1.0],
   toggleTrack: [0.882, 0.424, 0.310, 1.0],
   toggleThumb: [0.996, 0.949, 0.902, 1.0],
-  sliderTrack: [0.75, 0.75, 0.78, 1.0],
+  sliderTrack: [0.322, 0.231, 0.196, 1.0],
   sliderFill: [0.882, 0.424, 0.310, 1.0],
   sliderThumb: [0.996, 0.949, 0.902, 1.0],
   listBackground: [0.215, 0.128, 0.102, 1.0],
@@ -96,6 +82,8 @@ const sunsetTheme = {
   listItem: [0.266, 0.166, 0.138, 1.0],
   listSeparator: [0.365, 0.231, 0.201, 1.0],
 };
+
+const defaultTheme = sunsetTheme;
 
 function verifyWidgetCanvas(canvasCommands, theme, label) {
   const expectedSequence = [

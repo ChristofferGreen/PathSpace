@@ -1056,7 +1056,7 @@ auto LaunchStandard(PathSpace& space, LaunchOptions const& options) -> SP::Expec
     }
 
     auto theme_name = options.default_theme_name.empty()
-        ? std::string{"default"}
+        ? std::string{"sunset"}
         : options.default_theme_name;
     result.default_theme_path = std::string{"/system/themes/"} + theme_name;
     auto name_path = result.default_theme_path + "/name";
@@ -1065,6 +1065,9 @@ auto LaunchStandard(PathSpace& space, LaunchOptions const& options) -> SP::Expec
     }
     auto active_path = result.default_theme_path + "/active";
     if (auto status = ensure_value<bool>(space, active_path, true); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = replace_single<std::string>(space, "/system/themes/_active", theme_name); !status) {
         return std::unexpected(status.error());
     }
 
@@ -1175,7 +1178,7 @@ auto Create(PathSpace& space,
     }
 
     auto default_theme_path = std::string(normalized->getPath()) + "/themes/default";
-    if (auto status = ensure_value<std::string>(space, default_theme_path, *canonical_theme); !status) {
+    if (auto status = replace_single<std::string>(space, default_theme_path, *canonical_theme); !status) {
         return std::unexpected(status.error());
     }
 
@@ -1224,18 +1227,24 @@ auto Create(PathSpace& space,
     if (auto status = ensure_value<bool>(space, base + "/render/dirty", false); !status) {
         return std::unexpected(status.error());
     }
-    if (auto status = ensure_value<std::string>(space, base + "/style/theme", std::string{}); !status) {
+    auto theme_path = base + "/style/theme";
+    if (auto status = ensure_value<std::string>(space, theme_path, std::string{}); !status) {
         return std::unexpected(status.error());
     }
     auto active_theme = ThemeConfig::LoadActive(space, app_root);
     if (active_theme) {
-        (void)replace_single<std::string>(space, base + "/style/theme", *active_theme);
+        (void)replace_single<std::string>(space, theme_path, *active_theme);
     } else {
         auto const& err = active_theme.error();
         if (err.code != SP::Error::Code::NoObjectFound
             && err.code != SP::Error::Code::NoSuchPath) {
             return std::unexpected(err);
         }
+        auto system_theme = ThemeConfig::LoadSystemActive(space);
+        if (!system_theme) {
+            return std::unexpected(system_theme.error());
+        }
+        (void)replace_single<std::string>(space, theme_path, *system_theme);
     }
 
     auto view_base = base + "/views/" + *view;

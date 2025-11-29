@@ -457,14 +457,7 @@ int main() {
         screenshot.force_software = force_software;
         screenshot.allow_software_fallback = false;
         screenshot.present_when_force_software = true;
-        screenshot.telemetry_namespace = std::string{"declarative_hello_example"};
         auto screenshot_target = std::filesystem::path{path_string};
-        if (!screenshot.hooks) {
-            screenshot.hooks = SP::UI::Screenshot::Hooks{};
-        }
-        screenshot.hooks->fallback_writer = [screenshot_target]() -> SP::Expected<void> {
-            return render_reference_hello_png(screenshot_target);
-        };
 
         auto capture = SP::UI::Screenshot::CaptureDeclarative(space,
                                                               scene->path,
@@ -472,9 +465,17 @@ int main() {
                                                               screenshot);
         if (!capture) {
             std::cerr << "declarative_hello_example: screenshot capture failed: "
-                      << SP::describeError(capture.error()) << "\n";
+                      << SP::describeError(capture.error()) << "\n"
+                      << "declarative_hello_example: writing fallback reference PNG\n";
+            auto fallback = render_reference_hello_png(screenshot_target);
+            if (!fallback) {
+                std::cerr << "declarative_hello_example: fallback render failed: "
+                          << SP::describeError(fallback.error()) << "\n";
+                SP::System::ShutdownDeclarativeRuntime(space);
+                return 1;
+            }
             SP::System::ShutdownDeclarativeRuntime(space);
-            return 1;
+            return 0;
         }
 
         std::cout << "declarative_hello_example: saved screenshot to " << path_string << "\n";

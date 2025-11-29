@@ -343,7 +343,9 @@ auto ResolveThemeForWidget(PathSpace& space,
         }
         if (candidate->has_value()) {
             theme_value = **candidate;
-            found_override = current.find("/widgets/") != std::string::npos;
+            auto in_widgets = current.find("/widgets/") != std::string::npos;
+            auto in_windows = current.find("/windows/") != std::string::npos;
+            found_override = in_widgets || in_windows;
             break;
         }
         if (current == app_root_raw) {
@@ -361,16 +363,26 @@ auto ResolveThemeForWidget(PathSpace& space,
     }
 
     if (!theme_value.has_value() || theme_value->empty()) {
-        auto default_theme = ReadOptionalValue<std::string>(space, app_root_raw + "/themes/default");
-        if (!default_theme) {
-            return std::unexpected(default_theme.error());
-        }
-        if (default_theme->has_value()) {
-            theme_value = **default_theme;
+        auto active_theme = ThemeConfig::LoadActive(space, app_root_view);
+        if (active_theme) {
+            if (!active_theme->empty()) {
+                theme_value = *active_theme;
+            }
         } else {
-            theme_value = std::string{"default"};
+            auto const& error = active_theme.error();
+            if (error.code != SP::Error::Code::NoSuchPath
+                && error.code != SP::Error::Code::NoObjectFound) {
+                return std::unexpected(error);
+            }
         }
-        found_override = false;
+        if (!theme_value.has_value() || theme_value->empty()) {
+            auto system_theme = ThemeConfig::LoadSystemActive(space);
+            if (!system_theme) {
+                return std::unexpected(system_theme.error());
+            }
+            theme_value = *system_theme;
+        }
+        found_override = true;
     }
 
     auto sanitized = ThemeConfig::SanitizeName(*theme_value);

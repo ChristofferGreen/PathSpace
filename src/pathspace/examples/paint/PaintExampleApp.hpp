@@ -22,8 +22,6 @@ struct CommandLineOptions {
     bool gpu_smoke = false;
     std::optional<std::filesystem::path> gpu_texture_path;
     SP::UI::Screenshot::BaselineMetadata baseline_metadata;
-    std::string screenshot_telemetry_namespace = "paint_example";
-    std::string screenshot_telemetry_root = "/diagnostics/ui/screenshot";
 };
 
 auto RunPaintExample(CommandLineOptions options) -> int;

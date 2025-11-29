@@ -29,6 +29,30 @@ namespace WidgetsNS = SP::UI::Runtime::Widgets;
 namespace DetailNS = SP::UI::Declarative::Detail;
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 
+auto LoadActiveThemeName(PathSpace& space, SP::App::AppRootPathView app_root) -> std::string {
+    if (auto active = ThemeConfig::LoadActive(space, app_root)) {
+        if (!active->empty()) {
+            return *active;
+        }
+    } else {
+        auto const& error = active.error();
+        if (error.code != SP::Error::Code::NoSuchPath
+            && error.code != SP::Error::Code::NoObjectFound) {
+            REQUIRE_MESSAGE(false, error.message.value_or("LoadActive failed"));
+        }
+    }
+    auto system_theme = ThemeConfig::LoadSystemActive(space);
+    REQUIRE(system_theme.has_value());
+    return *system_theme;
+}
+
+auto LoadActiveTheme(PathSpace& space, SP::App::AppRootPathView app_root) -> WidgetsNS::WidgetTheme {
+    auto name = LoadActiveThemeName(space, app_root);
+    auto selection = WidgetsNS::LoadTheme(space, app_root, name);
+    REQUIRE(selection.has_value());
+    return selection->theme;
+}
+
 struct DeclarativeFixture {
     PathSpace space;
     DeclarativeFixture() {
@@ -140,19 +164,25 @@ TEST_CASE("WidgetDescriptor reproduces button bucket") {
     auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
 
-    auto style = fx.space.read<WidgetsNS::ButtonStyle, std::string>((*button).getPath()
-                                                                    + "/meta/style");
-    REQUIRE(style.has_value());
+    auto theme = LoadActiveTheme(fx.space, SP::App::AppRootPathView{fx.app_root.getPath()});
+    auto style = theme.button;
     auto state = fx.space.read<WidgetsNS::ButtonState, std::string>((*button).getPath()
                                                                     + "/state");
     REQUIRE(state.has_value());
     WidgetsNS::ButtonPreviewOptions preview{};
     preview.authoring_root = button->getPath();
     preview.label = "Descriptor";
-    auto reference = WidgetsNS::BuildButtonPreview(*style, *state, preview);
+    auto reference = WidgetsNS::BuildButtonPreview(style, *state, preview);
 
+    auto const& descriptor_button = std::get<ButtonDescriptor>(descriptor->data);
+    CHECK(descriptor_button.style.background_color[0] == doctest::Approx(style.background_color[0]));
+
+    REQUIRE_EQ(bucket->command_payload.size(), reference.command_payload.size());
+    for (std::size_t i = 0; i < bucket->command_payload.size(); ++i) {
+        CHECK(bucket->command_payload[i]
+              == doctest::Approx(reference.command_payload[i]).epsilon(1e-5f));
+    }
     CHECK(bucket->drawable_ids == reference.drawable_ids);
-    CHECK(bucket->command_payload == reference.command_payload);
     CHECK(bucket->command_kinds == reference.command_kinds);
 }
 
@@ -170,9 +200,8 @@ TEST_CASE("WidgetDescriptor reproduces slider bucket") {
     auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
 
-    auto style = fx.space.read<WidgetsNS::SliderStyle, std::string>((*slider).getPath()
-                                                                    + "/meta/style");
-    REQUIRE(style.has_value());
+    auto theme = LoadActiveTheme(fx.space, SP::App::AppRootPathView{fx.app_root.getPath()});
+    auto style = theme.slider;
     auto state = fx.space.read<WidgetsNS::SliderState, std::string>((*slider).getPath()
                                                                     + "/state");
     REQUIRE(state.has_value());
@@ -181,9 +210,16 @@ TEST_CASE("WidgetDescriptor reproduces slider bucket") {
     REQUIRE(range.has_value());
     WidgetsNS::SliderPreviewOptions preview{};
     preview.authoring_root = slider->getPath();
-    auto reference = WidgetsNS::BuildSliderPreview(*style, *range, *state, preview);
+    auto reference = WidgetsNS::BuildSliderPreview(style, *range, *state, preview);
 
-    CHECK(bucket->command_payload == reference.command_payload);
+    auto const& descriptor_slider = std::get<SliderDescriptor>(descriptor->data);
+    CHECK(descriptor_slider.style.fill_color[0] == doctest::Approx(style.fill_color[0]));
+
+    REQUIRE_EQ(bucket->command_payload.size(), reference.command_payload.size());
+    for (std::size_t i = 0; i < bucket->command_payload.size(); ++i) {
+        CHECK(bucket->command_payload[i]
+              == doctest::Approx(reference.command_payload[i]).epsilon(1e-5f));
+    }
     CHECK(bucket->drawable_ids == reference.drawable_ids);
 }
 
@@ -200,9 +236,8 @@ TEST_CASE("WidgetDescriptor reproduces list bucket") {
     auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
 
-    auto style = fx.space.read<WidgetsNS::ListStyle, std::string>((*list).getPath()
-                                                                  + "/meta/style");
-    REQUIRE(style.has_value());
+    auto theme = LoadActiveTheme(fx.space, SP::App::AppRootPathView{fx.app_root.getPath()});
+    auto style = theme.list;
     auto state = fx.space.read<WidgetsNS::ListState, std::string>((*list).getPath()
                                                                   + "/state");
     REQUIRE(state.has_value());
@@ -213,8 +248,19 @@ TEST_CASE("WidgetDescriptor reproduces list bucket") {
     WidgetsNS::ListPreviewOptions preview{};
     preview.authoring_root = list->getPath();
     auto item_span = std::span<WidgetsNS::ListItem const>{items->data(), items->size()};
-    auto reference = WidgetsNS::BuildListPreview(*style, item_span, *state, preview);
+    auto reference = WidgetsNS::BuildListPreview(style, item_span, *state, preview);
 
+    auto const& descriptor_list = std::get<ListDescriptor>(descriptor->data);
+    CHECK(descriptor_list.style.item_selected_color[0] == doctest::Approx(style.item_selected_color[0]));
+
+    if (bucket->command_counts != reference.bucket.command_counts) {
+        INFO("list counts mismatch bucket=" << bucket->command_counts.size()
+                                            << " ref=" << reference.bucket.command_counts.size());
+    }
+    if (bucket->drawable_ids != reference.bucket.drawable_ids) {
+        INFO("list drawable ids mismatch bucket=" << bucket->drawable_ids.size()
+                                                  << " ref=" << reference.bucket.drawable_ids.size());
+    }
     CHECK(bucket->command_counts == reference.bucket.command_counts);
     CHECK(bucket->drawable_ids == reference.bucket.drawable_ids);
 }

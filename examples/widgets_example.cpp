@@ -400,7 +400,6 @@ int main(int argc, char** argv) {
                                                                               window->view_name,
                                                                               options.width,
                                                                               options.height,
-                                                                              "widgets_example",
                                                                               options.screenshot,
                                                                               pose);
         if (!capture) {

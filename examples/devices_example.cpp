@@ -402,7 +402,6 @@ int main(int argc, char** argv) {
                                                                                   demo->view_name,
                                                                                   options.width,
                                                                                   options.height,
-                                                                                  "devices_example",
                                                                                   options.screenshot);
             if (!capture) {
                 log_expected_error("screenshot capture", capture.error());

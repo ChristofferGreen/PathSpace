@@ -1,6 +1,7 @@
 #include "Common.hpp"
 
 #include <pathspace/path/ConcretePath.hpp>
+#include "../DescriptorDetail.hpp"
 #include <pathspace/ui/runtime/UIRuntime.hpp>
 
 #include <atomic>
@@ -12,6 +13,39 @@
 
 namespace SP::UI::Declarative::Detail {
 namespace {
+
+auto apply_theme_defaults(PathSpace& space,
+                          std::string const& root,
+                          WidgetKind kind) -> SP::Expected<void> {
+    using DescriptorDetail::ResolveThemeForWidget;
+    auto widget_path = SP::UI::Runtime::WidgetPath{root};
+    auto theme = ResolveThemeForWidget(space, widget_path);
+    if (!theme) {
+        return std::unexpected(theme.error());
+    }
+
+    auto write_button_style = [&](auto const& style) -> SP::Expected<void> {
+        return write_style(space, root, style);
+    };
+
+    switch (kind) {
+    case WidgetKind::Button:
+        return write_button_style(theme->theme.button);
+    case WidgetKind::Toggle:
+        return write_button_style(theme->theme.toggle);
+    case WidgetKind::Slider:
+        return write_button_style(theme->theme.slider);
+    case WidgetKind::List:
+        return write_button_style(theme->theme.list);
+    case WidgetKind::Tree:
+        return write_button_style(theme->theme.tree);
+    case WidgetKind::InputField:
+        return write_button_style(theme->theme.text_field);
+    default:
+        break;
+    }
+    return {};
+}
 
 class CallbackRegistry {
 public:
@@ -234,6 +268,9 @@ auto initialize_render(PathSpace& space,
     }
     if (auto status = write_value(space, root + "/render/dirty_version", std::uint64_t{0}); !status) {
         return status;
+    }
+    if (auto themed = apply_theme_defaults(space, root, kind); !themed) {
+        return themed;
     }
     return mark_render_dirty(space, root);
 }

@@ -44,7 +44,7 @@ inline auto sanitize_identifier(std::string_view raw, std::string_view fallback)
 namespace SP::System {
 
 struct LaunchOptions {
-    std::string default_theme_name = "default";
+    std::string default_theme_name = "sunset";
     bool start_input_runtime = true;
     SP::UI::Declarative::InputTaskOptions input_task_options{};
     bool start_io_trellis = true;
@@ -86,7 +86,7 @@ namespace SP::App {
 
 struct CreateOptions {
     std::string title;
-    std::string default_theme = "default";
+    std::string default_theme = "sunset";
 };
 
 [[nodiscard]] auto Create(PathSpace& space,

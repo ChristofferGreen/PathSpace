@@ -22,6 +22,7 @@ using SP::UI::Declarative::Detail::read_optional;
 using SP::UI::Declarative::Detail::make_error;
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 using Color = std::array<float, 4>;
+namespace Widgets = SP::UI::Runtime::Widgets;
 
 template <typename T>
 auto ensure_value(PathSpace& space, std::string const& path, T const& value) -> SP::Expected<void> {
@@ -48,6 +49,16 @@ auto sanitize_color(Color const& input) -> Color {
         clamped[i] = clamp_component(input[i]);
     }
     return clamped;
+}
+
+auto seed_theme_for(std::string const& sanitized) -> Widgets::WidgetTheme {
+    if (sanitized == "sunset") {
+        return Widgets::MakeSunsetWidgetTheme();
+    }
+    if (sanitized == "skylight" || sanitized == "default") {
+        return Widgets::MakeDefaultWidgetTheme();
+    }
+    return Widgets::MakeDefaultWidgetTheme();
 }
 
 auto sanitize_component(std::string_view component) -> SP::Expected<std::string> {
@@ -298,7 +309,7 @@ auto Create(PathSpace& space,
         sanitized_inherits = ThemeConfig::SanitizeName(*options.inherits);
     }
 
-    WidgetTheme seed = options.seed_theme.value_or(SP::UI::Runtime::Widgets::MakeDefaultWidgetTheme());
+    WidgetTheme seed = options.seed_theme.value_or(seed_theme_for(sanitized));
     if (sanitized_inherits) {
         auto parent_theme = load_theme_value(space, app_root, *sanitized_inherits);
         if (!parent_theme) {

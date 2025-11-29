@@ -18,6 +18,7 @@ using namespace SP::UI::Declarative::Detail;
 namespace {
 
 constexpr std::string_view kThemeSegment = "/config/theme/";
+constexpr std::string_view kSystemActiveThemePath = "/system/themes/_active";
 constexpr std::size_t kMaxThemeInheritanceDepth = 16;
 
 auto extract_app_root(std::string const& theme_root) -> SP::Expected<std::string> {
@@ -209,6 +210,21 @@ auto LoadActive(PathSpace& space,
         return std::unexpected(active.error());
     }
     return space.read<std::string, std::string>(active->getPath());
+}
+
+auto LoadSystemActive(PathSpace& space) -> SP::Expected<std::string> {
+    auto active = space.read<std::string, std::string>(std::string{kSystemActiveThemePath});
+    if (active) {
+        if (active->empty()) {
+            return std::string{"sunset"};
+        }
+        return SanitizeName(*active);
+    }
+    auto const code = active.error().code;
+    if (code == SP::Error::Code::NoSuchPath || code == SP::Error::Code::NoObjectFound) {
+        return std::string{"sunset"};
+    }
+    return std::unexpected(active.error());
 }
 
 } // namespace SP::UI::Declarative::ThemeConfig

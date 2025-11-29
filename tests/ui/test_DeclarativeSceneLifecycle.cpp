@@ -282,15 +282,15 @@ TEST_CASE("Focus and theme changes invalidate declarative widgets") {
     REQUIRE(focus_event);
     CHECK_EQ(*focus_event, button->getPath());
 
-    auto sunset_theme = SP::UI::Runtime::Widgets::MakeSunsetWidgetTheme();
+    auto sunrise_theme = SP::UI::Runtime::Widgets::MakeSunriseWidgetTheme();
     auto ensured = ThemeConfig::Ensure(space,
                                                           SP::App::AppRootPathView{app_root->getPath()},
-                                                          "sunset",
-                                                          sunset_theme);
+                                                          "sunrise",
+                                                          sunrise_theme);
     REQUIRE(ensured);
     auto set_theme = ThemeConfig::SetActive(space,
                                                                 SP::App::AppRootPathView{app_root->getPath()},
-                                                                "sunset");
+                                                                "sunrise");
     REQUIRE(set_theme);
 
     auto theme_event = space.take<std::string>(dirty_queue, SP::Out{} & SP::Block{std::chrono::milliseconds{200}});
