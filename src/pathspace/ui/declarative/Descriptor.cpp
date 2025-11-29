@@ -494,7 +494,7 @@ auto LoadWidgetDescriptor(PathSpace& space,
 
     switch (*kind) {
     case WidgetKind::Button: {
-        auto loaded = DescriptorDetail::ReadButtonDescriptor(space, root);
+        auto loaded = DescriptorDetail::ReadButtonDescriptor(space, root, theme->theme);
         if (!loaded) {
             return std::unexpected(loaded.error());
         }
@@ -502,7 +502,7 @@ auto LoadWidgetDescriptor(PathSpace& space,
         break;
     }
     case WidgetKind::Toggle: {
-        auto loaded = DescriptorDetail::ReadToggleDescriptor(space, root);
+        auto loaded = DescriptorDetail::ReadToggleDescriptor(space, root, theme->theme);
         if (!loaded) {
             return std::unexpected(loaded.error());
         }
@@ -510,7 +510,7 @@ auto LoadWidgetDescriptor(PathSpace& space,
         break;
     }
     case WidgetKind::Slider: {
-        auto loaded = DescriptorDetail::ReadSliderDescriptor(space, root);
+        auto loaded = DescriptorDetail::ReadSliderDescriptor(space, root, theme->theme);
         if (!loaded) {
             return std::unexpected(loaded.error());
         }
@@ -518,7 +518,7 @@ auto LoadWidgetDescriptor(PathSpace& space,
         break;
     }
     case WidgetKind::List: {
-        auto loaded = DescriptorDetail::ReadListDescriptor(space, root);
+        auto loaded = DescriptorDetail::ReadListDescriptor(space, root, theme->theme);
         if (!loaded) {
             return std::unexpected(loaded.error());
         }
@@ -526,7 +526,7 @@ auto LoadWidgetDescriptor(PathSpace& space,
         break;
     }
     case WidgetKind::Tree: {
-        auto loaded = DescriptorDetail::ReadTreeDescriptor(space, root);
+        auto loaded = DescriptorDetail::ReadTreeDescriptor(space, root, theme->theme);
         if (!loaded) {
             return std::unexpected(loaded.error());
         }
@@ -567,7 +567,6 @@ auto LoadWidgetDescriptor(PathSpace& space,
     }
     }
 
-    DescriptorDetail::ApplyThemeOverride(*theme, descriptor);
     return descriptor;
 }
 

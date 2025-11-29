@@ -16,7 +16,6 @@ namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 struct ThemeContext {
     BuilderWidgets::WidgetTheme theme{};
     std::string name;
-    bool has_override = false;
 };
 
 auto MakeDescriptorError(std::string message,
@@ -28,17 +27,25 @@ auto ResolveThemeForWidget(PathSpace& space,
                            SP::UI::Runtime::WidgetPath const& widget)
     -> SP::Expected<ThemeContext>;
 
-void ApplyThemeOverride(ThemeContext const& theme, WidgetDescriptor& descriptor);
-
-auto ReadButtonDescriptor(PathSpace& space, std::string const& root)
+auto ReadButtonDescriptor(PathSpace& space,
+                          std::string const& root,
+                          BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<ButtonDescriptor>;
-auto ReadToggleDescriptor(PathSpace& space, std::string const& root)
+auto ReadToggleDescriptor(PathSpace& space,
+                          std::string const& root,
+                          BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<ToggleDescriptor>;
-auto ReadSliderDescriptor(PathSpace& space, std::string const& root)
+auto ReadSliderDescriptor(PathSpace& space,
+                          std::string const& root,
+                          BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<SliderDescriptor>;
-auto ReadListDescriptor(PathSpace& space, std::string const& root)
+auto ReadListDescriptor(PathSpace& space,
+                        std::string const& root,
+                        BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<ListDescriptor>;
-auto ReadTreeDescriptor(PathSpace& space, std::string const& root)
+auto ReadTreeDescriptor(PathSpace& space,
+                        std::string const& root,
+                        BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<TreeDescriptor>;
 auto ReadStackDescriptor(PathSpace& space, std::string const& root)
     -> SP::Expected<StackDescriptor>;
@@ -52,4 +59,3 @@ auto ReadPaintSurfaceDescriptor(PathSpace& space, std::string const& root)
     -> SP::Expected<PaintSurfaceDescriptor>;
 
 } // namespace SP::UI::Declarative::DescriptorDetail
-

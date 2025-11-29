@@ -164,18 +164,20 @@ TEST_CASE("WidgetDescriptor reproduces button bucket") {
     auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
 
-    auto theme = LoadActiveTheme(fx.space, SP::App::AppRootPathView{fx.app_root.getPath()});
-    auto style = theme.button;
     auto state = fx.space.read<WidgetsNS::ButtonState, std::string>((*button).getPath()
                                                                     + "/state");
     REQUIRE(state.has_value());
     WidgetsNS::ButtonPreviewOptions preview{};
     preview.authoring_root = button->getPath();
     preview.label = "Descriptor";
-    auto reference = WidgetsNS::BuildButtonPreview(style, *state, preview);
 
     auto const& descriptor_button = std::get<ButtonDescriptor>(descriptor->data);
-    CHECK(descriptor_button.style.background_color[0] == doctest::Approx(style.background_color[0]));
+    auto theme = LoadActiveTheme(fx.space, SP::App::AppRootPathView{fx.app_root.getPath()});
+    CHECK(descriptor_button.style.background_color[0]
+          == doctest::Approx(theme.button.background_color[0]));
+    CHECK(descriptor_button.style.text_color[0]
+          == doctest::Approx(theme.button.text_color[0]));
+    auto reference = WidgetsNS::BuildButtonPreview(descriptor_button.style, *state, preview);
 
     REQUIRE_EQ(bucket->command_payload.size(), reference.command_payload.size());
     for (std::size_t i = 0; i < bucket->command_payload.size(); ++i) {
@@ -232,26 +234,29 @@ TEST_CASE("Button preserves explicit overrides after theme defaults") {
         Button::Create(fx.space, fx.parent_view(), "theme_button", args);
     REQUIRE(widget.has_value());
 
-    auto style =
+    auto stored_style =
         fx.space.read<WidgetsNS::ButtonStyle, std::string>(widget->getPath()
                                                            + "/meta/style");
-    REQUIRE(style.has_value());
+    REQUIRE(stored_style.has_value());
 
-    CHECK(style->background_color[0]
-          == doctest::Approx(args.style.background_color[0]));
-    CHECK(style->background_color[1]
-          == doctest::Approx(args.style.background_color[1]));
-    CHECK(style->text_color[0]
-          == doctest::Approx(args.style.text_color[0]));
-    CHECK(style->text_color[1]
-          == doctest::Approx(args.style.text_color[1]));
-    CHECK(HasStyleOverride(style->overrides,
+    CHECK(HasStyleOverride(stored_style->overrides,
                            WidgetsNS::ButtonStyleOverrideField::BackgroundColor));
-    CHECK(HasStyleOverride(style->overrides,
+    CHECK(HasStyleOverride(stored_style->overrides,
                            WidgetsNS::ButtonStyleOverrideField::TextColor));
 
     auto theme = LoadActiveTheme(fx.space, SP::App::AppRootPathView{fx.app_root.getPath()});
-    CHECK(style->typography.font_size
+    auto descriptor = LoadWidgetDescriptor(fx.space, *widget);
+    REQUIRE(descriptor.has_value());
+    auto const& descriptor_button = std::get<ButtonDescriptor>(descriptor->data);
+    CHECK(descriptor_button.style.background_color[0]
+          == doctest::Approx(args.style.background_color[0]));
+    CHECK(descriptor_button.style.background_color[1]
+          == doctest::Approx(args.style.background_color[1]));
+    CHECK(descriptor_button.style.text_color[0]
+          == doctest::Approx(args.style.text_color[0]));
+    CHECK(descriptor_button.style.text_color[1]
+          == doctest::Approx(args.style.text_color[1]));
+    CHECK(descriptor_button.style.typography.font_size
           == doctest::Approx(theme.button.typography.font_size));
 }
 
@@ -269,8 +274,6 @@ TEST_CASE("WidgetDescriptor reproduces slider bucket") {
     auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
 
-    auto theme = LoadActiveTheme(fx.space, SP::App::AppRootPathView{fx.app_root.getPath()});
-    auto style = theme.slider;
     auto state = fx.space.read<WidgetsNS::SliderState, std::string>((*slider).getPath()
                                                                     + "/state");
     REQUIRE(state.has_value());
@@ -279,10 +282,11 @@ TEST_CASE("WidgetDescriptor reproduces slider bucket") {
     REQUIRE(range.has_value());
     WidgetsNS::SliderPreviewOptions preview{};
     preview.authoring_root = slider->getPath();
-    auto reference = WidgetsNS::BuildSliderPreview(style, *range, *state, preview);
 
     auto const& descriptor_slider = std::get<SliderDescriptor>(descriptor->data);
-    CHECK(descriptor_slider.style.fill_color[0] == doctest::Approx(style.fill_color[0]));
+    auto theme = LoadActiveTheme(fx.space, SP::App::AppRootPathView{fx.app_root.getPath()});
+    CHECK(descriptor_slider.style.track_color[0] == doctest::Approx(theme.slider.track_color[0]));
+    auto reference = WidgetsNS::BuildSliderPreview(descriptor_slider.style, *range, *state, preview);
 
     REQUIRE_EQ(bucket->command_payload.size(), reference.command_payload.size());
     for (std::size_t i = 0; i < bucket->command_payload.size(); ++i) {
@@ -305,8 +309,6 @@ TEST_CASE("WidgetDescriptor reproduces list bucket") {
     auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
 
-    auto theme = LoadActiveTheme(fx.space, SP::App::AppRootPathView{fx.app_root.getPath()});
-    auto style = theme.list;
     auto state = fx.space.read<WidgetsNS::ListState, std::string>((*list).getPath()
                                                                   + "/state");
     REQUIRE(state.has_value());
@@ -317,10 +319,13 @@ TEST_CASE("WidgetDescriptor reproduces list bucket") {
     WidgetsNS::ListPreviewOptions preview{};
     preview.authoring_root = list->getPath();
     auto item_span = std::span<WidgetsNS::ListItem const>{items->data(), items->size()};
-    auto reference = WidgetsNS::BuildListPreview(style, item_span, *state, preview);
 
     auto const& descriptor_list = std::get<ListDescriptor>(descriptor->data);
-    CHECK(descriptor_list.style.item_selected_color[0] == doctest::Approx(style.item_selected_color[0]));
+    auto theme = LoadActiveTheme(fx.space, SP::App::AppRootPathView{fx.app_root.getPath()});
+    CHECK(descriptor_list.style.background_color[0]
+          == doctest::Approx(theme.list.background_color[0]));
+    auto reference =
+        WidgetsNS::BuildListPreview(descriptor_list.style, item_span, *state, preview);
 
     if (bucket->command_counts != reference.bucket.command_counts) {
         INFO("list counts mismatch bucket=" << bucket->command_counts.size()
@@ -732,7 +737,7 @@ TEST_CASE("Theme resolver uses inherited theme when child theme omits value") {
     SP::App::AppRootPathView app_root_view{fx.app_root.getPath()};
 
     auto parent_theme = WidgetsNS::MakeDefaultWidgetTheme();
-    parent_theme.button.width = 512.0f;
+    parent_theme.button.background_color = {0.25f, 0.45f, 0.65f, 1.0f};
 
     auto parent_paths = ThemeConfig::Ensure(fx.space,
                                             app_root_view,
@@ -778,7 +783,10 @@ TEST_CASE("Theme resolver uses inherited theme when child theme omits value") {
     auto descriptor = LoadWidgetDescriptor(fx.space, *button);
     REQUIRE(descriptor.has_value());
     auto const& data = std::get<ButtonDescriptor>(descriptor->data);
-    CHECK(data.style.width == doctest::Approx(parent_theme.button.width));
+    CHECK(data.style.background_color[0]
+          == doctest::Approx(parent_theme.button.background_color[0]));
+    CHECK(data.style.background_color[1]
+          == doctest::Approx(parent_theme.button.background_color[1]));
 }
 
 TEST_CASE("Theme resolver detects inheritance cycles") {

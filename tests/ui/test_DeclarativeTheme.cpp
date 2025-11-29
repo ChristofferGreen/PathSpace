@@ -3,12 +3,17 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/runtime/UIRuntime.hpp>
+#include <pathspace/ui/PathTypes.hpp>
+#include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/Detail.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
+#include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/declarative/Theme.hpp>
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
 
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
+namespace Declarative = SP::UI::Declarative;
+namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 
 namespace {
 
@@ -31,6 +36,66 @@ struct ThemeFixture {
 
     SP::PathSpace space;
     SP::App::AppRootPath app_root{std::string{}};
+};
+
+auto LoadCompiledTheme(SP::PathSpace& space, SP::App::AppRootPathView app_root)
+    -> BuilderWidgets::WidgetTheme {
+    auto active = ThemeConfig::LoadActive(space, app_root);
+    std::string name;
+    if (active) {
+        name = *active;
+    } else {
+        auto const& error = active.error();
+        if (error.code != SP::Error::Code::NoSuchPath
+            && error.code != SP::Error::Code::NoObjectFound) {
+            auto message = error.message.value_or("LoadActive failed");
+            FAIL_CHECK(message.c_str());
+        }
+    }
+    if (name.empty()) {
+        auto system_theme = ThemeConfig::LoadSystemActive(space);
+        REQUIRE(system_theme.has_value());
+        name = *system_theme;
+    }
+    auto sanitized = ThemeConfig::SanitizeName(name);
+    auto resolved = ThemeConfig::Resolve(app_root, sanitized);
+    REQUIRE(resolved.has_value());
+    auto compiled =
+        space.read<BuilderWidgets::WidgetTheme, std::string>(resolved->value.getPath());
+    REQUIRE(compiled.has_value());
+    return *compiled;
+}
+
+struct DeclarativeThemeFixture {
+    DeclarativeThemeFixture() {
+        auto launched = SP::System::LaunchStandard(space);
+        REQUIRE(launched.has_value());
+        auto app = SP::App::Create(space, "descriptor_theme_app");
+        REQUIRE(app.has_value());
+        app_root = *app;
+        SP::Window::CreateOptions options{};
+        options.name = "descriptor_window";
+        options.title = "Descriptor Window";
+        auto window = SP::Window::Create(space, app_root, options);
+        REQUIRE(window.has_value());
+        window_path = window->path;
+    }
+
+    ~DeclarativeThemeFixture() {
+        SP::System::ShutdownDeclarativeRuntime(space);
+    }
+
+    auto app_root_view() const -> SP::App::AppRootPathView {
+        return SP::App::AppRootPathView{app_root.getPath()};
+    }
+
+    auto parent_view() const -> SP::App::ConcretePathView {
+        return SP::App::ConcretePathView{window_path.getPath()};
+    }
+
+    SP::PathSpace space;
+    SP::App::AppRootPath app_root{std::string{}};
+    SP::UI::WindowPath window_path{std::string{}};
 };
 
 } // namespace
@@ -202,6 +267,88 @@ TEST_CASE("Theme::SetColor propagates through inherited themes until overridden"
     CHECK_EQ(parent_theme->button.background_color[0], doctest::Approx(base_color.rgba[0]));
     CHECK_EQ(parent_theme->button.background_color[1], doctest::Approx(base_color.rgba[1]));
     CHECK_EQ(parent_theme->button.background_color[2], doctest::Approx(base_color.rgba[2]));
+}
+
+TEST_CASE("Button descriptor inherits active theme colors when no overrides are serialized") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+    auto button = Declarative::Button::Create(fx.space, fx.parent_view(), "theme_button");
+    REQUIRE(button.has_value());
+
+    auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *button);
+    REQUIRE(descriptor.has_value());
+    REQUIRE(descriptor->kind == Declarative::WidgetKind::Button);
+    auto const& data = std::get<Declarative::ButtonDescriptor>(descriptor->data);
+
+    CHECK_EQ(data.style.background_color[0], doctest::Approx(theme.button.background_color[0]));
+    CHECK_EQ(data.style.text_color[0], doctest::Approx(theme.button.text_color[0]));
+    CHECK_EQ(data.style.typography.font_size,
+             doctest::Approx(theme.button.typography.font_size));
+}
+
+TEST_CASE("Button descriptor preserves explicit style overrides") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+    BuilderWidgets::ButtonStyle custom{};
+    custom.background_color = {0.85f, 0.25f, 0.42f, 1.0f};
+    Declarative::Button::Args args{};
+    args.style = custom;
+    auto button =
+        Declarative::Button::Create(fx.space, fx.parent_view(), "button_override", std::move(args));
+    REQUIRE(button.has_value());
+
+    auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *button);
+    REQUIRE(descriptor.has_value());
+    auto const& data = std::get<Declarative::ButtonDescriptor>(descriptor->data);
+
+    CHECK_EQ(data.style.background_color[0], doctest::Approx(custom.background_color[0]));
+    CHECK_EQ(data.style.background_color[1], doctest::Approx(custom.background_color[1]));
+    CHECK_EQ(data.style.text_color[0], doctest::Approx(theme.button.text_color[0]));
+}
+
+TEST_CASE("List descriptor layers theme defaults with serialized overrides") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    auto make_items = [] {
+        std::vector<BuilderWidgets::ListItem> items;
+        items.push_back({"row_0", "Row 0"});
+        items.push_back({"row_1", "Row 1"});
+        return items;
+    };
+
+    SUBCASE("Defaults inherit active theme colors") {
+        Declarative::List::Args args{};
+        args.items = make_items();
+        auto list =
+            Declarative::List::Create(fx.space, fx.parent_view(), "list_theme", std::move(args));
+        REQUIRE(list.has_value());
+
+        auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *list);
+        REQUIRE(descriptor.has_value());
+        auto const& data = std::get<Declarative::ListDescriptor>(descriptor->data);
+
+        CHECK_EQ(data.style.background_color[0], doctest::Approx(theme.list.background_color[0]));
+        CHECK_EQ(data.style.item_text_color[0], doctest::Approx(theme.list.item_text_color[0]));
+    }
+
+    SUBCASE("Overrides win for explicit fields") {
+        Declarative::List::Args args{};
+        args.items = make_items();
+        args.style.item_text_color = {0.12f, 0.94f, 0.78f, 1.0f};
+        auto list = Declarative::List::Create(fx.space,
+                                              fx.parent_view(),
+                                              "list_override",
+                                              std::move(args));
+        REQUIRE(list.has_value());
+
+        auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *list);
+        REQUIRE(descriptor.has_value());
+        auto const& data = std::get<Declarative::ListDescriptor>(descriptor->data);
+
+        CHECK_EQ(data.style.item_text_color[1], doctest::Approx(0.94f));
+        CHECK_EQ(data.style.background_color[0], doctest::Approx(theme.list.background_color[0]));
+    }
 }
 
 TEST_CASE("Theme::RebuildValue replays manual color edits") {

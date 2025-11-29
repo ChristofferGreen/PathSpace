@@ -74,6 +74,128 @@ auto ReadThemeOverride(PathSpace& space, std::string const& base)
     return std::optional<std::string>{};
 }
 
+auto ApplyThemeToButtonStyle(BuilderWidgets::ButtonStyle style,
+                             BuilderWidgets::ButtonStyle const& theme_style)
+    -> BuilderWidgets::ButtonStyle {
+    using Field = BuilderWidgets::ButtonStyleOverrideField;
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::BackgroundColor)) {
+        style.background_color = theme_style.background_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::TextColor)) {
+        style.text_color = theme_style.text_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Typography)) {
+        style.typography = theme_style.typography;
+    }
+    return style;
+}
+
+auto ApplyThemeToToggleStyle(BuilderWidgets::ToggleStyle style,
+                             BuilderWidgets::ToggleStyle const& theme_style)
+    -> BuilderWidgets::ToggleStyle {
+    using Field = BuilderWidgets::ToggleStyleOverrideField;
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::TrackOff)) {
+        style.track_off_color = theme_style.track_off_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::TrackOn)) {
+        style.track_on_color = theme_style.track_on_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Thumb)) {
+        style.thumb_color = theme_style.thumb_color;
+    }
+    return style;
+}
+
+auto ApplyThemeToSliderStyle(BuilderWidgets::SliderStyle style,
+                             BuilderWidgets::SliderStyle const& theme_style)
+    -> BuilderWidgets::SliderStyle {
+    using Field = BuilderWidgets::SliderStyleOverrideField;
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Track)) {
+        style.track_color = theme_style.track_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Fill)) {
+        style.fill_color = theme_style.fill_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Thumb)) {
+        style.thumb_color = theme_style.thumb_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::LabelColor)) {
+        style.label_color = theme_style.label_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::LabelTypography)) {
+        style.label_typography = theme_style.label_typography;
+    }
+    return style;
+}
+
+auto ApplyThemeToListStyle(BuilderWidgets::ListStyle style,
+                           BuilderWidgets::ListStyle const& theme_style)
+    -> BuilderWidgets::ListStyle {
+    using Field = BuilderWidgets::ListStyleOverrideField;
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Background)) {
+        style.background_color = theme_style.background_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Border)) {
+        style.border_color = theme_style.border_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Item)) {
+        style.item_color = theme_style.item_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::ItemHover)) {
+        style.item_hover_color = theme_style.item_hover_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::ItemSelected)) {
+        style.item_selected_color = theme_style.item_selected_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Separator)) {
+        style.separator_color = theme_style.separator_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::ItemText)) {
+        style.item_text_color = theme_style.item_text_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::ItemTypography)) {
+        style.item_typography = theme_style.item_typography;
+    }
+    return style;
+}
+
+auto ApplyThemeToTreeStyle(BuilderWidgets::TreeStyle style,
+                           BuilderWidgets::TreeStyle const& theme_style)
+    -> BuilderWidgets::TreeStyle {
+    using Field = BuilderWidgets::TreeStyleOverrideField;
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Background)) {
+        style.background_color = theme_style.background_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Border)) {
+        style.border_color = theme_style.border_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Row)) {
+        style.row_color = theme_style.row_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::RowHover)) {
+        style.row_hover_color = theme_style.row_hover_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::RowSelected)) {
+        style.row_selected_color = theme_style.row_selected_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::RowDisabled)) {
+        style.row_disabled_color = theme_style.row_disabled_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Connector)) {
+        style.connector_color = theme_style.connector_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Toggle)) {
+        style.toggle_color = theme_style.toggle_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Text)) {
+        style.text_color = theme_style.text_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::LabelTypography)) {
+        style.label_typography = theme_style.label_typography;
+    }
+    return style;
+}
+
 } // namespace
 
 auto MakeDescriptorError(std::string message, SP::Error::Code code) -> SP::Error {
@@ -132,14 +254,16 @@ auto ReadLabelDescriptor(PathSpace& space, std::string const& root)
     return descriptor;
 }
 
-auto ReadButtonDescriptor(PathSpace& space, std::string const& root)
+auto ReadButtonDescriptor(PathSpace& space,
+                          std::string const& root,
+                          BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<ButtonDescriptor> {
     ButtonDescriptor descriptor{};
     auto style = ReadRequired<BuilderWidgets::ButtonStyle>(space, root + "/meta/style");
     if (!style) {
         return std::unexpected(style.error());
     }
-    descriptor.style = *style;
+    descriptor.style = ApplyThemeToButtonStyle(*style, theme.button);
     auto state = ReadRequired<BuilderWidgets::ButtonState>(space, root + "/state");
     if (!state) {
         return std::unexpected(state.error());
@@ -158,14 +282,16 @@ auto ReadButtonDescriptor(PathSpace& space, std::string const& root)
     return descriptor;
 }
 
-auto ReadToggleDescriptor(PathSpace& space, std::string const& root)
+auto ReadToggleDescriptor(PathSpace& space,
+                          std::string const& root,
+                          BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<ToggleDescriptor> {
     ToggleDescriptor descriptor{};
     auto style = ReadRequired<BuilderWidgets::ToggleStyle>(space, root + "/meta/style");
     if (!style) {
         return std::unexpected(style.error());
     }
-    descriptor.style = *style;
+    descriptor.style = ApplyThemeToToggleStyle(*style, theme.toggle);
     auto state = ReadRequired<BuilderWidgets::ToggleState>(space, root + "/state");
     if (!state) {
         return std::unexpected(state.error());
@@ -174,14 +300,16 @@ auto ReadToggleDescriptor(PathSpace& space, std::string const& root)
     return descriptor;
 }
 
-auto ReadSliderDescriptor(PathSpace& space, std::string const& root)
+auto ReadSliderDescriptor(PathSpace& space,
+                          std::string const& root,
+                          BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<SliderDescriptor> {
     SliderDescriptor descriptor{};
     auto style = ReadRequired<BuilderWidgets::SliderStyle>(space, root + "/meta/style");
     if (!style) {
         return std::unexpected(style.error());
     }
-    descriptor.style = *style;
+    descriptor.style = ApplyThemeToSliderStyle(*style, theme.slider);
     auto state = ReadRequired<BuilderWidgets::SliderState>(space, root + "/state");
     if (!state) {
         return std::unexpected(state.error());
@@ -195,14 +323,16 @@ auto ReadSliderDescriptor(PathSpace& space, std::string const& root)
     return descriptor;
 }
 
-auto ReadListDescriptor(PathSpace& space, std::string const& root)
+auto ReadListDescriptor(PathSpace& space,
+                        std::string const& root,
+                        BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<ListDescriptor> {
     ListDescriptor descriptor{};
     auto style = ReadRequired<BuilderWidgets::ListStyle>(space, root + "/meta/style");
     if (!style) {
         return std::unexpected(style.error());
     }
-    descriptor.style = *style;
+    descriptor.style = ApplyThemeToListStyle(*style, theme.list);
     auto state = ReadRequired<BuilderWidgets::ListState>(space, root + "/state");
     if (!state) {
         return std::unexpected(state.error());
@@ -216,14 +346,16 @@ auto ReadListDescriptor(PathSpace& space, std::string const& root)
     return descriptor;
 }
 
-auto ReadTreeDescriptor(PathSpace& space, std::string const& root)
+auto ReadTreeDescriptor(PathSpace& space,
+                        std::string const& root,
+                        BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<TreeDescriptor> {
     TreeDescriptor descriptor{};
     auto style = ReadRequired<BuilderWidgets::TreeStyle>(space, root + "/meta/style");
     if (!style) {
         return std::unexpected(style.error());
     }
-    descriptor.style = *style;
+    descriptor.style = ApplyThemeToTreeStyle(*style, theme.tree);
     auto state = ReadRequired<BuilderWidgets::TreeState>(space, root + "/state");
     if (!state) {
         return std::unexpected(state.error());
@@ -332,7 +464,6 @@ auto ResolveThemeForWidget(PathSpace& space,
     }
     SP::App::AppRootPathView app_root_view{app_root->getPath()};
     std::optional<std::string> theme_value;
-    bool found_override = false;
 
     std::string current = widget_root;
     auto const& app_root_raw = app_root->getPath();
@@ -343,9 +474,6 @@ auto ResolveThemeForWidget(PathSpace& space,
         }
         if (candidate->has_value()) {
             theme_value = **candidate;
-            auto in_widgets = current.find("/widgets/") != std::string::npos;
-            auto in_windows = current.find("/windows/") != std::string::npos;
-            found_override = in_widgets || in_windows;
             break;
         }
         if (current == app_root_raw) {
@@ -382,7 +510,6 @@ auto ResolveThemeForWidget(PathSpace& space,
             }
             theme_value = *system_theme;
         }
-        found_override = true;
     }
 
     auto sanitized = ThemeConfig::SanitizeName(*theme_value);
@@ -397,44 +524,7 @@ auto ResolveThemeForWidget(PathSpace& space,
     ThemeContext context{};
     context.theme = *loaded;
     context.name = sanitized;
-    context.has_override = found_override;
     return context;
-}
-
-void ApplyThemeOverride(ThemeContext const& theme, WidgetDescriptor& descriptor) {
-    if (!theme.has_override) {
-        return;
-    }
-
-    switch (descriptor.kind) {
-    case WidgetKind::Button: {
-        auto& data = std::get<ButtonDescriptor>(descriptor.data);
-        data.style = theme.theme.button;
-        break;
-    }
-    case WidgetKind::Toggle: {
-        auto& data = std::get<ToggleDescriptor>(descriptor.data);
-        data.style = theme.theme.toggle;
-        break;
-    }
-    case WidgetKind::Slider: {
-        auto& data = std::get<SliderDescriptor>(descriptor.data);
-        data.style = theme.theme.slider;
-        break;
-    }
-    case WidgetKind::List: {
-        auto& data = std::get<ListDescriptor>(descriptor.data);
-        data.style = theme.theme.list;
-        break;
-    }
-    case WidgetKind::Tree: {
-        auto& data = std::get<TreeDescriptor>(descriptor.data);
-        data.style = theme.theme.tree;
-        break;
-    }
-    default:
-        break;
-    }
 }
 
 auto ReadInputFieldDescriptor(PathSpace& space,

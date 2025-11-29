@@ -179,12 +179,13 @@ software readbacks fail.
     writing `/meta/style`, leaving `{0,0,0,0}` colors and an “inherit”
     typography sentinel unless the matching override bit is set. Only layout and
     other structural data survives serialization by default.
-  - `apply_theme_defaults` (until Phase 2 completes) merges the resolved
-    `WidgetTheme` into those sparse blobs and preserves any explicit overrides,
-    so callers only need to touch the fields they truly want to customize.
-  - Descriptor loaders will soon read the same sparse payloads and layer them on
-    top of the resolved theme directly; keep docs/tests updated whenever you add
-    a new override bit so contributors know how to opt into bespoke colors.
+  - Descriptor loaders now read those sparse blobs, resolve the active
+    `WidgetTheme`, and fill in palette/typography values for any fields whose
+    override bits are unset. Explicit overrides still win, and `/meta/style`
+    stays compact even after the widget has rendered.
+  - Whenever you add a new override bit, update the descriptor merge helper,
+    schema docs, and regression tests so contributors know how to opt into
+    bespoke colors.
 - **Focus + traversal**
   - Focus metadata is runtime-managed. Widgets keep `focus/order` and
     `focus/current` up to date, and the controller mirrors the active widget to
