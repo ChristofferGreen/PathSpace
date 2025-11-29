@@ -35,6 +35,7 @@ enum class WidgetKind : std::uint8_t {
     Tree,
     Stack,
     Label,
+    TextArea,
     InputField,
     PaintSurface,
 };

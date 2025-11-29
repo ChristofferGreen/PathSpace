@@ -68,6 +68,8 @@ auto widget_kind_to_string(SP::UI::Declarative::WidgetKind kind) -> std::string_
         return "stack";
     case WidgetKind::Label:
         return "label";
+    case WidgetKind::TextArea:
+        return "text_area";
     case WidgetKind::InputField:
         return "input_field";
     case WidgetKind::PaintSurface:

@@ -233,5 +233,10 @@ auto build_text_field_bucket(Widgets::TextFieldStyle const& style,
                              std::string_view authoring_root,
                              bool pulsing_highlight = false) -> SP::UI::Scene::DrawableBucketSnapshot;
 
+auto build_text_area_bucket(Widgets::TextAreaStyle const& style,
+                             Widgets::TextAreaState const& state,
+                             std::string_view authoring_root,
+                             bool pulsing_highlight = false) -> SP::UI::Scene::DrawableBucketSnapshot;
+
 
 } // namespace SP::UI::Declarative::Detail

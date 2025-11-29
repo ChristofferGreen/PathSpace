@@ -315,6 +315,15 @@ struct BucketVisitor {
         return bucket;
     }
 
+    auto operator()(TextAreaDescriptor const& descriptor) const
+        -> SP::Expected<SP::UI::Scene::DrawableBucketSnapshot> {
+        auto bucket = Detail::build_text_area_bucket(descriptor.style,
+                                                     descriptor.state,
+                                                     authoring_root,
+                                                     options.pulsing_highlight);
+        return bucket;
+    }
+
     auto operator()(InputFieldDescriptor const& descriptor) const
         -> SP::Expected<SP::UI::Scene::DrawableBucketSnapshot> {
         auto bucket = Detail::build_text_field_bucket(descriptor.style,
@@ -543,6 +552,14 @@ auto LoadWidgetDescriptor(PathSpace& space,
     }
     case WidgetKind::Stack: {
         auto loaded = DescriptorDetail::ReadStackDescriptor(space, root);
+        if (!loaded) {
+            return std::unexpected(loaded.error());
+        }
+        descriptor.data = *loaded;
+        break;
+    }
+    case WidgetKind::TextArea: {
+        auto loaded = DescriptorDetail::ReadTextAreaDescriptor(space, widget, theme->theme);
         if (!loaded) {
             return std::unexpected(loaded.error());
         }

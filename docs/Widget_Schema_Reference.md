@@ -66,7 +66,7 @@ Declarative widgets now serialize a bitmask alongside every `meta/style` payload
 
 > **Serialization note (November 29, 2025):** Fragment helpers now zero unused palette fields (`{0,0,0,0}`) and reset typography blocks to an “inherit” sentinel before writing `/meta/style`. Only structural/layout metrics plus explicitly overridden palette/typography values survive serialization; theme colors are injected later by the descriptor/theme merge. This keeps backing storage lean and makes it trivial to detect override intent.
 
-> **Descriptor merge (November 29, 2025):** `DescriptorDetail::Read*` now pulls the resolved `WidgetTheme` alongside the widget path and fills in any palette/typography fields whose override bits are unset (buttons, toggles, sliders, lists, trees, and the declarative InputField today; TextArea will join once the widget lands). Renderer buckets therefore receive fully materialized styles even though `/meta/style` only stores overrides.
+> **Descriptor merge (November 29, 2025):** `DescriptorDetail::Read*` now pulls the resolved `WidgetTheme` alongside the widget path and fills in any palette/typography fields whose override bits are unset (buttons, toggles, sliders, lists, trees, InputField, and TextArea). Renderer buckets therefore receive fully materialized styles even though `/meta/style` only stores overrides.
 
 > **Event routing (November 29, 2025):** WidgetEventTrellis now resolves the same descriptor/theme pair before computing slider/list/tree geometry or hover math, so pointer + keyboard/gamepad interactions stay in sync with the renderer even when `/meta/style` only stores structural overrides.
 

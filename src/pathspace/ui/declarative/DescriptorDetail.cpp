@@ -227,8 +227,8 @@ auto ApplyThemeToTextFieldStyle(BuilderWidgets::TextFieldStyle style,
     return style;
 }
 
-[[maybe_unused]] auto ApplyThemeToTextAreaStyle(BuilderWidgets::TextAreaStyle style,
-                                               BuilderWidgets::TextAreaStyle const& theme_style)
+auto ApplyThemeToTextAreaStyle(BuilderWidgets::TextAreaStyle style,
+                               BuilderWidgets::TextAreaStyle const& theme_style)
     -> BuilderWidgets::TextAreaStyle {
     using Field = BuilderWidgets::TextAreaStyleOverrideField;
     if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Background)) {
@@ -285,6 +285,9 @@ auto KindFromString(std::string_view raw) -> std::optional<WidgetKind> {
     }
     if (raw == "label") {
         return WidgetKind::Label;
+    }
+    if (raw == "text_area") {
+        return WidgetKind::TextArea;
     }
     if (raw == "input_field") {
         return WidgetKind::InputField;
@@ -654,6 +657,117 @@ auto ReadInputFieldDescriptor(PathSpace& space,
         return std::unexpected(selection_end.error());
     }
     descriptor.state.selection_end = selection_end->value_or(descriptor.state.selection_start);
+
+    return descriptor;
+}
+
+auto ReadTextAreaDescriptor(PathSpace& space,
+                            SP::UI::Runtime::WidgetPath const& widget,
+                            BuilderWidgets::WidgetTheme const& theme)
+    -> SP::Expected<TextAreaDescriptor> {
+    auto root = widget.getPath();
+    TextAreaDescriptor descriptor{};
+
+    auto style_value = ReadOptionalValue<BuilderWidgets::TextAreaStyle>(space, root + "/meta/style");
+    if (!style_value) {
+        return std::unexpected(style_value.error());
+    }
+    if (style_value->has_value()) {
+        descriptor.style = ApplyThemeToTextAreaStyle(**style_value, theme.text_area);
+    } else {
+        descriptor.style = theme.text_area;
+    }
+
+    auto text = ReadOptionalValue<std::string>(space, root + "/state/text");
+    if (!text) {
+        return std::unexpected(text.error());
+    }
+    descriptor.state.text = text->value_or(std::string{});
+
+    auto placeholder = ReadOptionalValue<std::string>(space, root + "/state/placeholder");
+    if (!placeholder) {
+        return std::unexpected(placeholder.error());
+    }
+    descriptor.state.placeholder = placeholder->value_or(std::string{});
+
+    auto focused = ReadOptionalValue<bool>(space, root + "/state/focused");
+    if (!focused) {
+        return std::unexpected(focused.error());
+    }
+    descriptor.state.focused = focused->value_or(false);
+
+    auto hovered = ReadOptionalValue<bool>(space, root + "/state/hovered");
+    if (!hovered) {
+        return std::unexpected(hovered.error());
+    }
+    descriptor.state.hovered = hovered->value_or(false);
+
+    auto enabled = ReadOptionalValue<bool>(space, root + "/state/enabled");
+    if (!enabled) {
+        return std::unexpected(enabled.error());
+    }
+    descriptor.state.enabled = enabled->value_or(true);
+
+    auto read_only = ReadOptionalValue<bool>(space, root + "/state/read_only");
+    if (!read_only) {
+        return std::unexpected(read_only.error());
+    }
+    descriptor.state.read_only = read_only->value_or(false);
+
+    auto cursor = ReadOptionalValue<std::uint32_t>(space, root + "/state/cursor");
+    if (!cursor) {
+        return std::unexpected(cursor.error());
+    }
+    descriptor.state.cursor = cursor->value_or(
+        static_cast<std::uint32_t>(descriptor.state.text.size()));
+
+    auto selection_start = ReadOptionalValue<std::uint32_t>(space, root + "/state/selection_start");
+    if (!selection_start) {
+        return std::unexpected(selection_start.error());
+    }
+    descriptor.state.selection_start = selection_start->value_or(descriptor.state.cursor);
+
+    auto selection_end = ReadOptionalValue<std::uint32_t>(space, root + "/state/selection_end");
+    if (!selection_end) {
+        return std::unexpected(selection_end.error());
+    }
+    descriptor.state.selection_end = selection_end->value_or(descriptor.state.selection_start);
+
+    auto composition_active = ReadOptionalValue<bool>(space, root + "/state/composition_active");
+    if (!composition_active) {
+        return std::unexpected(composition_active.error());
+    }
+    descriptor.state.composition_active = composition_active->value_or(false);
+
+    auto composition_text = ReadOptionalValue<std::string>(space, root + "/state/composition_text");
+    if (!composition_text) {
+        return std::unexpected(composition_text.error());
+    }
+    descriptor.state.composition_text = composition_text->value_or(std::string{});
+
+    auto composition_start = ReadOptionalValue<std::uint32_t>(space, root + "/state/composition_start");
+    if (!composition_start) {
+        return std::unexpected(composition_start.error());
+    }
+    descriptor.state.composition_start = composition_start->value_or(descriptor.state.cursor);
+
+    auto composition_end = ReadOptionalValue<std::uint32_t>(space, root + "/state/composition_end");
+    if (!composition_end) {
+        return std::unexpected(composition_end.error());
+    }
+    descriptor.state.composition_end = composition_end->value_or(descriptor.state.composition_start);
+
+    auto scroll_x = ReadOptionalValue<float>(space, root + "/state/scroll_x");
+    if (!scroll_x) {
+        return std::unexpected(scroll_x.error());
+    }
+    descriptor.state.scroll_x = scroll_x->value_or(0.0f);
+
+    auto scroll_y = ReadOptionalValue<float>(space, root + "/state/scroll_y");
+    if (!scroll_y) {
+        return std::unexpected(scroll_y.error());
+    }
+    descriptor.state.scroll_y = scroll_y->value_or(0.0f);
 
     return descriptor;
 }

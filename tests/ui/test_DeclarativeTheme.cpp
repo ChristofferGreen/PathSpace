@@ -407,6 +407,68 @@ TEST_CASE("InputField descriptor preserves explicit text color overrides") {
              doctest::Approx(theme.text_field.background_color[0]));
 }
 
+TEST_CASE("TextArea descriptor inherits theme colors by default") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    auto widget_root = std::string(fx.parent_view().getPath()) + "/widgets/text_area_theme";
+    auto widget = SP::UI::Runtime::WidgetPath{widget_root};
+
+    REQUIRE(DetailNS::replace_single(fx.space, widget_root + "/meta/kind", std::string{"text_area"})
+                .has_value());
+    REQUIRE(DetailNS::replace_single(fx.space, widget_root + "/state/text", std::string{"Multiline"})
+                .has_value());
+    REQUIRE(DetailNS::replace_single(fx.space,
+                                     widget_root + "/state/placeholder",
+                                     std::string{"Placeholder"})
+                .has_value());
+
+    auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, widget);
+    REQUIRE(descriptor.has_value());
+    REQUIRE(descriptor->kind == Declarative::WidgetKind::TextArea);
+    auto const& data = std::get<Declarative::TextAreaDescriptor>(descriptor->data);
+
+    CHECK_EQ(data.style.background_color[0],
+             doctest::Approx(theme.text_area.background_color[0]));
+    CHECK_EQ(data.style.text_color[1], doctest::Approx(theme.text_area.text_color[1]));
+    CHECK_EQ(data.style.caret_color[2], doctest::Approx(theme.text_area.caret_color[2]));
+    CHECK_EQ(data.state.placeholder, "Placeholder");
+}
+
+TEST_CASE("TextArea descriptor preserves explicit overrides") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    auto widget_root = std::string(fx.parent_view().getPath()) + "/widgets/text_area_override";
+    auto widget = SP::UI::Runtime::WidgetPath{widget_root};
+
+    REQUIRE(DetailNS::replace_single(fx.space, widget_root + "/meta/kind", std::string{"text_area"})
+                .has_value());
+    REQUIRE(DetailNS::replace_single(fx.space,
+                                     widget_root + "/state/text",
+                                     std::string{"Overrides matter"})
+                .has_value());
+
+    BuilderWidgets::TextAreaStyle custom = theme.text_area;
+    custom.background_color = {0.15f, 0.35f, 0.55f, 1.0f};
+    custom.text_color = {0.92f, 0.85f, 0.12f, 1.0f};
+    BuilderWidgets::UpdateOverrides(custom);
+    REQUIRE(DetailNS::replace_single(fx.space, widget_root + "/meta/style", custom).has_value());
+
+    auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, widget);
+    REQUIRE(descriptor.has_value());
+    REQUIRE(descriptor->kind == Declarative::WidgetKind::TextArea);
+    auto const& data = std::get<Declarative::TextAreaDescriptor>(descriptor->data);
+
+    CHECK_EQ(data.style.background_color[0], doctest::Approx(custom.background_color[0]));
+    CHECK_EQ(data.style.background_color[2], doctest::Approx(custom.background_color[2]));
+    CHECK_EQ(data.style.text_color[1], doctest::Approx(custom.text_color[1]));
+    CHECK_EQ(data.style.placeholder_color[0],
+             doctest::Approx(theme.text_area.placeholder_color[0]));
+    CHECK_EQ(data.style.selection_color[2],
+             doctest::Approx(theme.text_area.selection_color[2]));
+}
+
 TEST_CASE("Theme::RebuildValue replays manual color edits") {
     ThemeFixture fx;
     auto app_view = fx.app_root_view();

@@ -43,6 +43,17 @@ auto build_text_field_bucket(Widgets::TextFieldStyle const& style,
                                                              pulsing_highlight);
 }
 
+auto build_text_area_bucket(Widgets::TextAreaStyle const& style,
+                            Widgets::TextAreaState const& state,
+                            std::string_view authoring_root,
+                            bool pulsing_highlight)
+    -> SP::UI::Scene::DrawableBucketSnapshot {
+    return SP::UI::Runtime::Detail::build_text_area_bucket(style,
+                                                            state,
+                                                            authoring_root,
+                                                            pulsing_highlight);
+}
+
 auto prepare_surface_render_context(PathSpace& space,
                                     SurfacePath const& surface,
                                     std::optional<RenderSettings> const& settings_override)

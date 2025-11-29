@@ -70,6 +70,11 @@ struct InputFieldDescriptor {
     BuilderWidgets::TextFieldState state{};
 };
 
+struct TextAreaDescriptor {
+    BuilderWidgets::TextAreaStyle style{};
+    BuilderWidgets::TextAreaState state{};
+};
+
 struct PaintSurfaceStrokeDescriptor {
     std::uint64_t id = 0;
     PaintStrokeMeta meta{};
@@ -100,6 +105,7 @@ struct WidgetDescriptor {
                  TreeDescriptor,
                  LabelDescriptor,
                  StackDescriptor,
+                 TextAreaDescriptor,
                  InputFieldDescriptor,
                  PaintSurfaceDescriptor> data;
 };

@@ -55,6 +55,10 @@ auto ReadInputFieldDescriptor(PathSpace& space,
                               SP::UI::Runtime::WidgetPath const& widget,
                               BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<InputFieldDescriptor>;
+auto ReadTextAreaDescriptor(PathSpace& space,
+                            SP::UI::Runtime::WidgetPath const& widget,
+                            BuilderWidgets::WidgetTheme const& theme)
+    -> SP::Expected<TextAreaDescriptor>;
 auto ReadPaintSurfaceDescriptor(PathSpace& space, std::string const& root)
     -> SP::Expected<PaintSurfaceDescriptor>;
 
