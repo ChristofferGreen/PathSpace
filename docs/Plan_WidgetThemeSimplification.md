@@ -35,10 +35,10 @@
 
 ### Phase 1 — Runtime Plumbing
 1. Update `BuilderWidgets::ButtonStyle` (and siblings) to differentiate between “unset” and “explicit” fields (e.g., optional colors or a `StyleOverrideMask`).
-2. Modify fragment helpers so they only serialize fields that the caller set. Default-constructed args should serialize nothing besides structural metadata.
+2. Modify fragment helpers so they only serialize fields that the caller set. Default-constructed args now zero theme-managed palette arrays (`{0,0,0,0}`) and reset typography blobs to an "inherit" sentinel unless an override bit is set, so `/meta/style` only carries structural/layout data plus the explicit overrides a caller provided.
 3. Remove `apply_theme_defaults` from `initialize_render`. Widgets no longer need an immediate rewrite because descriptors will handle theme application.
 
-> **Status (November 29, 2025):** Step 1 landed by introducing per-widget override masks (`ButtonStyle::overrides`, etc.) plus serialization helpers that stamp the mask whenever fragments write `/meta/style`. Declarative widgets now persist which palette/typography fields were intentionally overridden. Steps 2–3 (thin serialization and removing `apply_theme_defaults`) remain outstanding.
+> **Status (November 29, 2025):** Step 1 landed by introducing per-widget override masks (`ButtonStyle::overrides`, etc.) plus serialization helpers that stamp the mask whenever fragments write `/meta/style`. Step 2 is now complete: fragment helpers strip theme-managed palette/typography fields unless an override bit is set, and `apply_theme_defaults` merges the existing override values back into the resolved `WidgetTheme`. Declarative widgets therefore serialize only structural/layout overrides plus intentional palette edits. Step 3 (removing `apply_theme_defaults` once descriptors merge against themes directly) remains outstanding.
 
 ### Phase 2 — Descriptor & Renderer Merge
 1. Extend `DescriptorDetail::ResolveThemeForWidget` to return both the `WidgetTheme` and the canonical theme name.

@@ -220,6 +220,41 @@ TEST_CASE("Button styles record explicit override intent") {
     }
 }
 
+TEST_CASE("Button preserves explicit overrides after theme defaults") {
+    DeclarativeFixture fx;
+
+    Button::Args args{};
+    args.label = "ThemeAware";
+    args.style.background_color = {0.21f, 0.46f, 0.72f, 1.0f};
+    args.style.text_color = {0.95f, 0.92f, 0.35f, 1.0f};
+
+    auto widget =
+        Button::Create(fx.space, fx.parent_view(), "theme_button", args);
+    REQUIRE(widget.has_value());
+
+    auto style =
+        fx.space.read<WidgetsNS::ButtonStyle, std::string>(widget->getPath()
+                                                           + "/meta/style");
+    REQUIRE(style.has_value());
+
+    CHECK(style->background_color[0]
+          == doctest::Approx(args.style.background_color[0]));
+    CHECK(style->background_color[1]
+          == doctest::Approx(args.style.background_color[1]));
+    CHECK(style->text_color[0]
+          == doctest::Approx(args.style.text_color[0]));
+    CHECK(style->text_color[1]
+          == doctest::Approx(args.style.text_color[1]));
+    CHECK(HasStyleOverride(style->overrides,
+                           WidgetsNS::ButtonStyleOverrideField::BackgroundColor));
+    CHECK(HasStyleOverride(style->overrides,
+                           WidgetsNS::ButtonStyleOverrideField::TextColor));
+
+    auto theme = LoadActiveTheme(fx.space, SP::App::AppRootPathView{fx.app_root.getPath()});
+    CHECK(style->typography.font_size
+          == doctest::Approx(theme.button.typography.font_size));
+}
+
 TEST_CASE("WidgetDescriptor reproduces slider bucket") {
     DeclarativeFixture fx;
     Slider::Args args{};

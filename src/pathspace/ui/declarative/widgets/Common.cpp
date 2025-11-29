@@ -9,24 +9,190 @@
 #include <mutex>
 #include <optional>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace SP::UI::Declarative::Detail {
 namespace {
 
 template <typename Style>
+auto merge_style_overrides(Style const& existing, Style style) -> Style {
+    style.overrides = existing.overrides;
+    return style;
+}
+
+auto merge_style_overrides(BuilderWidgets::ButtonStyle const& existing,
+                           BuilderWidgets::ButtonStyle style)
+    -> BuilderWidgets::ButtonStyle {
+    using Field = BuilderWidgets::ButtonStyleOverrideField;
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::BackgroundColor)) {
+        style.background_color = existing.background_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::TextColor)) {
+        style.text_color = existing.text_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Typography)) {
+        style.typography = existing.typography;
+    }
+    style.overrides = existing.overrides;
+    return style;
+}
+
+auto merge_style_overrides(BuilderWidgets::ToggleStyle const& existing,
+                           BuilderWidgets::ToggleStyle style)
+    -> BuilderWidgets::ToggleStyle {
+    using Field = BuilderWidgets::ToggleStyleOverrideField;
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::TrackOff)) {
+        style.track_off_color = existing.track_off_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::TrackOn)) {
+        style.track_on_color = existing.track_on_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Thumb)) {
+        style.thumb_color = existing.thumb_color;
+    }
+    style.overrides = existing.overrides;
+    return style;
+}
+
+auto merge_style_overrides(BuilderWidgets::SliderStyle const& existing,
+                           BuilderWidgets::SliderStyle style)
+    -> BuilderWidgets::SliderStyle {
+    using Field = BuilderWidgets::SliderStyleOverrideField;
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Track)) {
+        style.track_color = existing.track_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Fill)) {
+        style.fill_color = existing.fill_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Thumb)) {
+        style.thumb_color = existing.thumb_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::LabelColor)) {
+        style.label_color = existing.label_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::LabelTypography)) {
+        style.label_typography = existing.label_typography;
+    }
+    style.overrides = existing.overrides;
+    return style;
+}
+
+auto merge_style_overrides(BuilderWidgets::ListStyle const& existing,
+                           BuilderWidgets::ListStyle style)
+    -> BuilderWidgets::ListStyle {
+    using Field = BuilderWidgets::ListStyleOverrideField;
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Background)) {
+        style.background_color = existing.background_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Border)) {
+        style.border_color = existing.border_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Item)) {
+        style.item_color = existing.item_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::ItemHover)) {
+        style.item_hover_color = existing.item_hover_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::ItemSelected)) {
+        style.item_selected_color = existing.item_selected_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Separator)) {
+        style.separator_color = existing.separator_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::ItemText)) {
+        style.item_text_color = existing.item_text_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::ItemTypography)) {
+        style.item_typography = existing.item_typography;
+    }
+    style.overrides = existing.overrides;
+    return style;
+}
+
+auto merge_style_overrides(BuilderWidgets::TreeStyle const& existing,
+                           BuilderWidgets::TreeStyle style)
+    -> BuilderWidgets::TreeStyle {
+    using Field = BuilderWidgets::TreeStyleOverrideField;
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Background)) {
+        style.background_color = existing.background_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Border)) {
+        style.border_color = existing.border_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Row)) {
+        style.row_color = existing.row_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::RowHover)) {
+        style.row_hover_color = existing.row_hover_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::RowSelected)) {
+        style.row_selected_color = existing.row_selected_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::RowDisabled)) {
+        style.row_disabled_color = existing.row_disabled_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Connector)) {
+        style.connector_color = existing.connector_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Toggle)) {
+        style.toggle_color = existing.toggle_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Text)) {
+        style.text_color = existing.text_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::LabelTypography)) {
+        style.label_typography = existing.label_typography;
+    }
+    style.overrides = existing.overrides;
+    return style;
+}
+
+auto merge_style_overrides(BuilderWidgets::TextFieldStyle const& existing,
+                           BuilderWidgets::TextFieldStyle style)
+    -> BuilderWidgets::TextFieldStyle {
+    using Field = BuilderWidgets::TextFieldStyleOverrideField;
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Background)) {
+        style.background_color = existing.background_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Border)) {
+        style.border_color = existing.border_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Text)) {
+        style.text_color = existing.text_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Placeholder)) {
+        style.placeholder_color = existing.placeholder_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Selection)) {
+        style.selection_color = existing.selection_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Composition)) {
+        style.composition_color = existing.composition_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Caret)) {
+        style.caret_color = existing.caret_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(existing.overrides, Field::Typography)) {
+        style.typography = existing.typography;
+    }
+    style.overrides = existing.overrides;
+    return style;
+}
+
+template <typename Style>
 auto write_theme_style(PathSpace& space,
                        std::string const& root,
                        Style style) -> SP::Expected<void> {
     auto existing = space.read<Style, std::string>(root + "/meta/style");
-    if (!existing) {
+    if (existing) {
+        style = merge_style_overrides(*existing, std::move(style));
+    } else {
         auto const& error = existing.error();
         if (error.code != SP::Error::Code::NoSuchPath
             && error.code != SP::Error::Code::NoObjectFound) {
             return std::unexpected(error);
         }
-    } else {
-        style.overrides = existing->overrides;
     }
     return write_style(space, root, style, /*track_overrides=*/false);
 }

@@ -64,6 +64,8 @@ Colors are clamped to `[0.0, 1.0]`, components use lowercase/underscore tokens, 
 
 Declarative widgets now serialize a bitmask alongside every `meta/style` payload so descriptor loaders know which palette/typography fields were explicitly overridden. The mask lives at `widgets/<id>/meta/style/overrides` (see `ButtonStyle::overrides`, etc. in `WidgetSharedTypes.hpp`) and uses widget-specific enums to label the bits. When a bit is **unset**, descriptors treat the stored value as a placeholder and resolve the final color/typography from the active theme before rendering. When a bit is **set**, the serialized value wins even if it differs from the theme.
 
+> **Serialization note (November 29, 2025):** Fragment helpers now zero unused palette fields (`{0,0,0,0}`) and reset typography blocks to an “inherit” sentinel before writing `/meta/style`. Only structural/layout metrics plus explicitly overridden palette/typography values survive serialization; theme colors are injected later by the descriptor/theme merge. This keeps backing storage lean and makes it trivial to detect override intent.
+
 Current masks (bit indices are defined in the matching `*StyleOverrideField` enums):
 
 | Widget | Bits |
