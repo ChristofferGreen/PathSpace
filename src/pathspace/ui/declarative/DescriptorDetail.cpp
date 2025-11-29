@@ -196,6 +196,68 @@ auto ApplyThemeToTreeStyle(BuilderWidgets::TreeStyle style,
     return style;
 }
 
+auto ApplyThemeToTextFieldStyle(BuilderWidgets::TextFieldStyle style,
+                                BuilderWidgets::TextFieldStyle const& theme_style)
+    -> BuilderWidgets::TextFieldStyle {
+    using Field = BuilderWidgets::TextFieldStyleOverrideField;
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Background)) {
+        style.background_color = theme_style.background_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Border)) {
+        style.border_color = theme_style.border_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Text)) {
+        style.text_color = theme_style.text_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Placeholder)) {
+        style.placeholder_color = theme_style.placeholder_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Selection)) {
+        style.selection_color = theme_style.selection_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Composition)) {
+        style.composition_color = theme_style.composition_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Caret)) {
+        style.caret_color = theme_style.caret_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Typography)) {
+        style.typography = theme_style.typography;
+    }
+    return style;
+}
+
+[[maybe_unused]] auto ApplyThemeToTextAreaStyle(BuilderWidgets::TextAreaStyle style,
+                                               BuilderWidgets::TextAreaStyle const& theme_style)
+    -> BuilderWidgets::TextAreaStyle {
+    using Field = BuilderWidgets::TextAreaStyleOverrideField;
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Background)) {
+        style.background_color = theme_style.background_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Border)) {
+        style.border_color = theme_style.border_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Text)) {
+        style.text_color = theme_style.text_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Placeholder)) {
+        style.placeholder_color = theme_style.placeholder_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Selection)) {
+        style.selection_color = theme_style.selection_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Composition)) {
+        style.composition_color = theme_style.composition_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Caret)) {
+        style.caret_color = theme_style.caret_color;
+    }
+    if (!BuilderWidgets::HasStyleOverride(style.overrides, Field::Typography)) {
+        style.typography = theme_style.typography;
+    }
+    return style;
+}
+
 } // namespace
 
 auto MakeDescriptorError(std::string message, SP::Error::Code code) -> SP::Error {
@@ -533,8 +595,17 @@ auto ReadInputFieldDescriptor(PathSpace& space,
     -> SP::Expected<InputFieldDescriptor> {
     auto root = widget.getPath();
     InputFieldDescriptor descriptor{};
-    descriptor.style = theme.text_field;
     descriptor.state = BuilderWidgets::TextFieldState{};
+
+    auto style_value = ReadOptionalValue<BuilderWidgets::TextFieldStyle>(space, root + "/meta/style");
+    if (!style_value) {
+        return std::unexpected(style_value.error());
+    }
+    if (style_value->has_value()) {
+        descriptor.style = ApplyThemeToTextFieldStyle(**style_value, theme.text_field);
+    } else {
+        descriptor.style = theme.text_field;
+    }
 
     auto text = ReadOptionalValue<std::string>(space, root + "/state/text");
     if (!text) {

@@ -14,6 +14,7 @@
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 namespace Declarative = SP::UI::Declarative;
 namespace BuilderWidgets = SP::UI::Runtime::Widgets;
+namespace DetailNS = SP::UI::Declarative::Detail;
 
 namespace {
 
@@ -349,6 +350,61 @@ TEST_CASE("List descriptor layers theme defaults with serialized overrides") {
         CHECK_EQ(data.style.item_text_color[1], doctest::Approx(0.94f));
         CHECK_EQ(data.style.background_color[0], doctest::Approx(theme.list.background_color[0]));
     }
+}
+
+TEST_CASE("InputField descriptor inherits text field theme colors by default") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    Declarative::InputField::Args args{};
+    args.text = "Theme aware";
+    auto input = Declarative::InputField::Create(fx.space,
+                                                fx.parent_view(),
+                                                "input_theme",
+                                                std::move(args));
+    REQUIRE(input.has_value());
+
+    auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *input);
+    REQUIRE(descriptor.has_value());
+    REQUIRE(descriptor->kind == Declarative::WidgetKind::InputField);
+    auto const& data = std::get<Declarative::InputFieldDescriptor>(descriptor->data);
+
+    CHECK_EQ(data.style.background_color[0],
+             doctest::Approx(theme.text_field.background_color[0]));
+    CHECK_EQ(data.style.text_color[0], doctest::Approx(theme.text_field.text_color[0]));
+    CHECK_EQ(data.style.placeholder_color[0],
+             doctest::Approx(theme.text_field.placeholder_color[0]));
+}
+
+TEST_CASE("InputField descriptor preserves explicit text color overrides") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    Declarative::InputField::Args args{};
+    args.text = "Override";
+    auto input = Declarative::InputField::Create(fx.space,
+                                                fx.parent_view(),
+                                                "input_override",
+                                                std::move(args));
+    REQUIRE(input.has_value());
+
+    BuilderWidgets::TextFieldStyle custom = theme.text_field;
+    custom.text_color = {0.25f, 0.73f, 0.52f, 1.0f};
+    BuilderWidgets::UpdateOverrides(custom);
+    auto style_path = input->getPath() + "/meta/style";
+    auto replaced = DetailNS::replace_single(fx.space, style_path, custom);
+    REQUIRE(replaced.has_value());
+
+    auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *input);
+    REQUIRE(descriptor.has_value());
+    auto const& data = std::get<Declarative::InputFieldDescriptor>(descriptor->data);
+
+    CHECK_EQ(data.style.text_color[0], doctest::Approx(custom.text_color[0]));
+    CHECK_EQ(data.style.text_color[1], doctest::Approx(custom.text_color[1]));
+    CHECK_EQ(data.style.placeholder_color[0],
+             doctest::Approx(theme.text_field.placeholder_color[0]));
+    CHECK_EQ(data.style.background_color[0],
+             doctest::Approx(theme.text_field.background_color[0]));
 }
 
 TEST_CASE("Theme::RebuildValue replays manual color edits") {

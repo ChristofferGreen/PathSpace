@@ -22,7 +22,7 @@
 | --- | --- | --- |
 | Fragment builders (`Button::Fragment`, etc.) | Serialize only structural/layout data plus explicit overrides; palette/typography lanes are zeroed unless an override bit is set. | ✅ Step 1–2 shipped; serialized blobs remain lean and easy to diff. |
 | Runtime rewrite (`apply_theme_defaults`) | Removed November 29, 2025 — fragments no longer trigger an immediate `/meta/style` rewrite. | ✅ Eliminated the redundant write; descriptors now own theme layering. |
-| Descriptor loading (`DescriptorDetail::Read*`) | Buttons/toggles/sliders/lists/trees load the resolved `WidgetTheme` and layer serialized overrides; text inputs still rely on baked colors. | Extend the merge helpers to TextField/TextArea descriptors and make sure renderer caches drop assumptions about pre-resolved palettes. |
+| Descriptor loading (`DescriptorDetail::Read*`) | Buttons/toggles/sliders/lists/trees and the declarative InputField now load the resolved `WidgetTheme` and layer serialized overrides. | Wire the same helper into future TextArea descriptors and make sure renderer caches drop assumptions about pre-resolved palettes. |
 | Tests/examples | Many fixtures still inspect literal colors in `/meta/style`. | Update samples/tests to assert against descriptors/theme-aware outputs instead of serialized blobs; expand coverage beyond buttons/lists. |
 
 ## Proposed Architecture
@@ -42,7 +42,7 @@
 
 ### Phase 2 — Descriptor & Renderer Merge
 1. Extend `DescriptorDetail::ResolveThemeForWidget` to return both the `WidgetTheme` and the canonical theme name. ✅ (`ThemeContext` already exposes both.)
-2. In each `Read*Descriptor`, start from the `WidgetTheme` style and merge serialized overrides (respecting the override mask). Colors that were not serialized remain theme-provided. ✅ for buttons/toggles/sliders/lists/trees; TODO: fold text inputs (InputField/TextArea) and any upcoming widgets into the shared helper.
+2. In each `Read*Descriptor`, start from the `WidgetTheme` style and merge serialized overrides (respecting the override mask). Colors that were not serialized remain theme-provided. ✅ Buttons/toggles/sliders/lists/trees/InputField now share the helper; TextArea will inherit it when the declarative widget ships.
 3. Remove `ApplyThemeOverride` (done) and ensure no downstream cache re-applies themes on top of descriptor output.
 4. Update renderer buckets and widget-event helpers so they no longer assume `/meta/style` contains fully-resolved colors.
 
@@ -58,7 +58,7 @@
 4. Monitor the CI loop (especially screenshot baselines) because palette changes will finally show up; update baselines as needed.
 
 ## Remaining TODOs (November 29, 2025)
-- **Descriptor coverage** — Extend the theme-merge helper to text input widgets (InputField/TextField/TextArea) and any future declarative widgets so `/meta/style` never ships baked colors anywhere in the stack.
+- **TextArea descriptor coverage** — Add the theme-merge helper once the declarative TextArea lands so `/meta/style` stays sparse there as well.
 - **Renderer/event helpers** — Update renderer buckets, dirty-hint emitters, and widget-event helpers to drop any assumptions about palette-resolved `/meta/style` data (Phase 2 Step 4).
 - **Docs & samples** — Continue auditing samples/tests so they assert against descriptor/theme outputs instead of serialized colors; finish the Phase 3 doc refresh once renderer work lands.
 - **Test matrix** — Broaden `tests/ui/test_DeclarativeTheme.cpp` to cover toggles, sliders, trees, text inputs, and regression scenarios for layout overrides (Phase 4 Steps 1–2).
