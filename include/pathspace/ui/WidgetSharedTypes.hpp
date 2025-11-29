@@ -23,6 +23,8 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -128,6 +130,51 @@ struct TypographyStyle {
     std::uint64_t font_asset_fingerprint = 0;
 };
 
+inline auto operator==(TypographyStyle const& lhs, TypographyStyle const& rhs) -> bool {
+    return lhs.font_size == rhs.font_size
+        && lhs.line_height == rhs.line_height
+        && lhs.letter_spacing == rhs.letter_spacing
+        && lhs.baseline_shift == rhs.baseline_shift
+        && lhs.font_family == rhs.font_family
+        && lhs.font_style == rhs.font_style
+        && lhs.font_weight == rhs.font_weight
+        && lhs.language == rhs.language
+        && lhs.direction == rhs.direction
+        && lhs.fallback_families == rhs.fallback_families
+        && lhs.font_features == rhs.font_features
+        && lhs.font_resource_root == rhs.font_resource_root
+        && lhs.font_active_revision == rhs.font_active_revision
+        && lhs.font_asset_fingerprint == rhs.font_asset_fingerprint;
+}
+
+inline auto operator!=(TypographyStyle const& lhs, TypographyStyle const& rhs) -> bool {
+    return !(lhs == rhs);
+}
+
+using StyleOverrideMask = std::uint32_t;
+
+template <typename Enum>
+constexpr auto StyleOverrideBit(Enum field) -> StyleOverrideMask {
+    static_assert(std::is_enum_v<Enum>, "Style override helpers require enum types.");
+    return StyleOverrideMask{1u << static_cast<std::uint32_t>(field)};
+}
+
+template <typename Enum>
+constexpr auto SetStyleOverride(StyleOverrideMask& mask, Enum field) -> void {
+    mask |= StyleOverrideBit(field);
+}
+
+template <typename Enum>
+[[nodiscard]] constexpr auto HasStyleOverride(StyleOverrideMask mask, Enum field) -> bool {
+    return (mask & StyleOverrideBit(field)) != 0;
+}
+
+enum class ButtonStyleOverrideField : std::uint8_t {
+    BackgroundColor = 0,
+    TextColor = 1,
+    Typography = 2,
+};
+
 struct ButtonStyle {
     float width = 200.0f;
     float height = 48.0f;
@@ -135,7 +182,22 @@ struct ButtonStyle {
     std::array<float, 4> background_color{0.176f, 0.353f, 0.914f, 1.0f};
     std::array<float, 4> text_color{1.0f, 1.0f, 1.0f, 1.0f};
     TypographyStyle typography{};
+    StyleOverrideMask overrides = 0;
 };
+
+inline auto UpdateOverrides(ButtonStyle& style) -> void {
+    ButtonStyle defaults{};
+    style.overrides = 0;
+    if (style.background_color != defaults.background_color) {
+        SetStyleOverride(style.overrides, ButtonStyleOverrideField::BackgroundColor);
+    }
+    if (style.text_color != defaults.text_color) {
+        SetStyleOverride(style.overrides, ButtonStyleOverrideField::TextColor);
+    }
+    if (style.typography != defaults.typography) {
+        SetStyleOverride(style.overrides, ButtonStyleOverrideField::Typography);
+    }
+}
 
 struct ButtonState {
     bool enabled = true;
@@ -175,7 +237,28 @@ struct ToggleStyle {
     std::array<float, 4> track_off_color{0.75f, 0.75f, 0.78f, 1.0f};
     std::array<float, 4> track_on_color{0.176f, 0.353f, 0.914f, 1.0f};
     std::array<float, 4> thumb_color{1.0f, 1.0f, 1.0f, 1.0f};
+    StyleOverrideMask overrides = 0;
 };
+
+enum class ToggleStyleOverrideField : std::uint8_t {
+    TrackOff = 0,
+    TrackOn = 1,
+    Thumb = 2,
+};
+
+inline auto UpdateOverrides(ToggleStyle& style) -> void {
+    ToggleStyle defaults{};
+    style.overrides = 0;
+    if (style.track_off_color != defaults.track_off_color) {
+        SetStyleOverride(style.overrides, ToggleStyleOverrideField::TrackOff);
+    }
+    if (style.track_on_color != defaults.track_on_color) {
+        SetStyleOverride(style.overrides, ToggleStyleOverrideField::TrackOn);
+    }
+    if (style.thumb_color != defaults.thumb_color) {
+        SetStyleOverride(style.overrides, ToggleStyleOverrideField::Thumb);
+    }
+}
 
 struct ToggleState {
     bool enabled = true;
@@ -336,7 +419,36 @@ struct SliderStyle {
         .letter_spacing = 1.0f,
         .baseline_shift = 0.0f,
     };
+    StyleOverrideMask overrides = 0;
 };
+
+enum class SliderStyleOverrideField : std::uint8_t {
+    Track = 0,
+    Fill = 1,
+    Thumb = 2,
+    LabelColor = 3,
+    LabelTypography = 4,
+};
+
+inline auto UpdateOverrides(SliderStyle& style) -> void {
+    SliderStyle defaults{};
+    style.overrides = 0;
+    if (style.track_color != defaults.track_color) {
+        SetStyleOverride(style.overrides, SliderStyleOverrideField::Track);
+    }
+    if (style.fill_color != defaults.fill_color) {
+        SetStyleOverride(style.overrides, SliderStyleOverrideField::Fill);
+    }
+    if (style.thumb_color != defaults.thumb_color) {
+        SetStyleOverride(style.overrides, SliderStyleOverrideField::Thumb);
+    }
+    if (style.label_color != defaults.label_color) {
+        SetStyleOverride(style.overrides, SliderStyleOverrideField::LabelColor);
+    }
+    if (style.label_typography != defaults.label_typography) {
+        SetStyleOverride(style.overrides, SliderStyleOverrideField::LabelTypography);
+    }
+}
 
 struct SliderState {
     bool enabled = true;
@@ -405,7 +517,48 @@ struct ListStyle {
         .letter_spacing = 1.0f,
         .baseline_shift = 0.0f,
     };
+    StyleOverrideMask overrides = 0;
 };
+
+enum class ListStyleOverrideField : std::uint8_t {
+    Background = 0,
+    Border = 1,
+    Item = 2,
+    ItemHover = 3,
+    ItemSelected = 4,
+    Separator = 5,
+    ItemText = 6,
+    ItemTypography = 7,
+};
+
+inline auto UpdateOverrides(ListStyle& style) -> void {
+    ListStyle defaults{};
+    style.overrides = 0;
+    if (style.background_color != defaults.background_color) {
+        SetStyleOverride(style.overrides, ListStyleOverrideField::Background);
+    }
+    if (style.border_color != defaults.border_color) {
+        SetStyleOverride(style.overrides, ListStyleOverrideField::Border);
+    }
+    if (style.item_color != defaults.item_color) {
+        SetStyleOverride(style.overrides, ListStyleOverrideField::Item);
+    }
+    if (style.item_hover_color != defaults.item_hover_color) {
+        SetStyleOverride(style.overrides, ListStyleOverrideField::ItemHover);
+    }
+    if (style.item_selected_color != defaults.item_selected_color) {
+        SetStyleOverride(style.overrides, ListStyleOverrideField::ItemSelected);
+    }
+    if (style.separator_color != defaults.separator_color) {
+        SetStyleOverride(style.overrides, ListStyleOverrideField::Separator);
+    }
+    if (style.item_text_color != defaults.item_text_color) {
+        SetStyleOverride(style.overrides, ListStyleOverrideField::ItemText);
+    }
+    if (style.item_typography != defaults.item_typography) {
+        SetStyleOverride(style.overrides, ListStyleOverrideField::ItemTypography);
+    }
+}
 
 struct ListItem {
     std::string id;
@@ -517,7 +670,56 @@ struct TreeStyle {
         .letter_spacing = 0.8f,
         .baseline_shift = 0.0f,
     };
+    StyleOverrideMask overrides = 0;
 };
+
+enum class TreeStyleOverrideField : std::uint8_t {
+    Background = 0,
+    Border = 1,
+    Row = 2,
+    RowHover = 3,
+    RowSelected = 4,
+    RowDisabled = 5,
+    Connector = 6,
+    Toggle = 7,
+    Text = 8,
+    LabelTypography = 9,
+};
+
+inline auto UpdateOverrides(TreeStyle& style) -> void {
+    TreeStyle defaults{};
+    style.overrides = 0;
+    if (style.background_color != defaults.background_color) {
+        SetStyleOverride(style.overrides, TreeStyleOverrideField::Background);
+    }
+    if (style.border_color != defaults.border_color) {
+        SetStyleOverride(style.overrides, TreeStyleOverrideField::Border);
+    }
+    if (style.row_color != defaults.row_color) {
+        SetStyleOverride(style.overrides, TreeStyleOverrideField::Row);
+    }
+    if (style.row_hover_color != defaults.row_hover_color) {
+        SetStyleOverride(style.overrides, TreeStyleOverrideField::RowHover);
+    }
+    if (style.row_selected_color != defaults.row_selected_color) {
+        SetStyleOverride(style.overrides, TreeStyleOverrideField::RowSelected);
+    }
+    if (style.row_disabled_color != defaults.row_disabled_color) {
+        SetStyleOverride(style.overrides, TreeStyleOverrideField::RowDisabled);
+    }
+    if (style.connector_color != defaults.connector_color) {
+        SetStyleOverride(style.overrides, TreeStyleOverrideField::Connector);
+    }
+    if (style.toggle_color != defaults.toggle_color) {
+        SetStyleOverride(style.overrides, TreeStyleOverrideField::Toggle);
+    }
+    if (style.text_color != defaults.text_color) {
+        SetStyleOverride(style.overrides, TreeStyleOverrideField::Text);
+    }
+    if (style.label_typography != defaults.label_typography) {
+        SetStyleOverride(style.overrides, TreeStyleOverrideField::LabelTypography);
+    }
+}
 
 struct TreeNode {
     std::string id;
@@ -769,7 +971,48 @@ struct TextFieldStyle {
         .baseline_shift = 0.0f,
     };
     bool submit_on_enter = true;
+    StyleOverrideMask overrides = 0;
 };
+
+enum class TextFieldStyleOverrideField : std::uint8_t {
+    Background = 0,
+    Border = 1,
+    Text = 2,
+    Placeholder = 3,
+    Selection = 4,
+    Composition = 5,
+    Caret = 6,
+    Typography = 7,
+};
+
+inline auto UpdateOverrides(TextFieldStyle& style) -> void {
+    TextFieldStyle defaults{};
+    style.overrides = 0;
+    if (style.background_color != defaults.background_color) {
+        SetStyleOverride(style.overrides, TextFieldStyleOverrideField::Background);
+    }
+    if (style.border_color != defaults.border_color) {
+        SetStyleOverride(style.overrides, TextFieldStyleOverrideField::Border);
+    }
+    if (style.text_color != defaults.text_color) {
+        SetStyleOverride(style.overrides, TextFieldStyleOverrideField::Text);
+    }
+    if (style.placeholder_color != defaults.placeholder_color) {
+        SetStyleOverride(style.overrides, TextFieldStyleOverrideField::Placeholder);
+    }
+    if (style.selection_color != defaults.selection_color) {
+        SetStyleOverride(style.overrides, TextFieldStyleOverrideField::Selection);
+    }
+    if (style.composition_color != defaults.composition_color) {
+        SetStyleOverride(style.overrides, TextFieldStyleOverrideField::Composition);
+    }
+    if (style.caret_color != defaults.caret_color) {
+        SetStyleOverride(style.overrides, TextFieldStyleOverrideField::Caret);
+    }
+    if (style.typography != defaults.typography) {
+        SetStyleOverride(style.overrides, TextFieldStyleOverrideField::Typography);
+    }
+}
 
 struct TextAreaStyle {
     float width = 320.0f;
@@ -794,7 +1037,48 @@ struct TextAreaStyle {
     float min_height = 160.0f;
     float line_spacing = 6.0f;
     bool wrap_lines = true;
+    StyleOverrideMask overrides = 0;
 };
+
+enum class TextAreaStyleOverrideField : std::uint8_t {
+    Background = 0,
+    Border = 1,
+    Text = 2,
+    Placeholder = 3,
+    Selection = 4,
+    Composition = 5,
+    Caret = 6,
+    Typography = 7,
+};
+
+inline auto UpdateOverrides(TextAreaStyle& style) -> void {
+    TextAreaStyle defaults{};
+    style.overrides = 0;
+    if (style.background_color != defaults.background_color) {
+        SetStyleOverride(style.overrides, TextAreaStyleOverrideField::Background);
+    }
+    if (style.border_color != defaults.border_color) {
+        SetStyleOverride(style.overrides, TextAreaStyleOverrideField::Border);
+    }
+    if (style.text_color != defaults.text_color) {
+        SetStyleOverride(style.overrides, TextAreaStyleOverrideField::Text);
+    }
+    if (style.placeholder_color != defaults.placeholder_color) {
+        SetStyleOverride(style.overrides, TextAreaStyleOverrideField::Placeholder);
+    }
+    if (style.selection_color != defaults.selection_color) {
+        SetStyleOverride(style.overrides, TextAreaStyleOverrideField::Selection);
+    }
+    if (style.composition_color != defaults.composition_color) {
+        SetStyleOverride(style.overrides, TextAreaStyleOverrideField::Composition);
+    }
+    if (style.caret_color != defaults.caret_color) {
+        SetStyleOverride(style.overrides, TextAreaStyleOverrideField::Caret);
+    }
+    if (style.typography != defaults.typography) {
+        SetStyleOverride(style.overrides, TextAreaStyleOverrideField::Typography);
+    }
+}
 
 struct TextFieldState {
     bool enabled = true;

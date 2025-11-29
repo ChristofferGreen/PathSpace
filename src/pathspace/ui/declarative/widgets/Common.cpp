@@ -14,6 +14,23 @@
 namespace SP::UI::Declarative::Detail {
 namespace {
 
+template <typename Style>
+auto write_theme_style(PathSpace& space,
+                       std::string const& root,
+                       Style style) -> SP::Expected<void> {
+    auto existing = space.read<Style, std::string>(root + "/meta/style");
+    if (!existing) {
+        auto const& error = existing.error();
+        if (error.code != SP::Error::Code::NoSuchPath
+            && error.code != SP::Error::Code::NoObjectFound) {
+            return std::unexpected(error);
+        }
+    } else {
+        style.overrides = existing->overrides;
+    }
+    return write_style(space, root, style, /*track_overrides=*/false);
+}
+
 auto apply_theme_defaults(PathSpace& space,
                           std::string const& root,
                           WidgetKind kind) -> SP::Expected<void> {
@@ -24,23 +41,19 @@ auto apply_theme_defaults(PathSpace& space,
         return std::unexpected(theme.error());
     }
 
-    auto write_button_style = [&](auto const& style) -> SP::Expected<void> {
-        return write_style(space, root, style);
-    };
-
     switch (kind) {
     case WidgetKind::Button:
-        return write_button_style(theme->theme.button);
+        return write_theme_style(space, root, theme->theme.button);
     case WidgetKind::Toggle:
-        return write_button_style(theme->theme.toggle);
+        return write_theme_style(space, root, theme->theme.toggle);
     case WidgetKind::Slider:
-        return write_button_style(theme->theme.slider);
+        return write_theme_style(space, root, theme->theme.slider);
     case WidgetKind::List:
-        return write_button_style(theme->theme.list);
+        return write_theme_style(space, root, theme->theme.list);
     case WidgetKind::Tree:
-        return write_button_style(theme->theme.tree);
+        return write_theme_style(space, root, theme->theme.tree);
     case WidgetKind::InputField:
-        return write_button_style(theme->theme.text_field);
+        return write_theme_style(space, root, theme->theme.text_field);
     default:
         break;
     }

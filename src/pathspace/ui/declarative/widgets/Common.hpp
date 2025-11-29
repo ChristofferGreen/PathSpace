@@ -24,6 +24,60 @@ inline auto ensure_child_name(std::string_view name) -> SP::Expected<void> {
 auto make_path(std::string base, std::string_view component) -> std::string;
 auto mount_base(std::string_view parent, MountOptions const& options) -> std::string;
 
+template <typename Style>
+inline auto prepare_style_for_serialization(Style const& style) -> Style {
+    return style;
+}
+
+inline auto prepare_style_for_serialization(BuilderWidgets::ButtonStyle const& style)
+    -> BuilderWidgets::ButtonStyle {
+    auto prepared = style;
+    BuilderWidgets::UpdateOverrides(prepared);
+    return prepared;
+}
+
+inline auto prepare_style_for_serialization(BuilderWidgets::ToggleStyle const& style)
+    -> BuilderWidgets::ToggleStyle {
+    auto prepared = style;
+    BuilderWidgets::UpdateOverrides(prepared);
+    return prepared;
+}
+
+inline auto prepare_style_for_serialization(BuilderWidgets::SliderStyle const& style)
+    -> BuilderWidgets::SliderStyle {
+    auto prepared = style;
+    BuilderWidgets::UpdateOverrides(prepared);
+    return prepared;
+}
+
+inline auto prepare_style_for_serialization(BuilderWidgets::ListStyle const& style)
+    -> BuilderWidgets::ListStyle {
+    auto prepared = style;
+    BuilderWidgets::UpdateOverrides(prepared);
+    return prepared;
+}
+
+inline auto prepare_style_for_serialization(BuilderWidgets::TreeStyle const& style)
+    -> BuilderWidgets::TreeStyle {
+    auto prepared = style;
+    BuilderWidgets::UpdateOverrides(prepared);
+    return prepared;
+}
+
+inline auto prepare_style_for_serialization(BuilderWidgets::TextFieldStyle const& style)
+    -> BuilderWidgets::TextFieldStyle {
+    auto prepared = style;
+    BuilderWidgets::UpdateOverrides(prepared);
+    return prepared;
+}
+
+inline auto prepare_style_for_serialization(BuilderWidgets::TextAreaStyle const& style)
+    -> BuilderWidgets::TextAreaStyle {
+    auto prepared = style;
+    BuilderWidgets::UpdateOverrides(prepared);
+    return prepared;
+}
+
 template <typename T>
 inline auto write_value(PathSpace& space,
                         std::string const& path,
@@ -44,8 +98,10 @@ inline auto write_state(PathSpace& space,
 template <typename Style>
 inline auto write_style(PathSpace& space,
                         std::string const& root,
-                        Style const& style) -> SP::Expected<void> {
-    return write_value(space, root + "/meta/style", style);
+                        Style const& style,
+                        bool track_overrides = true) -> SP::Expected<void> {
+    auto serialized = track_overrides ? prepare_style_for_serialization(style) : style;
+    return write_value(space, root + "/meta/style", serialized);
 }
 
 auto write_kind(PathSpace& space,

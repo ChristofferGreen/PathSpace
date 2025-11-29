@@ -186,6 +186,40 @@ TEST_CASE("WidgetDescriptor reproduces button bucket") {
     CHECK(bucket->command_kinds == reference.command_kinds);
 }
 
+TEST_CASE("Button styles record explicit override intent") {
+    DeclarativeFixture fx;
+
+    SUBCASE("Default style has no overrides") {
+        Button::Args args{};
+        args.label = "Default";
+        auto widget =
+            Button::Create(fx.space, fx.parent_view(), "default_button", args);
+        REQUIRE(widget.has_value());
+        auto style =
+            fx.space.read<WidgetsNS::ButtonStyle, std::string>(widget->getPath()
+                                                               + "/meta/style");
+        REQUIRE(style.has_value());
+        CHECK_EQ(style->overrides, 0);
+    }
+
+    SUBCASE("Custom colors set the override mask") {
+        Button::Args args{};
+        args.label = "Custom";
+        args.style.background_color = {0.05f, 0.2f, 0.6f, 1.0f};
+        auto widget =
+            Button::Create(fx.space, fx.parent_view(), "custom_button", args);
+        REQUIRE(widget.has_value());
+        auto style =
+            fx.space.read<WidgetsNS::ButtonStyle, std::string>(widget->getPath()
+                                                               + "/meta/style");
+        REQUIRE(style.has_value());
+        CHECK(HasStyleOverride(style->overrides,
+                               WidgetsNS::ButtonStyleOverrideField::BackgroundColor));
+        CHECK_FALSE(HasStyleOverride(style->overrides,
+                                     WidgetsNS::ButtonStyleOverrideField::TextColor));
+    }
+}
+
 TEST_CASE("WidgetDescriptor reproduces slider bucket") {
     DeclarativeFixture fx;
     Slider::Args args{};

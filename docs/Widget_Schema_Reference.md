@@ -60,6 +60,24 @@ Supported color tokens:
 
 Colors are clamped to `[0.0, 1.0]`, components use lowercase/underscore tokens, and invalid components yield `Error::InvalidPath`.
 
+### Style override masks (November 29, 2025)
+
+Declarative widgets now serialize a bitmask alongside every `meta/style` payload so descriptor loaders know which palette/typography fields were explicitly overridden. The mask lives at `widgets/<id>/meta/style/overrides` (see `ButtonStyle::overrides`, etc. in `WidgetSharedTypes.hpp`) and uses widget-specific enums to label the bits. When a bit is **unset**, descriptors treat the stored value as a placeholder and resolve the final color/typography from the active theme before rendering. When a bit is **set**, the serialized value wins even if it differs from the theme.
+
+Current masks (bit indices are defined in the matching `*StyleOverrideField` enums):
+
+| Widget | Bits |
+| --- | --- |
+| Button | `background_color`, `text_color`, `typography` |
+| Toggle | `track_off_color`, `track_on_color`, `thumb_color` |
+| Slider | `track_color`, `fill_color`, `thumb_color`, `label_color`, `label_typography` |
+| List | `background_color`, `border_color`, `item_color`, `item_hover_color`, `item_selected_color`, `separator_color`, `item_text_color`, `item_typography` |
+| Tree | `background_color`, `border_color`, `row_color`, `row_hover_color`, `row_selected_color`, `row_disabled_color`, `connector_color`, `toggle_color`, `text_color`, `label_typography` |
+| TextField | `background_color`, `border_color`, `text_color`, `placeholder_color`, `selection_color`, `composition_color`, `caret_color`, `typography` |
+| TextArea | Same bits as `TextField` (`background_color` through `typography`) |
+
+Fragments automatically populate the mask when they serialize a style, so downstream code no longer needs to bake the active theme into the payload just to get correct colors.
+
 ## Common widget nodes
 
 These nodes exist under every declarative widget root (`widgets/<widget-id>/…`).
