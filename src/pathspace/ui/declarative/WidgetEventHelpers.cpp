@@ -3,6 +3,8 @@
 #include "WidgetStateMutators.hpp"
 #include "widgets/Common.hpp"
 
+#include "DescriptorDetail.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -17,6 +19,7 @@
 namespace SP::UI::Declarative {
 
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
+namespace DescriptorHelpers = SP::UI::Declarative::DescriptorDetail;
 
 auto now_ns() -> std::uint64_t {
     auto now = std::chrono::steady_clock::now().time_since_epoch();
@@ -57,6 +60,19 @@ auto mark_widget_dirty(PathSpace& space, std::string const& widget_path) -> void
 
 auto read_slider_data(PathSpace& space, std::string const& widget_path)
     -> std::optional<SliderData> {
+    auto widget = SP::UI::Runtime::WidgetPath{widget_path};
+    if (auto theme = DescriptorHelpers::ResolveThemeForWidget(space, widget)) {
+        auto descriptor = DescriptorHelpers::ReadSliderDescriptor(space, widget_path, theme->theme);
+        if (descriptor) {
+            SliderData data{};
+            data.state = descriptor->state;
+            data.style = descriptor->style;
+            data.range = descriptor->range;
+            return data;
+        }
+        enqueue_error(space, "WidgetEventTrellis failed to read slider descriptor for " + widget_path);
+    }
+
     SliderData data{};
     auto state = space.read<BuilderWidgets::SliderState, std::string>(widget_path + "/state");
     if (!state) {
@@ -110,6 +126,19 @@ auto update_slider_hover(PathSpace& space,
 
 auto read_list_data(PathSpace& space, std::string const& widget_path)
     -> std::optional<ListData> {
+    auto widget = SP::UI::Runtime::WidgetPath{widget_path};
+    if (auto theme = DescriptorHelpers::ResolveThemeForWidget(space, widget)) {
+        auto descriptor = DescriptorHelpers::ReadListDescriptor(space, widget_path, theme->theme);
+        if (descriptor) {
+            ListData data{};
+            data.state = descriptor->state;
+            data.style = descriptor->style;
+            data.items = descriptor->items;
+            return data;
+        }
+        enqueue_error(space, "WidgetEventTrellis failed to read list descriptor for " + widget_path);
+    }
+
     ListData data{};
     auto state = space.read<BuilderWidgets::ListState, std::string>(widget_path + "/state");
     if (!state) {
@@ -133,6 +162,19 @@ auto read_list_data(PathSpace& space, std::string const& widget_path)
 }
 
 auto read_tree_data(PathSpace& space, std::string const& widget_path) -> std::optional<TreeData> {
+    auto widget = SP::UI::Runtime::WidgetPath{widget_path};
+    if (auto theme = DescriptorHelpers::ResolveThemeForWidget(space, widget)) {
+        auto descriptor = DescriptorHelpers::ReadTreeDescriptor(space, widget_path, theme->theme);
+        if (descriptor) {
+            TreeData data{};
+            data.state = descriptor->state;
+            data.style = descriptor->style;
+            data.nodes = descriptor->nodes;
+            return data;
+        }
+        enqueue_error(space, "WidgetEventTrellis failed to read tree descriptor for " + widget_path);
+    }
+
     TreeData data{};
     auto state = space.read<BuilderWidgets::TreeState, std::string>(widget_path + "/state");
     if (!state) {

@@ -183,6 +183,10 @@ software readbacks fail.
     `WidgetTheme`, and fill in palette/typography values for any fields whose
     override bits are unset. Explicit overrides still win, and `/meta/style`
     stays compact even after the widget has rendered.
+  - Widget event routing (Hover/Press/Drag) now resolves the active theme +
+    descriptor before computing slider/list/tree geometry, so pointer/focus math
+    uses the same theme-resolved dimensions/colors the renderer consumes even
+    when `/meta/style` only stores overrides.
   - Whenever you add a new override bit, update the descriptor merge helper,
     schema docs, and regression tests so contributors know how to opt into
     bespoke colors.

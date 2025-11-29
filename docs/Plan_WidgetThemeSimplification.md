@@ -44,7 +44,7 @@
 1. Extend `DescriptorDetail::ResolveThemeForWidget` to return both the `WidgetTheme` and the canonical theme name. ✅ (`ThemeContext` already exposes both.)
 2. In each `Read*Descriptor`, start from the `WidgetTheme` style and merge serialized overrides (respecting the override mask). Colors that were not serialized remain theme-provided. ✅ Buttons/toggles/sliders/lists/trees/InputField now share the helper; TextArea will inherit it when the declarative widget ships.
 3. Remove `ApplyThemeOverride` (done) and ensure no downstream cache re-applies themes on top of descriptor output.
-4. Update renderer buckets and widget-event helpers so they no longer assume `/meta/style` contains fully-resolved colors.
+4. Update renderer buckets and widget-event helpers so they no longer assume `/meta/style` contains fully-resolved colors. ✅ (November 29, 2025) Declarative descriptor/bucket plumbing already consumes theme-resolved styles, and WidgetEventHelpers now resolve the active theme + descriptor before computing slider/list/tree interactions, so the live pointer/focus math no longer depends on serialized palette data.
 
 ### Phase 3 — API & Content Updates
 1. Update `include/pathspace/ui/declarative/Widgets.hpp` so `Args` structs expose explicit override helpers (e.g., `Args::style_override` or setters that mark fields as intentional overrides).
@@ -59,7 +59,6 @@
 
 ## Remaining TODOs (November 29, 2025)
 - **TextArea descriptor coverage** — Add the theme-merge helper once the declarative TextArea lands so `/meta/style` stays sparse there as well.
-- **Renderer/event helpers** — Update renderer buckets, dirty-hint emitters, and widget-event helpers to drop any assumptions about palette-resolved `/meta/style` data (Phase 2 Step 4).
 - **Docs & samples** — Continue auditing samples/tests so they assert against descriptor/theme outputs instead of serialized colors; finish the Phase 3 doc refresh once renderer work lands.
 - **Test matrix** — Broaden `tests/ui/test_DeclarativeTheme.cpp` to cover toggles, sliders, trees, text inputs, and regression scenarios for layout overrides (Phase 4 Steps 1–2).
 
