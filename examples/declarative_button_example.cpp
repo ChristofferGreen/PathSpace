@@ -69,35 +69,13 @@ int main(int argc, char** argv) {
                                             {.id = "goodbye_button", .fragment = Button::Fragment(Button::Args{.label = "Say Goodbye"})},
                                        }}).value();
 
-    auto window_theme_path = std::string(window.path.getPath()) + "/style/theme";
-    if (auto theme_value = space.read<std::string, std::string>(window_theme_path)) {
-        std::cout << "[debug] window theme: " << *theme_value << '\n';
-    } else {
-        std::cout << "[debug] failed to read window theme: "
-                  << static_cast<int>(theme_value.error().code) << '\n';
-    }
-
-    auto button_root = std::string(window_view.getPath()) + "/widgets/button_column/children/hello_button";
-    auto button_descriptor =
-        SP::UI::Declarative::LoadWidgetDescriptor(space, SP::UI::Runtime::WidgetPath{button_root});
-    if (!button_descriptor) {
-        std::cout << "[debug] failed to load button descriptor: "
-                  << static_cast<int>(button_descriptor.error().code) << '\n';
-    } else if (button_descriptor->kind != SP::UI::Declarative::WidgetKind::Button) {
-        std::cout << "[debug] unexpected widget kind: "
-                  << static_cast<int>(button_descriptor->kind) << '\n';
-    } else {
-        auto const& data = std::get<SP::UI::Declarative::ButtonDescriptor>(button_descriptor->data);
-        auto const& color = data.style.background_color;
-        std::cout << "[debug] button (descriptor) bg color: " << color[0] << ", " << color[1]
-                  << ", " << color[2] << '\n';
-    }
-
     if (screenshot_path) {
+        SP::UI::Screenshot::DeclarativeScreenshotOptions screenshot_options{.output_png = *screenshot_path, .view_name = window.view_name, .width = window_width, .height = window_height};
         SP::UI::Screenshot::CaptureDeclarative(space,
                                                scene.path,
                                                window.path,
-                                               SP::UI::Screenshot::DeclarativeScreenshotOptions{.output_png = *screenshot_path, .view_name = window.view_name, .width = window_width, .height = window_height}).value();
+                                               screenshot_options)
+            .value();
     }
     if (screenshot_exit) {
         SP::System::ShutdownDeclarativeRuntime(space);
