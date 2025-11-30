@@ -101,6 +101,27 @@ struct DeclarativeThemeFixture {
 
 } // namespace
 
+auto MakeTreeNodes() -> std::vector<BuilderWidgets::TreeNode> {
+    std::vector<BuilderWidgets::TreeNode> nodes;
+    nodes.push_back({
+        .id = "root",
+        .parent_id = "",
+        .label = "Root",
+        .enabled = true,
+        .expandable = true,
+        .loaded = true,
+    });
+    nodes.push_back({
+        .id = "child",
+        .parent_id = "root",
+        .label = "Child",
+        .enabled = true,
+        .expandable = false,
+        .loaded = true,
+    });
+    return nodes;
+}
+
 TEST_CASE("Theme::Create seeds tokens and value") {
     ThemeFixture fx;
     SP::UI::Declarative::Theme::CreateOptions options{};
@@ -431,6 +452,67 @@ TEST_CASE("Toggle descriptor layers theme defaults and overrides") {
     }
 }
 
+TEST_CASE("Tree descriptor layers theme defaults and honors style overrides") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    SUBCASE("Defaults reuse the active tree theme") {
+        Declarative::Tree::Args args{};
+        args.nodes = MakeTreeNodes();
+        auto tree = Declarative::Tree::Create(fx.space, fx.parent_view(), "tree_theme", args);
+        REQUIRE(tree.has_value());
+
+        auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *tree);
+        REQUIRE(descriptor.has_value());
+        REQUIRE(descriptor->kind == Declarative::WidgetKind::Tree);
+        auto const& data = std::get<Declarative::TreeDescriptor>(descriptor->data);
+
+        CHECK_EQ(data.style.background_color[0], doctest::Approx(theme.tree.background_color[0]));
+        CHECK_EQ(data.style.row_color[1], doctest::Approx(theme.tree.row_color[1]));
+        CHECK_EQ(data.style.text_color[2], doctest::Approx(theme.tree.text_color[2]));
+        CHECK_EQ(data.nodes.size(), MakeTreeNodes().size());
+    }
+
+    SUBCASE("Explicit overrides win for targeted tree fields") {
+        Declarative::Tree::Args args{};
+        args.nodes = MakeTreeNodes();
+        args.style_override()
+            .row({0.12f, 0.32f, 0.44f, 1.0f})
+            .text({0.88f, 0.91f, 0.96f, 1.0f});
+        auto tree = Declarative::Tree::Create(fx.space,
+                                              fx.parent_view(),
+                                              "tree_override",
+                                              args);
+        REQUIRE(tree.has_value());
+
+        auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *tree);
+        REQUIRE(descriptor.has_value());
+        auto const& data = std::get<Declarative::TreeDescriptor>(descriptor->data);
+
+        CHECK_EQ(data.style.row_color[0], doctest::Approx(0.12f));
+        CHECK_EQ(data.style.row_color[1], doctest::Approx(0.32f));
+        CHECK_EQ(data.style.text_color[0], doctest::Approx(0.88f));
+        CHECK_EQ(data.style.background_color[0], doctest::Approx(theme.tree.background_color[0]));
+    }
+
+    SUBCASE("style_override sets mask bits even when values match the theme") {
+        Declarative::Tree::Args args{};
+        args.nodes = MakeTreeNodes();
+        auto theme_row = theme.tree.row_color;
+        args.style_override().row(theme_row);
+        auto tree = Declarative::Tree::Create(fx.space, fx.parent_view(), "tree_mask", args);
+        REQUIRE(tree.has_value());
+
+        auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *tree);
+        REQUIRE(descriptor.has_value());
+        auto const& data = std::get<Declarative::TreeDescriptor>(descriptor->data);
+
+        CHECK_EQ(data.style.row_color[0], doctest::Approx(theme_row[0]));
+        CHECK(BuilderWidgets::HasStyleOverride(data.style.overrides,
+                                               BuilderWidgets::TreeStyleOverrideField::Row));
+    }
+}
+
 TEST_CASE("InputField descriptor inherits text field theme colors by default") {
     DeclarativeThemeFixture fx;
     auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
@@ -482,6 +564,41 @@ TEST_CASE("InputField descriptor preserves explicit text color overrides") {
     CHECK_EQ(data.style.text_color[1], doctest::Approx(custom.text_color[1]));
     CHECK_EQ(data.style.placeholder_color[0],
              doctest::Approx(theme.text_field.placeholder_color[0]));
+    CHECK_EQ(data.style.background_color[0],
+             doctest::Approx(theme.text_field.background_color[0]));
+}
+
+TEST_CASE("InputField descriptor preserves layout overrides while layering theme colors") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    Declarative::InputField::Args args{};
+    args.text = "Layout overrides";
+    auto input = Declarative::InputField::Create(fx.space,
+                                                fx.parent_view(),
+                                                "input_layout",
+                                                std::move(args));
+    REQUIRE(input.has_value());
+
+    BuilderWidgets::TextFieldStyle custom = theme.text_field;
+    custom.width = 420.0f;
+    custom.height = 60.0f;
+    custom.padding_x = 20.0f;
+    custom.padding_y = 14.0f;
+    custom.corner_radius = 10.0f;
+    BuilderWidgets::UpdateOverrides(custom);
+    auto style_path = input->getPath() + "/meta/style";
+    REQUIRE(DetailNS::replace_single(fx.space, style_path, custom).has_value());
+
+    auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *input);
+    REQUIRE(descriptor.has_value());
+    auto const& data = std::get<Declarative::InputFieldDescriptor>(descriptor->data);
+
+    CHECK_EQ(data.style.width, doctest::Approx(custom.width));
+    CHECK_EQ(data.style.height, doctest::Approx(custom.height));
+    CHECK_EQ(data.style.padding_x, doctest::Approx(custom.padding_x));
+    CHECK_EQ(data.style.padding_y, doctest::Approx(custom.padding_y));
+    CHECK_EQ(data.style.corner_radius, doctest::Approx(custom.corner_radius));
     CHECK_EQ(data.style.background_color[0],
              doctest::Approx(theme.text_field.background_color[0]));
 }
@@ -546,6 +663,47 @@ TEST_CASE("TextArea descriptor preserves explicit overrides") {
              doctest::Approx(theme.text_area.placeholder_color[0]));
     CHECK_EQ(data.style.selection_color[2],
              doctest::Approx(theme.text_area.selection_color[2]));
+}
+
+TEST_CASE("TextArea descriptor preserves layout overrides while layering theme colors") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    auto widget_root = std::string(fx.parent_view().getPath()) + "/widgets/text_area_layout";
+    auto widget = SP::UI::Runtime::WidgetPath{widget_root};
+
+    REQUIRE(DetailNS::replace_single(fx.space, widget_root + "/meta/kind", std::string{"text_area"})
+                .has_value());
+    REQUIRE(DetailNS::replace_single(fx.space,
+                                     widget_root + "/state/text",
+                                     std::string{"Layout data"})
+                .has_value());
+
+    BuilderWidgets::TextAreaStyle custom = theme.text_area;
+    custom.width = 640.0f;
+    custom.height = 280.0f;
+    custom.padding_x = 24.0f;
+    custom.padding_y = 18.0f;
+    custom.min_height = 260.0f;
+    custom.line_spacing = 8.0f;
+    custom.wrap_lines = false;
+    BuilderWidgets::UpdateOverrides(custom);
+    REQUIRE(DetailNS::replace_single(fx.space, widget_root + "/meta/style", custom).has_value());
+
+    auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, widget);
+    REQUIRE(descriptor.has_value());
+    REQUIRE(descriptor->kind == Declarative::WidgetKind::TextArea);
+    auto const& data = std::get<Declarative::TextAreaDescriptor>(descriptor->data);
+
+    CHECK_EQ(data.style.width, doctest::Approx(custom.width));
+    CHECK_EQ(data.style.height, doctest::Approx(custom.height));
+    CHECK_EQ(data.style.padding_x, doctest::Approx(custom.padding_x));
+    CHECK_EQ(data.style.padding_y, doctest::Approx(custom.padding_y));
+    CHECK_EQ(data.style.min_height, doctest::Approx(custom.min_height));
+    CHECK_EQ(data.style.line_spacing, doctest::Approx(custom.line_spacing));
+    CHECK_FALSE(data.style.wrap_lines);
+    CHECK_EQ(data.style.background_color[1],
+             doctest::Approx(theme.text_area.background_color[1]));
 }
 
 TEST_CASE("Theme::RebuildValue replays manual color edits") {
