@@ -1,26 +1,32 @@
 #pragma once
+#include "core/ElementType.hpp"
 #include "core/Error.hpp"
 #include "core/In.hpp"
 #include "core/InsertReturn.hpp"
+#include "core/NotificationSink.hpp"
 #include "core/Out.hpp"
+#include "core/PathSpaceContext.hpp"
 #include "log/TaggedLogger.hpp"
 #include "path/ConcretePath.hpp"
 #include "path/Iterator.hpp"
 #include "path/utils.hpp"
 #include "path/validation.hpp"
-#include "task/Task.hpp"
-#include "type/InputData.hpp"
-#include "core/NotificationSink.hpp"
 #include "task/Executor.hpp"
-#include "task/TaskT.hpp"
 #include "task/IFutureAny.hpp"
-#include <type_traits>
-#include "core/PathSpaceContext.hpp"
-
-#include <optional>
+#include "task/Task.hpp"
+#include "task/TaskT.hpp"
+#include "type/InputData.hpp"
+#include "type/InputMetadata.hpp"
+#include "type/InputMetadataT.hpp"
+#include <cstddef>
+#include <functional>
+#include <limits>
 #include <memory>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace SP {
@@ -30,6 +36,97 @@ struct Node;
 namespace History {
 class UndoableSpace;
 }
+namespace VisitDetail {
+struct Access;
+}
+
+struct VisitOptions {
+    std::string root = "/";
+    std::size_t maxDepth = std::numeric_limits<std::size_t>::max();
+    std::size_t maxChildren = 256;
+    bool includeNestedSpaces = true;
+    bool includeValues = true;
+};
+
+struct PathSpaceJsonOptions {
+    VisitOptions visit{};
+    std::size_t maxQueueEntries      = 4;
+    bool        includeOpaquePlaceholders = true;
+    bool        includeDiagnostics   = true;
+    int         dumpIndent           = 2;
+};
+
+enum class VisitControl { Continue, SkipChildren, Stop };
+
+struct PathEntry {
+    std::string path;
+    bool hasChildren      = false;
+    bool hasValue         = false;
+    bool hasNestedSpace   = false;
+    std::size_t approxChildCount = 0;
+    DataCategory frontCategory = DataCategory::None;
+};
+
+struct ValueSnapshot {
+    std::vector<ElementType> types;
+    std::size_t queueDepth       = 0;
+    bool hasExecutionPayload     = false;
+    bool hasSerializedPayload    = false;
+    std::size_t rawBufferBytes   = 0;
+};
+
+class ValueHandle {
+public:
+    ValueHandle() = default;
+    ValueHandle(ValueHandle const&) = default;
+    ValueHandle(ValueHandle&&) noexcept = default;
+    ValueHandle& operator=(ValueHandle const&) = default;
+    ValueHandle& operator=(ValueHandle&&) noexcept = default;
+    ~ValueHandle() = default;
+
+    [[nodiscard]] auto valid() const noexcept -> bool { return static_cast<bool>(impl_); }
+    [[nodiscard]] auto hasValues() const noexcept -> bool { return valid() && includesValues_; }
+    [[nodiscard]] auto queueDepth() const -> std::size_t;
+
+    template <typename DataType>
+    auto read() const -> Expected<DataType> {
+        if (!this->hasValues()) {
+            return std::unexpected(Error{Error::Code::NotSupported, "Value sampling disabled for this visit"});
+        }
+        DataType output{};
+        InputMetadata metadata{InputMetadataT<DataType>{}};
+        if (auto error = this->readInto(&output, metadata)) {
+            return std::unexpected(*error);
+        }
+        return output;
+    }
+
+    auto snapshot() const -> Expected<ValueSnapshot>;
+
+private:
+    struct Impl;
+
+    explicit ValueHandle(std::shared_ptr<Impl> impl, bool includesValues)
+        : impl_(std::move(impl))
+        , includesValues_(includesValues) {}
+
+    auto readInto(void* destination, InputMetadata const& metadata) const -> std::optional<Error>;
+
+    std::shared_ptr<Impl> impl_;
+    bool                  includesValues_ = false;
+
+    friend class PathSpaceBase;
+    friend struct VisitDetail::Access;
+};
+
+namespace VisitDetail {
+struct Access {
+    static auto MakeHandle(PathSpaceBase& owner, Node& node, bool includeValues) -> ValueHandle;
+    static auto SerializeNodeData(ValueHandle const& handle) -> std::optional<std::vector<std::byte>>;
+};
+} // namespace VisitDetail
+
+using PathVisitor = std::function<VisitControl(PathEntry const&, ValueHandle&)>;
 
 /**
  * PathSpaceBase — core path-addressable data space interface
@@ -111,6 +208,10 @@ public:
         return this->read<DataType>(pathIn, options & OutNoValidation{});
     }
 
+    [[nodiscard]] auto toJSON(PathSpaceJsonOptions const& options = PathSpaceJsonOptions{}) -> Expected<std::string>;
+    [[nodiscard]] auto writeJSONToFile(std::string const& filePath,
+                                       PathSpaceJsonOptions const& options = PathSpaceJsonOptions{}) -> Expected<void>;
+
     // Read a type-erased execution future (non-blocking peek). Returns NoObjectFound if absent.
     template <StringConvertible S>
     auto read(S const& pathIn, Out const& options = {}) const -> Expected<FutureAny> {
@@ -156,6 +257,8 @@ public:
         sp_log("PathSpace::extract", "Function Called");
         return this->take<DataType>(pathIn, options & Pop{} & OutNoValidation{});
     }
+
+    virtual auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void>;
 
     auto listChildren() const -> std::vector<std::string> {
         return this->listChildrenCanonical("/");
@@ -246,6 +349,9 @@ private:
     std::shared_ptr<PathSpaceContext>         context_;
     Executor*                                 executor_ = nullptr;
 
+    auto makeValueHandle(Node& node, bool includeValues) const -> ValueHandle;
+
+    friend struct VisitDetail::Access;
     friend class TaskPool;
     friend class PathView;
     friend class PathFileSystem;

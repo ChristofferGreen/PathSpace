@@ -63,6 +63,8 @@ add_library(PathSpace
     core/WaitMap.cpp
     core/WatchRegistry.hpp
     core/Leaf.cpp
+    PathSpaceVisit.cpp
+    tools/PathSpaceJsonExporter.cpp
     history/UndoHistoryUtils.cpp
     history/UndoJournalEntry.cpp
     history/UndoJournalState.cpp
@@ -305,6 +307,8 @@ target_link_libraries(PathSpace
 
 set(_pathspace_public_headers
     PathSpace.hpp
+    tools/PathSpaceJsonExporter.hpp
+    tools/PathSpaceJsonConverters.hpp
     layer/PathSpaceTrellis.hpp
     examples/cli/ExampleCli.hpp
 )

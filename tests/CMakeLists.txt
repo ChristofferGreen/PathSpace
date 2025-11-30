@@ -18,6 +18,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/test_PathSpace_nesting.cpp
   unit/test_PathSpace_extract.cpp
   unit/test_PathSpace_listChildren.cpp
+  unit/test_PathSpace_visit.cpp
   unit/test_PathSpace_insert.cpp
   unit/test_PathSpace_multithreading.cpp
   unit/test_PathSpace_execution.cpp
@@ -27,6 +28,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/history/test_UndoJournalPersistence.cpp
   unit/history/test_UndoableSpace.cpp
   unit/examples/test_ExampleCli.cpp
+  unit/pathspace/test_PathSpaceJsonExporter.cpp
   unit/runtime/test_IOPump.cpp
   unit/runtime/test_TelemetryControl.cpp
   test_main.cpp

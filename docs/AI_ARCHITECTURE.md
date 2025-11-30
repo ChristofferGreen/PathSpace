@@ -258,6 +258,20 @@ auto values = space.read<float>("/sensors/*/value");
 "/sensors/[1-5]"
 ```
 
+### Visitor API and Traversal Helpers
+
+- `PathSpaceBase::visit(PathVisitor const&, VisitOptions const&)` walks the trie without exposing raw `Node*`. Use it in new tooling instead of manually chaining `listChildren` and `read`.
+- `VisitOptions` controls the starting path (`root`), depth and child limits, nested-space inclusion, and whether `ValueHandle::read<T>()` is permitted. Depth is relative to the requested root, so `maxDepth = 0` limits the walk to that node.
+- Each callback receives a `PathEntry` (path, child counts, nested/value flags) plus a `ValueHandle`. Handles can read the front queue value when `includeValues` is enabled or return snapshots describing the queue layout (type list, queue depth, execution flags, raw-buffer bytes).
+- The walker visits nodes depth-first with lexicographically ordered children and automatically steps into mounted spaces when `includeNestedSpaces = true`. Layered views (`PathView`, `PathAlias`, `PathSpaceTrellis`, `History::UndoableSpace`) delegate `visit` so callers always see their logical path space.
+
+#### JSON Exporter
+
+- `PathSpaceBase::toJSON(PathSpaceJsonOptions const&)` and `writeJSONToFile(...)` wrap `PathSpaceJsonExporter` (`src/pathspace/tools/PathSpaceJsonExporter.{hpp,cpp}`) to dump any subtree as structured JSON without exposing `Node*` internals.
+- `PathSpaceJsonOptions` extends `VisitOptions` with `maxQueueEntries`, `includeOpaquePlaceholders`, `includeDiagnostics`, and `dumpIndent`. Queue sampling respects `maxQueueEntries`; truncated exports set `values_truncated=true` so tooling can decide whether to follow up with a deeper crawl.
+- Value conversion flows through the registry in `src/pathspace/tools/PathSpaceJsonConverters.hpp`. Bool/integer/float/string types are registered by default. Use `PathSpaceJsonRegisterConverter<T>(lambda)` or the `PATHSPACE_REGISTER_JSON_CONVERTER` macro to opt additional structs into JSON export without touching the exporter itself.
+- When no converter exists (or value sampling is disabled), the exporter emits placeholders with type/category metadata. Execution queues always produce `{ "placeholder": "execution", "state": "pending" }` entries so debuggers know a callable occupies the node even though its result cannot be inlined.
+
 ### Path Performance Considerations
 
 #### Path Storage

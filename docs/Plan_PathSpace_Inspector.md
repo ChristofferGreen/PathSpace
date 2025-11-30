@@ -10,7 +10,7 @@
 - Start as read-only (Phase 0/1); later consider limited write/edit actions with explicit safeguards.
 
 ## Dependencies
-- **JSON Serialization Support:** PathSpace must export subtrees as JSON (see task “JSON Serialization Support”).
+- **JSON Serialization Support:** PathSpace now exports subtrees via `PathSpaceBase::toJSON`/`writeJSONToFile` (backed by `PathSpaceJsonExporter`). Inspector endpoints should call the helper instead of duplicating trie access.
 - **Distributed PathSpace Mounts:** Web server should access remote application roots securely (Plan_Distributed_PathSpace.md).
 - **Web Server Infrastructure:** Inspector API rides on the web server adapter; implementation begins after baseline web endpoints (auth, SSE, `/api/path`) are in place.
 - **Auth/ACLs:** Reuse web server sessions; ensure inspector respects app-root boundaries. Allow an explicit “root” role for trusted users to view the entire `/` tree.
