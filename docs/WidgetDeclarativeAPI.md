@@ -190,6 +190,19 @@ software readbacks fail.
   - Whenever you add a new override bit, update the descriptor merge helper,
     schema docs, and regression tests so contributors know how to opt into
     bespoke colors.
+  - Widget `Args` structures expose `style_override()` builders (`Button::Args::style_override()`,
+    `Slider::Args::style_override()`, etc.). Call the helpers instead of mutating palette/typography
+    fields directly so the override bit is set as you author the style:
+    ```cpp
+    Button::Args button{};
+    button.style.width = 240.0f;
+    auto overrides = button.style_override();
+    overrides.background_color({0.20f, 0.32f, 0.84f, 1.0f})
+             .text_color({0.98f, 0.99f, 1.0f, 1.0f});
+    overrides.typography(custom_button_type);
+    ```
+    The helper keeps `/meta/style` sparse (unset fields serialize as “inherit”) while guaranteeing
+    descriptors treat the customized fields as explicit overrides.
 - **Focus + traversal**
   - Focus metadata is runtime-managed. Widgets keep `focus/order` and
     `focus/current` up to date, and the controller mirrors the active widget to

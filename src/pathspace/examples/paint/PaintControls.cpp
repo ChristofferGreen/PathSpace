@@ -136,10 +136,11 @@ auto BuildPaletteFragment(PaletteComponentConfig const& config)
             args.style.width = base_width;
             args.style.height = config.layout.palette_button_height;
             args.style.corner_radius = std::max(6.0f, 10.0f * config.layout.controls_scale);
-            args.style.background_color = entry.color;
-            args.style.text_color = palette_button_text_color(entry.color, config.theme);
-            args.style.typography = MakeTypography(19.0f * config.layout.controls_scale,
-                                                   24.0f * config.layout.controls_scale);
+            auto overrides = args.style_override();
+            overrides.background_color(entry.color)
+                .text_color(palette_button_text_color(entry.color, config.theme))
+                .typography(MakeTypography(19.0f * config.layout.controls_scale,
+                                           24.0f * config.layout.controls_scale));
             args.on_press = [entry, handler = config.on_select, brush_state = config.brush_state](
                                 SP::UI::Declarative::ButtonContext& ctx) {
                 if (brush_state) {
@@ -177,9 +178,10 @@ auto BuildBrushSliderFragment(BrushSliderConfig const& config)
     slider.style.height = std::max(34.0f, 44.0f * config.layout.controls_scale);
     slider.style.track_height = std::max(7.0f, 9.0f * config.layout.controls_scale);
     slider.style.thumb_radius = std::max(9.0f, 12.0f * config.layout.controls_scale);
-    slider.style.label_color = {0.84f, 0.88f, 0.94f, 1.0f};
-    slider.style.label_typography = MakeTypography(19.0f * config.layout.controls_scale,
-                                                   24.0f * config.layout.controls_scale);
+    slider.style_override()
+        .label_color({0.84f, 0.88f, 0.94f, 1.0f})
+        .label_typography(MakeTypography(19.0f * config.layout.controls_scale,
+                                         24.0f * config.layout.controls_scale));
     slider.on_change = [handler = config.on_change, brush_state = config.brush_state](
                           SP::UI::Declarative::SliderContext& ctx) {
         if (brush_state) {
@@ -215,8 +217,8 @@ auto BuildHistoryActionsFragment(HistoryActionsConfig const& config)
         args.style.width = button_width;
         args.style.height = std::max(36.0f, 44.0f * config.layout.controls_scale);
         args.style.corner_radius = std::max(6.0f, 9.0f * config.layout.controls_scale);
-        args.style.typography = MakeTypography(18.0f * config.layout.controls_scale,
-                                               22.0f * config.layout.controls_scale);
+        args.style_override().typography(MakeTypography(18.0f * config.layout.controls_scale,
+                                                        22.0f * config.layout.controls_scale));
         args.on_press = [handler = config.on_action, action](SP::UI::Declarative::ButtonContext& ctx) {
             if (handler) {
                 handler(ctx, action);

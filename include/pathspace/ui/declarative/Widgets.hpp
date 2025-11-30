@@ -213,6 +213,41 @@ struct Args {
     std::optional<std::string> theme;
     std::optional<ButtonHandler> on_press;
     std::vector<std::pair<std::string, WidgetFragment>> children;
+
+    struct StyleOverrides {
+        BuilderWidgets::ButtonStyle* target = nullptr;
+
+        auto background_color(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->background_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::ButtonStyleOverrideField::BackgroundColor);
+            }
+            return *this;
+        }
+
+        auto text_color(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->text_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::ButtonStyleOverrideField::TextColor);
+            }
+            return *this;
+        }
+
+        auto typography(BuilderWidgets::TypographyStyle typography) -> StyleOverrides& {
+            if (target) {
+                target->typography = std::move(typography);
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::ButtonStyleOverrideField::Typography);
+            }
+            return *this;
+        }
+    };
+
+    [[nodiscard]] auto style_override() -> StyleOverrides {
+        return StyleOverrides{&style};
+    }
 };
 
 auto Fragment(Args args = {}) -> WidgetFragment;
@@ -251,6 +286,41 @@ struct Args {
     SP::UI::Runtime::Widgets::ToggleStyle style{};
     std::optional<ToggleHandler> on_toggle;
     std::vector<std::pair<std::string, WidgetFragment>> children;
+
+    struct StyleOverrides {
+        BuilderWidgets::ToggleStyle* target = nullptr;
+
+        auto track_off(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->track_off_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::ToggleStyleOverrideField::TrackOff);
+            }
+            return *this;
+        }
+
+        auto track_on(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->track_on_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::ToggleStyleOverrideField::TrackOn);
+            }
+            return *this;
+        }
+
+        auto thumb(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->thumb_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::ToggleStyleOverrideField::Thumb);
+            }
+            return *this;
+        }
+    };
+
+    [[nodiscard]] auto style_override() -> StyleOverrides {
+        return StyleOverrides{&style};
+    }
 };
 
 auto Fragment(Args args = {}) -> WidgetFragment;
@@ -274,6 +344,59 @@ struct Args {
     bool enabled = true;
     SP::UI::Runtime::Widgets::SliderStyle style{};
     std::optional<SliderHandler> on_change;
+
+    struct StyleOverrides {
+        BuilderWidgets::SliderStyle* target = nullptr;
+
+        auto track_color(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->track_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::SliderStyleOverrideField::Track);
+            }
+            return *this;
+        }
+
+        auto fill_color(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->fill_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::SliderStyleOverrideField::Fill);
+            }
+            return *this;
+        }
+
+        auto thumb_color(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->thumb_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::SliderStyleOverrideField::Thumb);
+            }
+            return *this;
+        }
+
+        auto label_color(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->label_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::SliderStyleOverrideField::LabelColor);
+            }
+            return *this;
+        }
+
+        auto label_typography(BuilderWidgets::TypographyStyle typography) -> StyleOverrides& {
+            if (target) {
+                target->label_typography = std::move(typography);
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::SliderStyleOverrideField::LabelTypography);
+            }
+            return *this;
+        }
+    };
+
+    [[nodiscard]] auto style_override() -> StyleOverrides {
+        return StyleOverrides{&style};
+    }
 };
 
 auto Fragment(Args args = {}) -> WidgetFragment;
@@ -327,6 +450,86 @@ struct Args {
     SP::UI::Runtime::Widgets::ListStyle style{};
     std::optional<ListChildHandler> on_child_event;
     std::vector<std::pair<std::string, WidgetFragment>> children;
+
+    struct StyleOverrides {
+        BuilderWidgets::ListStyle* target = nullptr;
+
+        auto background(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->background_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::ListStyleOverrideField::Background);
+            }
+            return *this;
+        }
+
+        auto border(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->border_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::ListStyleOverrideField::Border);
+            }
+            return *this;
+        }
+
+        auto item(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->item_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::ListStyleOverrideField::Item);
+            }
+            return *this;
+        }
+
+        auto item_hover(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->item_hover_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::ListStyleOverrideField::ItemHover);
+            }
+            return *this;
+        }
+
+        auto item_selected(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->item_selected_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::ListStyleOverrideField::ItemSelected);
+            }
+            return *this;
+        }
+
+        auto separator(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->separator_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::ListStyleOverrideField::Separator);
+            }
+            return *this;
+        }
+
+        auto item_text(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->item_text_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::ListStyleOverrideField::ItemText);
+            }
+            return *this;
+        }
+
+        auto item_typography(BuilderWidgets::TypographyStyle typography) -> StyleOverrides& {
+            if (target) {
+                target->item_typography = std::move(typography);
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::ListStyleOverrideField::ItemTypography);
+            }
+            return *this;
+        }
+    };
+
+    [[nodiscard]] auto style_override() -> StyleOverrides {
+        return StyleOverrides{&style};
+    }
 };
 
 auto Fragment(Args args = {}) -> WidgetFragment;
@@ -349,6 +552,104 @@ struct Args {
     std::vector<TreeNode> nodes;
     SP::UI::Runtime::Widgets::TreeStyle style{};
     std::optional<TreeNodeHandler> on_node_event;
+
+    struct StyleOverrides {
+        BuilderWidgets::TreeStyle* target = nullptr;
+
+        auto background(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->background_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::TreeStyleOverrideField::Background);
+            }
+            return *this;
+        }
+
+        auto border(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->border_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::TreeStyleOverrideField::Border);
+            }
+            return *this;
+        }
+
+        auto row(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->row_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::TreeStyleOverrideField::Row);
+            }
+            return *this;
+        }
+
+        auto row_hover(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->row_hover_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::TreeStyleOverrideField::RowHover);
+            }
+            return *this;
+        }
+
+        auto row_selected(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->row_selected_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::TreeStyleOverrideField::RowSelected);
+            }
+            return *this;
+        }
+
+        auto row_disabled(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->row_disabled_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::TreeStyleOverrideField::RowDisabled);
+            }
+            return *this;
+        }
+
+        auto connector(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->connector_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::TreeStyleOverrideField::Connector);
+            }
+            return *this;
+        }
+
+        auto toggle(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->toggle_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::TreeStyleOverrideField::Toggle);
+            }
+            return *this;
+        }
+
+        auto text(std::array<float, 4> color) -> StyleOverrides& {
+            if (target) {
+                target->text_color = color;
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::TreeStyleOverrideField::Text);
+            }
+            return *this;
+        }
+
+        auto label_typography(BuilderWidgets::TypographyStyle typography) -> StyleOverrides& {
+            if (target) {
+                target->label_typography = std::move(typography);
+                BuilderWidgets::SetStyleOverride(target->overrides,
+                                                 BuilderWidgets::TreeStyleOverrideField::LabelTypography);
+            }
+            return *this;
+        }
+    };
+
+    [[nodiscard]] auto style_override() -> StyleOverrides {
+        return StyleOverrides{&style};
+    }
 };
 
 auto Fragment(Args args = {}) -> WidgetFragment;

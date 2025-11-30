@@ -392,9 +392,12 @@ TEST_CASE("paint_example_new-style button reacts to pointer press via widget run
     button_args.style.width = 240.0f;
     button_args.style.height = 64.0f;
     button_args.style.corner_radius = 16.0f;
-    button_args.style.text_color = {0.95f, 0.98f, 1.0f, 1.0f};
-    button_args.style.typography.font_size = 30.0f;
-    button_args.style.typography.line_height = 36.0f;
+    auto button_overrides = button_args.style_override();
+    button_overrides.text_color({0.95f, 0.98f, 1.0f, 1.0f});
+    auto button_typography = button_args.style.typography;
+    button_typography.font_size = 30.0f;
+    button_typography.line_height = 36.0f;
+    button_overrides.typography(button_typography);
     button_args.on_press = [pressed](SP::UI::Declarative::ButtonContext&) {
         pressed->store(true, std::memory_order_release);
     };

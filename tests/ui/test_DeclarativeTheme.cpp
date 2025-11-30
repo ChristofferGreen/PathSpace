@@ -336,7 +336,7 @@ TEST_CASE("List descriptor layers theme defaults with serialized overrides") {
     SUBCASE("Overrides win for explicit fields") {
         Declarative::List::Args args{};
         args.items = make_items();
-        args.style.item_text_color = {0.12f, 0.94f, 0.78f, 1.0f};
+        args.style_override().item_text({0.12f, 0.94f, 0.78f, 1.0f});
         auto list = Declarative::List::Create(fx.space,
                                               fx.parent_view(),
                                               "list_override",

@@ -257,9 +257,12 @@ int main(int argc, char** argv) {
     button_args.style.width = 240.0f;
     button_args.style.height = 64.0f;
     button_args.style.corner_radius = 16.0f;
-    button_args.style.text_color = {0.95f, 0.98f, 1.0f, 1.0f};
-    button_args.style.typography.font_size = 30.0f;
-    button_args.style.typography.line_height = 36.0f;
+    auto button_style_overrides = button_args.style_override();
+    button_style_overrides.text_color({0.95f, 0.98f, 1.0f, 1.0f});
+    auto button_typography = button_args.style.typography;
+    button_typography.font_size = 30.0f;
+    button_typography.line_height = 36.0f;
+    button_style_overrides.typography(button_typography);
     button_args.on_press = [pressed_state, status_label_path = *status_label](ButtonContext& ctx) {
         *pressed_state = !*pressed_state;
         auto text = *pressed_state ? "Hello from PathSpace!" : "Tap the button or pick a greeting";

@@ -366,8 +366,9 @@ int main() {
     button_fragment_args.style.width = 260.0f;
     button_fragment_args.style.height = 68.0f;
     button_fragment_args.style.corner_radius = 18.0f;
-    button_fragment_args.style.background_color = {0.22f, 0.42f, 0.93f, 1.0f};
-    button_fragment_args.style.text_color = {0.98f, 0.99f, 1.0f, 1.0f};
+    button_fragment_args.style_override()
+        .background_color({0.22f, 0.42f, 0.93f, 1.0f})
+        .text_color({0.98f, 0.99f, 1.0f, 1.0f});
     button_fragment_args.on_press = [](SP::UI::Declarative::ButtonContext&) {
         std::cout << "declarative_hello_example: hello button pressed\n";
     };

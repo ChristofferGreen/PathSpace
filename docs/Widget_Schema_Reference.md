@@ -83,6 +83,7 @@ Current masks (bit indices are defined in the matching `*StyleOverrideField` enu
 | TextArea | Same bits as `TextField` (`background_color` through `typography`) |
 
 Fragments automatically populate the mask when they serialize a style, so downstream code no longer needs to bake the active theme into the payload just to get correct colors.
+When you need bespoke palette/typography values, call the widget’s `Args::style_override()` helper (e.g., `Button::Args::style_override().background_color(...)`) so the matching override bit flips while the serialized blob stays lean.
 
 ## Common widget nodes
 

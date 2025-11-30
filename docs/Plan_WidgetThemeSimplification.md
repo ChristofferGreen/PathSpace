@@ -50,6 +50,7 @@
 1. Update `include/pathspace/ui/declarative/Widgets.hpp` so `Args` structs expose explicit override helpers (e.g., `Args::style_override` or setters that mark fields as intentional overrides).
 2. Audit samples/tests: remove direct color tweaks where possible, add explicit overrides where customization is required (paint examples, themed demos, etc.).
 3. Refresh docs (`Widget_Schema_Reference.md`, `WidgetDeclarativeAPI.md`, relevant plan/status docs) to describe the new behavior and migration guidance.
+> **Status (November 30, 2025):** Step 1 landed via the new `Args::style_override()` builders for buttons, toggles, sliders, lists, and trees. PaintControls, declarative samples, and widget/theme tests now exercise the helper instead of poking palette fields directly, and the schema/API docs capture the workflow. Continue auditing remaining samples/tests for stray direct palette writes before closing Step 2.
 
 ### Phase 4 — Validation & Migration Support
 1. Expand `tests/ui/test_DeclarativeTheme.cpp` to cover the new merge logic (no serialized colors → theme colors; serialized overrides → override wins; inheritance chain still works). ✅ Buttons/lists now covered; add toggles/trees/text inputs next.
@@ -57,9 +58,9 @@
 3. Provide a short migration note in `docs/Memory.md` (or the tracking doc) so downstream contributors know to drop literal palette blobs.
 4. Monitor the CI loop (especially screenshot baselines) because palette changes will finally show up; update baselines as needed.
 
-## Remaining TODOs (November 29, 2025)
-- **Docs & samples** — Continue auditing samples/tests so they assert against descriptor/theme outputs instead of serialized colors; finish the Phase 3 doc refresh once renderer work lands.
-- **Test matrix** — Broaden `tests/ui/test_DeclarativeTheme.cpp` to cover toggles, sliders, trees, text inputs, and regression scenarios for layout overrides (Phase 4 Steps 1–2).
+## Remaining TODOs (November 30, 2025)
+- **Docs & samples** — Finish sweeping the remaining samples/tests (sliders, toggles, text inputs) so any palette tweaks go through `style_override()` and assertions read descriptor/theme data. Track future doc touchpoints (README/onboarding snippets) that still suggest editing raw palette arrays.
+- **Test matrix** — Broaden `tests/ui/test_DeclarativeTheme.cpp` to cover toggles, sliders, trees, text inputs, and regression scenarios for layout overrides (Phase 4 Steps 1–2); add targeted cases that ensure `style_override()` timestamps the override mask even when colors match theme defaults.
 
 ## Risks & Mitigations
 - **Risk:** Breaking existing widgets that relied on implicit sunrise palette. *Mitigation:* Provide a compatibility flag during transition or explicitly rewrite the handful of examples/tests that depend on the old colors.

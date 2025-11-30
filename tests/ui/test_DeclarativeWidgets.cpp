@@ -207,7 +207,7 @@ TEST_CASE("Button styles record explicit override intent") {
     SUBCASE("Custom colors set the override mask") {
         Button::Args args{};
         args.label = "Custom";
-        args.style.background_color = {0.05f, 0.2f, 0.6f, 1.0f};
+        args.style_override().background_color({0.05f, 0.2f, 0.6f, 1.0f});
         auto widget =
             Button::Create(fx.space, fx.parent_view(), "custom_button", args);
         REQUIRE(widget.has_value());
@@ -227,8 +227,9 @@ TEST_CASE("Button preserves explicit overrides after theme defaults") {
 
     Button::Args args{};
     args.label = "ThemeAware";
-    args.style.background_color = {0.21f, 0.46f, 0.72f, 1.0f};
-    args.style.text_color = {0.95f, 0.92f, 0.35f, 1.0f};
+    auto overrides = args.style_override();
+    overrides.background_color({0.21f, 0.46f, 0.72f, 1.0f})
+        .text_color({0.95f, 0.92f, 0.35f, 1.0f});
 
     auto widget =
         Button::Create(fx.space, fx.parent_view(), "theme_button", args);
