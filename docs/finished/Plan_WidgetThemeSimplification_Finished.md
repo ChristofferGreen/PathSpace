@@ -59,11 +59,13 @@
 3. Provide a short migration note in `docs/Memory.md` (or the tracking doc) so downstream contributors know to drop literal palette blobs.
 > **Status (November 30, 2025):** Documented the reminder in `docs/Memory.md` (“Drop literal palette blobs; rely on theme + style_override()”). Contributors now have an easily discoverable pointer before editing widgets or examples.
 4. Monitor the CI loop (especially screenshot baselines) because palette changes will finally show up; update baselines as needed.
+> **Status (November 30, 2025):** `scripts/paint_example_capture.py --tags 1280x800 paint_720 paint_600` recaptured every Metal baseline after the theme-first descriptors landed. The refresh pushed `docs/images/paint_example_baselines.json` to revision 8 and produced new hashes for `paint_example_baseline.png` (1280×800, sha256 `7e3b75e8…`), `paint_example_720_baseline.png` (1280×720, sha256 `79c1bcd2…`), and `paint_example_600_baseline.png` (1024×600, sha256 `4dcfe4e9…`). `scripts/check_paint_screenshot.py` now reports the updated manifest metadata, `pathspace_paint_screenshot_card` ingests the refreshed metrics JSON, and the CI loop has matching references for the theme-driven palette.
 
 ## Remaining TODOs (November 30, 2025)
 > **Update (November 30, 2025):** Loop stability regained after rewriting the Dining Philosophers subcase in `tests/unit/test_PathSpace_multithreading.cpp` to cap runtime at ~1.2 s (shared deadline, bounded `Block` waits, meal quotas, and latch-based shutdown). `PathSpaceTests` now finishes in ~9.2 s locally, keeping the mandated 5× loop under the 20 s per-test budget.
 
 - **Palette monitoring:** Keep screenshot baselines + CI loop telemetry under review while palette changes propagate (Phase 4 Step 4); refresh baselines when declarative theme tweaks intentionally shift colors and log each intentional palette delta in the plan.
+  - Baselines refreshed to manifest revision 8 on November 30, 2025; future palette deltas should follow the paint-example baseline playbook and append notes to `docs/Memory.md`.
 
 ## Risks & Mitigations
 - **Risk:** Breaking existing widgets that relied on implicit sunrise palette. *Mitigation:* Provide a compatibility flag during transition or explicitly rewrite the handful of examples/tests that depend on the old colors.
@@ -79,3 +81,5 @@
 - Samples (`declarative_button_example`, `widgets_example*`, paint demos) render with the active theme colors without manual overrides.
 - Docs and schema references no longer instruct contributors to persist full style blobs.
 - Tests explicitly validate theme inheritance and override layering for each widget type.
+
+> **Completion (November 30, 2025):** Every goal above now holds in the main branch, the screenshot baselines reflect the theme-first descriptors, and ongoing monitoring is captured in `docs/Memory.md`. With Phase 4 closed, the plan is archived under `docs/finished/` for future reference.
