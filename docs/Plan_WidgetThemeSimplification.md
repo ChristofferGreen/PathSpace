@@ -57,13 +57,13 @@
 2. Add regression tests for each widget type to ensure serialized layout overrides survive theme application.
 > **Status (November 30, 2025):** Coverage now includes buttons, toggles, sliders, lists, trees, InputField, and TextArea via the `tests/ui/test_DeclarativeTheme.cpp` cases (“Button/Toggle/Slider/List/Tree descriptor preserves layout overrides while layering theme colors”, plus the existing input/text-area cases). Layout-only overrides flow through descriptors while palette values keep following the active theme, so every widget exercises the theme-first contract.
 3. Provide a short migration note in `docs/Memory.md` (or the tracking doc) so downstream contributors know to drop literal palette blobs.
+> **Status (November 30, 2025):** Documented the reminder in `docs/Memory.md` (“Drop literal palette blobs; rely on theme + style_override()”). Contributors now have an easily discoverable pointer before editing widgets or examples.
 4. Monitor the CI loop (especially screenshot baselines) because palette changes will finally show up; update baselines as needed.
 
 ## Remaining TODOs (November 30, 2025)
 > **Update (November 30, 2025):** Loop stability regained after rewriting the Dining Philosophers subcase in `tests/unit/test_PathSpace_multithreading.cpp` to cap runtime at ~1.2 s (shared deadline, bounded `Block` waits, meal quotas, and latch-based shutdown). `PathSpaceTests` now finishes in ~9.2 s locally, keeping the mandated 5× loop under the 20 s per-test budget.
 
-- **Migration note:** Capture a concise “drop literal palette blobs” reminder (Phase 4 Step 3) in `docs/Memory.md` so downstream contributors know the new contract before shipping theme changes.
-- **Palette monitoring:** Keep screenshot baselines + CI loop telemetry under review while palette changes propagate (Phase 4 Step 4); update baselines when declarative theme tweaks intentionally shift colors.
+- **Palette monitoring:** Keep screenshot baselines + CI loop telemetry under review while palette changes propagate (Phase 4 Step 4); refresh baselines when declarative theme tweaks intentionally shift colors and log each intentional palette delta in the plan.
 
 ## Risks & Mitigations
 - **Risk:** Breaking existing widgets that relied on implicit sunrise palette. *Mitigation:* Provide a compatibility flag during transition or explicitly rewrite the handful of examples/tests that depend on the old colors.
