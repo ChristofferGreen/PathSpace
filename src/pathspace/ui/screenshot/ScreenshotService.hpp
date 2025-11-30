@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -64,6 +65,8 @@ struct ScreenshotRequest {
     std::span<std::uint8_t> provided_framebuffer;
     bool provided_framebuffer_is_hardware = false;
     std::optional<std::string> theme_override;
+    std::function<SP::Expected<void>(std::filesystem::path const& output_png,
+                                     std::optional<std::filesystem::path> const& baseline_png)> postprocess_png;
 };
 
 struct ScreenshotResult {

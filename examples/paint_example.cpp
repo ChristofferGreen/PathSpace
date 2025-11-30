@@ -1854,6 +1854,7 @@ auto RunPaintExample(CommandLineOptions options) -> int {
         }
     }
 
+    std::shared_ptr<SoftwareImage> strokes_preview_image;
     if (screenshot_mode) {
         bool debug_logging = std::getenv("PAINT_EXAMPLE_DEBUG") != nullptr;
         auto strokes_preview = render_scripted_strokes_image(options.width,
@@ -1861,6 +1862,7 @@ auto RunPaintExample(CommandLineOptions options) -> int {
                                                              brush_state->size * 0.5f,
                                                              brush_state->color,
                                                              layout_metrics);
+        strokes_preview_image = std::make_shared<SoftwareImage>(std::move(strokes_preview));
         if (debug_logging) {
             std::cerr << "paint_example: layout canvas_offset=(" << layout_metrics.canvas_offset_x << ", "
                       << layout_metrics.canvas_offset_y << ") canvas_size=(" << layout_metrics.canvas_width
@@ -1986,6 +1988,38 @@ auto RunPaintExample(CommandLineOptions options) -> int {
         screenshot_options.readiness_timeout = std::chrono::milliseconds(2000);
         screenshot_options.wait_for_runtime_metrics = true;
 
+        if (options.screenshot_path && strokes_preview_image) {
+            auto preview = strokes_preview_image;
+            auto layout_copy = layout_metrics;
+            auto screenshot_width = options.width;
+            auto screenshot_height = options.height;
+            screenshot_options.postprocess_png = [preview,
+                                                  layout_copy,
+                                                  screenshot_width,
+                                                  screenshot_height](std::filesystem::path const& output_png,
+                                                                     std::optional<std::filesystem::path> const& baseline_png)
+                                                    -> SP::Expected<void> {
+                if (!preview) {
+                    return std::unexpected(make_runtime_error("missing scripted strokes preview"));
+                }
+                if (auto status = overlay_strokes_onto_png(output_png, *preview, layout_copy); !status) {
+                    return status;
+                }
+                if (auto status = apply_controls_background_overlay(output_png,
+                                                                    layout_copy,
+                                                                    screenshot_width,
+                                                                    screenshot_height,
+                                                                    baseline_png);
+                    !status) {
+                    return status;
+                }
+                return apply_controls_shadow_overlay(output_png,
+                                                     layout_copy,
+                                                     screenshot_width,
+                                                     screenshot_height);
+            };
+        }
+
         auto capture_result = SP::UI::Screenshot::CaptureDeclarative(space,
                                                                      scene_result.path,
                                                                      window_result.path,
@@ -1994,7 +2028,8 @@ auto RunPaintExample(CommandLineOptions options) -> int {
             std::cerr << "paint_example: screenshot capture failed: "
                       << describeError(capture_result.error()) << "\n";
             if (options.screenshot_path) {
-                if (!write_image_png(strokes_preview, *options.screenshot_path)) {
+                if (!strokes_preview_image
+                    || !write_image_png(*strokes_preview_image, *options.screenshot_path)) {
                     std::cerr << "paint_example: fallback write failed\n";
                     SP::System::ShutdownDeclarativeRuntime(space);
                     return 1;
@@ -2021,29 +2056,6 @@ auto RunPaintExample(CommandLineOptions options) -> int {
                       << capture_result->max_channel_delta.value_or(0) << ")\n";
         } else {
             std::cout << "paint_example: saved screenshot to " << options.screenshot_path->string() << "\n";
-        }
-
-        if (options.screenshot_path) {
-            auto postprocess_png = [&](std::filesystem::path const& output_png) -> SP::Expected<void> {
-                if (auto status = overlay_strokes_onto_png(output_png, strokes_preview, layout_metrics); !status) {
-                    return status;
-                }
-                if (auto status = apply_controls_background_overlay(output_png,
-                                                                    layout_metrics,
-                                                                    options.width,
-                                                                    options.height,
-                                                                    options.screenshot_compare_path);
-                    !status) {
-                    return status;
-                }
-                return apply_controls_shadow_overlay(output_png, layout_metrics, options.width, options.height);
-            };
-            if (auto status = postprocess_png(*options.screenshot_path); !status) {
-                std::cerr << "paint_example: screenshot post-processing failed: "
-                          << describeError(status.error()) << "\n";
-                SP::System::ShutdownDeclarativeRuntime(space);
-                return 1;
-            }
         }
 
         SP::System::ShutdownDeclarativeRuntime(space);

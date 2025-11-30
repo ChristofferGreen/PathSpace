@@ -525,6 +525,14 @@ auto ScreenshotService::Capture(ScreenshotRequest const& request) -> SP::Expecte
         return unexpected_capture_failure("failed to capture screenshot");
     }
 
+    if (request.postprocess_png) {
+        auto postprocess = request.postprocess_png(request.output_png, request.baseline_png);
+        if (!postprocess) {
+            emit_metrics("postprocess_failed");
+            return std::unexpected(postprocess.error());
+        }
+    }
+
     result.hardware_capture = hardware_capture;
 
     if (request.baseline_png) {

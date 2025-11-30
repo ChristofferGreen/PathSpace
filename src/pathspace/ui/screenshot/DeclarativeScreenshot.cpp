@@ -448,6 +448,7 @@ auto CaptureDeclarative(SP::PathSpace& space,
         .force_software = options.force_software,
         .allow_software_fallback = options.allow_software_fallback,
         .present_when_force_software = options.present_when_force_software,
+        .postprocess_png = options.postprocess_png,
     };
 
     if (!prerender_framebuffer.empty()) {

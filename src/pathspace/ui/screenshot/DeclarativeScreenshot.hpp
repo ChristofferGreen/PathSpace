@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -36,6 +37,8 @@ struct DeclarativeScreenshotOptions {
     std::chrono::milliseconds present_timeout{std::chrono::milliseconds{2000}};
     SP::UI::Declarative::DeclarativeReadinessOptions readiness_options{};
     SP::UI::Screenshot::BaselineMetadata baseline_metadata;
+    std::function<SP::Expected<void>(std::filesystem::path const& output_png,
+                                     std::optional<std::filesystem::path> const& baseline_png)> postprocess_png;
 };
 
 auto CaptureDeclarative(SP::PathSpace& space,
