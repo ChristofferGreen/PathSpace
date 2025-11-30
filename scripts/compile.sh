@@ -1010,6 +1010,7 @@ PY
           --manifest "$paint_manifest"
           --artifacts-dir "$paint_artifacts_dir"
           --output "$paint_monitor_report"
+          --palette-log "$ROOT_DIR/docs/images/paint_example_palette_log.md"
           --expected-revision-file "$ROOT_DIR/docs/images/paint_example_manifest_revision.txt"
           --tags)
         monitor_cmd+=("${paint_tags[@]}")

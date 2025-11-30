@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -106,6 +107,12 @@ def build_parser(repo_root: Path) -> argparse.ArgumentParser:
         default=repo_root / "docs" / "images" / "paint_example_manifest_revision.txt",
         help="File containing the expected manifest revision (default: %(default)s)",
     )
+    parser.add_argument(
+        "--palette-log",
+        type=Path,
+        default=repo_root / "docs" / "images" / "paint_example_palette_log.md",
+        help="Markdown log recording each baseline revision (default: %(default)s)",
+    )
     return parser
 
 
@@ -171,7 +178,34 @@ def gather_capture(
     baseline_revision = baseline_info.get("manifest_revision")
     if baseline_revision is not None and manifest_entry.get("revision"):
         summary["metrics_manifest_revision"] = baseline_revision
+    if baseline_sha256 and screenshot_sha != baseline_sha256:
+        raise RuntimeError(
+            "Screenshot SHA mismatch for tag '{}' (actual {}, manifest {})".format(
+                tag, screenshot_sha, baseline_sha256
+            )
+        )
+    summary["sha256_match"] = screenshot_sha == baseline_sha256
     return summary
+
+
+def ensure_palette_log_entry(path: Path, revision: int) -> None:
+    if revision is None:
+        return
+    if not path.exists():
+        raise FileNotFoundError(f"Palette log not found: {path}")
+    pattern = re.compile(r"^##\s+Revision\s+(\d+)")
+    found = False
+    with path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            match = pattern.match(line)
+            if match and int(match.group(1)) == revision:
+                found = True
+                break
+    if not found:
+        raise RuntimeError(
+            "Palette log {} lacks an entry for manifest revision {}".format(path, revision)
+        )
 
 
 def main() -> int:
@@ -182,6 +216,7 @@ def main() -> int:
     manifest_path = args.manifest if args.manifest.is_absolute() else (repo_root / args.manifest).resolve()
     artifacts_dir = args.artifacts_dir if args.artifacts_dir.is_absolute() else (repo_root / args.artifacts_dir).resolve()
     output_path = args.output if args.output.is_absolute() else (repo_root / args.output).resolve()
+    palette_log_path = args.palette_log if args.palette_log.is_absolute() else (repo_root / args.palette_log).resolve()
     expected_revision_path = (
         args.expected_revision_file
         if args.expected_revision_file.is_absolute()
@@ -214,6 +249,13 @@ def main() -> int:
             file=sys.stderr,
         )
         print("Update the manifest and expected revision together via scripts/paint_example_capture.py.", file=sys.stderr)
+        return 1
+
+    try:
+        ensure_palette_log_entry(palette_log_path, manifest_revision)
+    except (FileNotFoundError, RuntimeError) as exc:
+        print(f"[paint-example-monitor] {exc}", file=sys.stderr)
+        print("Update docs/images/paint_example_palette_log.md when refreshing baselines.", file=sys.stderr)
         return 1
 
     captures = manifest.get("captures") or {}

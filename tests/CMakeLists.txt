@@ -257,6 +257,7 @@ if(PATHSPACE_ENABLE_UI)
               --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
               --artifacts-dir "$<SHELL_PATH:${CMAKE_BINARY_DIR}/artifacts/paint_example>"
               --output "${PATHSPACE_TEST_LOG_DIR}/paint_example_monitor_report.json"
+              --palette-log "${CMAKE_SOURCE_DIR}/docs/images/paint_example_palette_log.md"
               --expected-revision-file "${CMAKE_SOURCE_DIR}/docs/images/paint_example_manifest_revision.txt"
               --tags 1280x800 paint_720 paint_600
     )
