@@ -60,7 +60,8 @@
 4. Monitor the CI loop (especially screenshot baselines) because palette changes will finally show up; update baselines as needed.
 
 ## Remaining TODOs (November 30, 2025)
-- **Loop stability:** `scripts/compile.sh --clean --test --loop=5 --release` still times out in `tests/unit/test_PathSpace_multithreading.cpp` (“Dining Philosophers”) during `PathSpaceTests` loop 1 (see `build/test-logs/PathSpaceTests_loop1of5_20251130-074200.log`). Reproduce outside the loop, profile the philosopher threads, and either trim the scenario or raise the per-test timeout before re-enabling the workflow commit script.
+> **Update (November 30, 2025):** Loop stability regained after rewriting the Dining Philosophers subcase in `tests/unit/test_PathSpace_multithreading.cpp` to cap runtime at ~1.2 s (shared deadline, bounded `Block` waits, meal quotas, and latch-based shutdown). `PathSpaceTests` now finishes in ~9.2 s locally, keeping the mandated 5× loop under the 20 s per-test budget.
+
 - **Migration note:** Capture a concise “drop literal palette blobs” reminder (Phase 4 Step 3) in `docs/Memory.md` so downstream contributors know the new contract before shipping theme changes.
 - **Palette monitoring:** Keep screenshot baselines + CI loop telemetry under review while palette changes propagate (Phase 4 Step 4); update baselines when declarative theme tweaks intentionally shift colors.
 

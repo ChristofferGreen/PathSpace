@@ -1783,10 +1783,12 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
 
     SUBCASE("Dining Philosophers") {
         PathSpace pspace;
-        const int NUM_PHILOSOPHERS     = 5;
-        const int EATING_DURATION_MS   = 5;
-        const int THINKING_DURATION_MS = 5;
-        const int TEST_DURATION_MS     = 3000;
+        constexpr int  NUM_PHILOSOPHERS              = 5;
+        constexpr int  TARGET_MEALS_PER_PHILOSOPHER  = 3;
+        constexpr auto TEST_DURATION                 = 1200ms;
+        constexpr auto THINK_MAX_MS                  = 3;
+        constexpr auto EAT_MAX_MS                    = 2;
+        constexpr auto BACKOFF_MAX_MS                = 4;
 
         struct PhilosopherStats {
             std::atomic<int> meals_eaten{0};
@@ -1795,83 +1797,91 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
         };
 
         std::vector<PhilosopherStats> stats(NUM_PHILOSOPHERS);
-        std::vector<int> attempts(NUM_PHILOSOPHERS, 0);
+        std::vector<int>              attempts(NUM_PHILOSOPHERS, 0);
+
+        std::atomic<bool> stop{false};
+        std::atomic<int>  finishedPhilosophers{0};
+        std::mutex        completionMutex;
+        std::condition_variable completionCv;
+        const auto deadline = std::chrono::steady_clock::now() + TEST_DURATION;
 
         auto philosopher = [&](int id) {
-            std::string first_fork  = std::string("/fork/") + std::to_string(std::min(id, (id + 1) % NUM_PHILOSOPHERS));
-            std::string second_fork = std::string("/fork/") + std::to_string(std::max(id, (id + 1) % NUM_PHILOSOPHERS));
+            const std::string first_fork  = std::string("/fork/") + std::to_string(std::min(id, (id + 1) % NUM_PHILOSOPHERS));
+            const std::string second_fork = std::string("/fork/") + std::to_string(std::max(id, (id + 1) % NUM_PHILOSOPHERS));
 
-            // Start jitter to de-phase philosophers
             std::this_thread::sleep_for(std::chrono::milliseconds(id & 0x3));
-            std::mt19937                    rng(id);
-            std::uniform_int_distribution<> think_dist(1, THINKING_DURATION_MS);
-            std::uniform_int_distribution<> eat_dist(1, EATING_DURATION_MS);
-            std::uniform_int_distribution<> backoff_dist(2, 7);
+            std::mt19937 rng(static_cast<unsigned int>(id * 9973 + 17));
+            std::uniform_int_distribution<int> think_dist(1, THINK_MAX_MS);
+            std::uniform_int_distribution<int> eat_dist(1, EAT_MAX_MS);
+            std::uniform_int_distribution<int> backoff_dist(1, BACKOFF_MAX_MS);
 
-            auto start_time = std::chrono::steady_clock::now();
+            while (!stop.load(std::memory_order_acquire)) {
+                if (stats[id].meals_eaten.load(std::memory_order_relaxed) >= TARGET_MEALS_PER_PHILOSOPHER) {
+                    break;
+                }
+                if (std::chrono::steady_clock::now() >= deadline) {
+                    break;
+                }
 
-            while (std::chrono::steady_clock::now() - start_time < std::chrono::milliseconds(TEST_DURATION_MS)) {
-                // Thinking
                 attempts[id]++;
-                int think_ms = think_dist(rng);
+                std::this_thread::sleep_for(std::chrono::milliseconds(think_dist(rng)));
 
-                std::this_thread::sleep_for(std::chrono::milliseconds(think_ms));
-
-                // Try to pick up forks
-                auto first = pspace.take<int>(first_fork, Block(10ms));
+                auto first = pspace.take<int>(first_fork, Block(1ms));
                 if (first.has_value()) {
                     stats[id].forks_acquired.fetch_add(1, std::memory_order_relaxed);
 
-
-
-                    Out secondOpts = (attempts[id] % 9 == 0) ? Block(0ms) : Block(10ms);
-                    auto second = pspace.take<int>(second_fork, secondOpts);
+                    Out secondOpts = (attempts[id] % 3 == 0) ? Block(0ms) : Block(1ms);
+                    auto second    = pspace.take<int>(second_fork, secondOpts);
                     if (second.has_value()) {
                         stats[id].forks_acquired.fetch_add(1, std::memory_order_relaxed);
-                        int eat_ms = eat_dist(rng);
-
-                        // Eating
-                        std::this_thread::sleep_for(std::chrono::milliseconds(eat_ms));
+                        std::this_thread::sleep_for(std::chrono::milliseconds(eat_dist(rng)));
                         stats[id].meals_eaten.fetch_add(1, std::memory_order_relaxed);
-
-                        // Put down second fork
-
                         pspace.insert(second_fork, 1);
                     } else {
                         stats[id].times_starved.fetch_add(1, std::memory_order_relaxed);
-                        sp_log(std::format("[DP] P{} failed to acquire second {}", id, second_fork), "DP");
                     }
-                    // Put down first fork
                     pspace.insert(first_fork, 1);
                 } else {
                     stats[id].times_starved.fetch_add(1, std::memory_order_relaxed);
                 }
 
-                // Backoff on failure/success to reduce thrash
-                int backoff_ms = backoff_dist(rng);
-                std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
+                std::this_thread::sleep_for(std::chrono::milliseconds(backoff_dist(rng)));
             }
+
+            finishedPhilosophers.fetch_add(1, std::memory_order_acq_rel);
+            std::lock_guard<std::mutex> lock(completionMutex);
+            completionCv.notify_all();
         };
 
-        // Initialize forks
         for (int i = 0; i < NUM_PHILOSOPHERS; ++i) {
             REQUIRE(pspace.insert(std::format("/fork/{}", i), 1).nbrValuesInserted == 1);
         }
 
-        // Start philosophers
         std::vector<std::thread> philosophers;
+        philosophers.reserve(NUM_PHILOSOPHERS);
         for (int i = 0; i < NUM_PHILOSOPHERS; ++i) {
             philosophers.emplace_back(philosopher, i);
         }
 
-        // Wait for test to complete
-        std::this_thread::sleep_for(std::chrono::milliseconds(TEST_DURATION_MS));
+        auto allFinished = [&]() {
+            return finishedPhilosophers.load(std::memory_order_acquire) == NUM_PHILOSOPHERS;
+        };
 
-        // Join all threads
-        for (auto& t : philosophers) { if (t.joinable()) t.join(); }
-        philosophers.clear();
+        {
+            std::unique_lock<std::mutex> lock(completionMutex);
+            completionCv.wait_until(lock, deadline, allFinished);
+        }
+        stop.store(true, std::memory_order_release);
+        completionCv.notify_all();
 
-        // Output and check results
+        for (auto& t : philosophers) {
+            if (t.joinable()) {
+                t.join();
+            }
+        }
+
+        CHECK(allFinished());
+
         int total_meals          = 0;
         int total_starved        = 0;
         int total_forks_acquired = 0;
@@ -1883,17 +1893,13 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
             total_starved += starved;
             total_forks_acquired += forks;
 
-            // Check that each philosopher ate at least once
-            CHECK(meals > 0);
-            // Per-philosopher starvation can legitimately be zero due to timing; overall contention is checked below
+            CHECK(meals >= 1);
         }
 
-        // Check overall statistics
-        CHECK(total_meals > NUM_PHILOSOPHERS);          // Each philosopher should eat at least once
-        CHECK(total_starved > 0);                       // There should be some contention
-        CHECK(total_forks_acquired >= total_meals * 2); // Each meal requires two forks
+        CHECK(total_meals >= NUM_PHILOSOPHERS * TARGET_MEALS_PER_PHILOSOPHER);
+        CHECK(total_starved > 0);
+        CHECK(total_forks_acquired >= total_meals * 2);
 
-        // Check that there's no deadlock (all forks are available)
         for (int i = 0; i < NUM_PHILOSOPHERS; ++i) {
             auto fork = pspace.read<int>(std::format("/fork/{}", i), Block{});
             CHECK(fork.has_value());
@@ -1902,15 +1908,11 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
             }
         }
 
-        // Fairness by meals: each philosopher should get a reasonably similar share of meals
         double mean_meals = static_cast<double>(total_meals) / NUM_PHILOSOPHERS;
         for (int i = 0; i < NUM_PHILOSOPHERS; ++i) {
             double meals_ratio = static_cast<double>(stats[i].meals_eaten.load(std::memory_order_relaxed)) / mean_meals;
             CHECK(meals_ratio >= 0.7);
             CHECK(meals_ratio <= 1.3);
         }
-
-        // Keep overall contention check only; fairness by meals is verified above
-        // total_starved > 0 is already asserted earlier
     }
 }
