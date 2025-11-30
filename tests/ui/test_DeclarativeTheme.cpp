@@ -352,6 +352,85 @@ TEST_CASE("List descriptor layers theme defaults with serialized overrides") {
     }
 }
 
+TEST_CASE("Slider descriptor layers theme defaults and explicit overrides") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    SUBCASE("Defaults inherit the active theme colors") {
+        Declarative::Slider::Args args{};
+        args.minimum = 0.0f;
+        args.maximum = 10.0f;
+        args.value = 4.0f;
+        auto slider = Declarative::Slider::Create(fx.space, fx.parent_view(), "slider_theme", args);
+        REQUIRE(slider.has_value());
+
+        auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *slider);
+        REQUIRE(descriptor.has_value());
+        auto const& data = std::get<Declarative::SliderDescriptor>(descriptor->data);
+        CHECK_EQ(data.style.track_color[0], doctest::Approx(theme.slider.track_color[0]));
+        CHECK_EQ(data.style.fill_color[1], doctest::Approx(theme.slider.fill_color[1]));
+        CHECK_EQ(data.style.thumb_color[2], doctest::Approx(theme.slider.thumb_color[2]));
+        CHECK_EQ(data.style.label_color[3], doctest::Approx(theme.slider.label_color[3]));
+    }
+
+    SUBCASE("Overrides win for targeted slider fields") {
+        Declarative::Slider::Args args{};
+        args.minimum = 0.0f;
+        args.maximum = 1.0f;
+        args.value = 0.25f;
+        args.style_override()
+            .fill_color({0.22f, 0.54f, 0.81f, 1.0f})
+            .thumb_color({0.91f, 0.72f, 0.11f, 1.0f});
+        auto slider = Declarative::Slider::Create(fx.space, fx.parent_view(), "slider_override", args);
+        REQUIRE(slider.has_value());
+
+        auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *slider);
+        REQUIRE(descriptor.has_value());
+        auto const& data = std::get<Declarative::SliderDescriptor>(descriptor->data);
+        CHECK_EQ(data.style.fill_color[0], doctest::Approx(0.22f));
+        CHECK_EQ(data.style.fill_color[1], doctest::Approx(0.54f));
+        CHECK_EQ(data.style.thumb_color[0], doctest::Approx(0.91f));
+        CHECK_EQ(data.style.thumb_color[2], doctest::Approx(0.11f));
+        CHECK_EQ(data.style.track_color[0], doctest::Approx(theme.slider.track_color[0]));
+    }
+}
+
+TEST_CASE("Toggle descriptor layers theme defaults and overrides") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    SUBCASE("Defaults reuse the active theme palette") {
+        Declarative::Toggle::Args args{};
+        auto toggle = Declarative::Toggle::Create(fx.space, fx.parent_view(), "toggle_theme", args);
+        REQUIRE(toggle.has_value());
+
+        auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *toggle);
+        REQUIRE(descriptor.has_value());
+        auto const& data = std::get<Declarative::ToggleDescriptor>(descriptor->data);
+        CHECK_EQ(data.style.track_off_color[0], doctest::Approx(theme.toggle.track_off_color[0]));
+        CHECK_EQ(data.style.track_on_color[1], doctest::Approx(theme.toggle.track_on_color[1]));
+        CHECK_EQ(data.style.thumb_color[2], doctest::Approx(theme.toggle.thumb_color[2]));
+    }
+
+    SUBCASE("Explicit overrides win for toggle colors") {
+        Declarative::Toggle::Args args{};
+        args.style_override()
+            .track_off({0.18f, 0.22f, 0.28f, 1.0f})
+            .track_on({0.35f, 0.82f, 0.44f, 1.0f})
+            .thumb({0.92f, 0.92f, 0.92f, 1.0f});
+        auto toggle = Declarative::Toggle::Create(fx.space, fx.parent_view(), "toggle_override", args);
+        REQUIRE(toggle.has_value());
+
+        auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *toggle);
+        REQUIRE(descriptor.has_value());
+        auto const& data = std::get<Declarative::ToggleDescriptor>(descriptor->data);
+        CHECK_EQ(data.style.track_off_color[0], doctest::Approx(0.18f));
+        CHECK_EQ(data.style.track_on_color[1], doctest::Approx(0.82f));
+        CHECK_EQ(data.style.thumb_color[0], doctest::Approx(0.92f));
+        CHECK_EQ(data.style.track_off_color[2], doctest::Approx(0.28f));
+    }
+}
+
 TEST_CASE("InputField descriptor inherits text field theme colors by default") {
     DeclarativeThemeFixture fx;
     auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());

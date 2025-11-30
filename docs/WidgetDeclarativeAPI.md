@@ -203,6 +203,10 @@ software readbacks fail.
     ```
     The helper keeps `/meta/style` sparse (unset fields serialize as “inherit”) while guaranteeing
     descriptors treat the customized fields as explicit overrides.
+  - Samples and tests should therefore inspect descriptor output, not the serialized `/meta/style`
+    blobs. `examples/declarative_button_example.cpp` now logs the resolved `ButtonDescriptor`
+    background color, and `tests/ui/test_DeclarativeTheme.cpp` exercises slider/toggle defaults +
+    override paths via `style_override()` so new widgets have concrete precedents to follow.
 - **Focus + traversal**
   - Focus metadata is runtime-managed. Widgets keep `focus/order` and
     `focus/current` up to date, and the controller mirrors the active widget to

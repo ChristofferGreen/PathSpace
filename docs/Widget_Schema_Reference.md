@@ -69,6 +69,7 @@ Declarative widgets now serialize a bitmask alongside every `meta/style` payload
 > **Descriptor merge (November 29, 2025):** `DescriptorDetail::Read*` now pulls the resolved `WidgetTheme` alongside the widget path and fills in any palette/typography fields whose override bits are unset (buttons, toggles, sliders, lists, trees, InputField, and TextArea). Renderer buckets therefore receive fully materialized styles even though `/meta/style` only stores overrides.
 
 > **Event routing (November 29, 2025):** WidgetEventTrellis now resolves the same descriptor/theme pair before computing slider/list/tree geometry or hover math, so pointer + keyboard/gamepad interactions stay in sync with the renderer even when `/meta/style` only stores structural overrides.
+> **Test coverage (November 30, 2025):** `tests/ui/test_DeclarativeTheme.cpp` adds slider and toggle descriptor cases (theme defaults plus `style_override()` wins) so every widget with palette overrides now has regression tests guarding the new contract.
 
 Current masks (bit indices are defined in the matching `*StyleOverrideField` enums):
 

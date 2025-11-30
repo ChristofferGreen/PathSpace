@@ -2,6 +2,7 @@
 #include <pathspace/core/Error.hpp>
 #include <pathspace/system/Standard.hpp>
 #include <pathspace/ui/Helpers.hpp>
+#include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/screenshot/DeclarativeScreenshot.hpp>
@@ -77,14 +78,19 @@ int main(int argc, char** argv) {
     }
 
     auto button_root = std::string(window_view.getPath()) + "/widgets/button_column/children/hello_button";
-    auto button_style_path = button_root + "/meta/style";
-    if (auto button_style = space.read<SP::UI::Runtime::Widgets::ButtonStyle, std::string>(button_style_path)) {
-        auto const& color = button_style->background_color;
-        std::cout << "[debug] button bg color: " << color[0] << ", " << color[1]
-                  << ", " << color[2] << '\n';
+    auto button_descriptor =
+        SP::UI::Declarative::LoadWidgetDescriptor(space, SP::UI::Runtime::WidgetPath{button_root});
+    if (!button_descriptor) {
+        std::cout << "[debug] failed to load button descriptor: "
+                  << static_cast<int>(button_descriptor.error().code) << '\n';
+    } else if (button_descriptor->kind != SP::UI::Declarative::WidgetKind::Button) {
+        std::cout << "[debug] unexpected widget kind: "
+                  << static_cast<int>(button_descriptor->kind) << '\n';
     } else {
-        std::cout << "[debug] failed to read button style: "
-                  << static_cast<int>(button_style.error().code) << '\n';
+        auto const& data = std::get<SP::UI::Declarative::ButtonDescriptor>(button_descriptor->data);
+        auto const& color = data.style.background_color;
+        std::cout << "[debug] button (descriptor) bg color: " << color[0] << ", " << color[1]
+                  << ", " << color[2] << '\n';
     }
 
     if (screenshot_path) {
