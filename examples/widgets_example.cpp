@@ -1,6 +1,7 @@
 #include "declarative_example_shared.hpp"
 
 #include <pathspace/examples/paint/PaintControls.hpp>
+#include <pathspace/examples/paint/PaintScreenshotPostprocess.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/screenshot/DeclarativeScreenshotCli.hpp>
 
@@ -19,6 +20,7 @@
 using namespace PathSpaceExamples;
 namespace ScreenshotCli = SP::UI::Screenshot;
 namespace PaintControlsNS = SP::Examples::PaintControls;
+namespace PaintScreenshot = SP::Examples::PaintScreenshot;
 using PaintControlsNS::BrushState;
 
 namespace {
@@ -401,7 +403,12 @@ int main(int argc, char** argv) {
                                                                               options.width,
                                                                               options.height,
                                                                               options.screenshot,
-                                                                              pose);
+                                                                              pose,
+                                                                              [&](SP::UI::Screenshot::DeclarativeScreenshotOptions& screenshot_opts) {
+                                                                                  screenshot_opts.postprocess_png = PaintScreenshot::MakePostprocessHook(paint_controls_layout,
+                                                                                                                                                      options.width,
+                                                                                                                                                      options.height);
+                                                                              });
         if (!capture) {
             std::cerr << "widgets_example: screenshot capture failed: "
                       << SP::describeError(capture.error()) << "\n";

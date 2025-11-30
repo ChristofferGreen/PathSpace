@@ -3,6 +3,7 @@
 #include <pathspace/examples/cli/ExampleCli.hpp>
 #include <pathspace/examples/paint/PaintControls.hpp>
 #include <pathspace/examples/paint/PaintExampleApp.hpp>
+#include <pathspace/examples/paint/PaintScreenshotPostprocess.hpp>
 #include <pathspace/ui/screenshot/DeclarativeScreenshot.hpp>
 
 #include <pathspace/path/ConcretePath.hpp>
@@ -43,13 +44,6 @@
 #include <vector>
 #include <unordered_map>
 
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_STATIC
-#include <third_party/stb_image.h>
-#undef STB_IMAGE_IMPLEMENTATION
-#undef STB_IMAGE_STATIC
-#include <third_party/stb_image_write.h>
-
 using namespace PathSpaceExamples;
 
 namespace {
@@ -61,6 +55,8 @@ namespace PaintControlsNS = SP::Examples::PaintControls;
 using PaintControlsNS::BrushState;
 using PaintLayoutMetrics = PaintControlsNS::PaintLayoutMetrics;
 using DeclarativeHistoryBinding = SP::UI::Declarative::HistoryBinding;
+namespace PaintScreenshot = SP::Examples::PaintScreenshot;
+using PaintScreenshot::SoftwareImage;
 
 constexpr int kRequiredBaselineManifestRevision = 1;
 
@@ -335,12 +331,6 @@ auto scripted_stroke_actions(std::string const& widget_path) -> std::vector<Widg
     return actions;
 }
 
-struct SoftwareImage {
-    int width = 0;
-    int height = 0;
-    std::vector<std::uint8_t> pixels;
-};
-
 auto make_image(int width, int height, std::array<float, 4> color) -> SoftwareImage {
     SoftwareImage image;
     image.width = width;
@@ -411,44 +401,17 @@ auto draw_line(SoftwareImage& image,
 }
 
 auto write_image_png(SoftwareImage const& image, std::filesystem::path const& output_path) -> bool {
-    auto parent = output_path.parent_path();
-    if (!parent.empty()) {
-        std::error_code ec;
-        std::filesystem::create_directories(parent, ec);
-        if (ec) {
-            std::cerr << "paint_example: failed to create directory '" << parent.string()
-                      << "': " << ec.message() << '\n';
-            return false;
-        }
-    }
-    auto stride = static_cast<int>(image.width * 4);
-    if (stbi_write_png(output_path.string().c_str(),
-                       image.width,
-                       image.height,
-                       4,
-                       image.pixels.data(),
-                       stride) == 0) {
-        std::cerr << "paint_example: failed to write PNG to '" << output_path.string() << "'\n";
+    auto status = PaintScreenshot::WriteImagePng(image, output_path);
+    if (!status) {
+        std::cerr << "paint_example: failed to write PNG: "
+                  << SP::describeError(status.error()) << '\n';
         return false;
     }
     return true;
 }
 
 auto read_image_png(std::filesystem::path const& input_path) -> SP::Expected<SoftwareImage> {
-    int width = 0;
-    int height = 0;
-    int channels = 0;
-    auto* data = stbi_load(input_path.string().c_str(), &width, &height, &channels, 4);
-    if (data == nullptr) {
-        return std::unexpected(make_runtime_error("failed to load PNG: " + input_path.string()));
-    }
-    SoftwareImage image{};
-    image.width = width;
-    image.height = height;
-    auto total_bytes = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4u;
-    image.pixels.assign(data, data + total_bytes);
-    stbi_image_free(data);
-    return image;
+    return PaintScreenshot::ReadImagePng(input_path);
 }
 
 auto render_scripted_strokes_image(int width,
@@ -694,184 +657,6 @@ auto write_screenshot_metrics(std::optional<std::filesystem::path> const& metric
            << "}\n";
 }
 
-auto overlay_strokes_onto_png(std::filesystem::path const& screenshot_path,
-                              SoftwareImage const& strokes,
-                              PaintLayoutMetrics const& layout) -> SP::Expected<void> {
-    if (strokes.width <= 0 || strokes.height <= 0) {
-        return std::unexpected(make_runtime_error("scripted strokes missing dimensions"));
-    }
-    auto expected_pixels = static_cast<std::size_t>(strokes.width)
-                           * static_cast<std::size_t>(strokes.height) * 4u;
-    if (strokes.pixels.size() != expected_pixels) {
-        return std::unexpected(make_runtime_error("scripted strokes pixel buffer length mismatch"));
-    }
-    auto overlay_view = SP::UI::Screenshot::OverlayImageView{
-        .width = strokes.width,
-        .height = strokes.height,
-        .pixels = std::span<const std::uint8_t>(strokes.pixels.data(), strokes.pixels.size()),
-    };
-    auto canvas_region = SP::UI::Screenshot::OverlayRegion{
-        .left = static_cast<int>(std::round(layout.canvas_offset_x)),
-        .top = static_cast<int>(std::round(layout.canvas_offset_y)),
-        .right = static_cast<int>(std::round(layout.canvas_offset_x + layout.canvas_width)),
-        .bottom = static_cast<int>(std::round(layout.canvas_offset_y + layout.canvas_height)),
-    };
-    return SP::UI::Screenshot::OverlayRegionOnPng(screenshot_path, overlay_view, canvas_region);
-}
-
-auto float_color_to_bytes(std::array<float, 4> const& color) -> std::array<std::uint8_t, 4> {
-    std::array<std::uint8_t, 4> bytes{};
-    for (std::size_t i = 0; i < color.size(); ++i) {
-        auto clamped = std::clamp(color[i], 0.0f, 1.0f);
-        bytes[i] = static_cast<std::uint8_t>(std::round(clamped * 255.0f));
-    }
-    return bytes;
-}
-
-auto apply_controls_background_overlay(std::filesystem::path const& screenshot_path,
-                                       PaintLayoutMetrics const& layout,
-                                       int screenshot_width,
-                                       int screenshot_height,
-                                       std::optional<std::filesystem::path> const& baseline_png)
-    -> SP::Expected<void> {
-    auto image = read_image_png(screenshot_path);
-    if (!image) {
-        return std::unexpected(image.error());
-    }
-    if (image->width != screenshot_width || image->height != screenshot_height) {
-        return std::unexpected(make_runtime_error("controls background overlay size mismatch"));
-    }
-    auto controls_left = 0;
-    auto seam_width = static_cast<int>(std::round(std::clamp(layout.controls_spacing * 0.55f, 10.0f, 22.0f)));
-    auto controls_extent = layout.padding_x + layout.controls_width + static_cast<float>(seam_width);
-    auto controls_right =
-        std::min(screenshot_width, static_cast<int>(std::ceil(controls_extent)) + 6);
-    auto controls_top = 0;
-    auto controls_bottom = screenshot_height;
-    if (controls_left >= controls_right || controls_top >= controls_bottom) {
-        return {};
-    }
-    if (std::getenv("PAINT_EXAMPLE_DEBUG") != nullptr) {
-        std::cerr << "paint_example: controls background overlay left=" << controls_left
-                  << " right=" << controls_right << " top=" << controls_top << " bottom=" << controls_bottom << '\n';
-    }
-    std::array<std::uint8_t, 4> fill_color{202u, 209u, 226u, 255u};
-    std::optional<SoftwareImage> baseline_overlay;
-    if (baseline_png && std::filesystem::exists(*baseline_png)) {
-        auto baseline = read_image_png(*baseline_png);
-        if (baseline && baseline->width == screenshot_width && baseline->height == screenshot_height) {
-            baseline_overlay = std::move(*baseline);
-        }
-    }
-    auto row_bytes = static_cast<std::size_t>(image->width) * 4u;
-    auto canvas_left = std::clamp(static_cast<int>(std::round(layout.canvas_offset_x)), 0, screenshot_width);
-    auto canvas_right =
-        std::clamp(static_cast<int>(std::round(layout.canvas_offset_x + layout.canvas_width)), 0, screenshot_width);
-    auto canvas_top = std::clamp(static_cast<int>(std::round(layout.padding_y)), 0, screenshot_height);
-    auto canvas_bottom =
-        std::clamp(static_cast<int>(std::round(layout.padding_y + layout.canvas_height)), 0, screenshot_height);
-    if (baseline_overlay) {
-        auto copy_region = [&](int left, int top, int right, int bottom) {
-            left = std::clamp(left, 0, image->width);
-            right = std::clamp(right, 0, image->width);
-            top = std::clamp(top, 0, image->height);
-            bottom = std::clamp(bottom, 0, image->height);
-            if (left >= right || top >= bottom) {
-                return;
-            }
-            for (int y = top; y < bottom; ++y) {
-                auto dst = image->pixels.data() + static_cast<std::size_t>(y) * row_bytes + static_cast<std::size_t>(left) * 4u;
-                auto src = baseline_overlay->pixels.data()
-                           + static_cast<std::size_t>(y) * row_bytes + static_cast<std::size_t>(left) * 4u;
-                std::memcpy(dst, src, static_cast<std::size_t>(right - left) * 4u);
-            }
-        };
-        copy_region(0, 0, image->width, canvas_top);
-        copy_region(0, canvas_bottom, image->width, image->height);
-        copy_region(0, canvas_top, canvas_left, canvas_bottom);
-        copy_region(canvas_right, canvas_top, image->width, canvas_bottom);
-    } else {
-        for (int y = controls_top; y < controls_bottom; ++y) {
-            auto row_offset = static_cast<std::size_t>(y) * row_bytes;
-            for (int x = controls_left; x < controls_right; ++x) {
-                auto idx = row_offset + static_cast<std::size_t>(x) * 4u;
-                if (image->pixels[idx + 3] == 0) {
-                    image->pixels[idx + 0] = fill_color[0];
-                    image->pixels[idx + 1] = fill_color[1];
-                    image->pixels[idx + 2] = fill_color[2];
-                    image->pixels[idx + 3] = fill_color[3];
-                }
-            }
-        }
-    }
-    if (!write_image_png(*image, screenshot_path)) {
-        return std::unexpected(make_runtime_error("failed to write controls background overlay"));
-    }
-    return {};
-}
-
-auto apply_controls_shadow_overlay(std::filesystem::path const& screenshot_path,
-                                   PaintLayoutMetrics const& layout,
-                                   int screenshot_width,
-                                   int screenshot_height) -> SP::Expected<void> {
-    bool verbose = std::getenv("PAINT_EXAMPLE_DEBUG") != nullptr;
-    if (std::getenv("PAINT_EXAMPLE_SKIP_CONTROLS_SHADOW_OVERLAY") != nullptr) {
-        if (verbose) {
-            std::cerr << "paint_example: controls seam overlay skipped via env toggle\n";
-        }
-        return {};
-    }
-    auto seam_width = static_cast<int>(std::round(std::clamp(layout.controls_spacing * 0.55f, 10.0f, 22.0f)));
-    if (seam_width <= 0) {
-        return {};
-    }
-    auto controls_end = static_cast<int>(std::round(layout.padding_x + layout.controls_width));
-    auto shadow_left = std::max(0, controls_end - seam_width);
-    auto shadow_right = std::min(screenshot_width, controls_end);
-    if (shadow_left >= shadow_right) {
-        return {};
-    }
-    auto shadow_top = std::max(0, static_cast<int>(std::round(layout.padding_y)));
-    auto shadow_bottom = std::min(screenshot_height,
-                                  static_cast<int>(std::round(layout.padding_y + layout.canvas_height)));
-    if (shadow_top >= shadow_bottom) {
-        return {};
-    }
-    if (verbose) {
-        std::cerr << "paint_example: controls seam overlay left=" << shadow_left << " right=" << shadow_right
-                  << " top=" << shadow_top << " bottom=" << shadow_bottom
-                  << " width=" << screenshot_width << " height=" << screenshot_height << '\n';
-    }
-    SoftwareImage seam{};
-    seam.width = screenshot_width;
-    seam.height = screenshot_height;
-    seam.pixels.assign(static_cast<std::size_t>(seam.width) * static_cast<std::size_t>(seam.height) * 4u, 0);
-    auto seam_color = float_color_to_bytes({0.10f, 0.12f, 0.16f, 1.0f});
-    auto row_bytes = static_cast<std::size_t>(seam.width) * 4u;
-    for (int y = shadow_top; y < shadow_bottom; ++y) {
-        auto row_offset = static_cast<std::size_t>(y) * row_bytes;
-        for (int x = shadow_left; x < shadow_right; ++x) {
-            auto idx = row_offset + static_cast<std::size_t>(x) * 4u;
-            seam.pixels[idx + 0] = seam_color[0];
-            seam.pixels[idx + 1] = seam_color[1];
-            seam.pixels[idx + 2] = seam_color[2];
-            seam.pixels[idx + 3] = seam_color[3];
-        }
-    }
-    auto overlay_view = SP::UI::Screenshot::OverlayImageView{
-        .width = seam.width,
-        .height = seam.height,
-        .pixels = std::span<const std::uint8_t>(seam.pixels.data(), seam.pixels.size()),
-    };
-    auto region = SP::UI::Screenshot::OverlayRegion{
-        .left = shadow_left,
-        .top = shadow_top,
-        .right = shadow_right,
-        .bottom = shadow_bottom,
-    };
-    return SP::UI::Screenshot::OverlayRegionOnPng(screenshot_path, overlay_view, region);
-}
-
 auto playback_scripted_strokes(SP::PathSpace& space, std::string const& widget_path) -> bool {
     auto actions = scripted_stroke_actions(widget_path);
     for (auto& action : actions) {
@@ -934,14 +719,14 @@ auto write_texture_png(SP::UI::Declarative::PaintTexturePayload const& texture,
         auto* dst = packed.data() + static_cast<std::size_t>(y) * row_bytes;
         std::copy_n(src, row_bytes, dst);
     }
-    if (stbi_write_png(output_path.string().c_str(),
-                       static_cast<int>(texture.width),
-                       static_cast<int>(texture.height),
-                       4,
-                       packed.data(),
-                       static_cast<int>(row_bytes)) == 0) {
-        std::cerr << "paint_example: failed to write GPU texture PNG to '"
-                  << output_path.string() << "'\n";
+    SoftwareImage screenshot_image;
+    screenshot_image.width = static_cast<int>(texture.width);
+    screenshot_image.height = static_cast<int>(texture.height);
+    screenshot_image.pixels = std::move(packed);
+    auto status = PaintScreenshot::WriteImagePng(screenshot_image, output_path);
+    if (!status) {
+        std::cerr << "paint_example: failed to write GPU texture PNG: "
+                  << SP::describeError(status.error()) << '\n';
         return false;
     }
     return true;
@@ -1988,37 +1773,10 @@ auto RunPaintExample(CommandLineOptions options) -> int {
         screenshot_options.readiness_timeout = std::chrono::milliseconds(2000);
         screenshot_options.wait_for_runtime_metrics = true;
 
-        if (options.screenshot_path && strokes_preview_image) {
-            auto preview = strokes_preview_image;
-            auto layout_copy = layout_metrics;
-            auto screenshot_width = options.width;
-            auto screenshot_height = options.height;
-            screenshot_options.postprocess_png = [preview,
-                                                  layout_copy,
-                                                  screenshot_width,
-                                                  screenshot_height](std::filesystem::path const& output_png,
-                                                                     std::optional<std::filesystem::path> const& baseline_png)
-                                                    -> SP::Expected<void> {
-                if (!preview) {
-                    return std::unexpected(make_runtime_error("missing scripted strokes preview"));
-                }
-                if (auto status = overlay_strokes_onto_png(output_png, *preview, layout_copy); !status) {
-                    return status;
-                }
-                if (auto status = apply_controls_background_overlay(output_png,
-                                                                    layout_copy,
-                                                                    screenshot_width,
-                                                                    screenshot_height,
-                                                                    baseline_png);
-                    !status) {
-                    return status;
-                }
-                return apply_controls_shadow_overlay(output_png,
-                                                     layout_copy,
-                                                     screenshot_width,
-                                                     screenshot_height);
-            };
-        }
+        screenshot_options.postprocess_png = PaintScreenshot::MakePostprocessHook(layout_metrics,
+                                                                                 options.width,
+                                                                                 options.height,
+                                                                                 strokes_preview_image);
 
         auto capture_result = SP::UI::Screenshot::CaptureDeclarative(space,
                                                                      scene_result.path,

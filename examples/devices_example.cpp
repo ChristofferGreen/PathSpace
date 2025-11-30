@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/examples/cli/ExampleCli.hpp>
 #include <pathspace/examples/paint/PaintControls.hpp>
+#include <pathspace/examples/paint/PaintScreenshotPostprocess.hpp>
 #include <pathspace/layer/io/PathIOGamepad.hpp>
 #include <pathspace/layer/io/PathIOKeyboard.hpp>
 #include <pathspace/layer/io/PathIOMouse.hpp>
@@ -30,6 +31,7 @@ using namespace SP;
 using namespace std::chrono_literals;
 namespace PaintControlsNS = SP::Examples::PaintControls;
 using PaintControlsNS::BrushState;
+namespace PaintScreenshot = SP::Examples::PaintScreenshot;
 namespace ScreenshotCli = SP::UI::Screenshot;
 
 static std::atomic<bool> g_running{true};
@@ -146,6 +148,7 @@ struct PaintControlsDemoHandles {
     SP::UI::ScenePath scene_path;
     SP::UI::Declarative::PresentHandles present_handles;
     SP::UI::Runtime::WidgetPath status_label;
+    PaintControlsNS::PaintLayoutMetrics layout_metrics;
 };
 
 static void log_expected_error(std::string const& context, Error const& error) {
@@ -331,6 +334,7 @@ static std::optional<PaintControlsDemoHandles> launch_paint_controls_demo(PathSp
         .scene_path = scene->path,
         .present_handles = std::move(*present_handles),
         .status_label = *status_label,
+        .layout_metrics = layout_metrics,
     };
     return handles;
 }
@@ -402,7 +406,13 @@ int main(int argc, char** argv) {
                                                                                   demo->view_name,
                                                                                   options.width,
                                                                                   options.height,
-                                                                                  options.screenshot);
+                                                                                  options.screenshot,
+                                                                                  {},
+                                                                                  [&](SP::UI::Screenshot::DeclarativeScreenshotOptions& screenshot_opts) {
+                                                                                      screenshot_opts.postprocess_png = PaintScreenshot::MakePostprocessHook(demo->layout_metrics,
+                                                                                                                                                          options.width,
+                                                                                                                                                          options.height);
+                                                                                  });
             if (!capture) {
                 log_expected_error("screenshot capture", capture.error());
                 SP::System::ShutdownDeclarativeRuntime(space);

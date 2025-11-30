@@ -194,6 +194,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/PathRenderer2DDetailEncode.cpp
         ui/PathRenderer2D.cpp
         examples/paint/PaintControls.cpp
+        examples/paint/PaintScreenshotPostprocess.cpp
         examples/paint/PaintExampleNewUI.cpp
         ui/screenshot/ScreenshotService.cpp
         ui/screenshot/DeclarativeScreenshot.cpp
