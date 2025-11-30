@@ -982,10 +982,41 @@ PY
 
     paint_screenshot_cli="$BUILD_DIR/pathspace_screenshot_cli"
     paint_manifest="$ROOT_DIR/docs/images/paint_example_baselines.json"
+    paint_monitor_script="$ROOT_DIR/scripts/paint_example_monitor.py"
+    paint_artifacts_dir="$BUILD_DIR/artifacts/paint_example"
+    paint_monitor_report="$TEST_LOG_DIR/paint_example_monitor_report.json"
     if [[ -x "$paint_screenshot_cli" ]]; then
-      add_test_command "PaintExampleScreenshot" "$paint_screenshot_cli" --manifest "$paint_manifest" --tag 1280x800
-      add_test_command "PaintExampleScreenshot720" "$paint_screenshot_cli" --manifest "$paint_manifest" --tag paint_720
-      add_test_command "PaintExampleScreenshot600" "$paint_screenshot_cli" --manifest "$paint_manifest" --tag paint_600
+      paint_tags=(1280x800 paint_720 paint_600)
+      for tag in "${paint_tags[@]}"; do
+        case "$tag" in
+          1280x800)
+            label="PaintExampleScreenshot"
+            ;;
+          paint_720)
+            label="PaintExampleScreenshot720"
+            ;;
+          paint_600)
+            label="PaintExampleScreenshot600"
+            ;;
+          *)
+            sanitized="${tag//[^A-Za-z0-9_]/_}"
+            label="PaintExampleScreenshot_${sanitized}"
+            ;;
+        esac
+        add_test_command "$label" "$paint_screenshot_cli" --manifest "$paint_manifest" --tag "$tag"
+      done
+      if command -v python3 >/dev/null 2>&1 && [[ -f "$paint_monitor_script" ]]; then
+        monitor_cmd=(python3 "$paint_monitor_script"
+          --manifest "$paint_manifest"
+          --artifacts-dir "$paint_artifacts_dir"
+          --output "$paint_monitor_report"
+          --expected-revision-file "$ROOT_DIR/docs/images/paint_example_manifest_revision.txt"
+          --tags)
+        monitor_cmd+=("${paint_tags[@]}")
+        add_test_command "PaintExampleScreenshotReport" "${monitor_cmd[@]}"
+      else
+        info "python3 or paint_example_monitor.py unavailable; skipping PaintExampleScreenshotReport."
+      fi
     else
       info "pathspace_screenshot_cli missing; skipping PaintExampleScreenshot harness."
     fi

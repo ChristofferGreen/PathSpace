@@ -250,6 +250,20 @@ if(PATHSPACE_ENABLE_UI)
               --tag paint_600
     )
     set_tests_properties(PaintExampleScreenshot600 PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
+
+    add_test(NAME PaintExampleScreenshotReport
+      COMMAND python3
+              "${CMAKE_SOURCE_DIR}/scripts/paint_example_monitor.py"
+              --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
+              --artifacts-dir "$<SHELL_PATH:${CMAKE_BINARY_DIR}/artifacts/paint_example>"
+              --output "${PATHSPACE_TEST_LOG_DIR}/paint_example_monitor_report.json"
+              --expected-revision-file "${CMAKE_SOURCE_DIR}/docs/images/paint_example_manifest_revision.txt"
+              --tags 1280x800 paint_720 paint_600
+    )
+    set_tests_properties(PaintExampleScreenshotReport
+      PROPERTIES
+        LABELS ui
+        DEPENDS "PaintExampleScreenshot;PaintExampleScreenshot720;PaintExampleScreenshot600")
   endif()
 
   if(APPLE)

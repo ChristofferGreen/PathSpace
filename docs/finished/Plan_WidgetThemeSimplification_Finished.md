@@ -64,8 +64,8 @@
 ## Remaining TODOs (November 30, 2025)
 > **Update (November 30, 2025):** Loop stability regained after rewriting the Dining Philosophers subcase in `tests/unit/test_PathSpace_multithreading.cpp` to cap runtime at ~1.2 s (shared deadline, bounded `Block` waits, meal quotas, and latch-based shutdown). `PathSpaceTests` now finishes in ~9.2 s locally, keeping the mandated 5× loop under the 20 s per-test budget.
 
-- **Palette monitoring:** Keep screenshot baselines + CI loop telemetry under review while palette changes propagate (Phase 4 Step 4); refresh baselines when declarative theme tweaks intentionally shift colors and log each intentional palette delta in the plan.
-  - Baselines refreshed to manifest revision 8 on November 30, 2025; future palette deltas should follow the paint-example baseline playbook and append notes to `docs/Memory.md`.
+- **Palette monitoring:** Keep screenshot baselines + CI loop telemetry under review while palette changes propagate (Phase 4 Step 4); refresh baselines when declarative theme tweaks intentionally shift colors and log each intentional palette delta in the plan. (Now automated via `scripts/paint_example_monitor.py`, which runs after every screenshot guardrail to aggregate metrics, enforce the manifest revision lock in `docs/images/paint_example_manifest_revision.txt`, and fail fast if artifacts drift without a manifest refresh.)
+  - Baselines refreshed to manifest revision 8 on November 30, 2025; future palette deltas should follow the paint-example baseline playbook, update the manifest + revision lock together, and append notes to `docs/Memory.md`.
 
 ## Risks & Mitigations
 - **Risk:** Breaking existing widgets that relied on implicit sunrise palette. *Mitigation:* Provide a compatibility flag during transition or explicitly rewrite the handful of examples/tests that depend on the old colors.
