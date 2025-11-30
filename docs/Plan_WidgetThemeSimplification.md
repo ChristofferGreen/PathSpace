@@ -55,11 +55,14 @@
 ### Phase 4 — Validation & Migration Support
 1. Expand `tests/ui/test_DeclarativeTheme.cpp` to cover the new merge logic (no serialized colors → theme colors; serialized overrides → override wins; inheritance chain still works). ✅ Buttons/lists/sliders/toggles are covered, and as of November 30, 2025 the suite now includes tree palette overrides (plus mask-bit assertions) and InputField/TextArea layout regression tests demonstrating that structural overrides survive theme layering.
 2. Add regression tests for each widget type to ensure serialized layout overrides survive theme application.
+> **Status (November 30, 2025):** Coverage now includes buttons, toggles, sliders, lists, trees, InputField, and TextArea via the `tests/ui/test_DeclarativeTheme.cpp` cases (“Button/Toggle/Slider/List/Tree descriptor preserves layout overrides while layering theme colors”, plus the existing input/text-area cases). Layout-only overrides flow through descriptors while palette values keep following the active theme, so every widget exercises the theme-first contract.
 3. Provide a short migration note in `docs/Memory.md` (or the tracking doc) so downstream contributors know to drop literal palette blobs.
 4. Monitor the CI loop (especially screenshot baselines) because palette changes will finally show up; update baselines as needed.
 
 ## Remaining TODOs (November 30, 2025)
-- **Loop stability** — The mandated `scripts/compile.sh --clean --test --loop=5 --release` run timed out in `tests/unit/test_PathSpace_multithreading.cpp` (“Dining Philosophers”) during `PathSpaceTests` loop 1 (see `build/test-logs/PathSpaceTests_loop1of5_20251130-074200.log`). Reproduce the suite outside the loop, profile the philosopher threads, and either trim the scenario or raise the per-test timeout before re-enabling the workflow commit script.
+- **Loop stability:** `scripts/compile.sh --clean --test --loop=5 --release` still times out in `tests/unit/test_PathSpace_multithreading.cpp` (“Dining Philosophers”) during `PathSpaceTests` loop 1 (see `build/test-logs/PathSpaceTests_loop1of5_20251130-074200.log`). Reproduce outside the loop, profile the philosopher threads, and either trim the scenario or raise the per-test timeout before re-enabling the workflow commit script.
+- **Migration note:** Capture a concise “drop literal palette blobs” reminder (Phase 4 Step 3) in `docs/Memory.md` so downstream contributors know the new contract before shipping theme changes.
+- **Palette monitoring:** Keep screenshot baselines + CI loop telemetry under review while palette changes propagate (Phase 4 Step 4); update baselines when declarative theme tweaks intentionally shift colors.
 
 ## Risks & Mitigations
 - **Risk:** Breaking existing widgets that relied on implicit sunrise palette. *Mitigation:* Provide a compatibility flag during transition or explicitly rewrite the handful of examples/tests that depend on the old colors.

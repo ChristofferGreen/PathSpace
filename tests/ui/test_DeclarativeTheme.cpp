@@ -328,6 +328,29 @@ TEST_CASE("Button descriptor preserves explicit style overrides") {
     CHECK_EQ(data.style.text_color[0], doctest::Approx(theme.button.text_color[0]));
 }
 
+TEST_CASE("Button descriptor preserves layout overrides while layering theme colors") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    Declarative::Button::Args args{};
+    args.style.width = 280.0f;
+    args.style.height = 60.0f;
+    args.style.corner_radius = 10.0f;
+    auto button =
+        Declarative::Button::Create(fx.space, fx.parent_view(), "button_layout", std::move(args));
+    REQUIRE(button.has_value());
+
+    auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *button);
+    REQUIRE(descriptor.has_value());
+    auto const& data = std::get<Declarative::ButtonDescriptor>(descriptor->data);
+
+    CHECK_EQ(data.style.width, doctest::Approx(280.0f));
+    CHECK_EQ(data.style.height, doctest::Approx(60.0f));
+    CHECK_EQ(data.style.corner_radius, doctest::Approx(10.0f));
+    CHECK_EQ(data.style.background_color[0], doctest::Approx(theme.button.background_color[0]));
+    CHECK_EQ(data.style.text_color[0], doctest::Approx(theme.button.text_color[0]));
+}
+
 TEST_CASE("List descriptor layers theme defaults with serialized overrides") {
     DeclarativeThemeFixture fx;
     auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
@@ -373,6 +396,38 @@ TEST_CASE("List descriptor layers theme defaults with serialized overrides") {
     }
 }
 
+TEST_CASE("List descriptor preserves layout overrides while layering theme colors") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    auto make_items = [] {
+        std::vector<BuilderWidgets::ListItem> items;
+        items.push_back({"row_0", "Row 0"});
+        items.push_back({"row_1", "Row 1"});
+        return items;
+    };
+
+    Declarative::List::Args args{};
+    args.items = make_items();
+    args.style.width = 320.0f;
+    args.style.item_height = 44.0f;
+    args.style.corner_radius = 12.0f;
+    args.style.border_thickness = 2.0f;
+    auto list = Declarative::List::Create(fx.space, fx.parent_view(), "list_layout", std::move(args));
+    REQUIRE(list.has_value());
+
+    auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *list);
+    REQUIRE(descriptor.has_value());
+    auto const& data = std::get<Declarative::ListDescriptor>(descriptor->data);
+
+    CHECK_EQ(data.style.width, doctest::Approx(320.0f));
+    CHECK_EQ(data.style.item_height, doctest::Approx(44.0f));
+    CHECK_EQ(data.style.corner_radius, doctest::Approx(12.0f));
+    CHECK_EQ(data.style.border_thickness, doctest::Approx(2.0f));
+    CHECK_EQ(data.style.background_color[0], doctest::Approx(theme.list.background_color[0]));
+    CHECK_EQ(data.style.item_text_color[0], doctest::Approx(theme.list.item_text_color[0]));
+}
+
 TEST_CASE("Slider descriptor layers theme defaults and explicit overrides") {
     DeclarativeThemeFixture fx;
     auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
@@ -416,6 +471,33 @@ TEST_CASE("Slider descriptor layers theme defaults and explicit overrides") {
     }
 }
 
+TEST_CASE("Slider descriptor preserves layout overrides while layering theme colors") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    Declarative::Slider::Args args{};
+    args.minimum = 0.0f;
+    args.maximum = 5.0f;
+    args.value = 1.0f;
+    args.style.width = 360.0f;
+    args.style.height = 44.0f;
+    args.style.track_height = 8.0f;
+    args.style.thumb_radius = 14.0f;
+    auto slider = Declarative::Slider::Create(fx.space, fx.parent_view(), "slider_layout", args);
+    REQUIRE(slider.has_value());
+
+    auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *slider);
+    REQUIRE(descriptor.has_value());
+    auto const& data = std::get<Declarative::SliderDescriptor>(descriptor->data);
+
+    CHECK_EQ(data.style.width, doctest::Approx(args.style.width));
+    CHECK_EQ(data.style.height, doctest::Approx(args.style.height));
+    CHECK_EQ(data.style.track_height, doctest::Approx(args.style.track_height));
+    CHECK_EQ(data.style.thumb_radius, doctest::Approx(args.style.thumb_radius));
+    CHECK_EQ(data.style.track_color[0], doctest::Approx(theme.slider.track_color[0]));
+    CHECK_EQ(data.style.fill_color[0], doctest::Approx(theme.slider.fill_color[0]));
+}
+
 TEST_CASE("Toggle descriptor layers theme defaults and overrides") {
     DeclarativeThemeFixture fx;
     auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
@@ -450,6 +532,26 @@ TEST_CASE("Toggle descriptor layers theme defaults and overrides") {
         CHECK_EQ(data.style.thumb_color[0], doctest::Approx(0.92f));
         CHECK_EQ(data.style.track_off_color[2], doctest::Approx(0.28f));
     }
+}
+
+TEST_CASE("Toggle descriptor preserves layout overrides while layering theme colors") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    Declarative::Toggle::Args args{};
+    args.style.width = 72.0f;
+    args.style.height = 36.0f;
+    auto toggle = Declarative::Toggle::Create(fx.space, fx.parent_view(), "toggle_layout", args);
+    REQUIRE(toggle.has_value());
+
+    auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *toggle);
+    REQUIRE(descriptor.has_value());
+    auto const& data = std::get<Declarative::ToggleDescriptor>(descriptor->data);
+
+    CHECK_EQ(data.style.width, doctest::Approx(args.style.width));
+    CHECK_EQ(data.style.height, doctest::Approx(args.style.height));
+    CHECK_EQ(data.style.track_on_color[0], doctest::Approx(theme.toggle.track_on_color[0]));
+    CHECK_EQ(data.style.track_off_color[0], doctest::Approx(theme.toggle.track_off_color[0]));
 }
 
 TEST_CASE("Tree descriptor layers theme defaults and honors style overrides") {
@@ -511,6 +613,35 @@ TEST_CASE("Tree descriptor layers theme defaults and honors style overrides") {
         CHECK(BuilderWidgets::HasStyleOverride(data.style.overrides,
                                                BuilderWidgets::TreeStyleOverrideField::Row));
     }
+}
+
+TEST_CASE("Tree descriptor preserves layout overrides while layering theme colors") {
+    DeclarativeThemeFixture fx;
+    auto theme = LoadCompiledTheme(fx.space, fx.app_root_view());
+
+    Declarative::Tree::Args args{};
+    args.nodes = MakeTreeNodes();
+    args.style.width = 360.0f;
+    args.style.row_height = 40.0f;
+    args.style.corner_radius = 10.0f;
+    args.style.border_thickness = 2.0f;
+    args.style.indent_per_level = 22.0f;
+    args.style.toggle_icon_size = 14.0f;
+    auto tree = Declarative::Tree::Create(fx.space, fx.parent_view(), "tree_layout", args);
+    REQUIRE(tree.has_value());
+
+    auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *tree);
+    REQUIRE(descriptor.has_value());
+    auto const& data = std::get<Declarative::TreeDescriptor>(descriptor->data);
+
+    CHECK_EQ(data.style.width, doctest::Approx(args.style.width));
+    CHECK_EQ(data.style.row_height, doctest::Approx(args.style.row_height));
+    CHECK_EQ(data.style.corner_radius, doctest::Approx(args.style.corner_radius));
+    CHECK_EQ(data.style.border_thickness, doctest::Approx(args.style.border_thickness));
+    CHECK_EQ(data.style.indent_per_level, doctest::Approx(args.style.indent_per_level));
+    CHECK_EQ(data.style.toggle_icon_size, doctest::Approx(args.style.toggle_icon_size));
+    CHECK_EQ(data.style.background_color[0], doctest::Approx(theme.tree.background_color[0]));
+    CHECK_EQ(data.style.text_color[0], doctest::Approx(theme.tree.text_color[0]));
 }
 
 TEST_CASE("InputField descriptor inherits text field theme colors by default") {
