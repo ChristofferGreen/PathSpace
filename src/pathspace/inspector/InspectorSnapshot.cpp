@@ -4,6 +4,7 @@
 #include "core/Error.hpp"
 #include "path/ConcretePath.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -139,6 +140,52 @@ struct NodeRecord {
     std::vector<std::string> children;
 };
 
+[[nodiscard]] auto is_descendant_path(std::string const& ancestor,
+                                      std::string const& path) -> bool {
+    if (ancestor.empty() || ancestor == path) {
+        return false;
+    }
+    if (ancestor == "/") {
+        return path != "/";
+    }
+    if (path.size() <= ancestor.size()) {
+        return false;
+    }
+    if (path.compare(0, ancestor.size(), ancestor) != 0) {
+        return false;
+    }
+    auto const next = path[ancestor.size()];
+    return next == '/';
+}
+
+[[nodiscard]] auto collapse_removed_paths(std::vector<std::string> removed)
+    -> std::vector<std::string> {
+    std::sort(removed.begin(),
+              removed.end(),
+              [](std::string const& lhs, std::string const& rhs) {
+                  if (lhs.size() != rhs.size()) {
+                      return lhs.size() < rhs.size();
+                  }
+                  return lhs < rhs;
+              });
+    std::vector<std::string> filtered;
+    filtered.reserve(removed.size());
+    for (auto const& path : removed) {
+        bool hasAncestor = false;
+        for (auto const& kept : filtered) {
+            if (is_descendant_path(kept, path)) {
+                hasAncestor = true;
+                break;
+            }
+        }
+        if (!hasAncestor) {
+            filtered.push_back(path);
+        }
+    }
+    std::sort(filtered.begin(), filtered.end());
+    return filtered;
+}
+
 class SnapshotBuilder {
 public:
     SnapshotBuilder(PathSpace& space, InspectorSnapshotOptions const& options)
@@ -256,6 +303,16 @@ private:
     std::unordered_map<std::string, NodeRecord> nodes_;
 };
 
+[[nodiscard]] auto snapshot_options_json(InspectorSnapshotOptions const& options)
+    -> nlohmann::json {
+    return nlohmann::json{
+        {"root", options.root},
+        {"max_depth", options.max_depth},
+        {"max_children", options.max_children},
+        {"include_values", options.include_values},
+    };
+}
+
 [[nodiscard]] auto to_json(InspectorNodeSummary const& node) -> nlohmann::json {
     nlohmann::json result{
         {"path", node.path},
@@ -275,6 +332,126 @@ private:
     return result;
 }
 
+struct FlatNodeRecord {
+    InspectorNodeSummary const* summary;
+    std::size_t                 fingerprint;
+};
+
+[[nodiscard]] auto hash_combine(std::size_t seed, std::size_t value) -> std::size_t {
+    constexpr std::size_t kMagic = 0x9e3779b97f4a7c15ULL;
+    seed ^= value + kMagic + (seed << 6U) + (seed >> 2U);
+    return seed;
+}
+
+[[nodiscard]] auto node_fingerprint(InspectorNodeSummary const& node) -> std::size_t {
+    std::size_t fingerprint = std::hash<std::string>{}(node.path);
+    fingerprint             = hash_combine(fingerprint, std::hash<std::string>{}(node.value_type));
+    fingerprint             = hash_combine(fingerprint, std::hash<std::string>{}(node.value_summary));
+    fingerprint             = hash_combine(fingerprint, std::hash<std::size_t>{}(node.child_count));
+    fingerprint             = hash_combine(fingerprint, node.children_truncated ? 0x1ULL : 0x0ULL);
+    return fingerprint;
+}
+
+auto collect_flat_nodes(InspectorNodeSummary const& node,
+                        std::unordered_map<std::string, FlatNodeRecord>& out) -> void {
+    auto fingerprint = node_fingerprint(node);
+    out.insert_or_assign(node.path, FlatNodeRecord{&node, fingerprint});
+    for (auto const& child : node.children) {
+        collect_flat_nodes(child, out);
+    }
+}
+
+[[nodiscard]] auto snapshot_to_map(InspectorSnapshot const& snapshot)
+    -> std::unordered_map<std::string, FlatNodeRecord> {
+    std::unordered_map<std::string, FlatNodeRecord> flat;
+    flat.reserve(64);
+    collect_flat_nodes(snapshot.root, flat);
+    return flat;
+}
+
+[[nodiscard]] auto node_from_json(nlohmann::json const& json)
+    -> Expected<InspectorNodeSummary> {
+    if (!json.is_object()) {
+        return std::unexpected(
+            Error{Error::Code::MalformedInput, "inspector node must be an object"});
+    }
+
+    InspectorNodeSummary node;
+    node.path               = json.value("path", std::string{"/"});
+    node.value_type         = json.value("value_type", std::string{});
+    node.value_summary      = json.value("value_summary", std::string{});
+    node.child_count        = json.value("child_count", std::size_t{0});
+    node.children_truncated = json.value("children_truncated", false);
+
+    if (auto it = json.find("children"); it != json.end()) {
+        if (!it->is_array()) {
+            return std::unexpected(Error{Error::Code::MalformedInput,
+                                         "inspector node children must be an array"});
+        }
+        node.children.reserve(it->size());
+        for (auto const& child : *it) {
+            auto parsed = node_from_json(child);
+            if (!parsed) {
+                return parsed;
+            }
+            node.children.push_back(std::move(*parsed));
+        }
+    }
+    return node;
+}
+
+[[nodiscard]] auto parse_snapshot_json(nlohmann::json const& json)
+    -> Expected<InspectorSnapshot> {
+    if (!json.is_object()) {
+        return std::unexpected(
+            Error{Error::Code::MalformedInput, "inspector snapshot must be an object"});
+    }
+
+    auto options_it = json.find("options");
+    if (options_it == json.end() || !options_it->is_object()) {
+        return std::unexpected(Error{Error::Code::MalformedInput,
+                                     "inspector snapshot missing options"});
+    }
+
+    InspectorSnapshotOptions options;
+    options.root           = options_it->value("root", std::string{"/"});
+    options.max_depth      = options_it->value("max_depth", std::size_t{2});
+    options.max_children   = options_it->value("max_children", std::size_t{32});
+    options.include_values = options_it->value("include_values", true);
+
+    auto root_it = json.find("root");
+    if (root_it == json.end()) {
+        return std::unexpected(Error{Error::Code::MalformedInput,
+                                     "inspector snapshot missing root"});
+    }
+    auto root_summary = node_from_json(*root_it);
+    if (!root_summary) {
+        return std::unexpected(root_summary.error());
+    }
+
+    std::vector<std::string> diagnostics;
+    if (auto diag_it = json.find("diagnostics"); diag_it != json.end()) {
+        if (!diag_it->is_array()) {
+            return std::unexpected(Error{Error::Code::MalformedInput,
+                                         "inspector snapshot diagnostics must be an array"});
+        }
+        diagnostics.reserve(diag_it->size());
+        for (auto const& entry : *diag_it) {
+            if (!entry.is_string()) {
+                return std::unexpected(Error{Error::Code::MalformedInput,
+                                             "inspector diagnostics entries must be strings"});
+            }
+            diagnostics.push_back(entry.get<std::string>());
+        }
+    }
+
+    InspectorSnapshot snapshot;
+    snapshot.options     = std::move(options);
+    snapshot.root        = std::move(*root_summary);
+    snapshot.diagnostics = std::move(diagnostics);
+    return snapshot;
+}
+
 } // namespace
 
 auto BuildInspectorSnapshot(PathSpace& space,
@@ -286,18 +463,100 @@ auto BuildInspectorSnapshot(PathSpace& space,
 
 auto SerializeInspectorSnapshot(InspectorSnapshot const& snapshot, int indent) -> std::string {
     nlohmann::json json{
-        {"options",
-         {
-             {"root", snapshot.options.root},
-             {"max_depth", snapshot.options.max_depth},
-             {"max_children", snapshot.options.max_children},
-             {"include_values", snapshot.options.include_values},
-         }},
+        {"options", snapshot_options_json(snapshot.options)},
         {"root", to_json(snapshot.root)},
         {"diagnostics", snapshot.diagnostics},
     };
     return json.dump(indent);
 }
 
-} // namespace SP::Inspector
+auto BuildInspectorStreamDelta(InspectorSnapshot const& previous,
+                               InspectorSnapshot const& current,
+                               std::uint64_t version) -> InspectorStreamDelta {
+    InspectorStreamDelta delta;
+    delta.options     = current.options;
+    delta.root_path   = current.root.path;
+    delta.version     = version;
+    delta.diagnostics = current.diagnostics;
 
+    auto previous_map = snapshot_to_map(previous);
+    auto current_map  = snapshot_to_map(current);
+
+    for (auto const& [path, record] : current_map) {
+        auto it = previous_map.find(path);
+        if (it == previous_map.end()) {
+            delta.added.push_back(*record.summary);
+            continue;
+        }
+        if (it->second.fingerprint != record.fingerprint) {
+            delta.updated.push_back(*record.summary);
+        }
+    }
+
+    for (auto const& [path, record] : previous_map) {
+        if (current_map.find(path) == current_map.end()) {
+            (void)record;
+            delta.removed.push_back(path);
+        }
+    }
+
+    auto sort_by_path = [](InspectorNodeSummary const& lhs,
+                           InspectorNodeSummary const& rhs) {
+        return lhs.path < rhs.path;
+    };
+
+    std::sort(delta.added.begin(), delta.added.end(), sort_by_path);
+    std::sort(delta.updated.begin(), delta.updated.end(), sort_by_path);
+    delta.removed = collapse_removed_paths(std::move(delta.removed));
+
+    return delta;
+}
+
+auto SerializeInspectorStreamSnapshotEvent(InspectorSnapshot const& snapshot,
+                                          std::uint64_t version,
+                                          int indent) -> std::string {
+    nlohmann::json json{
+        {"event", "snapshot"},
+        {"version", version},
+        {"options", snapshot_options_json(snapshot.options)},
+        {"root", to_json(snapshot.root)},
+        {"diagnostics", snapshot.diagnostics},
+    };
+    return json.dump(indent);
+}
+
+auto SerializeInspectorStreamDeltaEvent(InspectorStreamDelta const& delta, int indent) -> std::string {
+    nlohmann::json changes{
+        {"added", nlohmann::json::array()},
+        {"updated", nlohmann::json::array()},
+        {"removed", delta.removed},
+    };
+
+    for (auto const& node : delta.added) {
+        changes["added"].push_back(to_json(node));
+    }
+    for (auto const& node : delta.updated) {
+        changes["updated"].push_back(to_json(node));
+    }
+
+    nlohmann::json json{
+        {"event", "delta"},
+        {"version", delta.version},
+        {"root", delta.root_path},
+        {"options", snapshot_options_json(delta.options)},
+        {"diagnostics", delta.diagnostics},
+        {"changes", std::move(changes)},
+    };
+    return json.dump(indent);
+}
+
+auto ParseInspectorSnapshot(std::string const& payload) -> Expected<InspectorSnapshot> {
+    auto json = nlohmann::json::parse(payload, nullptr, false);
+    if (json.is_discarded()) {
+        return std::unexpected(
+            Error{Error::Code::MalformedInput, "invalid inspector snapshot JSON"});
+    }
+    return parse_snapshot_json(json);
+}
+
+} // namespace SP::Inspector

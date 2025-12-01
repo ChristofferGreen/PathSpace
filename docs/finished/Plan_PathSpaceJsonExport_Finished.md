@@ -6,7 +6,7 @@
 
 ## Background
 - Tooling (inspector, debugging CLIs, remote dashboards) currently copies node data by hand using private trie access. Public APIs only expose `insert/read/take` plus `listChildren`, which cannot discover types or iterate heterogeneous queues.
-- `docs/Plan_PathSpace_Inspector.md` depends on a safe JSON serializer (“JSON Serialization Support”) but no implementation landed. The inspector builder today links directly against private `Node` structures, blocking third-party embedders and layered spaces that cannot expose their roots.
+- `docs/finished/Plan_PathSpace_Inspector_Finished.md` depends on a safe JSON serializer (“JSON Serialization Support”) but no implementation landed. The inspector builder today links directly against private `Node` structures, blocking third-party embedders and layered spaces that cannot expose their roots.
 - Declarative samples and diagnostics increasingly need structured snapshots (e.g., paint screenshot cards, undo telemetry). Requiring bespoke code for every subtree is brittle.
 
 ## Goals
@@ -25,7 +25,7 @@
 
 ## Deliverables
 - `PathSpaceBase::visit(...)` public API with lightweight `PathEntry`/`ValueEntry` facades (no `Node*` leakage).
-- `PathSpaceJsonExporter` helper (`src/pathspace/tools/PathSpaceJsonExporter.{hpp,cpp}`) returning structured JSON plus convenience wrappers on `PathSpaceBase` (`toJSON`, `writeJSONToFile`).
+- `PathSpaceJsonExporter` helper (`src/pathspace/tools/PathSpaceJsonExporter.{hpp,cpp}`) returning structured JSON plus the `PathSpaceBase::toJSON(...)` convenience wrapper.
 - Converter registry (`PathSpaceJsonConverters.hpp`) pre-registering built-in primitives (bool, all integer widths, float/double, std::string) and extension hooks for user structs via templates or explicit registration.
 - Tests covering traversal limits, JSON output, converter errors, and fallback placeholders.
 - Docs: new plan (this file), `docs/AI_Architecture.md` exporter section, `docs/AI_Debugging_Playbook.md` usage notes, `docs/Memory.md` log entry.
@@ -87,10 +87,10 @@ PathSpaceBase
 5. Unit tests verifying traversal order, depth/child truncation, nested space handling, concurrency safety (multiple writers paused via scoped guard in tests).
 
 ### Phase 1 — Converter Registry & JSON Export
-> **Status (November 30, 2025):** Complete. `PathSpaceJsonExporter`/`PathSpaceJsonConverters` landed with default bool/int/float/string converters, `PathSpaceBase::toJSON` + `writeJSONToFile` wrappers, and the new doctest coverage in `tests/unit/pathspace/test_PathSpaceJsonExporter.cpp`. Remaining work moves to Phase 2 integrations.
+> **Status (November 30, 2025):** Complete. `PathSpaceJsonExporter`/`PathSpaceJsonConverters` landed with default bool/int/float/string converters, the `PathSpaceBase::toJSON` wrapper, and the new doctest coverage in `tests/unit/pathspace/test_PathSpaceJsonExporter.cpp`. Remaining work moves to Phase 2 integrations.
 1. Add converter trait + registry with built-in primitives; expose extension API.
 2. Implement `PathSpaceJsonExporter` (builds JSON tree using `visit`).
-3. Add `PathSpaceBase::toJSON(PathSpaceJsonOptions const&) -> Expected<std::string>` and `writeJSONToFile` convenience function for CLIs/tests.
+3. Add `PathSpaceBase::toJSON(PathSpaceJsonOptions const&) -> Expected<std::string>` convenience wrapper for CLIs/tests.
 4. Tests covering:
    - Primitive value export (ints, floats, bools, strings).
    - Heterogeneous queues with limit/truncation.
@@ -102,7 +102,7 @@ PathSpaceBase
 > **Status (November 30, 2025):** Inspector snapshotting now rides the visitor API, `pathspace_dump_json` ships as the supported exporter CLI, and the new `PathSpaceDumpJsonDemo` test exercises the CLI against a pinned fixture. Remaining work tracks documentation updates plus downstream consumers (inspector UI, distributed mounts).
 1. Migrate `InspectorSnapshot` to consume the visitor API (drop direct `Node*` usage).
 2. Add CLI (`tools/pathspace_dump_json.cpp`) to exercise `toJSON` with options (root path, depth, include values, output file).
-3. Update docs and onboarding to reference the new API, and cross-link with `Plan_PathSpace_Inspector.md` / `Plan_Distributed_PathSpace.md`.
+3. Update docs and onboarding to reference the new API, and cross-link with `docs/finished/Plan_PathSpace_Inspector_Finished.md` / `Plan_Distributed_PathSpace.md`.
 4. Optional: add test ensuring `pathspace_dump_json` output matches expected fixtures.
 
 ## Validation & Testing
@@ -116,7 +116,7 @@ PathSpaceBase
 - `docs/AI_Architecture.md`: add “PathSpace traversal & JSON export” section referencing the visitor API and converter registry.
 - `docs/AI_Debugging_Playbook.md`: add instructions for `pathspace_dump_json`, expected JSON schema, troubleshooting tips for missing converters.
 - `docs/Memory.md`: capture the rollout once implemented (date, CLI info, schema pointer).
-- Update `docs/Plan_PathSpace_Inspector.md` dependency list to mark “JSON serialization support” as satisfied once Phase 1 ships.
+- Update `docs/finished/Plan_PathSpace_Inspector_Finished.md` dependency list to mark “JSON serialization support” as satisfied once Phase 1 ships.
 
 ## Risks & Mitigations
 - **Traversal locking contention:** mitigate by holding node locks briefly and allowing callers to disable value sampling (`includeValues=false`) for structural-only walks.

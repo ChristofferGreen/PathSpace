@@ -83,10 +83,14 @@ add_library(PathSpace
     log/TaggedLogger.cpp
     PathSpace.cpp
     inspector/PaintScreenshotCard.cpp
-    inspector/InspectorDemoData.cpp
     inspector/InspectorSnapshot.cpp
+    inspector/InspectorAcl.cpp
     inspector/InspectorHttpServer.cpp
+    inspector/InspectorSearchMetrics.cpp
+    inspector/InspectorStreamMetrics.cpp
+    inspector/InspectorUsageMetrics.cpp
     inspector/InspectorUiAssets.cpp
+    inspector/InspectorRemoteMount.cpp
     layer/PathSpaceTrellis.cpp
     io/IoEventsSerialization.cpp
     runtime/IOPump.cpp

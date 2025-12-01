@@ -77,6 +77,12 @@ Local PathSpace (client) ── RPC/stream ── Remote PathSpace (server)
 - Publish structured logs for mount lifecycle events (`MountOpen`, `MountClose`, disconnects, auth failures).
 - Future enhancement: once PathSpace adds symlink support, mirror remote diagnostics under convenient local paths via symlinks so tooling/inspectors can read them without custom APIs.
 
+## Inspector Integration
+- Every exported PathSpace (server side) must host the inspector HTTP surface—embed `InspectorHttpServer` beside the declarative runtime or run the `pathspace_inspector_server` sidecar with matching ACL/session settings—so operators can introspect mounted subtrees without bespoke tooling.
+- Remote mounts reuse `InspectorHttpServer::Options::remote_mounts`: the client-side `RemoteMountManager` polls each remote `/inspector/tree`/`/inspector/stream` endpoint, prefixes it under `/remote/<alias>`, and merges the deltas into the local inspector SPA dropdown (`/inspector/remotes`). Document the alias list in mount configs so teams know which remote roots should appear in the UI.
+- Inspector diagnostics need to travel with the mount: publish `/inspector/metrics/remotes/<alias>/{status,latency,requests,waiters}` plus `/diagnostics/web/inspector/acl/*` so remote health, ACL denials, and queue depth are visible from a single dashboard. Reference `docs/finished/Plan_PathSpace_Inspector_Finished.md` for the full endpoint/metric catalog and keep the distributed plan in sync whenever new inspector knobs ship.
+- When exporting mounts intended for remote inspection, spell out the browser entrypoint (host/port) and the permitted `snapshot.root`/`acl` scopes so clients can safely expose the inspector to trusted roles only. Distributed deployments should document whether the SPA is served directly from the mounted process or proxied through an existing web adapter.
+
 ## Plan & Phases
 1. **Phase 0 — Prototype Mount (single client/server)**
    - Define protobuf/gRPC schemas.

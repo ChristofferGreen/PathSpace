@@ -14,6 +14,9 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/inspector/test_PaintScreenshotCard.cpp
   unit/inspector/test_InspectorSnapshot.cpp
   unit/inspector/test_InspectorHttpServer.cpp
+  unit/inspector/test_InspectorSearchMetrics.cpp
+  unit/inspector/test_InspectorStreamMetrics.cpp
+  unit/inspector/test_InspectorRemoteMount.cpp
   unit/test_PathSpace_read.cpp
   unit/test_PathSpace_nesting.cpp
   unit/test_PathSpace_extract.cpp

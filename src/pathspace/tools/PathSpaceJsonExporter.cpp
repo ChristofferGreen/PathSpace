@@ -7,8 +7,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <filesystem>
-#include <fstream>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -16,7 +14,6 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <typeindex>
 #include <unordered_map>
 #include <utility>
@@ -362,38 +359,8 @@ auto PathSpaceJsonExporter::Export(PathSpaceBase& space, PathSpaceJsonOptions co
     return root.dump(indent);
 }
 
-auto PathSpaceJsonExporter::WriteToFile(PathSpaceBase& space,
-                                        std::string const& filePath,
-                                        PathSpaceJsonOptions const& options) -> Expected<void> {
-    auto jsonString = Export(space, options);
-    if (!jsonString) {
-        return std::unexpected(jsonString.error());
-    }
-
-    std::filesystem::path destination{filePath};
-    if (auto parent = destination.parent_path(); !parent.empty()) {
-        std::error_code ec;
-        std::filesystem::create_directories(parent, ec);
-    }
-
-    std::ofstream stream(destination, std::ios::binary);
-    if (!stream.is_open()) {
-        return std::unexpected(Error{Error::Code::UnknownError, "Failed to open JSON output file"});
-    }
-    stream << *jsonString;
-    if (!stream.good()) {
-        return std::unexpected(Error{Error::Code::UnknownError, "Failed to write JSON output"});
-    }
-    return {};
-}
-
 auto PathSpaceBase::toJSON(PathSpaceJsonOptions const& options) -> Expected<std::string> {
     return PathSpaceJsonExporter::Export(*this, options);
-}
-
-auto PathSpaceBase::writeJSONToFile(std::string const& filePath, PathSpaceJsonOptions const& options)
-    -> Expected<void> {
-    return PathSpaceJsonExporter::WriteToFile(*this, filePath, options);
 }
 
 } // namespace SP

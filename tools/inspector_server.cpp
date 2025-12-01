@@ -1,6 +1,6 @@
 #include "PathSpace.hpp"
 #include "inspector/InspectorHttpServer.hpp"
-#include "inspector/InspectorDemoData.hpp"
+#include "InspectorDemoData.hpp"
 
 #include <atomic>
 #include <charconv>
@@ -81,6 +81,8 @@ auto parse_arguments(int argc, char** argv, bool& demo) -> SP::Inspector::Inspec
             }
         } else if (arg == "--no-ui") {
             options.enable_ui = false;
+        } else if (arg == "--enable-test-controls") {
+            options.enable_test_controls = true;
         }
     }
     return options;

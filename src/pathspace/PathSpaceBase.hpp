@@ -221,8 +221,6 @@ public:
     }
 
     [[nodiscard]] auto toJSON(PathSpaceJsonOptions const& options = PathSpaceJsonOptions{}) -> Expected<std::string>;
-    [[nodiscard]] auto writeJSONToFile(std::string const& filePath,
-                                       PathSpaceJsonOptions const& options = PathSpaceJsonOptions{}) -> Expected<void>;
 
     // Read a type-erased execution future (non-blocking peek). Returns NoObjectFound if absent.
     template <StringConvertible S>

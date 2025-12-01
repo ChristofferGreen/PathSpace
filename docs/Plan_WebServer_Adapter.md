@@ -10,6 +10,7 @@
 - Support native and web delivery from the same PathSpace app definition so producers maintain one code path.
 - Provide a minimal, secure HTTP interface that maps URLs to PathSpace paths, manages user authentication, and optionally streams live updates.
 - Remain lightweight enough for local development while allowing scale-out in hosted deployment.
+- Host the PathSpace inspector SPA plus its JSON/SSE endpoints so operators can introspect the same PathSpace instance without launching a separate sidecar.
 
 ## Non-Goals (v1)
 - Full multi-tenant rate limiting and quota enforcement (capture TODOs for later).
@@ -30,6 +31,7 @@ Browser ──HTTP(S)──> Web Server Adapter ──PathSpace Client API──
 - **PathSpace Client API** — lightweight binding (C++ CLI, IPC, or gRPC-style protocol) used by the server to read from the PathSpace tree, trigger renders, and subscribe to notifications.
 - **Static Asset Cache** — folder or in-memory cache that mirrors `output/v1/html/assets/*` and per-app `resources/` entries for fonts/images.
 - **Browser Client** — receives HTML/JS/CSS, optionally listens to Server-Sent Events (SSE) or WebSocket notifications for live updates.
+- **Inspector Bridge** — embeds `SP::Inspector::InspectorHttpServer` (or proxies to the standalone binary) so `/inspector/*` routes share the same PathSpace, reuse `InspectorHttpServer::Options` (snapshot caps, remote mounts, ACLs, diagnostics), and deliver the bundled SPA without another process.
 
 ### Native/Web Parity Strategy
 - Applications author scenes, renderers, and presenters once under app-relative paths.
@@ -63,6 +65,16 @@ Browser ──HTTP(S)──> Web Server Adapter ──PathSpace Client API──
 | `/assets/<app>/<fingerprint>` | Fingerprinted static asset (fonts, images) | `renderers/<rid>/targets/html/<view>/output/v1/html/assets/<fingerprint>` or app `resources/` |
 | `/api/path/<encoded-path>` | (Optional) JSON API to read PathSpace nodes | Direct `read` with permission checks; returns JSON |
 | `/apps/<app>/<view>/events` | Live update stream (SSE/WebSocket) | Watch `output/v1/common` for revision changes |
+| `/inspector/` | Bundled inspector SPA (static assets) | `InspectorUiAssets` served via `InspectorHttpServer` |
+| `/inspector/tree` | JSON snapshot rooted at configured `InspectorSnapshotOptions` | `InspectorSnapshot` backed by `PathSpaceJsonExporter` |
+| `/inspector/node` | Focused node detail (value summary + children) | `InspectorSnapshot::VisitNode` reuse |
+| `/inspector/stream` | SSE feed emitting `snapshot` + `delta` events | `InspectorStreamSession` watching `InspectorSnapshot` fingerprints |
+| `/inspector/metrics/stream` | SSE/JSON queue + drop counters | `/inspector/metrics/stream/*` nodes mirrored to HTTP |
+| `/inspector/metrics/search` (GET/POST) | Search/watch diagnostics + POSTed telemetry | `/inspector/metrics/search/*` helpers |
+| `/inspector/remotes` | Remote mount picker + alias health | `RemoteMountManager` diagnostics (`/inspector/metrics/remotes/*`) |
+| `/inspector/watchlists` (REST) | CRUD saved watchlists/import/export | `/inspector/user/<id>/watchlists/*` |
+| `/inspector/snapshots` (+ `/diff`) | Capture/list/download/diff snapshots | Inspector snapshot store + `PathSpaceJsonExporter` |
+| `/inspector/actions/toggles` | Gated admin-only bool flips | `InspectorWriteToggle` helpers logging to `/diagnostics/web/inspector/audit_log/*` |
 
 ## Session & Security
 - **Session Store** — In-memory for dev; pluggable (Redis) for production. Store `user_id`, `app_root`, `permissions`.
@@ -89,6 +101,23 @@ Browser ──HTTP(S)──> Web Server Adapter ──PathSpace Client API──
   - Fetch updated DOM/CSS (for `AlwaysLatestComplete`).
   - Diff `commands` / re-run canvas replay.
   - Display error banners if diagnostics report issues.
+
+## Inspector Integration
+- Run the inspector routes (`/inspector/*`) inside the same adapter so operators can pivot from the rendered app to the live PathSpace tree without launching `pathspace_inspector_server` separately. The adapter either embeds `SP::Inspector::InspectorHttpServer` directly or proxies to the shipped binary; in both cases it reuses the same `PathSpace` pointer and authentication middleware so ACLs and session cookies line up.
+- Expose an `[inspector]` block in `web_server.toml` mirroring `InspectorHttpServer::Options`:
+  - `root`, `max_depth`, `max_children`, and `include_values` map to `InspectorSnapshotOptions`.
+  - `diagnostics_root` points at `/diagnostics/ui/paint_example/screenshot_baseline` by default so the paint screenshot card lights up without extra wiring.
+  - `stream` budgets (`poll_interval_ms`, `keepalive_ms`, `idle_timeout_ms`, `max_pending_events`, `max_events_per_tick`) must match the server defaults documented in `docs/finished/Plan_PathSpace_Inspector_Finished.md` so `/inspector/metrics/stream/*` and the SPA’s stream-health card stay meaningful.
+  - `remote_mounts[]` forward directly into `InspectorHttpServer::Options::remote_mounts`, enabling the multi-root dropdown plus `/inspector/remotes` diagnostics when the web server also brokers distributed mounts.
+  - `acl` configuration (per-role root lists, header overrides) plugs into `InspectorAcl` so `/inspector/tree`, `/inspector/node`, `/inspector/stream`, and write toggles all enforce the same scopes as the rest of the adapter.
+- Serve the bundled SPA by default under `/inspector/` using the assets linked in `InspectorUiAssets`. When developing custom front-ends, honor `ui_root` so the adapter can hotload a locally built bundle while keeping JSON/SSE endpoints identical.
+- Surface the existing diagnostics endpoints untouched:
+  - `/inspector/metrics/stream` mirrors queue depth, drops, resends, active/total sessions, and disconnect reasons from the PathSpace nodes.
+  - `/inspector/metrics/search` accepts POSTed telemetry from the SPA (query, watchlist stats) and exposes aggregated counters for dashboards.
+  - `/inspector/metrics/remotes/<alias>` and `/inspector/remotes` keep publishing alias health (latency, failure streaks, waiter depth) so operators can see remote mounts go degraded directly from the browser.
+  - `/inspector/user/<id>/watchlists/*`, `/inspector/watchlists`, `/inspector/snapshots`, and `/inspector/actions/toggles` retain their storage locations, ensuring saved watchlists, snapshots/diffs, and gated admin toggles survive whether the inspector runs standalone or inside the adapter.
+- Document that SSE endpoints (`/inspector/stream`, `/inspector/metrics/stream`) require the same reverse-proxy buffering overrides as `/apps/<app>/<view>/events`. Keep the proxy snippets in sync so operators do not have to special-case inspector routes.
+- Testing expectation: `scripts/ci_inspector_tests.sh --loop=5` must run against the adapter-hosted endpoints so Playwright verifies both the HTML delivery paths and the inspector SPA in one workflow.
 
 ## Native/Web Coexistence
 - **Shared State Paths** — Keep application state under `apps/<app>/state/*`. Native and web presenters both react to PathSpace changes.

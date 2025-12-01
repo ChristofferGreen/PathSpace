@@ -1,6 +1,6 @@
 #include "PathSpace.hpp"
 #include "examples/cli/ExampleCli.hpp"
-#include "inspector/InspectorDemoData.hpp"
+#include "InspectorDemoData.hpp"
 #include "tools/PathSpaceJsonExporter.hpp"
 
 #include <charconv>

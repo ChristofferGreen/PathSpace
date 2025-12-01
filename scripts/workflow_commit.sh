@@ -25,6 +25,12 @@ cmake --build build -j
 
 ./scripts/compile.sh --clean --test --loop=5 --release
 
+if [[ "${SKIP_INSPECTOR_TESTS:-0}" != "1" ]]; then
+    ./scripts/ci_inspector_tests.sh --loop=5
+else
+    echo "[workflow] SKIP_INSPECTOR_TESTS=1 -> inspector Playwright suite skipped" >&2
+fi
+
 if git diff --quiet && git diff --cached --quiet; then
     echo "error: no changes to commit" >&2
     exit 1

@@ -18,7 +18,7 @@ Links:
 - docs/WidgetDeclarativeAPI.md (workflow for the declarative widget runtime; required reading for UI work)
 - docs/WidgetDeclarativeFeatureParity.md (migration tracker comparing legacy and declarative widgets)
 - docs/WidgetDeclarativeMigrationTracker.md (live status board for inspector/web/consumer adoption of the declarative runtime)
-- docs/Plan_PathSpace_Inspector.md (live PathSpace inspector roadmap)
+- docs/finished/Plan_PathSpace_Inspector_Finished.md (live PathSpace inspector roadmap; historical record)
 - examples/devices_example.cpp (experimental device IO example)
 - examples/paint_example.cpp (declarative paint demo + screenshot harness)
 - build/docs/html/index.html (Doxygen API Reference)
@@ -74,6 +74,28 @@ Tip: Enable sanitizers when debugging concurrency/path issues, and pair `ENABLE_
 Scripts:
 - ./scripts/compile.sh
 - ./scripts/update_compile_commands.sh (keeps compile_commands.json in repo root)
+
+## Inspector quick start
+
+Once you have built the tree, you can launch the bundled inspector server against any running PathSpace (local or distributed mount) and open it in a browser:
+
+```bash
+./build/pathspace_inspector_server \
+  --host 0.0.0.0 \
+  --port 0 \
+  --root /app \
+  --max-depth 3 \
+  --max-children 64 \
+  --diagnostics-root /diagnostics/ui/paint_example \
+  --ui-root out/inspector-ui \
+  --no-demo
+```
+
+- Point `--root` (or the embedded `InspectorHttpServer::Options::snapshot.root`) at the subtree you want to expose.
+- When your process already embeds `InspectorHttpServer`, just set the options, call `start()`, and visit `http://<host>:<port>/`—the SPA is served from the same binary.
+- Distributed deployments should add the remote mount aliases to `InspectorHttpServer::Options::remote_mounts` (or the CLI equivalent) so the SPA’s remote picker lists each mounted PathSpace together with its live health metrics.
+
+See `docs/finished/Plan_PathSpace_Inspector_Finished.md` for the full endpoint catalog (tree, node, stream, metrics, watchlists, actions) and `docs/AI_Debugging_Playbook.md` §8 for the day-to-day inspector workflow.
 
 ## Documentation (Doxygen)
 You can generate HTML API documentation into build/docs/html:

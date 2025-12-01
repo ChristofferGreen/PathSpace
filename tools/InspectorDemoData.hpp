@@ -1,12 +1,13 @@
-#include "inspector/InspectorDemoData.hpp"
+#pragma once
 
 #include "PathSpace.hpp"
 
 #include <cstdint>
+#include <string>
 
 namespace SP::Inspector {
 
-auto SeedInspectorDemoData(PathSpace& space) -> void {
+inline auto SeedInspectorDemoData(PathSpace& space) -> void {
     auto insert_string = [&](std::string const& path, std::string value) {
         auto result = space.insert(path, std::move(value));
         (void)result;
@@ -34,4 +35,3 @@ auto SeedInspectorDemoData(PathSpace& space) -> void {
 }
 
 } // namespace SP::Inspector
-

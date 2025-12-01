@@ -26,8 +26,8 @@ This guide consolidates the practical steps for investigating failures across un
 - Need structured evidence from the loop run? Set `PATHSPACE_LOOP_BASELINE_OUT=<path>` and the helper will summarize `build/test-logs/loop_manifest.tsv` into that JSON file (iteration count, timeout, participating labels, saved logs/artifacts). CI’s `loop-stability` workflow writes `loop_baseline.json` at the repo root so dashboards always have a fresh baseline before declarative changes land.
 - Watching the IO Pump? Check `/system/widgets/runtime/input/metrics/{pointer_events_total,button_events_total,text_events_total,events_dropped_total,last_pump_ns}` plus `/system/widgets/runtime/io/state/running` to confirm the worker is alive and consuming Trellis events. Pump errors share the same `/system/widgets/runtime/input/log/errors/queue` as reducer failures, so grep for `io_pump` tags when diagnosing drops.
 - When `PATHSPACE_RECORD_MANUAL_PUMPS=1` the declarative readiness helper snapshots `/system/widgets/runtime/input/windows/<token>/metrics/*` and `/system/widgets/runtime/input/apps/<app>/metrics/*` into each test’s artifact directory (`manual_pump_metrics.jsonl`). Call `python3 scripts/manual_pump_ingest.py --log-root build/test-logs --output build/test-logs/manual_pump_summary.json` (automatically executed by the helper whenever the env var is set) to aggregate those counters for dashboards or quick regressions triage.
-- **Visitor snapshots (November 30, 2025):** `PathSpaceBase::visit(PathVisitor const&, VisitOptions const&)` replaces ad-hoc `listChildren` crawls. Set `VisitOptions` (`root`, `maxDepth`, `maxChildren`, `includeNestedSpaces`, `includeValues`) and supply a callback that receives `PathEntry` metadata plus a `ValueHandle`. Use the handle’s `read<T>()` only when `includeValues=true`; otherwise call `snapshot()` to inspect queue metadata without copying bytes. Layers (PathView/Alias/Trellis/UndoableSpace) already delegate to their upstreams, so the same visitor works on aliased spaces, inspector views, or trellis mounts. Set `maxChildren = VisitOptions::kUnlimitedChildren` (0) whenever you need every child; the exporter/CLI reports `"max_children": "unlimited"` so diagnostics know the cap is disabled.
-- **JSON dumps (November 30, 2025):** `PathSpaceBase::toJSON(PathSpaceJsonOptions const&)`/`writeJSONToFile` wrap `PathSpaceJsonExporter` so you can stamp the same subtree structure that the inspector expects. Tune `maxQueueEntries` for queue depth (default 4), set `includeOpaquePlaceholders=false` if you only want converted values, and disable `visit.includeValues` when you just need structural inventories. Attach the emitted JSON to flaky bug reports alongside the compile-loop logs. The supported CLI (`./build/pathspace_dump_json --demo --root /demo --max-depth 3 --max-children 4 --max-queue-entries 2 --output demo.json`) exercises the same exporter and is covered by the `PathSpaceDumpJsonDemo` fixture. Use `PathSpaceJsonRegisterConverterAs<T>("FriendlyType", lambda)` (or the legacy `PathSpaceJsonRegisterConverter`) to register readable type names—those aliases show up in `values[*].type` and the opaque placeholders when converters are missing.
+- **Visitor snapshots (November 30, 2025):** `PathSpaceBase::visit(PathVisitor const&, VisitOptions const&)` replaces ad-hoc `listChildren` crawls. Set `VisitOptions` (`root`, `maxDepth`, `maxChildren`, `includeNestedSpaces`, `includeValues`) and supply a callback that receives `PathEntry` metadata plus a `ValueHandle`. Use the handle’s `read<T>()` only when `includeValues=true`; otherwise call `snapshot()` to inspect queue metadata without copying bytes. Layers (PathView/Alias/Trellis/UndoableSpace) already delegate to their upstreams, so the same visitor works on aliased spaces, inspector views, or trellis mounts. Set `maxChildren = VisitOptions::kUnlimitedChildren` (0) whenever you need every child; the exporter/CLI will report `"max_children": "unlimited"` so diagnostics know the cap is disabled.
+- **JSON dumps (November 30, 2025):** `PathSpaceBase::toJSON(PathSpaceJsonOptions const&)` wraps `PathSpaceJsonExporter` so you can stamp the same subtree structure that the inspector expects. Tune `maxQueueEntries` for queue depth (default 4), set `includeOpaquePlaceholders=false` if you only want converted values, and disable `visit.includeValues` when you just need structural inventories. Attach the emitted JSON to flaky bug reports alongside the compile-loop logs. The supported CLI (`./build/pathspace_dump_json --demo --root /demo --max-depth 3 --max-children 4 --max-queue-entries 2 --output demo.json`) exercises the same exporter and is covered by the `PathSpaceDumpJsonDemo` fixture. Use `PathSpaceJsonRegisterConverterAs<T>("FriendlyType", lambda)` (or the legacy `PathSpaceJsonRegisterConverter`) to register readable type names—those aliases show up in `values[*].type` and the opaque placeholders when converters are missing.
 
 New helper switches (November 21, 2025):
 
@@ -359,3 +359,185 @@ With the shared test runner and this playbook, every failure leaves behind actio
 ## 7. Current Blockers (October 20, 2025)
 
 - None. The HTML asset hydration failure was cleared on October 20, 2025 by introducing a dedicated `Html::Asset` serialization codec (`include/pathspace/ui/HtmlSerialization.hpp`) and a regression test (`Html::Asset vectors survive PathSpace round-trip`). Reconfirm with `ctest --test-dir build --output-on-failure -R "Html::Asset"` or the full `PathSpaceUITests` loop when touching the renderer stack.
+
+## 8. Inspector Embedding & Usage
+
+### 8.1 Run the standalone host
+
+- Build the tree (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j`) and launch the helper:
+
+  ```bash
+  ./build/pathspace_inspector_server \
+    --host 0.0.0.0 \
+    --port 0 \
+    --root /app \
+    --max-depth 3 \
+    --max-children 64 \
+    --diagnostics-root /diagnostics/ui/paint_example \
+    --ui-root out/inspector-ui \
+    --no-demo
+  ```
+
+- Omitting `--no-demo` seeds the deterministic demo data so you can poke the UI without attaching to a live app. `--ui-root <dir>` hotloads custom SPA builds; leave it unset to serve the embedded assets. Pair `--no-ui` with a reverse proxy when you only need the JSON/SSE endpoints.
+- `--stream-poll-ms`, `--stream-keepalive-ms`, `--stream-idle-timeout-ms`, `--stream-max-pending`, and `--stream-max-events` mirror the runtime knobs so you can stress-test throttling/backpressure without editing source.
+
+### 8.2 Embed inside a PathSpace app
+
+1. Include `inspector/InspectorHttpServer.hpp` and construct the server next to the `PathSpace` instance you already expose to declarative widgets.
+2. Configure `InspectorHttpServer::Options`:
+   - `host`/`port` default to `127.0.0.1:8765`. Set `port = 0` for an ephemeral port that you can log via `server.port()`.
+   - Scope `snapshot.root` to the subtree you want exposed (defaults: root `/`, depth = 2, children = 32, include values = true). `max_depth`, `max_children`, and `include_values` can also be overridden per request via query parameters.
+   - Update `stream.poll_interval` / `keepalive_interval` for SSE-heavy dashboards (defaults 350 ms and 5 s; anything under 100 ms is clamped server-side).
+   - Clamp per-session budgets with `stream.max_pending_events` (defaults to 64 queued events), `stream.max_events_per_tick` (defaults to 8 events flushed per scheduler pass), and `stream.idle_timeout` (defaults to 30 s). Those values drive `/inspector/metrics/stream` and the SPA’s stream-health card so ops can see when a connection starts dropping/resending snapshots.
+   - Point `paint_card.diagnostics_root` at your paint example metrics if they differ from `/diagnostics/ui/paint_example`.
+   - Use `ui_root` (empty by default) to serve a local UI build or set `enable_ui=false` when another server handles static assets.
+3. Start the server during startup, log the bound port, and stop/join it during shutdown:
+
+   ```cpp
+   SP::Inspector::InspectorHttpServer::Options options;
+   options.host                  = "0.0.0.0";
+   options.port                  = 0;             // pick a free port automatically
+   options.snapshot.root         = "/app";
+   options.snapshot.max_depth    = 3;
+   options.snapshot.max_children = 64;
+
+   SP::Inspector::InspectorHttpServer server(space, options);
+   if (auto started = server.start(); !started) {
+       std::fprintf(stderr,
+                    "Inspector failed to start: %s\n",
+                    SP::describeError(started.error()).c_str());
+       std::exit(1);
+   }
+
+   std::printf("Inspector listening on %s:%u\n",
+               options.host.c_str(),
+               static_cast<unsigned>(server.port()));
+
+   // Later in shutdown handlers
+   server.stop();
+   server.join();
+   ```
+
+4. When embedding into production builds, leave `ui_root` empty (serves the bundled SPA) unless you have a hardened frontend build directory. Document the chosen root/port in your service README so operators know where the inspector lives.
+
+### 8.3 Endpoint + SSE checklist
+
+- `/inspector/tree?root=/demo&depth=3&max_children=64&include_values=1` returns a bounded JSON snapshot. Useful for sanity checks and manual refresh fallbacks.
+- `/inspector/node?path=/demo/widget` drills into a specific node without resending the entire tree.
+- `/inspector/cards/paint-example?diagnostics_root=/diagnostics/ui/paint_example` exposes the screenshot manifest + last-run stats that also power the SPA card.
+- `/inspector/stream?root=/demo&poll_ms=300&keepalive_ms=4000` emits an initial `event: snapshot` frame followed by `event: delta` frames built from `changes.{added,updated,removed}`. Test locally with:
+
+  ```bash
+  curl -N http://127.0.0.1:8765/inspector/stream?root=/demo&poll_ms=300
+  ```
+
+- Clients may request faster/slower updates via `poll_ms` (min 100 ms) and `keepalive_ms`. The SPA surfaces stream state (idle/connected/error) and falls back to manual refresh when EventSource is unavailable.
+- `/inspector/metrics/stream` (and the mirrored `/inspector/metrics/stream/*` nodes) surface queue depth, max depth seen, dropped events, snapshot resends, active/total sessions, and disconnect counts so dashboards and the SPA’s stream-health panel can spot backpressure without scraping logs.
+- `/inspector/metrics/search` provides both GET + POST surfaces (mirrored under `/inspector/metrics/search/*` inside the inspected PathSpace). POST `{ "query": { "latency_ms", "match_count", "returned_count" }, "watch": { "live", "missing", "truncated", "out_of_scope", "unknown" } }` to record a search/watch evaluation; GET to retrieve totals, truncated node counts, and last/average latency for dashboards. The SPA reports automatically after each search/watch run and polls every 5 s to light up badges whenever truncation or ACL hits spike.
+
+#### Tree virtualization & lazy detail panes
+
+- The SPA tree now renders through a virtualized list (28 px rows with overscan) that reuses the flattened snapshot cache. SSE deltas apply incremental updates to that cache, so the inspector only re-renders the rows that are currently visible instead of rebuilding thousands of DOM nodes per poll interval. Scrolling stays responsive (~100 k nodes on mid-range laptops) as long as the viewport itself remains in view.
+- Node selection still performs a `/inspector/node` fetch, but highlights move instantly as deltas land because the flattened tree shares the same path map as the EventSource handler. If a delta removes the currently viewed root, the viewport clears immediately and `refreshTree()` repopulates it when the server publishes the next snapshot.
+- Watchlists, snapshots, write toggles, and the paint card now hydrate lazily via `IntersectionObserver`. Those panels fetch their data the moment they scroll into view or when the operator presses their refresh/save buttons. That keeps idle tabs cheap without removing functionality—manual refresh always forces the panel active, and dashboards no longer need to poll these endpoints until someone is actually looking at them.
+
+### 8.4 Watchlists, bookmarks, and imports
+
+- Saved watchlists persist per authenticated user under `/inspector/user/<id>/watchlists/*` (soft-deleted entries move to `/inspector/user/<id>/watchlists_trash/*` so ops can audit removals). The backend exposes:
+  - `GET /inspector/watchlists` — returns `{ user, user_id, count, limits, watchlists: [...] }` where each watchlist mirrors the stored JSON.
+  - `POST /inspector/watchlists` — create/update a set. Pass `{ "name": "Critical nodes", "paths": ["/app/state/foo"], "id": "optional-slug", "overwrite": true }` to overwrite an existing record.
+  - `DELETE /inspector/watchlists?id=<id>` — delete a saved set (the server relocates it under the trash path).
+  - `GET /inspector/watchlists/export` / `POST /inspector/watchlists/import` — export/import JSON payloads so bug repros and dashboards can share curated watchlists. Import requests accept `{ "mode": "replace" | "merge", "watchlists": [ ... ] }` bodies.
+- `InspectorHttpServer::Options::watchlists` defines per-user limits (`max_saved_sets`, `max_paths_per_set`). Defaults: 32 saved sets, 256 paths per set. Override them only when you have a clear operational need, document the new values, and keep them in sync with service README files.
+- `POST /inspector/metrics/usage` accepts `{ "timestamp_ms": <optional>, "panels": [{ "id": "tree", "dwell_ms": 4200, "entries": 1 }] }` from the SPA’s panel tracker; the server sanitizes the IDs, pushes totals into `/diagnostics/web/inspector/usage/*`, and acknowledges with `202`. Use it when embedding the SPA elsewhere or when synthetic clients want to describe scripted sessions.
+- `GET /inspector/metrics/usage` mirrors the published totals so dashboards and operators do not have to poll PathSpace directly. Expect `total.{dwell_ms,entries,last_updated_ms}` plus one entry per panel (same schema as the POST payload). The underlying PathSpace nodes live at `/diagnostics/web/inspector/usage/total/*` and `/diagnostics/web/inspector/usage/panels/<id>/*` (dwell, entries, last sample, last update) if you want to wire Grafana or offline log processors.
+- The SPA’s watchlist panel now includes save/save-as/load/delete/export/import controls. All buttons hit the endpoints above, so manual API clients and the UI always reflect the same state.
+
+### 8.5 Snapshots, exports, and diffs
+
+- `POST /inspector/snapshots` captures the current tree bounds using `InspectorSnapshotOptions` plus a `PathSpaceJsonExporter` dump. Pass `{ "label": "Search baseline", "note": "before rollback", "options": { "root": "/app", "max_depth": 3, "max_children": 64, "include_values": true } }` to label the capture; the server stores both the inspector snapshot (for SSE-style diffs) and the exporter JSON under `/inspector/user/<id>/snapshots/<slug>/...` and trims the oldest entries when you exceed `InspectorHttpServer::Options::snapshots.max_saved_snapshots` (default 20).
+- `GET /inspector/snapshots` returns `{ user, user_id, count, limit, max_snapshot_bytes, snapshots: [...] }`. Each entry mirrors the stored metadata (created timestamp, label, traversal bounds, byte counts) so automation can list available attachments before requesting the heavy payloads.
+- `GET /inspector/snapshots/export?id=<id>` streams the `PathSpaceJsonExporter` payload augmented with the capture `options` block (root/depth/children/values) and a `Content-Disposition` filename. Drop the body directly into bug reports or archive directories—no need to shell into the host and run `pathspace_dump_json` manually.
+- `POST /inspector/snapshots/diff` accepts `{ "before": "snapshot-a", "after": "snapshot-b" }` and replies with the Inspector delta schema (`changes.added/updated/removed`, diagnostics, and options). Because it reuses `BuildInspectorStreamDelta`, the JSON matches what `/inspector/stream` would have emitted live.
+- The SPA’s “Snapshots” panel wraps all of the above: capture form (root/depth/children default to the current view), saved snapshot select, download/delete buttons, and a diff viewer that renders the `/inspector/snapshots/diff` payload. Operators can now capture evidence, compare revisions, and attach JSON bundles without leaving the browser.
+
+### 8.6 Troubleshooting & rollout notes
+
+- Call `InspectorHttpServer::is_running()` (or watch your service health checks) before advertising the inspector endpoint.
+- Scope inspector access behind your existing auth stack; only “root” roles should observe `/`.
+- Log the bound port + root at startup so operators can connect without reading code. The example above uses `std::printf`, but production builds should wire into the existing logging pipeline.
+- When shipping custom UI bundles, put them under version control beside your service and pass the directory via `ui_root`. The server falls back to the embedded SPA whenever files are missing, so mismatched asset paths fail safe.
+- Keep your `docs/finished/Plan_PathSpace_Inspector_Finished.md` reference in sync whenever defaults change; downstream teams now rely on this playbook plus the plan’s embedding section as the single source of truth.
+
+### 8.7 Remote mounts & `/remote/<alias>` trees
+
+- Phase 2 of the inspector plan introduces `InspectorHttpServer::Options::remote_mounts`, a vector of remote endpoints the server polls in the background. Each entry requires:
+
+  ```cpp
+  SP::Inspector::RemoteMountOptions remote;
+  remote.alias                = "alpha";       // shows up under /remote/alpha
+  remote.host                 = "10.0.0.42";
+  remote.port                 = 8765;           // remote inspector host/port
+  remote.root                 = "/app";        // subtree exported by the remote app
+  remote.snapshot.max_depth   = 3;              // caps for the remote fetcher
+  remote.snapshot.max_children = 64;
+  remote.snapshot.include_values = true;
+  remote.access_hint         = "Requires corp VPN"; // shown in UI hover + API
+  options.remote_mounts.push_back(remote);
+  ```
+
+- The embedded `RemoteMountManager` opens one HTTP client per alias, fetches `/inspector/tree?root=<remote.root>` on the configured interval, and rewrites every path under `/remote/<alias>`. The local `/inspector/tree` and `/inspector/node` responses now include a synthetic `/remote` node with children for each mount so dashboards immediately see which aliases are live/offline.
+- `/inspector/stream` automatically multiplexes the cached remote snapshots into the session’s snapshot/delta sequence, so consumers receive local + remote changes via a single EventSource connection (no per-client remote SSE fans). Remote fetches happen on background threads, so slow/offline mounts can’t stall local polling.
+- Offline mounts publish placeholders plus status strings (last error, timeout, etc.) in both the tree diagnostics and the SPA’s detail panes; once a mount reconnects the placeholder is replaced by the live subtree.
+- `GET /inspector/remotes` now exposes the configured aliases with their `/remote/<alias>` path, connection status, last update timestamp, and the optional `access_hint`. The SPA, dashboards, and automation can poll this endpoint without taking a full tree snapshot when they only care about mount health.
+- Remote diagnostics now mirror into `/inspector/metrics/remotes/<alias>/{status,latency,requests,waiters,timestamps,meta}`: the server records last/avg/max latency (in ms), total successes/errors, consecutive failure streaks, waiter depth/max waiter depth (covers both `/inspector/tree` remote roots and SSE sessions rooted at `/remote/<alias>`), plus last-update/error timestamps and the configured `access_hint`. `/inspector/remotes` exposes the same data via nested `latency`, `requests`, `waiters`, and `health` objects, so dashboards and the SPA can chart slow/offline mounts without scraping logs.
+- The SPA’s quick-root dropdown consumes `/inspector/remotes`, persists the selected root via the page URL + `localStorage`, and shows per-alias status pills with hover hints (VPN/auth scope, last error). Clicking a badge switches the inspector to that mount immediately, keeping remote workflows fast for operators.
+- Document your aliases + hostnames in service READMEs so operators know which remote roots are expected; the quick-root dropdown renders whatever `/inspector/remotes` advertises, so stale config shows up immediately.
+
+### 8.6 ACL gating & diagnostics
+
+- `InspectorHttpServer::Options::acl` scopes every `/inspector/tree`, `/inspector/node`, and `/inspector/stream` request before the snapshot builder runs. Set `default_role` to the role you expect when no header is present (defaults to `root`), override `role_header` / `user_header` if your auth proxy writes different header names, and push one `InspectorAclRuleConfig` per role. Rules have two knobs: `allow_all` (grant the role full access) and `roots` (normalized path prefixes such as `/app` or `/remote/alpha`).
+- Example configuration:
+
+  ```cpp
+  options.acl.default_role = "user";
+  options.acl.role_header  = "x-pathspace-role";
+  options.acl.user_header  = "x-pathspace-user";
+
+  SP::Inspector::InspectorAclRuleConfig admin;
+  admin.role      = "root";
+  admin.allow_all = true;
+  options.acl.rules.push_back(admin);
+
+  SP::Inspector::InspectorAclRuleConfig scoped;
+  scoped.role  = "user";
+  scoped.roots = {"/app", "/remote/beta"};
+  options.acl.rules.push_back(scoped);
+  ```
+
+- The backend normalizes requested paths (collapsing duplicate slashes, trimming trailing `/`) before evaluating the rule, so `/app///foo` can’t escape `/app`. Unauthorized attempts return `403` with a structured payload: `{ "error": "inspector_acl_denied", "message": "…", "role": "user", "requested_path": "/system", "allowed_roots": ["/app"] }`.
+- The SPA consumes those payloads automatically—root badges turn red, the tree panel shows the message, and EventSource retries are paused until the operator selects an allowed root. Manual refresh keeps working for administrators, and watch/search forms still submit metrics so dashboards can see when ACL pressure spikes.
+- Violations are logged inside the inspected PathSpace: `/diagnostics/web/inspector/acl/violations/total`, `/diagnostics/web/inspector/acl/violations/last/{timestamp_ms,role,user,endpoint,requested_path,reason}`, plus append-only JSON blobs under `/diagnostics/web/inspector/acl/violations/events/<timestamp>`. Feed those nodes into Grafana or Grafite to audit who attempted to leave their scope without tailing HTTP logs.
+- Keep the `root` role reserved for break-glass sessions and wire your auth gateway so scoped users receive headers (`x-pathspace-role`, `x-pathspace-user` by default) that match the rules you install. When service teams need temporary wider access, add a new rule anchored to the relevant subtree instead of relaxing `/` globally.
+
+### 8.7 Accessibility & Audits
+- The inspector SPA now exposes explicit ARIA roles/labels for the tree, watchlist, snapshots, paint card, and remote badges. Arrow keys/Home/End/Page Up/Page Down move the virtualized tree selection, while Space/Enter re-fetch the focused node. Remote badges advertise themselves as buttons, so keyboard operators can switch mounts without the mouse.
+- All interactive controls share a high-contrast focus ring, so color-only cues are no longer required during triage. When embedding the SPA via `ui_root`, keep the new CSS block intact so the ring colors remain consistent with the bundled assets.
+- Run the axe-core regression any time you touch the SPA markup: `INSPECTOR_TEST_BASE_URL=http://127.0.0.1:8765 \
+  (cd tests/inspector/playwright && npx playwright test tests/inspector/playwright/tests/inspector-sse.spec.js --grep "axe-core WCAG")`. The helper wraps `@axe-core/playwright` and fails on WCAG 2.0/2.1 A/AA violations.
+
+### 8.8 Admin write toggles & audit trail
+
+- Use `InspectorHttpServer::Options::write_toggles` to whitelist the handful of flag flips/resets you are comfortable exposing through the inspector. Each entry includes:
+  - `id`/`label`/`description` for the UI.
+  - `path` (normalized via `NormalizeInspectorPath`) and `kind` (`ToggleBool` or `SetBool`).
+  - `default_state` which acts as both the fallback value (when the path is absent) and the forced value for `SetBool` actions (e.g., “Reset flag to disabled”).
+- Requests flow through `GET/POST /inspector/actions/toggles`:
+  - The GET endpoint lists configured actions, the current boolean value at each path, whether confirmation headers are required, and the allowed roles.
+  - The POST endpoint executes the action, but only when the caller’s role matches `write_toggles.allowed_roles` (defaults to `root`) **and** the confirmation header matches `write_toggles.confirmation_header` / `confirmation_token` (defaults to `x-pathspace-inspector-write-confirmed: true`). Missing headers return `428 Precondition Required` so automated clients cannot flip flags silently.
+- The SPA now exposes an “Enable session writes” gate above the write-toggle panel. Operators must type `ENABLE` (or whatever you instruct them to use) before the buttons are active, and the panel surfaces the same allowed-role/confirmation hints returned by the backend. When the gate is disabled, the buttons are inert and the warning text reminds users that the session is read-only.
+- Every attempt is logged inside the inspected PathSpace under `/diagnostics/web/inspector/audit_log/{total,last/*,events/*}`:
+  - `total` increments monotonically.
+  - `last/*` captures timestamp, action id/label, role, user header, client address, previous/new values, and outcome (`success`/`failure`).
+  - `events/<timestamp>-<slug>` stores the full JSON blob (including any operator-provided note) so dashboards can replay write history or diff behavior between services without tailing HTTP logs.
+- Treat the write-toggles feature as an escape hatch, not a general-purpose mutator. Keep the allowlist small, document each action in your service README, and rotate the confirmation header/token if you suspect a compromised admin session. For anything beyond boolean flips or deterministic resets, continue to land code changes or CLI workflows instead of widening inspector access.

@@ -18,6 +18,19 @@ auto now_timestamp_ns() -> std::uint64_t {
 
 template <typename T>
 auto replace_value(SP::PathSpace& space, std::string const& path, T const& value) -> SP::Expected<void> {
+    while (true) {
+        auto taken = space.take<T>(path);
+        if (taken) {
+            continue;
+        }
+        auto const& error = taken.error();
+        if (error.code == SP::Error::Code::NoObjectFound
+            || error.code == SP::Error::Code::NoSuchPath) {
+            break;
+        }
+        return std::unexpected(error);
+    }
+
     auto inserted = space.insert(path, value);
     if (!inserted.errors.empty()) {
         return std::unexpected(inserted.errors.front());

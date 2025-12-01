@@ -1224,7 +1224,12 @@ int main(int argc, char** argv) {
             }
         }
 
-        if (present->stats.presented) {
+        bool counted_frame = present->stats.presented;
+        if (!counted_frame && options.headless) {
+            counted_frame = true;
+        }
+
+        if (counted_frame) {
             ++total_presented;
             total_present_ms_sum += present->stats.present_ms;
             total_render_ms_sum += present->stats.frame.render_ms;

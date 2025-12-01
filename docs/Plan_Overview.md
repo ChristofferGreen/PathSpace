@@ -21,41 +21,48 @@ Provide a single index of active planning documents, ordered by current priority
 4. **Plan_Surface_Ray_Cache.md** (deferred)  
    Future ray-query cache design. Read only when GPU path work resumes.
 
-5. **Plan_PathSpace_Inspector.md**  
-   Live web-based inspector for PathSpace; depends on JSON serialization and distributed mounts.
-
-6. **Plan_WebServer_Adapter.md**  
+5. **Plan_WebServer_Adapter.md**  
    HTML/web delivery via embedded server, bridging native and browser apps.
 
-7. **Plan_PathSpaceWindowManager.md**  
+6. **Plan_PathSpaceWindowManager.md**  
    NextStep-inspired window manager that manages declarative windows, chrome, and the dock on top of the UI layer.
 
-8. **Plan_PathSpaceTerminal.md**  
+7. **Plan_PathSpaceTerminal.md**  
    Carta Linea-aware terminal emulator where commands launch apps, capture returned PathSpaces, and visualize them with generic viewers.
 
-9. **Plan_CartaLinea.md** (paused)  
+8. **Plan_CartaLinea.md** (paused)  
    Cross-app deck/timeline/filesystem concept; re-evaluate once renderer priorities stabilize.
 
-10. **Plan_PrimeScript.md** (research)  
+9. **Plan_PrimeScript.md** (research)  
    Exploratory unified scripting/shading language idea; draft syntax/semantics spec lives in `docs/PrimeScript_SyntaxSpec.md` (2025-11-21) to unblock parser prototype scoping.
 
-11. **Plan_IOPump_Finished.md**  
+10. **Plan_IOPump_Finished.md**  
    Input runtime roadmap that introduces the IO Trellis, IO Pump, routing Trellis, and telemetry/throttling knobs feeding declarative widgets. _Completed November 17, 2025 — see `docs/finished/Plan_IOPump_Finished.md` for history._
 
-12. **Plan_PathSpaceTrellis_Finished.md**  
+11. **Plan_PathSpaceTrellis_Finished.md**  
    Final record for the completed trellis redesign. _Historical fan-in work has been archived in `docs/finished/Plan_PathSpace_FanIn_Abandoned.md` for reference._
+
+12. **Plan_PathSpace_Inspector_Finished.md**  
+   Archived December 2, 2025. Serves as the historical record for the inspector rollout (SSE search/watchlists, remote mounts, ACLs, developer tooling, polish) and lives in `docs/finished/Plan_PathSpace_Inspector_Finished.md`.
 
 ## Recommended Implementation Focus (Q4 2025)
 1. **Plan_SceneGraph.md** — active execution path for the renderer/presenter stack defined in `Plan_SceneGraph_Renderer.md`; keep driving the in-flight phases to completion while validating against the renderer blueprint.
 2. **Plan_Distributed_PathSpace.md** — begin Phase 0 once the current implementation milestone is stable; web/server work and the inspector depend on it.
 3. **Plan_WebServer_Adapter.md** — build the baseline web endpoints (auth, REST, SSE) so downstream tooling has a foundation.
-4. **Plan_PathSpace_Inspector.md** — prototype the read-only inspector after distributed mounts, JSON serialization, and web server infrastructure are in place.
-5. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
-6. **Plan_PathSpaceWindowManager.md** — design shared window chrome/dock controls so multi-app sessions feel cohesive once the renderer work stabilizes.
-7. **Plan_PathSpaceTerminal.md** (after Carta Linea resumes) — prototype the command-driven launcher/visualizer so command outputs become Carta Linea cards.
-8. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
+4. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
+5. **Plan_PathSpaceWindowManager.md** — design shared window chrome/dock controls so multi-app sessions feel cohesive once the renderer work stabilizes.
+6. **Plan_PathSpaceTerminal.md** (after Carta Linea resumes) — prototype the command-driven launcher/visualizer so command outputs become Carta Linea cards.
+7. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
-## Status Snapshot — November 28, 2025
+## Status Snapshot — December 1, 2025
+- ✅ (December 1, 2025) `Plan_PathSpace_Inspector_Finished.md` Phase 1 is underway: the bundled SPA now exposes SSE-driven search + watchlist panes with manual refresh fallback, aligning `/inspector/stream` with the live UI and capturing the remaining TODOs (rate limiting, diagnostics, backlog entries) directly in the plan.
+- ✅ (December 1, 2025) `Plan_PathSpace_Inspector_Finished.md` backpressure work landed: `InspectorHttpServer` enforces per-client SSE budgets, `/inspector/metrics/stream` + `/inspector/metrics/stream/*` publish queue/dropped/resent/disconnect counters, and the SPA’s stream-health card visualizes them so dashboards no longer have to scrape logs.
+- ✅ (December 1, 2025) Inspector search/watch diagnostics shipped: `/inspector/metrics/search` (mirrored under `/inspector/metrics/search/*`) records query totals, latency, truncation counts, and watchlist status mixes, and the SPA now posts metrics + badges so ACL hits or truncated searches stand out without scraping logs.
+- ✅ (December 1, 2025) Inspector browser automation landed: the Playwright SSE + manual suites under `tests/inspector/playwright/tests/` validate search/watchlist flows (including manual-refresh fallback) and run through `scripts/ci_inspector_tests.sh --loop=5` inside the workflow.
+- ✅ (December 1, 2025) Inspector multi-root picker + `/inspector/remotes` endpoint landed: the backend now publishes each remote alias (path, connection state, `access_hint`, last update) and the SPA persists quick-root selections via URL + `localStorage` while surfacing status pills/hover hints for VPN/auth requirements.
+- ✅ (December 1, 2025) Inspector embedding guidance published: `docs/finished/Plan_PathSpace_Inspector_Finished.md` now documents how to host `InspectorHttpServer` inside apps (options, SSE tuning, UI overrides), `docs/AI_Debugging_Playbook.md` contains the matching runbook, and Plan Overview can point downstream plans at a single source of truth.
+- ✅ (December 1, 2025) Inspector remote mounts online: the backend now ingests distributed PathSpace mounts declared in `InspectorHttpServer::Options::remote_mounts`, mirrors their trees under `/remote/<alias>`, exposes mount health in `/inspector/tree` diagnostics, and multiplexes remote deltas into `/inspector/stream`, unblocking Phase 2 of `Plan_PathSpace_Inspector_Finished.md`.
+- ✅ (December 2, 2025) Inspector plan archived: all Phase 0–4 backlog entries are complete, so `docs/finished/Plan_PathSpace_Inspector_Finished.md` replaces the in-flight plan and downstream docs now link to the finished reference.
 - ✅ (November 28, 2025) Legacy builder runtime removed: the `SP::UI::Runtime` headers and `*Runtime.cpp` sources now own the UI helper surface, `LegacyBuildersDeprecation` + kill-switch guards were deleted, CI/pre-push rely solely on the declarative/runtime pipeline, and the Phase 4 post-mortem is published in `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`.
 - ✅ (November 25, 2025) Declarative doc alignment complete: README, onboarding guides, and the widget contribution quickstart now point contributors at `docs/WidgetDeclarativeAPI.md`, mark legacy builders as compatibility-only, and reference the parity + migration tracker so Phase 3 of `Plan_WidgetDeclarativeAPI` can progress to deprecation prep.
 - ✅ (November 25, 2025) Phase 3 feature audit for `Plan_WidgetDeclarativeAPI` published (`docs/WidgetDeclarativeFeatureParity.md`). The matrix confirms declarative-vs-legacy parity for widgets, focus, telemetry, and samples; remaining Phase 3 work tracks perf validation plus accessibility automation.
