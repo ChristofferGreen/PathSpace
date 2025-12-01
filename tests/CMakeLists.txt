@@ -187,6 +187,14 @@ add_test(NAME PaintExampleDiagnosticsIngest
 )
 set_tests_properties(PaintExampleDiagnosticsIngest PROPERTIES LABELS ui)
 
+add_test(NAME PathSpaceDumpJsonDemo
+  COMMAND python3
+          "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_dump_json.py"
+          --repo-root "${CMAKE_SOURCE_DIR}"
+          --cli "$<TARGET_FILE:pathspace_dump_json>"
+)
+set_tests_properties(PathSpaceDumpJsonDemo PROPERTIES LABELS tools)
+
 if(PATHSPACE_ENABLE_UI)
   add_test(NAME PathSpaceUITests
     COMMAND "${PATHSPACE_TEST_RUNNER}"

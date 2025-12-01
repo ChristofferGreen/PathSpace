@@ -348,40 +348,46 @@ auto PathSurfaceSoftware::staging_span() -> std::span<std::uint8_t> {
         return {};
     }
 #if defined(__APPLE__)
-    auto* surface = staging_surface_.get();
-    if (!surface) {
-        return {};
-    }
-    auto const height = clamp_non_negative(desc_.size_px.height);
-    if (height <= 0) {
-        return {};
-    }
-    if (staging_locked_) {
-        IOSurfaceUnlock(surface, kIOSurfaceLockAvoidSync, nullptr);
-        staging_locked_ = false;
-    }
-    if (IOSurfaceLock(surface, kIOSurfaceLockAvoidSync, nullptr) != kIOReturnSuccess) {
-        return {};
-    }
-    staging_locked_ = true;
-    auto* base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(surface));
-    auto const bytes = iosurface_span_size(surface, height);
-    if (!base || bytes == 0) {
-        IOSurfaceUnlock(surface, kIOSurfaceLockAvoidSync, nullptr);
-        staging_locked_ = false;
-        return {};
-    }
-    if (staging_sync_pending_) {
-        auto const stride = static_cast<std::size_t>(IOSurfaceGetBytesPerRow(surface));
-        if (copy_front_into_locked_staging(base,
-                                           stride,
-                                           desc_.size_px.width,
-                                           desc_.size_px.height)) {
-            clear_staging_sync();
+    if (use_iosurface_) {
+        auto* surface = staging_surface_.get();
+        if (!surface) {
+            return {};
         }
+        auto const height = clamp_non_negative(desc_.size_px.height);
+        if (height <= 0) {
+            return {};
+        }
+        if (staging_locked_) {
+            IOSurfaceUnlock(surface, kIOSurfaceLockAvoidSync, nullptr);
+            staging_locked_ = false;
+        }
+        std::uint32_t lock_mode = kIOSurfaceLockAvoidSync;
+        if (IOSurfaceLock(surface, lock_mode, nullptr) != kIOReturnSuccess) {
+            lock_mode = 0;
+            if (IOSurfaceLock(surface, lock_mode, nullptr) != kIOReturnSuccess) {
+                return {};
+            }
+        }
+        staging_locked_ = true;
+        auto* base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(surface));
+        auto const bytes = iosurface_span_size(surface, height);
+        if (!base || bytes == 0) {
+            IOSurfaceUnlock(surface, lock_mode, nullptr);
+            staging_locked_ = false;
+            return {};
+        }
+        if (staging_sync_pending_) {
+            auto const stride = static_cast<std::size_t>(IOSurfaceGetBytesPerRow(surface));
+            if (copy_front_into_locked_staging(base,
+                                               stride,
+                                               desc_.size_px.width,
+                                               desc_.size_px.height)) {
+                clear_staging_sync();
+            }
+        }
+        staging_dirty_ = true;
+        return std::span<std::uint8_t>{base, bytes};
     }
-    staging_dirty_ = true;
-    return std::span<std::uint8_t>{base, bytes};
 #else
     if (staging_sync_pending_) {
         if (!front_.empty()) {
@@ -392,6 +398,20 @@ auto PathSurfaceSoftware::staging_span() -> std::span<std::uint8_t> {
     staging_dirty_ = true;
     return std::span<std::uint8_t>{staging_.data(), staging_.size()};
 #endif
+    if (frame_bytes_ == 0) {
+        return {};
+    }
+    if (staging_.size() != frame_bytes_) {
+        staging_.assign(frame_bytes_, 0);
+    }
+    if (staging_sync_pending_) {
+        if (!front_.empty()) {
+            staging_ = front_;
+        }
+        clear_staging_sync();
+    }
+    staging_dirty_ = true;
+    return std::span<std::uint8_t>{staging_.data(), staging_.size()};
 }
 
 void PathSurfaceSoftware::publish_buffered_frame(FrameInfo info) {
@@ -402,14 +422,23 @@ void PathSurfaceSoftware::publish_buffered_frame(FrameInfo info) {
         }
 
 #if defined(__APPLE__)
-        if (staging_locked_ && staging_surface_.get()) {
-            IOSurfaceUnlock(staging_surface_.get(), kIOSurfaceLockAvoidSync, nullptr);
-            staging_locked_ = false;
-        }
-        front_surface_.swap(staging_surface_);
-#else
-        front_.swap(staging_);
+        if (use_iosurface_) {
+            if (staging_locked_ && staging_surface_.get()) {
+                IOSurfaceUnlock(staging_surface_.get(), kIOSurfaceLockAvoidSync, nullptr);
+                staging_locked_ = false;
+            }
+            front_surface_.swap(staging_surface_);
+        } else
 #endif
+        {
+            if (staging_.size() != frame_bytes_) {
+                staging_.assign(frame_bytes_, 0);
+            }
+            if (front_.size() != staging_.size()) {
+                front_.assign(staging_.size(), 0);
+            }
+            front_.swap(staging_);
+        }
         staging_dirty_ = false;
     }
 
@@ -527,26 +556,6 @@ auto PathSurfaceSoftware::copy_buffered_frame(std::span<std::uint8_t> destinatio
     if (!has_buffered()) {
         return std::nullopt;
     }
-#if defined(__APPLE__)
-    auto* surface = front_surface_.get();
-    if (!surface) {
-        return std::nullopt;
-    }
-    auto const height = clamp_non_negative(desc_.size_px.height);
-    if (height <= 0) {
-        return std::nullopt;
-    }
-    auto const required_bytes = iosurface_span_size(surface, height);
-    if (destination.size() < required_bytes) {
-        return std::nullopt;
-    }
-#else
-    auto const required_bytes = front_.size();
-    if (destination.size() < required_bytes) {
-        return std::nullopt;
-    }
-#endif
-
     auto const epoch_before = buffered_epoch_.load(std::memory_order_acquire);
     if (epoch_before == 0) {
         return std::nullopt;
@@ -557,17 +566,45 @@ auto PathSurfaceSoftware::copy_buffered_frame(std::span<std::uint8_t> destinatio
     auto const render_ns = buffered_render_ns_.load(std::memory_order_acquire);
 
 #if defined(__APPLE__)
-    if (IOSurfaceLock(surface, kIOSurfaceLockAvoidSync, nullptr) != kIOReturnSuccess) {
-        return std::nullopt;
+    if (use_iosurface_) {
+        auto* surface = front_surface_.get();
+        if (!surface) {
+            return std::nullopt;
+        }
+        auto const height = clamp_non_negative(desc_.size_px.height);
+        if (height <= 0) {
+            return std::nullopt;
+        }
+        auto const required_bytes = iosurface_span_size(surface, height);
+        if (destination.size() < required_bytes) {
+            return std::nullopt;
+        }
+        std::uint32_t lock_mode = kIOSurfaceLockAvoidSync;
+        if (IOSurfaceLock(surface, lock_mode, nullptr) != kIOReturnSuccess) {
+            lock_mode = 0;
+            if (IOSurfaceLock(surface, lock_mode, nullptr) != kIOReturnSuccess) {
+                return std::nullopt;
+            }
+        }
+        auto* base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(surface));
+        if (!base || required_bytes == 0) {
+            IOSurfaceUnlock(surface, lock_mode, nullptr);
+            return std::nullopt;
+        }
+        std::memcpy(destination.data(), base, required_bytes);
+        IOSurfaceUnlock(surface, lock_mode, nullptr);
+    } else {
+        auto const required_bytes = front_.size();
+        if (required_bytes == 0 || destination.size() < required_bytes) {
+            return std::nullopt;
+        }
+        std::memcpy(destination.data(), front_.data(), required_bytes);
     }
-    auto* base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(surface));
-    if (!base || required_bytes == 0) {
-        IOSurfaceUnlock(surface, kIOSurfaceLockAvoidSync, nullptr);
-        return std::nullopt;
-    }
-    std::memcpy(destination.data(), base, required_bytes);
-    IOSurfaceUnlock(surface, kIOSurfaceLockAvoidSync, nullptr);
 #else
+    auto const required_bytes = front_.size();
+    if (required_bytes == 0 || destination.size() < required_bytes) {
+        return std::nullopt;
+    }
     std::memcpy(destination.data(), front_.data(), required_bytes);
 #endif
 
@@ -587,9 +624,17 @@ auto PathSurfaceSoftware::copy_buffered_frame(std::span<std::uint8_t> destinatio
 
 auto PathSurfaceSoftware::resident_cpu_bytes() const -> std::size_t {
 #if defined(__APPLE__)
-    std::size_t total = frame_bytes_;
-    if (options_.enable_buffered && frame_bytes_ > 0) {
-        total += frame_bytes_;
+    std::size_t total = 0;
+    if (use_iosurface_) {
+        total = frame_bytes_;
+        if (options_.enable_buffered && frame_bytes_ > 0) {
+            total += frame_bytes_;
+        }
+    } else {
+        total = staging_.size();
+        if (options_.enable_buffered) {
+            total += front_.size();
+        }
     }
 #else
     std::size_t total = staging_.size();
@@ -613,14 +658,14 @@ void PathSurfaceSoftware::reallocate_buffers() {
         IOSurfaceUnlock(staging_surface_.get(), kIOSurfaceLockAvoidSync, nullptr);
         staging_locked_ = false;
     }
+    use_iosurface_ = false;
     if (!options_.enable_buffered || width <= 0 || height <= 0 || frame_bytes_ == 0) {
         staging_surface_.reset();
         front_surface_.reset();
-        frame_bytes_ = static_cast<std::size_t>(width)
-                       * static_cast<std::size_t>(height) * kBytesPerPixel;
-        row_stride_bytes_ = stride_for(desc_);
+        staging_.clear();
+        front_.clear();
     } else {
-        auto reset_surface = [&](IOSurfaceHolder& holder, char const* label) {
+        auto reset_surface = [&](IOSurfaceHolder& holder, char const* label) -> bool {
             auto* surface = holder.get();
             if (surface) {
                 auto surface_width = IOSurfaceGetWidth(surface);
@@ -635,12 +680,24 @@ void PathSurfaceSoftware::reallocate_buffers() {
                 zero_iosurface(holder.get(), height);
                 log_iosurface_event(label, width, height);
             }
+            return holder.get() != nullptr;
         };
-        reset_surface(staging_surface_, "stagingReset");
-        reset_surface(front_surface_, "frontReset");
-        if (auto* s = staging_surface_.get()) {
-            row_stride_bytes_ = IOSurfaceGetBytesPerRow(s);
-            frame_bytes_ = iosurface_span_size(s, height);
+        bool const staging_ok = reset_surface(staging_surface_, "stagingReset");
+        bool const front_ok = reset_surface(front_surface_, "frontReset");
+        if (staging_ok && front_ok) {
+            if (auto* s = staging_surface_.get()) {
+                row_stride_bytes_ = IOSurfaceGetBytesPerRow(s);
+                frame_bytes_ = iosurface_span_size(s, height);
+            }
+            staging_.clear();
+            front_.clear();
+            use_iosurface_ = true;
+        } else {
+            staging_surface_.reset();
+            front_surface_.reset();
+            row_stride_bytes_ = stride_for(desc_);
+            staging_.assign(frame_bytes_, 0);
+            front_.assign(frame_bytes_, 0);
         }
     }
 #else

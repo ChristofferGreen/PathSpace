@@ -148,10 +148,10 @@ private:
     IOSurfaceHolder staging_surface_{};
     IOSurfaceHolder front_surface_{};
     mutable bool staging_locked_ = false;
-#else
+    bool use_iosurface_ = false;
+#endif
     std::vector<std::uint8_t> staging_;
     std::vector<std::uint8_t> front_;
-#endif
     bool staging_dirty_ = false;
     std::vector<std::size_t> progressive_dirty_tiles_;
 

@@ -16,6 +16,7 @@ struct PathView : public PathSpaceBase {
     virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override;
     virtual auto shutdown() -> void override;
     virtual auto notify(std::string const& notificationPath) -> void override;
+    auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void> override;
 
 protected:
     auto getRootNode() -> Node* override;

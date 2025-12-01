@@ -197,6 +197,8 @@ public:
     explicit UndoableSpace(std::unique_ptr<PathSpaceBase> inner, HistoryOptions defaults = {});
     ~UndoableSpace() override = default;
 
+    auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void> override;
+
     auto enableHistory(SP::ConcretePathStringView root, HistoryOptions opts = {}) -> Expected<void>;
     auto disableHistory(SP::ConcretePathStringView root) -> Expected<void>;
     auto undo(SP::ConcretePathStringView root, std::size_t steps = 1) -> Expected<void>;

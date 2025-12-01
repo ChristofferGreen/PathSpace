@@ -1,7 +1,58 @@
 #include "PathView.hpp"
 #include "core/Error.hpp"
 
+#include <optional>
+#include <string>
+
 namespace SP {
+
+namespace {
+
+auto joinCanonical(std::string const& prefix, std::string const& suffix) -> std::string {
+    if (prefix.empty() || prefix == "/") {
+        return suffix.empty() ? std::string{"/"} : suffix;
+    }
+    if (suffix.empty() || suffix == "/") {
+        return prefix;
+    }
+    std::string joined = prefix;
+    bool prefixHasSlash = !joined.empty() && joined.back() == '/';
+    bool suffixHasSlash = !suffix.empty() && suffix.front() == '/';
+    if (prefixHasSlash && suffixHasSlash) {
+        joined.pop_back();
+    } else if (!prefixHasSlash && !suffixHasSlash) {
+        joined.push_back('/');
+    }
+    joined.append(suffix);
+    ConcretePathString canonical{joined};
+    auto               normalized = canonical.canonicalized();
+    if (normalized) {
+        return normalized->getPath();
+    }
+    return joined;
+}
+
+auto stripPrefix(std::string const& absolute, std::string const& prefix) -> std::optional<std::string> {
+    if (prefix.empty() || prefix == "/") {
+        return absolute;
+    }
+    if (absolute == prefix) {
+        return std::string{"/"};
+    }
+    if (absolute.size() > prefix.size() && absolute.rfind(prefix, 0) == 0) {
+        auto remainder = absolute.substr(prefix.size());
+        if (remainder.empty()) {
+            return std::string{"/"};
+        }
+        if (remainder.front() != '/') {
+            return std::string{"/"} + remainder;
+        }
+        return remainder;
+    }
+    return std::nullopt;
+}
+
+} // namespace
 
 auto PathView::in(Iterator const& path, InputData const& data) -> InsertReturn {
     if (!this->space)
@@ -45,6 +96,32 @@ auto PathView::notify(std::string const& notificationPath) -> void {
     if (!this->space)
         return;
     this->space->notify(notificationPath);
+}
+
+auto PathView::visit(PathVisitor const& visitor, VisitOptions const& options) -> Expected<void> {
+    if (!this->space) {
+        return std::unexpected(Error{Error::Code::InvalidPermissions, "PathSpace not set"});
+    }
+
+    VisitOptions mapped = options;
+    mapped.root        = joinCanonical(this->root, options.root);
+
+    auto viewVisitor = [&](PathEntry const& upstreamEntry, ValueHandle& handle) -> VisitControl {
+        auto viewPath = stripPrefix(upstreamEntry.path, this->root);
+        if (!viewPath) {
+            return VisitControl::SkipChildren;
+        }
+        Iterator iter{*viewPath};
+        auto     perm = permission(iter);
+        if (!perm.read) {
+            return VisitControl::SkipChildren;
+        }
+        PathEntry remapped = upstreamEntry;
+        remapped.path      = *viewPath;
+        return visitor(remapped, handle);
+    };
+
+    return this->space->visit(viewVisitor, mapped);
 }
 
 auto PathView::getRootNode() -> Node* {

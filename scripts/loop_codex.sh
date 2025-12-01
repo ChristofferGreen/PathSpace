@@ -60,7 +60,7 @@ fi
 
 iter=1
 while :; do
-    codex exec --full-auto --dangerously-bypass-approvals-and-sandbox \
+    codex exec --full-auto \
         $'Current_Plan_Doc is '"$plan_doc"$'\nFollow the instructions in docs/AI_Default_Prompts.md'
 
     if [[ ! -e "$plan_doc" ]]; then

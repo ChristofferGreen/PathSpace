@@ -93,6 +93,9 @@ target_link_libraries(pathspace_paint_screenshot_card PRIVATE PathSpace)
 add_executable(pathspace_inspector_server tools/inspector_server.cpp)
 target_link_libraries(pathspace_inspector_server PRIVATE PathSpace)
 
+add_executable(pathspace_dump_json tools/pathspace_dump_json.cpp)
+target_link_libraries(pathspace_dump_json PRIVATE PathSpace)
+
 if(BUILD_PATHSPACE_EXAMPLES)
   add_executable(pathspace_screenshot_cli tools/pathspace_screenshot_cli.cpp)
   target_link_libraries(pathspace_screenshot_cli PRIVATE paint_example_lib)

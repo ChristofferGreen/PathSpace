@@ -44,10 +44,10 @@ auto DescribeRegisteredType(std::type_index type) -> std::string;
 } // namespace detail
 
 template <typename T, typename Converter>
-auto PathSpaceJsonRegisterConverter(Converter&& converter) -> void {
+auto PathSpaceJsonRegisterConverterAs(std::string_view typeName, Converter&& converter) -> void {
     detail::RegisterPathSpaceJsonConverter(
         std::type_index(typeid(T)),
-        typeid(T).name(),
+        typeName,
         [fn = std::forward<Converter>(converter)](detail::PathSpaceJsonValueReader& reader)
             -> std::optional<nlohmann::json> {
             T value{};
@@ -56,6 +56,11 @@ auto PathSpaceJsonRegisterConverter(Converter&& converter) -> void {
             }
             return fn(value);
         });
+}
+
+template <typename T, typename Converter>
+auto PathSpaceJsonRegisterConverter(Converter&& converter) -> void {
+    PathSpaceJsonRegisterConverterAs<T>(typeid(T).name(), std::forward<Converter>(converter));
 }
 
 #define PATHSPACE_INTERNAL_JSON_CONCAT(a, b) PATHSPACE_INTERNAL_JSON_CONCAT_IMPL(a, b)

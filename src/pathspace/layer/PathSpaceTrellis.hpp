@@ -31,6 +31,7 @@ public:
         -> std::optional<Error> override;
     auto notify(std::string const& notificationPath) -> void override;
     auto shutdown() -> void override;
+    auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void> override;
 
     void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix) override;
 
@@ -44,6 +45,7 @@ private:
     using SourceSet = phmap::flat_hash_set<std::string>;
 
     [[nodiscard]] auto joinWithMount(std::string_view tail) const -> std::string;
+    [[nodiscard]] auto stripMount(std::string const& absolute) const -> std::string;
     [[nodiscard]] auto snapshotSources() const -> std::vector<std::string>;
     [[nodiscard]] auto canonicalize(std::string const& path) const -> std::optional<std::string>;
     [[nodiscard]] auto isMoveOnly(InputData const& data) const -> bool;

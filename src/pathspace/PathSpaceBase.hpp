@@ -41,11 +41,23 @@ struct Access;
 }
 
 struct VisitOptions {
+    static constexpr std::size_t kUnlimitedDepth     = std::numeric_limits<std::size_t>::max();
+    static constexpr std::size_t kUnlimitedChildren = 0;
+    static constexpr std::size_t kDefaultMaxChildren = 256;
+
     std::string root = "/";
-    std::size_t maxDepth = std::numeric_limits<std::size_t>::max();
-    std::size_t maxChildren = 256;
+    std::size_t maxDepth = kUnlimitedDepth;
+    std::size_t maxChildren = kDefaultMaxChildren;
     bool includeNestedSpaces = true;
     bool includeValues = true;
+
+    [[nodiscard]] constexpr auto childLimitEnabled() const noexcept -> bool {
+        return maxChildren != kUnlimitedChildren;
+    }
+
+    [[nodiscard]] static constexpr auto isUnlimitedChildren(std::size_t value) noexcept -> bool {
+        return value == kUnlimitedChildren;
+    }
 };
 
 struct PathSpaceJsonOptions {

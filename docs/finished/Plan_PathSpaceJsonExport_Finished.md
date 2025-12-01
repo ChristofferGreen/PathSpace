@@ -99,6 +99,7 @@ PathSpaceBase
    - Nested spaces + include/exclude toggle.
 
 ### Phase 2 — Integrations & Tooling
+> **Status (November 30, 2025):** Inspector snapshotting now rides the visitor API, `pathspace_dump_json` ships as the supported exporter CLI, and the new `PathSpaceDumpJsonDemo` test exercises the CLI against a pinned fixture. Remaining work tracks documentation updates plus downstream consumers (inspector UI, distributed mounts).
 1. Migrate `InspectorSnapshot` to consume the visitor API (drop direct `Node*` usage).
 2. Add CLI (`tools/pathspace_dump_json.cpp`) to exercise `toJSON` with options (root path, depth, include values, output file).
 3. Update docs and onboarding to reference the new API, and cross-link with `Plan_PathSpace_Inspector.md` / `Plan_Distributed_PathSpace.md`.
@@ -106,12 +107,12 @@ PathSpaceBase
 
 ## Validation & Testing
 - Unit tests under `tests/unit/pathspace/test_PathSpaceVisit.cpp` and `tests/unit/pathspace/test_PathSpaceJsonExporter.cpp`.
-- Integration test: run `pathspace_dump_json` on a seeded mini space (widgets, diagnostics) and compare JSON to golden file (with stable ordering / deterministic formatting).
+- Integration test: `PathSpaceDumpJsonDemo` runs `pathspace_dump_json` against the seeded demo tree and diffs the JSON against `tests/fixtures/pathspace_dump_json_demo.json` to guarantee deterministic output.
 - Performance micro-benchmarks for `visit` on a large synthetic trie to ensure traversal remains O(n) with minimal allocations.
 - CI: extend `scripts/compile.sh` to build the new CLI and run the added tests within the mandated loop.
 
 ## Documentation Updates
-- This plan file (`docs/Plan_PathSpaceJsonExport.md`).
+- This plan file (`docs/finished/Plan_PathSpaceJsonExport_Finished.md`).
 - `docs/AI_Architecture.md`: add “PathSpace traversal & JSON export” section referencing the visitor API and converter registry.
 - `docs/AI_Debugging_Playbook.md`: add instructions for `pathspace_dump_json`, expected JSON schema, troubleshooting tips for missing converters.
 - `docs/Memory.md`: capture the rollout once implemented (date, CLI info, schema pointer).
@@ -128,9 +129,13 @@ PathSpaceBase
 2. Do we need streaming/iterative JSON output for gigantic spaces? (Not in this plan; optional future Phase 3 enhancement.)
 3. How should we represent `FutureAny` readiness states? (Proposal: include `{ "placeholder": "execution", "state": "pending/ready" }` in JSON.)
 
+## Maintainer Feedback (November 30, 2025)
+- **Visitor ergonomics:** `VisitOptions` now exposes explicit constants for unlimited depth/children plus a `childLimitEnabled()` helper so tooling can disable child caps without magic values. `PathSpaceJsonExporter` propagates that state by emitting `"max_children": "unlimited"` when the limit is disabled, and the CLI help/JSON stats no longer mis-report zero as a hard cap.
+- **Converter registry:** The exporter reuses registry-provided type aliases for both value entries and placeholders, and the new `PathSpaceJsonRegisterConverterAs<T>(friendlyName, lambda)` helper lets embedders publish human-readable names instead of mangled `typeid` strings. Default converters now register canonical C++ type names, and the unit tests exercise both aliasing and unlimited-child reporting to lock the behavior down.
+
 ## Next Steps
-1. Review this plan with the maintainer; capture feedback on visitor ergonomics and converter registration API.
+1. ✅ (November 30, 2025) Captured maintainer feedback on visitor ergonomics (unlimited child helpers, clearer JSON stats) and the converter registration API (alias-aware helpers, friendly exporter labels) so downstream plans can rely on the documented surfaces.
 2. ✅ (November 30, 2025) Phase 0 API landed (`visit`, `VisitOptions`, `ValueHandle`, delegation layers, unit coverage). Focus remaining Phase 0 work on migrating high-traffic `listChildren` callers to the visitor facade so the legacy helper becomes a shim.
 3. ✅ (November 30, 2025) Phase 1 exporter + converter work is live (`PathSpaceJsonExporter`, `PathSpaceJsonConverters`, `PathSpaceBase::toJSON`, and doctest coverage). Keep the registry documented (`docs/AI_Architecture.md`, `docs/AI_Debugging_Playbook.md`) so downstream tooling can rely on the schema.
-4. Begin Phase 2 (integrations & tooling): migrate `InspectorSnapshot` to the visitor/exporter path, add the CLI (`tools/pathspace_dump_json`), and wire the new tests/targets into the inspector/web server plans.
-5. PathSpaceUITests currently fail in `test_BackendAdapters`, `test_HtmlReplay`, and the renderer present tests when the workflow script runs (`build/test-logs/PathSpaceUITests_loop1of5_20251130-231110.log`). Audit the missing backend fixtures/screenshots and restore them before rerunning the commit workflow.
+4. ✅ (November 30, 2025) Phase 2 kickoff delivered the visitor-backed inspector snapshot, the `pathspace_dump_json` CLI, and the fixture-backed regression test. Next deliverables in this phase focus on doc updates plus wiring the inspector/web plans to the exporter contract.
+5. ✅ (November 30, 2025) PathSpaceUITests gate restored — `test_BackendAdapters`, `test_HtmlReplay`, and the renderer present suites were failing because PathSurfaceSoftware lost its CPU-buffered fallback when IOSurface allocation was unavailable, so no buffered screenshots ever reached the adapters. Re-enabled the vector-backed staging/front buffers on macOS when IOSurface creation fails, which puts the workflow loop back to green.

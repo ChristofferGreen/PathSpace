@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <pathspace/PathSpace.hpp>
+#include <pathspace/tools/PathSpaceJsonConverters.hpp>
 
 using Json = nlohmann::json;
 using namespace SP;
@@ -109,4 +110,48 @@ TEST_CASE("PathSpace JSON exporter honors includeValues toggle") {
     CHECK(values.empty());
     CHECK_FALSE(node.at("values_truncated").get<bool>());
     CHECK_FALSE(node.at("values_sampled").get<bool>());
+}
+
+TEST_CASE("PathSpace JSON exporter reports unlimited child limit") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/a", 1).nbrValuesInserted == 1);
+    REQUIRE(space.insert("/root/b", 2).nbrValuesInserted == 1);
+    REQUIRE(space.insert("/root/c", 3).nbrValuesInserted == 1);
+
+    PathSpaceJsonOptions options;
+    options.visit.root        = "/root";
+    options.visit.maxChildren = VisitOptions::kUnlimitedChildren;
+
+    auto doc        = dump(space, options);
+    auto limits     = doc.at("limits");
+    CHECK(limits.at("max_children") == "unlimited");
+
+    auto rootNode = findNode(doc, "/root");
+    CHECK_FALSE(rootNode.at("children_truncated").get<bool>());
+}
+
+TEST_CASE("PathSpace JSON exporter honors friendly converter aliases") {
+    struct FriendlyStruct {
+        int a = 0;
+        int b = 0;
+    };
+
+    PathSpaceJsonRegisterConverterAs<FriendlyStruct>(
+        "FriendlyStruct",
+        [](FriendlyStruct const& payload) {
+            return Json{{"a", payload.a}, {"b", payload.b}};
+        });
+
+    PathSpace space;
+    FriendlyStruct payload{.a = 7, .b = 9};
+    REQUIRE(space.insert("/custom/value", payload).nbrValuesInserted == 1);
+
+    auto doc    = dump(space, PathSpaceJsonOptions{});
+    auto node   = findNode(doc, "/custom/value");
+    auto values = node.at("values");
+    REQUIRE(values.size() == 1);
+    auto entry = values[0];
+    CHECK(entry.at("type") == "FriendlyStruct");
+    CHECK(entry.at("value").at("a") == 7);
+    CHECK(entry.at("value").at("b") == 9);
 }

@@ -232,7 +232,7 @@ auto pushChildren(Node& node,
                   VisitOptions const& options) -> void {
     auto names = gatherChildren(node);
     std::size_t toTake = names.size();
-    if (options.maxChildren != 0 && options.maxChildren < toTake) {
+    if (options.childLimitEnabled() && options.maxChildren < toTake) {
         toTake = options.maxChildren;
     }
     for (std::size_t idx = toTake; idx > 0; --idx) {

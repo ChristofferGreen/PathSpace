@@ -4,28 +4,25 @@
 #include "core/Error.hpp"
 #include "path/ConcretePath.hpp"
 
-#include <algorithm>
-#include <charconv>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <sstream>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "nlohmann/json.hpp"
 
 namespace SP::Inspector {
 namespace {
 
-[[nodiscard]] auto join_paths(std::string const& base, std::string const& child) -> std::string {
-    if (base.empty() || base == "/") {
-        return std::string{"/"}.append(child);
-    }
-    std::string full = base;
-    if (!full.empty() && full.back() != '/') {
-        full.push_back('/');
-    }
-    full.append(child);
-    return full;
-}
+struct ValueSample {
+    std::string type;
+    std::string summary;
+};
 
 [[nodiscard]] auto truncate_summary(std::string_view value, std::size_t limit = 96) -> std::string {
     if (value.size() <= limit) {
@@ -38,143 +35,225 @@ namespace {
     return truncated;
 }
 
-struct ValueSample {
-    std::string type;
-    std::string summary;
-};
+class ValueSampler {
+public:
+    ValueSampler(bool enabled, std::vector<std::string>& diagnostics)
+        : enabled_(enabled)
+        , diagnostics_(diagnostics) {}
 
-template <typename T, typename Formatter>
-auto try_sample(PathSpace& space,
-                std::string const& path,
-                std::string_view   type_name,
-                Formatter&&        formatter,
-                std::vector<std::string>& diagnostics) -> std::optional<ValueSample> {
-    auto read = space.read<T, std::string>(path);
-    if (!read) {
-        switch (read.error().code) {
-        case Error::Code::TypeMismatch:
-        case Error::Code::SerializationFunctionMissing:
-        case Error::Code::UnserializableType:
-        case Error::Code::InvalidType:
-        case Error::Code::NoObjectFound:
-        case Error::Code::NoSuchPath:
-        case Error::Code::NotFound:
-            return std::nullopt;
-        default: {
-            diagnostics.push_back(
-                std::string{"read failed for "}
-                .append(path)
-                .append(": ")
-                .append(describeError(read.error())));
+    auto sample(ValueHandle& handle, std::string const& path) -> std::optional<ValueSample> {
+        if (!enabled_ || !handle.valid() || !handle.hasValues()) {
             return std::nullopt;
         }
-        }
-    }
-    return ValueSample{
-        std::string{type_name},
-        formatter(*read),
-    };
-}
-
-[[nodiscard]] auto list_children(PathSpace& space, std::string const& root) -> std::vector<std::string> {
-    if (root.empty() || root == "/") {
-        return space.listChildren();
-    }
-    ConcretePathStringView view{std::string_view{root}};
-    return space.listChildren(view);
-}
-
-struct SnapshotBuilder {
-    PathSpace&                   space;
-    InspectorSnapshotOptions     options;
-    std::vector<std::string>     diagnostics;
-
-    [[nodiscard]] auto build(std::string const& path, std::size_t depth) -> InspectorNodeSummary {
-        InspectorNodeSummary node;
-        node.path = path.empty() ? "/" : path;
-
-        auto children = list_children(space, node.path);
-        std::sort(children.begin(), children.end());
-
-        node.child_count        = children.size();
-        node.children_truncated = false;
-
-        if (children.empty() && options.include_values) {
-            node.value_type = "opaque";
-            if (auto sample = sample_value(node.path)) {
-                node.value_type    = std::move(sample->type);
-                node.value_summary = std::move(sample->summary);
-            }
-        } else {
-            node.value_type = children.empty() ? "value" : "object";
-        }
-
-        if (depth >= options.max_depth) {
-            node.children_truncated = node.child_count > 0;
-            return node;
-        }
-
-        auto const limit = std::min<std::size_t>(children.size(), options.max_children);
-        for (std::size_t i = 0; i < limit; ++i) {
-            auto const child_path = join_paths(node.path, children[i]);
-            node.children.push_back(build(child_path, depth + 1));
-        }
-        node.children_truncated = children.size() > limit;
-        return node;
-    }
-
-    [[nodiscard]] auto sample_value(std::string const& path) -> std::optional<ValueSample> {
-        if (!options.include_values) {
-            return std::nullopt;
-        }
-        if (auto sample = try_sample<bool>(
-                space,
-                path,
-                "bool",
-                [](bool value) { return value ? "true" : "false"; },
-                diagnostics)) {
+        if (auto sample = trySample<bool>(handle, path, "bool", [](bool value) {
+                return value ? "true" : "false";
+            })) {
             return sample;
         }
-        if (auto sample = try_sample<std::int64_t>(
-                space,
-                path,
-                "int64",
-                [](std::int64_t value) { return std::to_string(value); },
-                diagnostics)) {
+        if (auto sample = trySample<std::int64_t>(handle, path, "int64", [](std::int64_t value) {
+                return std::to_string(value);
+            })) {
             return sample;
         }
-        if (auto sample = try_sample<std::uint64_t>(
-                space,
-                path,
-                "uint64",
-                [](std::uint64_t value) { return std::to_string(value); },
-                diagnostics)) {
+        if (auto sample = trySample<std::uint64_t>(handle, path, "uint64", [](std::uint64_t value) {
+                return std::to_string(value);
+            })) {
             return sample;
         }
-        if (auto sample = try_sample<double>(
-                space,
-                path,
-                "double",
-                [](double value) {
-                    std::ostringstream oss;
-                    oss.setf(std::ios::fixed);
-                    oss.precision(3);
-                    oss << value;
-                    return oss.str();
-                },
-                diagnostics)) {
+        if (auto sample = trySample<double>(handle, path, "double", [](double value) {
+                std::ostringstream oss;
+                oss.setf(std::ios::fixed);
+                oss.precision(3);
+                oss << value;
+                return oss.str();
+            })) {
             return sample;
         }
-        if (auto sample = try_sample<std::string>(
-                space,
-                path,
-                "string",
-                [](std::string const& value) { return truncate_summary(value); },
-                diagnostics)) {
+        if (auto sample = trySample<std::string>(handle, path, "string", [](std::string const& value) {
+                return truncate_summary(value);
+            })) {
             return sample;
         }
         return std::nullopt;
     }
+
+private:
+    template <typename T, typename Formatter>
+    auto trySample(ValueHandle& handle,
+                   std::string const& path,
+                   std::string_view typeName,
+                   Formatter&& formatter) -> std::optional<ValueSample> {
+        auto read = handle.read<T>();
+        if (!read) {
+            switch (read.error().code) {
+            case Error::Code::TypeMismatch:
+            case Error::Code::SerializationFunctionMissing:
+            case Error::Code::UnserializableType:
+            case Error::Code::InvalidType:
+            case Error::Code::NoObjectFound:
+            case Error::Code::NoSuchPath:
+            case Error::Code::NotFound:
+                return std::nullopt;
+            default:
+                diagnostics_.push_back(std::string{"read failed for "}.append(path).append(": ")
+                                           .append(describeError(read.error())));
+                return std::nullopt;
+            }
+        }
+        return ValueSample{std::string{typeName}, formatter(*read)};
+    }
+
+    bool                        enabled_;
+    std::vector<std::string>&   diagnostics_;
+};
+
+[[nodiscard]] auto normalize_root(std::string root) -> std::string {
+    if (root.empty()) {
+        return std::string{"/"};
+    }
+    if (root.front() != '/') {
+        root.insert(root.begin(), '/');
+    }
+    while (root.size() > 1 && root.back() == '/') {
+        root.pop_back();
+    }
+    return root;
+}
+
+[[nodiscard]] auto parent_path(std::string const& path) -> std::string {
+    if (path.empty() || path == "/") {
+        return {};
+    }
+    auto pos = path.find_last_of('/');
+    if (pos == std::string::npos) {
+        return {};
+    }
+    if (pos == 0) {
+        return std::string{"/"};
+    }
+    return path.substr(0, pos);
+}
+
+struct NodeRecord {
+    InspectorNodeSummary      summary;
+    std::vector<std::string> children;
+};
+
+class SnapshotBuilder {
+public:
+    SnapshotBuilder(PathSpace& space, InspectorSnapshotOptions const& options)
+        : space_(space)
+        , options_(options) {}
+
+    auto build() -> Expected<InspectorSnapshot> {
+        rootPath_ = normalize_root(options_.root);
+
+        VisitOptions visit{};
+        visit.root                = rootPath_;
+        visit.maxDepth            = options_.max_depth;
+        visit.maxChildren         = options_.max_children == 0
+                                    ? std::numeric_limits<std::size_t>::max()
+                                    : options_.max_children;
+        visit.includeNestedSpaces = true;
+        visit.includeValues       = options_.include_values;
+
+        ValueSampler sampler(options_.include_values, diagnostics_);
+
+        auto visitor = [&](PathEntry const& entry, ValueHandle& handle) -> VisitControl {
+            std::string path = entry.path.empty() ? std::string{"/"} : entry.path;
+            if (shouldSkipNode(path)) {
+                return VisitControl::SkipChildren;
+            }
+
+            auto parent = parent_path(path);
+            auto& node  = ensureNode(path);
+            node.summary.path               = path;
+            node.summary.child_count        = entry.approxChildCount;
+            node.summary.children_truncated = childrenTruncated(entry);
+            node.summary.value_summary.clear();
+
+            if (!entry.hasChildren && options_.include_values) {
+                node.summary.value_type = "opaque";
+                if (auto sample = sampler.sample(handle, path)) {
+                    node.summary.value_type    = std::move(sample->type);
+                    node.summary.value_summary = std::move(sample->summary);
+                }
+            } else {
+                node.summary.value_type = entry.hasChildren ? "object" : "value";
+            }
+
+            if (!parent.empty()) {
+                auto& parentNode = ensureNode(parent);
+                parentNode.children.push_back(path);
+            }
+
+            return VisitControl::Continue;
+        };
+
+        auto visitResult = space_.visit(visitor, visit);
+        if (!visitResult) {
+            return std::unexpected(visitResult.error());
+        }
+
+        auto rootSummary = buildTree(rootPath_);
+        InspectorSnapshot snapshot{
+            .options     = options_,
+            .root        = std::move(rootSummary),
+            .diagnostics = std::move(diagnostics_),
+        };
+        snapshot.options.root = rootPath_;
+        return snapshot;
+    }
+
+private:
+    auto ensureNode(std::string const& path) -> NodeRecord& {
+        auto [it, inserted] = nodes_.try_emplace(path);
+        if (inserted) {
+            it->second.summary.path = path;
+        }
+        return it->second;
+    }
+
+    auto shouldSkipNode(std::string const& path) const -> bool {
+        if (options_.max_children != 0) {
+            return false;
+        }
+        return path != rootPath_ && !parent_path(path).empty();
+    }
+
+    auto childrenTruncated(PathEntry const& entry) const -> bool {
+        if (!entry.hasChildren) {
+            return false;
+        }
+        if (options_.max_children == 0) {
+            return entry.approxChildCount > 0;
+        }
+        return entry.approxChildCount > options_.max_children;
+    }
+
+    auto buildTree(std::string const& path) -> InspectorNodeSummary {
+        auto it = nodes_.find(path);
+        if (it == nodes_.end()) {
+            InspectorNodeSummary missing;
+            missing.path       = path;
+            missing.value_type = "value";
+            return missing;
+        }
+
+        InspectorNodeSummary summary = it->second.summary;
+        summary.children.clear();
+        summary.children.reserve(it->second.children.size());
+        for (auto const& childPath : it->second.children) {
+            summary.children.push_back(buildTree(childPath));
+        }
+        return summary;
+    }
+
+    PathSpace&                            space_;
+    InspectorSnapshotOptions              options_;
+    std::string                           rootPath_;
+    std::vector<std::string>              diagnostics_;
+    std::unordered_map<std::string, NodeRecord> nodes_;
 };
 
 [[nodiscard]] auto to_json(InspectorNodeSummary const& node) -> nlohmann::json {
@@ -201,25 +280,8 @@ struct SnapshotBuilder {
 auto BuildInspectorSnapshot(PathSpace& space,
                             InspectorSnapshotOptions const& options)
     -> Expected<InspectorSnapshot> {
-    SnapshotBuilder builder{
-        .space      = space,
-        .options    = options,
-        .diagnostics = {},
-    };
-
-    auto normalized_root = options.root.empty() ? std::string{"/"} : options.root;
-    if (normalized_root.front() != '/') {
-        normalized_root.insert(normalized_root.begin(), '/');
-    }
-
-    auto root_summary = builder.build(normalized_root, 0);
-    InspectorSnapshot snapshot{
-        .options      = options,
-        .root         = std::move(root_summary),
-        .diagnostics  = std::move(builder.diagnostics),
-    };
-    snapshot.options.root = normalized_root;
-    return snapshot;
+    SnapshotBuilder builder(space, options);
+    return builder.build();
 }
 
 auto SerializeInspectorSnapshot(InspectorSnapshot const& snapshot, int indent) -> std::string {
@@ -238,3 +300,4 @@ auto SerializeInspectorSnapshot(InspectorSnapshot const& snapshot, int indent) -
 }
 
 } // namespace SP::Inspector
+

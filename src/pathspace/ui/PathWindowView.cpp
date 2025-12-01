@@ -37,6 +37,8 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
 
     auto const required_bytes = surface.frame_bytes();
     auto const row_stride = surface.row_stride_bytes();
+    std::vector<std::uint8_t> scratch_framebuffer;
+    bool allow_iosurface = request.allow_iosurface_sharing && SupportsIOSurfaceSharing();
 
     auto copy_progressive_tiles = [&](std::uint8_t* framebuffer_base,
                                       std::size_t framebuffer_stride,
@@ -108,22 +110,30 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
     std::uint8_t* iosurface_base = nullptr;
     std::size_t iosurface_stride = row_stride;
     std::optional<PathSurfaceSoftware::SharedIOSurface> shared_surface;
+    std::uint32_t iosurface_lock_mode = kIOSurfaceLockAvoidSync;
 
-    if (request.allow_iosurface_sharing) {
+    if (allow_iosurface) {
         auto front_handle = surface.front_iosurface();
         if (front_handle && front_handle->valid()) {
             iosurface_ref = front_handle->surface();
-            if (iosurface_ref
-                && IOSurfaceLock(iosurface_ref, kIOSurfaceLockAvoidSync, nullptr) == kIOReturnSuccess) {
-                iosurface_locked = true;
-                iosurface_base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(iosurface_ref));
-                if (iosurface_base) {
-                    iosurface_stride = IOSurfaceGetBytesPerRow(iosurface_ref);
-                    shared_surface = std::move(front_handle);
-                } else {
-                    IOSurfaceUnlock(iosurface_ref, kIOSurfaceLockAvoidSync, nullptr);
-                    iosurface_locked = false;
-                    iosurface_ref = nullptr;
+            if (iosurface_ref) {
+                if (IOSurfaceLock(iosurface_ref, iosurface_lock_mode, nullptr) != kIOReturnSuccess) {
+                    iosurface_lock_mode = 0;
+                    if (IOSurfaceLock(iosurface_ref, iosurface_lock_mode, nullptr) != kIOReturnSuccess) {
+                        iosurface_ref = nullptr;
+                    }
+                }
+                if (iosurface_ref) {
+                    iosurface_locked = true;
+                    iosurface_base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(iosurface_ref));
+                    if (iosurface_base) {
+                        iosurface_stride = IOSurfaceGetBytesPerRow(iosurface_ref);
+                        shared_surface = std::move(front_handle);
+                    } else {
+                        IOSurfaceUnlock(iosurface_ref, iosurface_lock_mode, nullptr);
+                        iosurface_locked = false;
+                        iosurface_ref = nullptr;
+                    }
                 }
             }
         }
@@ -132,12 +142,13 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
     struct IOSurfaceLockGuard {
         IOSurfaceRef surface = nullptr;
         bool locked = false;
+        std::uint32_t lock_mode = kIOSurfaceLockAvoidSync;
         ~IOSurfaceLockGuard() {
             if (locked && surface) {
-                IOSurfaceUnlock(surface, kIOSurfaceLockAvoidSync, nullptr);
+                IOSurfaceUnlock(surface, lock_mode, nullptr);
             }
         }
-    } iosurface_guard{iosurface_ref, iosurface_locked};
+    } iosurface_guard{iosurface_ref, iosurface_locked, iosurface_lock_mode};
 #endif
 
 #if defined(__APPLE__)
@@ -155,7 +166,12 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
 #endif
 
     if (surface.has_buffered()) {
-        if (required_bytes > 0 && request.framebuffer.size() < required_bytes) {
+        std::span<std::uint8_t> framebuffer_span = request.framebuffer;
+        if (required_bytes > 0 && framebuffer_span.size() < required_bytes) {
+            scratch_framebuffer.resize(required_bytes);
+            framebuffer_span = std::span<std::uint8_t>{scratch_framebuffer.data(), scratch_framebuffer.size()};
+        }
+        if (required_bytes > 0 && framebuffer_span.size() < required_bytes) {
             stats.skipped = true;
             stats.error = "framebuffer span too small for surface dimensions";
             auto finish = std::chrono::steady_clock::now();
@@ -163,12 +179,12 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
             return stats;
         }
 
-        auto copy = surface.copy_buffered_frame(request.framebuffer);
+        auto copy = surface.copy_buffered_frame(framebuffer_span);
         if (copy) {
             stats.presented = true;
             stats.buffered_frame_consumed = true;
             stats.frame = copy->info;
-            (void)copy_progressive_tiles(request.framebuffer.data(), row_stride, false);
+            (void)copy_progressive_tiles(framebuffer_span.data(), row_stride, false);
             auto finish = std::chrono::steady_clock::now();
             stats.present_ms = std::chrono::duration<double, std::milli>(finish - start_time).count();
             return stats;

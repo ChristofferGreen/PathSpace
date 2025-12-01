@@ -6,6 +6,10 @@
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
+#if defined(__APPLE__)
+#include <IOSurface/IOSurface.h>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -76,6 +80,12 @@ TEST_CASE("present copies buffered frame") {
 
 #if defined(__APPLE__)
 TEST_CASE("present shares iosurface when enabled") {
+#if defined(__APPLE__)
+    if (!PathWindowView::SupportsIOSurfaceSharing()) {
+        WARN("IOSurface unavailable; skipping zero-copy sharing test");
+        return;
+    }
+#endif
     PathSurfaceSoftware surface{make_desc(4, 4)};
     auto stage = surface.staging_span();
     REQUIRE(stage.size() >= 16);
@@ -119,6 +129,12 @@ TEST_CASE("present shares iosurface when enabled") {
 
 #if defined(__APPLE__)
 TEST_CASE("fullscreen iosurface present protects zero-copy perf") {
+#if defined(__APPLE__)
+    if (!PathWindowView::SupportsIOSurfaceSharing()) {
+        WARN("IOSurface unavailable; skipping zero-copy sharing test");
+        return;
+    }
+#endif
     constexpr int width = 3840;
     constexpr int height = 2160;
 

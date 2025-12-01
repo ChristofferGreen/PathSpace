@@ -44,6 +44,13 @@ UndoableSpace::UndoableSpace(std::unique_ptr<PathSpaceBase> inner, HistoryOption
     , defaultOptions(defaults)
     , spaceUuid(UndoUtilsAlias::generateSpaceUuid()) {}
 
+auto UndoableSpace::visit(PathVisitor const& visitor, VisitOptions const& options) -> Expected<void> {
+    if (!inner) {
+        return std::unexpected(Error{Error::Code::InvalidPermissions, "UndoableSpace requires PathSpace backend"});
+    }
+    return inner->visit(visitor, options);
+}
+
 auto UndoableSpace::resolveRootNode() -> Node* {
     if (!inner)
         return nullptr;

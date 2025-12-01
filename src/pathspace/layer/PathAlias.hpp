@@ -100,6 +100,23 @@ public:
         upstream_->notify(mapped);
     }
 
+    auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void> override {
+        if (!upstream_) {
+            return std::unexpected(Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"});
+        }
+
+        VisitOptions mapped = options;
+        mapped.root        = mapVisitRoot_(options.root);
+
+        auto aliasVisitor = [&](PathEntry const& upstreamEntry, ValueHandle& handle) -> VisitControl {
+            PathEntry remapped = upstreamEntry;
+            remapped.path      = stripTargetPrefix_(upstreamEntry.path);
+            return visitor(remapped, handle);
+        };
+
+        return upstream_->visit(aliasVisitor, mapped);
+    }
+
     // No special shutdown behavior; upstream should be managed externally.
     auto shutdown() -> void override { /* no-op */ }
 
@@ -156,6 +173,39 @@ private:
             prefixCopy = targetPrefix_;
         }
         return joinPaths_(prefixCopy, path);
+    }
+
+    std::string mapVisitRoot_(std::string const& path) const {
+        if (path.empty() || path == "/") {
+            std::lock_guard<std::mutex> lg(mutex_);
+            return targetPrefix_.empty() ? std::string{"/"} : targetPrefix_;
+        }
+        return mapPathRaw_(path);
+    }
+
+    std::string stripTargetPrefix_(std::string const& upstreamPath) const {
+        std::string prefixCopy;
+        {
+            std::lock_guard<std::mutex> lg(mutex_);
+            prefixCopy = targetPrefix_;
+        }
+        if (prefixCopy.empty() || prefixCopy == "/") {
+            return upstreamPath;
+        }
+        if (upstreamPath == prefixCopy) {
+            return "/";
+        }
+        if (upstreamPath.size() > prefixCopy.size() && upstreamPath.rfind(prefixCopy, 0) == 0) {
+            auto remainder = upstreamPath.substr(prefixCopy.size());
+            if (remainder.empty()) {
+                return "/";
+            }
+            if (remainder.front() != '/') {
+                return std::string{"/"} + remainder;
+            }
+            return remainder;
+        }
+        return upstreamPath;
     }
 
 private:

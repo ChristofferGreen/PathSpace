@@ -39,6 +39,16 @@
 #undef STB_IMAGE_WRITE_IMPLEMENTATION
 #undef STB_IMAGE_WRITE_STATIC
 
+#if defined(__APPLE__)
+#define REQUIRE_IOSURFACE_FIXTURE(name)                                                     \
+    if (!PathWindowView::SupportsIOSurfaceSharing()) {                                      \
+        WARN(name " requires IOSurface fixtures; skipping");                               \
+        return;                                                                            \
+    }
+#else
+#define REQUIRE_IOSURFACE_FIXTURE(name) (void)0
+#endif
+
 using namespace SP;
 using namespace SP::UI;
 using namespace SP::UI::Runtime;
@@ -3511,7 +3521,15 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK(storedFramebuffer->width == surfaceDesc.size_px.width);
     CHECK(storedFramebuffer->height == surfaceDesc.size_px.height);
     CHECK(storedFramebuffer->row_stride_bytes >= static_cast<std::uint32_t>(surfaceDesc.size_px.width * 4));
-    CHECK(storedFramebuffer->row_stride_bytes % 16 == 0);
+#if defined(__APPLE__)
+    if (PathWindowView::SupportsIOSurfaceSharing()) {
+        CHECK(storedFramebuffer->row_stride_bytes % 16 == 0);
+    } else {
+        CHECK(storedFramebuffer->row_stride_bytes % 4 == 0);
+    }
+#else
+    CHECK(storedFramebuffer->row_stride_bytes % 4 == 0);
+#endif
     CHECK(storedFramebuffer->pixel_format == surfaceDesc.pixel_format);
     CHECK(storedFramebuffer->color_space == surfaceDesc.color_space);
     CHECK(storedFramebuffer->premultiplied_alpha == surfaceDesc.premultiplied_alpha);
@@ -3523,6 +3541,9 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
 }
 
 TEST_CASE("Window::Present skips framebuffer serialization when capture disabled") {
+#if defined(__APPLE__)
+    REQUIRE_IOSURFACE_FIXTURE("Window::Present skips framebuffer serialization when capture disabled");
+#endif
     RendererFixture fx;
 
     RectDrawableDef def{};
@@ -3584,6 +3605,9 @@ TEST_CASE("Window::Present skips framebuffer serialization when capture disabled
 }
 
 TEST_CASE("Window::Present software path publishes residency watermarks") {
+#if defined(__APPLE__)
+    REQUIRE_IOSURFACE_FIXTURE("Window::Present software path publishes residency watermarks");
+#endif
     RendererFixture fx;
 
     RectDrawableDef def{};
@@ -3908,7 +3932,15 @@ TEST_CASE("Window::Present handles repeated loop without dropping metrics") {
     REQUIRE(storedFramebuffer);
     auto storedStride = storedFramebuffer->row_stride_bytes;
     CHECK(storedStride >= surfaceDesc.size_px.width * 4);
-    CHECK(storedStride % 16 == 0);
+#if defined(__APPLE__)
+    if (PathWindowView::SupportsIOSurfaceSharing()) {
+        CHECK(storedStride % 16 == 0);
+    } else {
+        CHECK(storedStride % 4 == 0);
+    }
+#else
+    CHECK(storedStride % 4 == 0);
+#endif
     CHECK(storedFramebuffer->pixels.size() == static_cast<std::size_t>(storedStride) * static_cast<std::size_t>(surfaceDesc.size_px.height));
 }
 
@@ -4682,6 +4714,9 @@ TEST_CASE("Window::Present AlwaysFresh skip records deadline metrics") {
 }
 
 TEST_CASE("Window::Present progressive diagnostics reflect dirty hints") {
+#if defined(__APPLE__)
+    REQUIRE_IOSURFACE_FIXTURE("Window::Present progressive diagnostics reflect dirty hints");
+#endif
     RendererFixture fx;
     ScopedEnv metrics_env{"PATHSPACE_UI_DAMAGE_METRICS", "1"};
 

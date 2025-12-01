@@ -21,6 +21,8 @@
 
 ## Status Update — November 26, 2025
 - `InspectorSnapshot` (C++ API + JSON serializer) now walks declarative PathSpace trees with depth/child limits so we can serve canonical widget and diagnostics nodes without touching legacy builders.
+- **Update (November 30, 2025):** The snapshot builder is fully backed by `PathSpaceBase::visit`/`ValueHandle`, so the inspector no longer calls `listChildren` or touches `Node*` internals. Nested spaces inherit the same traversal limits, keeping the HTTP endpoints aligned with the public API.
+- **Update (November 30, 2025):** `pathspace_dump_json` ships as a supported CLI (demo seeding flag, depth/child/value toggles) plus a fixture-backed regression test, giving the inspector/web plans a canonical JSON exporter to reference outside the server.
 - `InspectorHttpServer` wraps the snapshot builder plus `BuildPaintScreenshotCard` behind `/inspector/tree`, `/inspector/node`, and `/inspector/cards/paint-example` HTTP endpoints (blocking GET, JSON responses, percent-encoded `root` support). The server embeds cleanly inside any process that already owns a `PathSpace`.
 - The bundled SPA now ships with the server: `/` serves an inline tree/detail UI (root/depth controls, node viewer, paint screenshot card) that talks directly to the JSON endpoints. Custom assets can be mounted with `InspectorHttpServer::Options::ui_root` or `pathspace_inspector_server --ui-root <dir>`, and `--no-ui` disables static serving when embedding the server behind an existing site.
 - `pathspace_inspector_server` is the thin CLI host (localhost binding, Ctrl+C shutdown) that seeds demo data when launched with no arguments. Apps should embed the server directly instead of shelling into the CLI, but the executable keeps tests and demos simple.

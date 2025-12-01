@@ -1,0 +1,245 @@
+{
+  "flags": {
+    "include_diagnostics": true,
+    "include_nested_spaces": true,
+    "include_opaque_placeholders": true,
+    "include_values": true
+  },
+  "limits": {
+    "max_children": 4,
+    "max_depth": 3,
+    "max_queue_entries": 2
+  },
+  "nodes": [
+    {
+      "child_count": 2,
+      "children_truncated": false,
+      "diagnostics": {
+        "has_execution_payload": false,
+        "has_serialized_payload": false,
+        "queue_depth": 0,
+        "raw_bytes": 0
+      },
+      "front_category": "None",
+      "has_children": true,
+      "has_nested_space": false,
+      "has_value": false,
+      "path": "/demo",
+      "values": [],
+      "values_sampled": true,
+      "values_truncated": false
+    },
+    {
+      "child_count": 1,
+      "children_truncated": false,
+      "diagnostics": {
+        "has_execution_payload": false,
+        "has_serialized_payload": false,
+        "queue_depth": 0,
+        "raw_bytes": 0
+      },
+      "front_category": "None",
+      "has_children": true,
+      "has_nested_space": false,
+      "has_value": false,
+      "path": "/demo/metrics",
+      "values": [],
+      "values_sampled": true,
+      "values_truncated": false
+    },
+    {
+      "child_count": 0,
+      "children_truncated": false,
+      "diagnostics": {
+        "has_execution_payload": false,
+        "has_serialized_payload": true,
+        "queue_depth": 1,
+        "raw_bytes": 8
+      },
+      "front_category": "Fundamental",
+      "has_children": false,
+      "has_nested_space": false,
+      "has_value": true,
+      "path": "/demo/metrics/widgets_total",
+      "values": [
+        {
+          "category": "Fundamental",
+          "index": 0,
+          "type": "y",
+          "value": 5
+        }
+      ],
+      "values_sampled": true,
+      "values_truncated": false
+    },
+    {
+      "child_count": 3,
+      "children_truncated": false,
+      "diagnostics": {
+        "has_execution_payload": false,
+        "has_serialized_payload": false,
+        "queue_depth": 0,
+        "raw_bytes": 0
+      },
+      "front_category": "None",
+      "has_children": true,
+      "has_nested_space": false,
+      "has_value": false,
+      "path": "/demo/widgets",
+      "values": [],
+      "values_sampled": true,
+      "values_truncated": false
+    },
+    {
+      "child_count": 3,
+      "children_truncated": false,
+      "diagnostics": {
+        "has_execution_payload": false,
+        "has_serialized_payload": false,
+        "queue_depth": 0,
+        "raw_bytes": 0
+      },
+      "front_category": "None",
+      "has_children": true,
+      "has_nested_space": false,
+      "has_value": false,
+      "path": "/demo/widgets/button",
+      "values": [],
+      "values_sampled": true,
+      "values_truncated": false
+    },
+    {
+      "child_count": 1,
+      "children_truncated": false,
+      "diagnostics": {
+        "has_execution_payload": false,
+        "has_serialized_payload": false,
+        "queue_depth": 0,
+        "raw_bytes": 0
+      },
+      "front_category": "None",
+      "has_children": true,
+      "has_nested_space": false,
+      "has_value": false,
+      "path": "/demo/widgets/button/log",
+      "values": [],
+      "values_sampled": true,
+      "values_truncated": false
+    },
+    {
+      "child_count": 1,
+      "children_truncated": false,
+      "diagnostics": {
+        "has_execution_payload": false,
+        "has_serialized_payload": false,
+        "queue_depth": 0,
+        "raw_bytes": 0
+      },
+      "front_category": "None",
+      "has_children": true,
+      "has_nested_space": false,
+      "has_value": false,
+      "path": "/demo/widgets/button/meta",
+      "values": [],
+      "values_sampled": true,
+      "values_truncated": false
+    },
+    {
+      "child_count": 1,
+      "children_truncated": false,
+      "diagnostics": {
+        "has_execution_payload": false,
+        "has_serialized_payload": false,
+        "queue_depth": 0,
+        "raw_bytes": 0
+      },
+      "front_category": "None",
+      "has_children": true,
+      "has_nested_space": false,
+      "has_value": false,
+      "path": "/demo/widgets/button/state",
+      "values": [],
+      "values_sampled": true,
+      "values_truncated": false
+    },
+    {
+      "child_count": 1,
+      "children_truncated": false,
+      "diagnostics": {
+        "has_execution_payload": false,
+        "has_serialized_payload": false,
+        "queue_depth": 0,
+        "raw_bytes": 0
+      },
+      "front_category": "None",
+      "has_children": true,
+      "has_nested_space": false,
+      "has_value": false,
+      "path": "/demo/widgets/list",
+      "values": [],
+      "values_sampled": true,
+      "values_truncated": false
+    },
+    {
+      "child_count": 3,
+      "children_truncated": false,
+      "diagnostics": {
+        "has_execution_payload": false,
+        "has_serialized_payload": false,
+        "queue_depth": 0,
+        "raw_bytes": 0
+      },
+      "front_category": "None",
+      "has_children": true,
+      "has_nested_space": false,
+      "has_value": false,
+      "path": "/demo/widgets/list/items",
+      "values": [],
+      "values_sampled": true,
+      "values_truncated": false
+    },
+    {
+      "child_count": 1,
+      "children_truncated": false,
+      "diagnostics": {
+        "has_execution_payload": false,
+        "has_serialized_payload": false,
+        "queue_depth": 0,
+        "raw_bytes": 0
+      },
+      "front_category": "None",
+      "has_children": true,
+      "has_nested_space": false,
+      "has_value": false,
+      "path": "/demo/widgets/slider",
+      "values": [],
+      "values_sampled": true,
+      "values_truncated": false
+    },
+    {
+      "child_count": 2,
+      "children_truncated": false,
+      "diagnostics": {
+        "has_execution_payload": false,
+        "has_serialized_payload": false,
+        "queue_depth": 0,
+        "raw_bytes": 0
+      },
+      "front_category": "None",
+      "has_children": true,
+      "has_nested_space": false,
+      "has_value": false,
+      "path": "/demo/widgets/slider/state",
+      "values": [],
+      "values_sampled": true,
+      "values_truncated": false
+    }
+  ],
+  "root": "/demo",
+  "stats": {
+    "children_truncated": 0,
+    "node_count": 12,
+    "value_entries": 1,
+    "values_truncated": 0
+  }
+}

@@ -117,11 +117,45 @@ public:
                                PresentPolicy const& policy,
                                PresentRequest const& request) -> PresentStats;
 
+    static bool SupportsIOSurfaceSharing();
+
 #if defined(__APPLE__) && PATHSPACE_UI_METAL
     [[nodiscard]] auto present(PathSurfaceMetal& surface,
                                PresentPolicy const& policy,
                                PresentRequest const& request) -> PresentStats;
 #endif
 };
+
+inline bool PathWindowView::SupportsIOSurfaceSharing() {
+#if defined(__APPLE__)
+    static std::optional<bool> cached;
+    if (cached.has_value()) {
+        return *cached;
+    }
+    Runtime::SurfaceDesc desc{};
+    desc.size_px.width = 2;
+    desc.size_px.height = 2;
+    desc.pixel_format = Runtime::PixelFormat::RGBA8Unorm_sRGB;
+    desc.color_space = Runtime::ColorSpace::sRGB;
+    desc.premultiplied_alpha = true;
+
+    PathSurfaceSoftware surface{desc};
+    auto stage = surface.staging_span();
+    if (stage.empty()) {
+        cached = false;
+        return *cached;
+    }
+    stage[0] = 0xFF;
+    surface.publish_buffered_frame({
+        .frame_index = 1,
+        .revision = 1,
+        .render_ms = 0.1,
+    });
+    cached = surface.front_iosurface().has_value();
+    return *cached;
+#else
+    return false;
+#endif
+}
 
 } // namespace SP::UI

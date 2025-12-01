@@ -384,7 +384,7 @@ auto Present(PathSpace& space,
         .has_metal_texture = has_metal_texture,
         .metal_surface = metal_surface,
         .metal_texture = metal_texture,
-        .allow_iosurface_sharing = true,
+        .allow_iosurface_sharing = PathWindowView::SupportsIOSurfaceSharing(),
     };
 #else
     PathWindowView::PresentRequest request{

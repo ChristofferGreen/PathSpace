@@ -106,6 +106,27 @@ auto PathSpaceTrellis::notify(std::string const& notificationPath) -> void {
     backing_->notify(joinWithMount(notificationPath));
 }
 
+auto PathSpaceTrellis::visit(PathVisitor const& visitor, VisitOptions const& options) -> Expected<void> {
+    if (!backing_) {
+        return std::unexpected(Error{Error::Code::InvalidPermissions, "PathSpaceTrellis backing not set"});
+    }
+
+    VisitOptions mapped = options;
+    mapped.root        = joinWithMount(options.root);
+
+    auto trellisVisitor = [&](PathEntry const& upstreamEntry, ValueHandle& handle) -> VisitControl {
+        auto localPath = stripMount(upstreamEntry.path);
+        if (localPath.rfind("/_system", 0) == 0) {
+            return VisitControl::SkipChildren;
+        }
+        PathEntry remapped = upstreamEntry;
+        remapped.path      = localPath;
+        return visitor(remapped, handle);
+    };
+
+    return backing_->visit(trellisVisitor, mapped);
+}
+
 auto PathSpaceTrellis::shutdown() -> void {
     isShutdown_.store(true, std::memory_order_relaxed);
     for (auto const& source : snapshotSources()) {
@@ -167,6 +188,22 @@ auto PathSpaceTrellis::joinWithMount(std::string_view tail) const -> std::string
 
     result.append(tail.begin(), tail.end());
     return result;
+}
+
+auto PathSpaceTrellis::stripMount(std::string const& absolute) const -> std::string {
+    if (mountPrefix_.empty() || mountPrefix_ == "/")
+        return absolute;
+    if (absolute == mountPrefix_)
+        return "/";
+    if (absolute.size() > mountPrefix_.size() && absolute.rfind(mountPrefix_, 0) == 0) {
+        auto remainder = absolute.substr(mountPrefix_.size());
+        if (remainder.empty())
+            return "/";
+        if (remainder.front() != '/')
+            return std::string{"/"} + remainder;
+        return remainder;
+    }
+    return absolute;
 }
 
 auto PathSpaceTrellis::snapshotSources() const -> std::vector<std::string> {

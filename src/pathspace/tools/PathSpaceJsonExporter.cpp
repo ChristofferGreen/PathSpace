@@ -100,18 +100,18 @@ std::once_flag                                     gDefaultConvertersFlag;
 
 void registerDefaultConverters() {
     std::call_once(gDefaultConvertersFlag, [] {
-        PathSpaceJsonRegisterConverter<bool>([](bool value) { return Json(value); });
-        PathSpaceJsonRegisterConverter<std::int8_t>([](std::int8_t value) { return Json(value); });
-        PathSpaceJsonRegisterConverter<std::uint8_t>([](std::uint8_t value) { return Json(value); });
-        PathSpaceJsonRegisterConverter<std::int16_t>([](std::int16_t value) { return Json(value); });
-        PathSpaceJsonRegisterConverter<std::uint16_t>([](std::uint16_t value) { return Json(value); });
-        PathSpaceJsonRegisterConverter<std::int32_t>([](std::int32_t value) { return Json(value); });
-        PathSpaceJsonRegisterConverter<std::uint32_t>([](std::uint32_t value) { return Json(value); });
-        PathSpaceJsonRegisterConverter<std::int64_t>([](std::int64_t value) { return Json(value); });
-        PathSpaceJsonRegisterConverter<std::uint64_t>([](std::uint64_t value) { return Json(value); });
-        PathSpaceJsonRegisterConverter<float>([](float value) { return Json(value); });
-        PathSpaceJsonRegisterConverter<double>([](double value) { return Json(value); });
-        PathSpaceJsonRegisterConverter<std::string>([](std::string const& value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<bool>("bool", [](bool value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<std::int8_t>("int8_t", [](std::int8_t value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<std::uint8_t>("uint8_t", [](std::uint8_t value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<std::int16_t>("int16_t", [](std::int16_t value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<std::uint16_t>("uint16_t", [](std::uint16_t value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<std::int32_t>("int32_t", [](std::int32_t value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<std::uint32_t>("uint32_t", [](std::uint32_t value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<std::int64_t>("int64_t", [](std::int64_t value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<std::uint64_t>("uint64_t", [](std::uint64_t value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<float>("float", [](float value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<double>("double", [](double value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<std::string>("std::string", [](std::string const& value) { return Json(value); });
     });
 }
 
@@ -149,7 +149,7 @@ auto describeType(std::type_info const* info) -> std::string {
     if (!info) {
         return "unknown";
     }
-    return info->name();
+    return detail::DescribeRegisteredType(std::type_index(*info));
 }
 
 void attachDiagnostics(Json& node, ValueSnapshot const& snapshot, bool includeDiagnostics) {
@@ -171,7 +171,8 @@ auto buildValueEntry(ElementType const* element,
                      ExportStats&               stats) -> Json {
     Json value = Json::object();
     value["index"]    = index;
-    value["type"]     = element && element->typeInfo ? element->typeInfo->name() : "unknown";
+    auto typeLabel    = describeType(element ? element->typeInfo : nullptr);
+    value["type"]     = typeLabel;
     value["category"] = element ? dataCategoryToString(element->category) : "Unknown";
 
     if (!reader) {
@@ -179,9 +180,8 @@ auto buildValueEntry(ElementType const* element,
             if (element && element->category == DataCategory::Execution) {
                 value.update(placeholderForExecution("pending"));
             } else {
-                auto typeName = element && element->typeInfo ? element->typeInfo->name() : "unknown";
                 auto category = element ? element->category : DataCategory::None;
-                value.update(placeholderFor(category, typeName, "sampling-disabled"));
+                value.update(placeholderFor(category, typeLabel, "sampling-disabled"));
             }
         }
         return value;
@@ -190,7 +190,7 @@ auto buildValueEntry(ElementType const* element,
     if (!element || !element->typeInfo) {
         if (options.includeOpaquePlaceholders) {
             auto category = element ? element->category : DataCategory::None;
-            value.update(placeholderFor(category, "", "missing-type-info"));
+            value.update(placeholderFor(category, typeLabel, "missing-type-info"));
         }
         return value;
     }
@@ -203,8 +203,7 @@ auto buildValueEntry(ElementType const* element,
     }
 
     if (options.includeOpaquePlaceholders) {
-        auto typeName = detail::DescribeRegisteredType(std::type_index(*element->typeInfo));
-        value.update(placeholderFor(element->category, typeName, "converter-missing"));
+        value.update(placeholderFor(element->category, typeLabel, "converter-missing"));
     }
     return value;
 }
@@ -220,7 +219,7 @@ auto buildNode(PathEntry const& entry,
     node["has_nested_space"] = entry.hasNestedSpace;
     node["child_count"]      = entry.approxChildCount;
     node["front_category"]   = dataCategoryToString(entry.frontCategory);
-    bool childrenTruncated    = entry.hasChildren && options.visit.maxChildren != 0
+    bool childrenTruncated    = entry.hasChildren && options.visit.childLimitEnabled()
                              && entry.approxChildCount > options.visit.maxChildren;
     node["children_truncated"] = childrenTruncated;
     if (childrenTruncated) {
@@ -332,7 +331,9 @@ auto PathSpaceJsonExporter::Export(PathSpaceBase& space, PathSpaceJsonOptions co
 
     Json limits = Json::object();
     limits["max_depth"]        = visitLimit(options.visit.maxDepth);
-    limits["max_children"]     = options.visit.maxChildren;
+    limits["max_children"]     = VisitOptions::isUnlimitedChildren(options.visit.maxChildren)
+                                      ? Json("unlimited")
+                                      : Json(options.visit.maxChildren);
     limits["max_queue_entries"] = options.maxQueueEntries;
 
     Json flags = Json::object();
