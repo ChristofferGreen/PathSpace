@@ -105,9 +105,9 @@ auto CaptureDeclarative(SP::PathSpace& space,
      compare/diff/metrics arguments) in ≤10 LOC, and the shared helper enforces
      readiness consistently.
 
-3. **Testing**
-   - Add targeted unit/UITest coverage: e.g., `tests/ui/test_ScreenshotHelper.cpp` exercising success, readiness timeout, forced publish error.
-   - Update `PaintExampleScreenshot*` CTests to validate they still pass (loop harness already covers them).
+3. **Testing** — ✅ December 2, 2025
+   - `tests/ui/test_DeclarativeScreenshotHelper.cpp` exercises `CaptureDeclarative` end-to-end: it captures a software framebuffer and asserts the PNG contains multiple colors, forces a readiness timeout via an invalid window-component override, and stops the scene lifecycle to verify force-publish errors bubble up.
+   - `PaintExampleScreenshot*` CTests remain in the compile loop to make sure the screenshot CLI stays green alongside the helper-specific coverage.
 
 4. **Documentation** — ✅ November 28, 2025
    - `docs/WidgetDeclarativeAPI.md`, `docs/AI_Debugging_Playbook.md`, and
@@ -143,9 +143,11 @@ auto CaptureDeclarative(SP::PathSpace& space,
   pixels directly into `ScreenshotService`. This removes the redundant second
   render path, so screenshot PNGs represent the exact “next” frame that the UI
   would show instead of diverging in theme or state.
-- 🔄 Remaining follow-ups: land the focused helper test suite. (Doc coverage is
-  up to date; Widget API/onboarding/debugging guides now mention the helper and
-  env hook.)
+- ✅ Helper test suite landed: `tests/ui/test_DeclarativeScreenshotHelper.cpp` covers
+  live framebuffer captures (unique color threshold), readiness timeouts via
+  bogus window-component overrides, and force-publish failures after shutting
+  down the scene lifecycle; screenshot CTests continue to run in the compile
+  loop for CLI parity.
 
 ## Risks & Mitigations
 - **Readiness regressions**: consolidate readiness logic into one helper to avoid divergence; keep `DeclarativeReadinessOptions` override hooks exposed via `DeclarativeScreenshotOptions` if specialized tests need them.

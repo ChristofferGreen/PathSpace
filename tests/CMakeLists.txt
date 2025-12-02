@@ -84,6 +84,7 @@ if(PATHSPACE_ENABLE_UI)
   ui/test_DeclarativeSceneLifecycle.cpp
   ui/test_DeclarativePaintSurface.cpp
   ui/test_ScreenshotOverlay.cpp
+  ui/test_DeclarativeScreenshotHelper.cpp
   ui/test_WidgetEventTrellis.cpp
     ui/test_WidgetStateMutators.cpp
     ui/test_DeclarativeTheme.cpp
