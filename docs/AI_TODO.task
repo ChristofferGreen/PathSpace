@@ -24,7 +24,7 @@ task {
 task {
   name: "Web Server Google Sign-In [FEATURE]"
   description: "Add Google OAuth2 (Authorization Code + PKCE) support to the web server authentication flow."
-  status: planned
+  status: completed
   priority: P1
 
   acceptance_criteria: [
@@ -34,9 +34,9 @@ task {
   ]
 
   steps: [
-    "Register application in Google Cloud Console; document redirect URIs and config fields",
-    "Implement OAuth2 PKCE flow in web server (login redirect, callback handler, session issuance)",
-    "Add automated tests mocking Google endpoints; update documentation and debugging playbook"
+    "DONE (Dec 3, 2025) Documented OAuth client registration, redirect URIs, and the [auth.google] config knobs inside docs/web_server.toml + this plan",
+    "DONE (Dec 3, 2025) Implemented the Google PKCE flow in pathspace_serve_html (/login/google → /login/google/callback, JWKS verification, `/system/auth/oauth/google/<sub>` mapping, shared session issuance)",
+    "DONE (Dec 3, 2025) Added tests/tools/test_pathspace_serve_html_google.py (stub OAuth server) and updated docs/AI_Debugging_Playbook.md with the troubleshooting runbook"
   ]
 }
 
@@ -55,7 +55,65 @@ task {
   steps: [
     "Design a JSON schema for PathSpace nodes (values, metadata, children, diagnostics)",
     "Implement serializer leveraging NodeData codecs; ensure performance and accurate type representation",
-    "Update Plan_WebServer_Adapter.md and docs to reference JSON output, covering debugging workflows"
+    "Update finished/Plan_WebServer_Adapter_Finished.md and docs to reference JSON output, covering debugging workflows"
+  ]
+}
+
+task {
+  name: "Web Server Dual Delivery Parity [FEATURE]"
+  description: "Ensure web-delivered views stay in sync with native PathSpace windows by standardizing ops endpoints and examples."
+  status: in_progress
+  priority: P1
+
+  acceptance_criteria: [
+    "Browser-triggered ops (POST /api/path, /api/ops) mutate the same PathSpace state observed by native presenters without race conditions",
+    "At least one declarative example (widgets or paint) runs native + browser simultaneously and documents the workflow",
+    "Automated tests cover dual-delivery flows (web button toggles propagate to native window and vice versa)"
+  ]
+
+  steps: [
+    "DONE (Dec 3, 2025) Documented the shared ops/REST contract (JSON {app,schema,payload}, 1 MiB limit) in finished/Plan_WebServer_Adapter_Finished.md Phase 3 so browser ops target the same queues as native handlers.",
+    "DONE (Dec 3, 2025) Implemented /api/ops/<op> in pathspace_serve_html, updated the demo button to fire demo_refresh ops, and extended tests/tools/test_pathspace_serve_html_http.py to post against the endpoint.",
+    "DONE (Dec 3, 2025) paint_example/widgets_example gained --serve-html flags that attach HTML mirror targets and spin up an embedded pathspace_serve_html instance so native + browser sessions stay in sync.",
+    "Add integration tests plus README/docs coverage demonstrating native + browser sessions mutating shared state (PENDING: now that --serve-html exists we still need automated coverage)."
+  ]
+}
+
+task {
+  name: "Web Server Hardened Deployment [FEATURE]"
+  description: "Add the deployment surface required for production hosting (session stores, TLS, rate limiting, audit logging)."
+  status: in_progress
+  priority: P1
+
+  acceptance_criteria: [
+    "Sessions can be backed by a pluggable store (in-memory + file + external service) with idle/absolute lifetimes enforced",
+    "TLS termination + reverse proxy guidance lives in docs alongside sample NGINX snippets and health checks",
+    "Rate limiting/audit logs surface under `/diagnostics/web/security/*` and emit structured entries in io/log/security"
+  ]
+
+  steps: [
+    "DONE (Dec 3, 2025) Implemented session store abstraction + config plumbing (`--session-store`, PathSpace backend) and documented the knobs in docs/web_server.toml + finished/Plan_WebServer_Adapter_Finished.md",
+    "DONE (Dec 3, 2025) Captured reverse proxy/TLS deployment recipes (NGINX/Caddy snippets, certbot workflow, health checks) inside finished/Plan_WebServer_Adapter_Finished.md Phase 4",
+    "DONE (Dec 3, 2025) Wired per-IP/per-session token-bucket middleware (configurable via `--rate-limit-*` + web_server.toml), appended audit entries under `<app_root>/io/log/security/request_rejections`, and taught tests/tools/test_pathspace_serve_html_http.py to run with a low-burst config to assert the 429 `rate_limited` response"
+  ]
+}
+
+task {
+  name: "Web Server Observability & Tooling [FEATURE]"
+  description: "Instrument the adapter with metrics/logging endpoints and developer tooling so ops teams can monitor availability."
+  status: planned
+  priority: P1
+
+  acceptance_criteria: [
+    "Expose `/metrics` (Prometheus) with latency histograms, SSE counts, auth failures, cache hit rate",
+    "Structured JSON logs include per-route latency, session/user IDs (when allowed), and correlate to PathSpace diagnostics",
+    "Debugging playbook + docs highlight the new tooling (log flags, metrics dashboards, SSE reconnect tests)"
+  ]
+
+  steps: [
+    "Add metrics instrumentation + exporter hooks, covering the counters listed in finished/Plan_WebServer_Adapter_Finished.md Phase 5",
+    "Expand structured logging (io/log/web + io/log/security) and provide log-scraping helpers/scripts",
+    "Update docs/AI_Debugging_Playbook.md and related plans with the observability workflow and new compile-loop tests"
   ]
 }
 

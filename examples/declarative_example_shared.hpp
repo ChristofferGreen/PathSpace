@@ -11,12 +11,15 @@
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
 #include <pathspace/ui/declarative/SceneReadiness.hpp>
 #include <pathspace/path/ConcretePath.hpp>
+#include <pathspace/web/ServeHtmlServer.hpp>
 
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/layer/io/PathIOKeyboard.hpp>
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
+#include <filesystem>
 #include <fstream>
 #include <cstdint>
 #include <functional>
@@ -26,9 +29,11 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
-#include <thread>
 
 namespace PathSpaceExamples {
 
@@ -468,6 +473,371 @@ inline auto ensure_declarative_scene_ready(SP::PathSpace& space,
                                                             window,
                                                             view_name,
                                                             options);
+}
+
+struct HtmlExportOptions {
+    std::filesystem::path output_dir;
+    std::string           renderer_name{"html"};
+    std::string           target_name{"bundle"};
+};
+
+struct HtmlExportResult {
+    std::filesystem::path output_dir;
+    std::string           renderer_name;
+    std::string           target_name;
+    std::string           mode;
+    std::uint64_t         revision = 0;
+    bool                  used_canvas_fallback = false;
+    std::size_t           asset_count = 0;
+};
+
+inline auto make_html_export_error(std::string message) -> SP::Error {
+    return SP::Error{SP::Error::Code::UnknownError, std::move(message)};
+}
+
+inline auto ensure_directory(std::filesystem::path const& dir) -> SP::Expected<void> {
+    if (dir.empty()) {
+        return {};
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+        return std::unexpected(
+            make_html_export_error("failed to create directory '" + dir.string() + "': " + ec.message()));
+    }
+    return {};
+}
+
+inline auto ensure_parent_directory(std::filesystem::path const& path) -> SP::Expected<void> {
+    auto parent = path.parent_path();
+    if (parent.empty()) {
+        return {};
+    }
+    return ensure_directory(parent);
+}
+
+inline auto write_text_file(std::filesystem::path const& path,
+                            std::string_view contents) -> SP::Expected<void> {
+    if (auto status = ensure_parent_directory(path); !status) {
+        return status;
+    }
+    std::ofstream file(path, std::ios::binary);
+    if (!file) {
+        return std::unexpected(
+            make_html_export_error("failed to open file '" + path.string() + "' for writing"));
+    }
+    file.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+    if (!file) {
+        return std::unexpected(
+            make_html_export_error("failed to write file '" + path.string() + "'"));
+    }
+    return {};
+}
+
+inline auto write_binary_file(std::filesystem::path const& path,
+                              std::span<const std::uint8_t> bytes) -> SP::Expected<void> {
+    if (auto status = ensure_parent_directory(path); !status) {
+        return status;
+    }
+    std::ofstream file(path, std::ios::binary);
+    if (!file) {
+        return std::unexpected(
+            make_html_export_error("failed to open file '" + path.string() + "' for writing"));
+    }
+    if (!bytes.empty()) {
+        file.write(reinterpret_cast<char const*>(bytes.data()),
+                   static_cast<std::streamsize>(bytes.size()));
+    }
+    if (!file) {
+        return std::unexpected(
+            make_html_export_error("failed to write file '" + path.string() + "'"));
+    }
+    return {};
+}
+
+inline auto sanitize_asset_path(std::string_view logical_path) -> std::filesystem::path {
+    std::filesystem::path sanitized;
+    std::string          segment;
+    auto flush_segment = [&]() {
+        if (segment.empty()) {
+            return;
+        }
+        if (segment == "." || segment == "..") {
+            segment.clear();
+            return;
+        }
+        sanitized /= segment;
+        segment.clear();
+    };
+    for (char ch : logical_path) {
+        char normalized = (ch == '\\') ? '/' : ch;
+        if (normalized == '/') {
+            flush_segment();
+            continue;
+        }
+        if (std::iscntrl(static_cast<unsigned char>(normalized))) {
+            continue;
+        }
+        segment.push_back(normalized);
+    }
+    flush_segment();
+    if (sanitized.empty()) {
+        sanitized = std::filesystem::path{"asset"};
+    }
+    return sanitized;
+}
+
+inline auto make_app_relative_path(std::string_view absolute,
+                                   std::string_view app_root) -> std::string {
+    if (absolute.size() < app_root.size() || absolute.compare(0, app_root.size(), app_root) != 0) {
+        return std::string{absolute};
+    }
+    auto remainder = absolute.substr(app_root.size());
+    if (!remainder.empty() && remainder.front() == '/') {
+        remainder.remove_prefix(1);
+    }
+    return std::string{remainder};
+}
+
+inline auto ExportHtmlBundle(SP::PathSpace& space,
+                             SP::App::AppRootPath const& app_root,
+                             SP::UI::WindowPath const& window_path,
+                             std::string_view view_name,
+                             SP::UI::ScenePath const& scene_path,
+                             HtmlExportOptions options)
+    -> SP::Expected<HtmlExportResult> {
+    if (options.output_dir.empty()) {
+        return std::unexpected(make_html_export_error("output directory must not be empty"));
+    }
+
+    if (auto status = ensure_directory(options.output_dir); !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto renderer_name = options.renderer_name.empty() ? std::string{"html"} : options.renderer_name;
+    auto target_name = options.target_name.empty() ? std::string{"bundle"} : options.target_name;
+
+    auto app_root_view = SP::App::AppRootPathView{app_root.getPath()};
+
+    SP::UI::Runtime::RendererParams renderer_params{
+        .name = renderer_name,
+        .kind = SP::UI::Runtime::RendererKind::Software2D,
+        .description = "HTML export renderer",
+    };
+
+    auto renderer_path = SP::UI::Runtime::Renderer::Create(space, app_root_view, renderer_params);
+    if (!renderer_path) {
+        return std::unexpected(renderer_path.error());
+    }
+
+    auto scene_relative = make_app_relative_path(scene_path.getPath(), app_root.getPath());
+    if (scene_relative.empty()) {
+        return std::unexpected(make_html_export_error("scene path could not be resolved relative to app root"));
+    }
+
+    SP::UI::Runtime::HtmlTargetParams html_params{};
+    html_params.name = target_name;
+    html_params.scene = std::move(scene_relative);
+
+    auto html_target = SP::UI::Runtime::Renderer::CreateHtmlTarget(space,
+                                                                   app_root_view,
+                                                                   *renderer_path,
+                                                                   html_params);
+    if (!html_target) {
+        return std::unexpected(html_target.error());
+    }
+
+    if (auto status = SP::UI::Runtime::Window::AttachHtmlTarget(space,
+                                                                window_path,
+                                                                view_name,
+                                                                *html_target);
+        !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto present = SP::UI::Runtime::Window::Present(space, window_path, view_name);
+    if (!present) {
+        return std::unexpected(present.error());
+    }
+    if (!present->html.has_value()) {
+        return std::unexpected(make_html_export_error("Window::Present did not return HTML output"));
+    }
+    auto const& payload = *present->html;
+
+    auto dom_path = options.output_dir / "dom.html";
+    auto css_path = options.output_dir / "styles.css";
+    auto commands_path = options.output_dir / "commands.json";
+    auto metadata_path = options.output_dir / "metadata.txt";
+    auto assets_manifest_path = options.output_dir / "assets_manifest.txt";
+    auto assets_root = options.output_dir / "assets";
+
+    if (auto status = write_text_file(dom_path, payload.dom); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = write_text_file(css_path, payload.css); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = write_text_file(commands_path, payload.commands); !status) {
+        return std::unexpected(status.error());
+    }
+
+    std::ostringstream metadata;
+    metadata << "renderer=" << renderer_name << '\n';
+    metadata << "target=" << target_name << '\n';
+    metadata << "view=" << view_name << '\n';
+    metadata << "revision=" << payload.revision << '\n';
+    metadata << "mode=" << payload.mode << '\n';
+    metadata << "usedCanvasFallback=" << (payload.used_canvas_fallback ? "true" : "false") << '\n';
+    metadata << "assetCount=" << payload.assets.size() << '\n';
+    if (auto status = write_text_file(metadata_path, metadata.str()); !status) {
+        return std::unexpected(status.error());
+    }
+
+    if (auto status = ensure_directory(assets_root); !status) {
+        return std::unexpected(status.error());
+    }
+
+    std::unordered_map<std::string, std::size_t> asset_name_counts;
+    std::ostringstream                         manifest;
+    manifest << "# logical_path\tmime_type\tbytes\tfile" << '\n';
+
+    for (auto const& asset : payload.assets) {
+        auto sanitized = sanitize_asset_path(asset.logical_path);
+        auto sanitized_string = sanitized.generic_string();
+        auto [it, inserted] = asset_name_counts.try_emplace(sanitized_string, 0);
+        std::size_t duplicate_index = it->second;
+        if (!inserted) {
+            ++duplicate_index;
+            it->second = duplicate_index;
+        }
+        if (duplicate_index > 0) {
+            auto parent = sanitized.parent_path();
+            auto stem = sanitized.stem().string();
+            auto ext = sanitized.extension().string();
+            stem.append("_").append(std::to_string(duplicate_index));
+            sanitized = parent / (stem + ext);
+            sanitized_string = sanitized.generic_string();
+        }
+
+        auto target_path = assets_root / sanitized;
+        auto bytes_view = std::span<const std::uint8_t>(asset.bytes.data(), asset.bytes.size());
+        if (auto status = write_binary_file(target_path, bytes_view); !status) {
+            return std::unexpected(status.error());
+        }
+
+        manifest << asset.logical_path << '\t'
+                 << asset.mime_type << '\t'
+                 << asset.bytes.size() << '\t'
+                 << sanitized_string << '\n';
+    }
+
+    if (auto status = write_text_file(assets_manifest_path, manifest.str()); !status) {
+        return std::unexpected(status.error());
+    }
+
+    HtmlExportResult result{
+        .output_dir = options.output_dir,
+        .renderer_name = std::move(renderer_name),
+        .target_name = std::move(target_name),
+        .mode = payload.mode,
+        .revision = payload.revision,
+        .used_canvas_fallback = payload.used_canvas_fallback,
+        .asset_count = payload.assets.size(),
+    };
+    return result;
+}
+
+struct HtmlMirrorConfig {
+    std::string renderer_name{"html"};
+    std::string target_name{"web"};
+    std::string view_name{"web"};
+};
+
+struct HtmlMirrorContext {
+    SP::App::AppRootPath app_root;
+    SP::UI::WindowPath   window;
+    std::string          view_name;
+};
+
+inline auto SetupHtmlMirror(SP::PathSpace& space,
+                            SP::App::AppRootPath const& app_root,
+                            SP::UI::WindowPath const& window_path,
+                            SP::UI::ScenePath const& scene_path,
+                            HtmlMirrorConfig const& config)
+    -> SP::Expected<HtmlMirrorContext> {
+    auto app_root_view = SP::App::AppRootPathView{app_root.getPath()};
+
+    SP::UI::Runtime::RendererParams renderer_params{
+        .name = config.renderer_name,
+        .kind = SP::UI::Runtime::RendererKind::Software2D,
+        .description = "HTML mirror renderer",
+    };
+    auto renderer_path = SP::UI::Runtime::Renderer::Create(space, app_root_view, renderer_params);
+    if (!renderer_path) {
+        return std::unexpected(renderer_path.error());
+    }
+
+    auto scene_relative = make_app_relative_path(scene_path.getPath(), app_root.getPath());
+    if (scene_relative.empty()) {
+        return std::unexpected(make_html_export_error("scene path not relative to app root"));
+    }
+
+    SP::UI::Runtime::HtmlTargetParams target_params{};
+    target_params.name = config.target_name;
+    target_params.scene = std::move(scene_relative);
+
+    auto html_target = SP::UI::Runtime::Renderer::CreateHtmlTarget(space,
+                                                                   app_root_view,
+                                                                   *renderer_path,
+                                                                   target_params);
+    if (!html_target) {
+        return std::unexpected(html_target.error());
+    }
+
+    auto attach_status = SP::UI::Runtime::Window::AttachHtmlTarget(space,
+                                                                   window_path,
+                                                                   config.view_name,
+                                                                   *html_target);
+    if (!attach_status) {
+        return std::unexpected(attach_status.error());
+    }
+
+    return HtmlMirrorContext{
+        .app_root = app_root,
+        .window = window_path,
+        .view_name = config.view_name,
+    };
+}
+
+inline auto PresentHtmlMirror(SP::PathSpace& space,
+                              HtmlMirrorContext const& context) -> SP::Expected<void> {
+    auto present = SP::UI::Runtime::Window::Present(space, context.window, context.view_name);
+    if (!present) {
+        return std::unexpected(present.error());
+    }
+    return {};
+}
+
+struct ServeHtmlServerHandle {
+    std::thread thread;
+};
+
+inline auto StartServeHtmlServer(SP::ServeHtml::ServeHtmlSpace& space,
+                                 SP::ServeHtml::ServeHtmlOptions options)
+    -> ServeHtmlServerHandle {
+    ServeHtmlServerHandle handle{};
+    SP::ServeHtml::ResetServeHtmlStopFlag();
+    handle.thread = std::thread([&space, options]() mutable {
+        (void)SP::ServeHtml::RunServeHtmlServer(space, options);
+    });
+    return handle;
+}
+
+inline void StopServeHtmlServer(ServeHtmlServerHandle& handle) {
+    SP::ServeHtml::RequestServeHtmlStop();
+    if (handle.thread.joinable()) {
+        handle.thread.join();
+    }
 }
 
 } // namespace PathSpaceExamples

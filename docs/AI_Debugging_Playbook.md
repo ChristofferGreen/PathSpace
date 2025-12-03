@@ -541,3 +541,96 @@ With the shared test runner and this playbook, every failure leaves behind actio
   - `last/*` captures timestamp, action id/label, role, user header, client address, previous/new values, and outcome (`success`/`failure`).
   - `events/<timestamp>-<slug>` stores the full JSON blob (including any operator-provided note) so dashboards can replay write history or diff behavior between services without tailing HTTP logs.
 - Treat the write-toggles feature as an escape hatch, not a general-purpose mutator. Keep the allowlist small, document each action in your service README, and rotate the confirmation header/token if you suspect a compromised admin session. For anything beyond boolean flips or deterministic resets, continue to land code changes or CLI workflows instead of widening inspector access.
+
+## 9. Web Server Adapter
+
+### 9.1 Quick smoke setup
+- Build as usual (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j`) and launch the prototype server:
+
+  ```bash
+  ./build/pathspace_serve_html \
+    --host 127.0.0.1 \
+    --port 8080 \
+    --seed-demo \
+    --demo-refresh-interval-ms 750
+  ```
+
+  `--seed-demo` publishes `/apps/demo_web/gallery` so you can test without exporting bundles first; `--demo-refresh-interval-ms` keeps the frame/diagnostic nodes ticking for SSE debugging.
+- Authenticate with the seeded account and fetch HTML through the same cookies the browser would use:
+
+  ```bash
+  curl -c /tmp/ps_cookies.txt -X POST http://127.0.0.1:8080/login \
+    -H 'Content-Type: application/json' \
+    -d '{"username":"demo","password":"demo"}'
+
+  curl -b /tmp/ps_cookies.txt http://127.0.0.1:8080/apps/demo_web/gallery -o /tmp/gallery.html
+  ```
+
+  Expect `Cache-Control: no-store` and `ETag` headers on the HTML response per `docs/finished/Plan_WebServer_Adapter_Finished.md`.
+- To confirm asset delivery (Phase 1), pull a seeded binary with the same cookie jar:
+
+  ```bash
+  curl -b /tmp/ps_cookies.txt -D - \
+    http://127.0.0.1:8080/assets/demo_web/images/demo-badge.txt \
+    -o /tmp/demo-badge.txt
+  ```
+
+  You should see `Cache-Control: public, max-age=31536000, immutable` plus an `ETag` such as `"r1:images/demo-badge.txt"`. Re-issuing the request with `-H 'If-None-Match: <etag>'` must return `304 Not Modified`; mismatches usually mean the `/apps/<app>/<view>` route hasn’t been hit yet (the asset index populates on demand).
+- To exercise the new ops bridge, post to `/api/ops/<op>` after logging in. The server expects JSON `{ "app": "<app>", "schema": "<id>", "payload": { ... } }` (≤ 1 MiB). Example demo call:
+
+  ```bash
+  curl -b /tmp/ps_cookies.txt \
+    -H 'Content-Type: application/json' \
+    -X POST http://127.0.0.1:8080/api/ops/demo_refresh \
+    -d '{"app":"demo_web","schema":"demo.refresh.v1","payload":{"source":"curl","requestedAt":1701590400}}'
+  ```
+
+  Expect `202` plus a JSON ack `{ "status":"enqueued", "queue":"/system/applications/demo_web/ops/demo_refresh/inbox/queue" }`. Larger payloads return `413 payload_too_large`, and missing/incorrect content types return `415 unsupported_media_type`.
+- When testing exported bundles, run `./build/widgets_example --export-html out/html/widgets` (or paint equivalent) and point the server at the directory via `--apps-root` overrides so browser fetches mirror the renderer output.
+- `GET /session` and `POST /logout` help confirm cookie lifetimes before involving the UI; both endpoints serialize the session state defined in `docs/web_server.toml`.
+- Metrics scrape: reuse the authenticated cookie jar to hit `/metrics` and confirm the Prometheus view is alive. You should see counters such as `pathspace_serve_html_requests_total{route="apps"}` and the latency histogram buckets. For dashboards without Prometheus, read the structured JSON snapshot under `<apps_root>/io/metrics/web_server/serve_html/live` (the collector rewrites it every ~2 s).
+
+### 9.2 SSE and event stream triage
+- Use curl or the integration harness (`scripts/test_web_server.sh`) to watch live events without a browser:
+
+  ```bash
+  curl -N -H 'Accept:text/event-stream' \
+    http://127.0.0.1:8080/apps/demo_web/gallery/events
+  ```
+
+  You should see keep-alive comments every ~5 s, `id:<revision>` headers, and alternating `event: frame` / `event: diagnostic` payloads. If revisions stall, check `/apps/demo_web/gallery/output/v1/common/frameIndex` for updates and confirm `--demo-refresh-interval-ms` is set in dev mode.
+- Resume behavior: reconnect with `curl -N -H 'Last-Event-ID: <previous revision>' …` to verify the server skips already-acknowledged frames and emits `event: reload` when revisions are missing.
+- Troubleshoot SSE test failures by running the dedicated suites locally:
+  - `ctest --test-dir build -R PathSpaceServeHtmlSse --output-on-failure`
+  - `ctest --test-dir build -R PathSpaceServeHtmlHttp --output-on-failure`
+  They mirror `tests/tools/test_pathspace_serve_html_sse.py` and `tests/tools/test_pathspace_serve_html_http.py`, so a local pass means the CI guards should also succeed.
+- When diagnosing browser adapters, pass the server's verbose logging flag (see `pathspace_serve_html --help` for the current option) so connection IDs and payload sizes show up in `io/log/web/*` alongside each request.
+
+### 9.3 Auth, sessions, and logs
+- Primary log sinks live under your PathSpace instance: `/app_root/io/log/web/*` for request/response summaries and `/app_root/io/log/security/*` for auth failures. Use `tail -f` while reproducing issues and copy the relevant entries into bug reports. Session lifecycle events also land under `/diagnostics/web/session/*` so you can diff cookie expirations without log access.
+- Rate limiting now runs in-process: tune per-IP/per-session buckets with `--rate-limit-{ip,session}-{per-minute,burst}` (or the matching `security.rate_limit` keys in `docs/web_server.toml`). Clients that exceed the burst receive `429` with `{ "error": "rate_limited" }`; every rejection also lands in `<app_root>/io/log/security/request_rejections` (global fallbacks use `/system/applications/io/log/security/*`). Tail the queue while load-testing to verify throttling instead of guessing from client logs.
+- Hashes and demo seeds come from `/system/auth/users/<user>/password_bcrypt`. If logins fail, read the node directly (or regenerate it via `pathspace_serve_html --seed-demo --seed-demo-password <pass>` once that knob lands) and confirm bcrypt rounds match the plan’s requirements.
+- Throttle/lockout behavior is currently manual, so capture repeated failures by dumping `/app_root/io/log/security/request_rejections` and note whether the client hit the optional rate limiting adapter described in `docs/finished/Plan_WebServer_Adapter_Finished.md`.
+- When reproducing session expiry, set small values in `docs/web_server.toml` (or use the CLI `--session-timeout/--session-max-age` overrides) and watch `/session` responses transition from `{ "status": "ok" }` to `{ "status": "unauthenticated" }`. Pair that with `curl -I` requests against `/apps/<app>/<view>` to confirm the 401 gate triggers instantly once the timeout elapses.
+- File issues with the plan reference: cite `docs/finished/Plan_WebServer_Adapter_Finished.md` section + phase so roadmap tracking stays accurate, and update the TODO entries described there when you discover new blockers.
+
+### 9.4 Multi-instance deployments
+- Mirror the `[scaling.multi_instance]` entry in `docs/web_server.toml` to every cluster. When a report comes in, read the stanza first so you know which session path (e.g., `/system/web/sessions/prod-cluster-a`) and asset staging directory the affected deployment should be using.
+- Validate shared sessions by logging in through the load balancer, grabbing the cookie from `/tmp/ps_cookies.txt`, and reading the corresponding PathSpace node (e.g., `pathspace_cli read /system/web/sessions/prod-cluster-a/<session>`). If the entry only appears on one host, the other servers are mis-mounted or using the in-memory backend.
+- To confirm sticky SSE routing, open two `curl -N` connections with the same cookie and bounce a backend process. Clients should reconnect with `Last-Event-ID` and continue from the same revision; if they restart from zero you know the load balancer ignored the `sticky_cookie` hint.
+- Asset drift almost always traces back to staging: compare the timestamp and hash inside `asset_staging_dir/metadata.txt` against the current `renderers/<renderer>/targets/html/<view>/output/v1/html/assets_manifest.txt`. Out-of-date manifests indicate the mirror watcher died or the node is still serving from an old symlink.
+- For request routing mysteries, temporarily enable per-instance log prefixes (or add an `X-ServeHtml-Instance` header inside your test build) so you can prove whether the load balancer is pinning `/apps/*/events`. Remove the instrumentation after the incident to keep headers consistent with production builds.
+
+### 9.5 Metrics & dashboards
+- `/metrics` exposes the Prometheus text format; it requires the same auth cookie as `/apps`. Scrape it behind your firewall or run `curl -b /tmp/ps_cookies.txt http://127.0.0.1:8080/metrics | head` during triage.
+- The server mirrors the latest counter snapshot into `<apps_root>/io/metrics/web_server/serve_html/live` so inspectors and Grafana/PathSpace ingest jobs can read JSON without HTTP. The payload tracks per-route totals/errors, latency averages, SSE connection counts, rate-limit tallies, and asset cache hit/miss ratios; compare it with `/metrics` if numbers ever diverge.
+- Auth expiry, SSE reconnect, immutable cache headers, and `/metrics` scraping are now exercised by `PathSpaceServeHtmlHttp` and `PathSpaceServeHtmlSse`. When CI flags those tests, reproduce locally with the same scripts (`python3 tests/tools/test_pathspace_serve_html_http.py …`) to confirm observability regressions before digging into the server.
+
+### 9.6 Google Sign-In
+- Keep `[auth.google]` in `docs/web_server.toml` (or the equivalent CLI flags) synchronized with the OAuth client registered in Google Cloud Console. `client_id`, `client_secret`, and `redirect_uri` must match the console entry exactly—typos manifest as `invalid_client` or `redirect_uri_mismatch` errors bubbled back to `/login/google/callback`.
+- The adapter stores Google→PathSpace mappings at `/system/auth/oauth/google/<sub>` with the username as the value. When `/login/google/callback` redirects to 401/403 immediately, read the node for the reported `sub` (inspect the stderr log or enable `PATHSPACE_LOG=1`) to confirm the mapping exists and points at a valid PathSpace user. Missing nodes return `invalid oauth state` or `unauthorized` so the browser never sees a partial login.
+- Token failures normally fall into three buckets:
+  1. **Token exchange errors** — Look for `google_token_exchange_failed` in the web server log, curl the configured `token_endpoint`, and verify outbound connections resolve. The adapter retries nothing today; transient DNS/TLS failures bubble up to the browser as 500s.
+  2. **Signature/audience mismatch** — The adapter fetches JWKS from `jwks_endpoint` and verifies `aud == client_id`. Misconfigured endpoints or stale JWKS hosts show up as `unable to verify id_token signature` in the log; re-run `python3 tests/tools/test_pathspace_serve_html_google.py` locally to confirm the flow works end-to-end before debugging Google.
+  3. **Unknown `sub`** — When the ID token is valid but `/system/auth/oauth/google/<sub>` is absent or empty, the adapter records an auth failure and returns 401. Seed the mapping manually (or rely on `--seed-demo`, which installs `google-user-123 → demo`) and re-run the flow.
+- Use the dedicated regression test `tests/tools/test_pathspace_serve_html_google.py` whenever you touch the OAuth path. It runs a stub OAuth/JWKS server, drives the PKCE handshake, and confirms the demo HTML route loads under the issued session cookie.

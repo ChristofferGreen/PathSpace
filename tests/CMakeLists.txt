@@ -199,6 +199,30 @@ add_test(NAME PathSpaceDumpJsonDemo
 )
 set_tests_properties(PathSpaceDumpJsonDemo PROPERTIES LABELS tools)
 
+add_test(NAME PathSpaceServeHtmlSse
+  COMMAND python3
+          "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_sse.py"
+          --repo-root "${CMAKE_SOURCE_DIR}"
+          --server "$<TARGET_FILE:pathspace_serve_html>"
+)
+set_tests_properties(PathSpaceServeHtmlSse PROPERTIES LABELS tools)
+
+add_test(NAME PathSpaceServeHtmlHttp
+  COMMAND python3
+          "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_http.py"
+          --repo-root "${CMAKE_SOURCE_DIR}"
+          --server "$<TARGET_FILE:pathspace_serve_html>"
+)
+set_tests_properties(PathSpaceServeHtmlHttp PROPERTIES LABELS tools)
+
+add_test(NAME PathSpaceServeHtmlGoogle
+  COMMAND python3
+          "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_google.py"
+          --repo-root "${CMAKE_SOURCE_DIR}"
+          --server "$<TARGET_FILE:pathspace_serve_html>"
+)
+set_tests_properties(PathSpaceServeHtmlGoogle PROPERTIES LABELS tools)
+
 if(PATHSPACE_ENABLE_UI)
   add_test(NAME PathSpaceUITests
     COMMAND "${PATHSPACE_TEST_RUNNER}"

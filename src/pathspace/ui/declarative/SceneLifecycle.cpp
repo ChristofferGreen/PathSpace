@@ -92,6 +92,45 @@ auto parse_uint64(std::string_view text) -> std::optional<std::uint64_t> {
     return value;
 }
 
+void mark_widget_tree_dirty(PathSpace& space, std::string const& widget_root) {
+    if (widget_root.empty()) {
+        return;
+    }
+    if (auto status = DeclarativeDetail::mark_render_dirty(space, widget_root); !status) {
+        auto const& error = status.error();
+        sp_log(std::string{"Failed to mark widget dirty: "} + widget_root + " code="
+                   + std::to_string(static_cast<int>(error.code))
+                   + " message=" + error.message.value_or("unknown"),
+               "SceneLifecycle");
+    }
+    auto children_root = widget_root + "/children";
+    auto children = space.listChildren(SP::ConcretePathStringView{children_root});
+    for (auto const& child_name : children) {
+        mark_widget_tree_dirty(space, children_root + "/" + child_name);
+    }
+}
+
+void mark_app_widgets_dirty(PathSpace& space, std::string const& app_root_path) {
+    auto mark_container = [&](std::string const& container_root) {
+        auto widgets = space.listChildren(SP::ConcretePathStringView{container_root});
+        for (auto const& widget_name : widgets) {
+            mark_widget_tree_dirty(space, container_root + "/" + widget_name);
+        }
+    };
+
+    mark_container(app_root_path + "/widgets");
+
+    auto windows_root = app_root_path + "/windows";
+    auto windows = space.listChildren(SP::ConcretePathStringView{windows_root});
+    for (auto const& window_name : windows) {
+        auto views_root = windows_root + "/" + window_name + "/views";
+        auto views = space.listChildren(SP::ConcretePathStringView{views_root});
+        for (auto const& view_name : views) {
+            mark_container(views_root + "/" + view_name + "/widgets");
+        }
+    }
+}
+
 auto is_point_buffer_out_of_range(SP::Error const& error) -> bool {
     if (error.code != SP::Error::Code::InvalidType || !error.message) {
         return false;
@@ -1235,13 +1274,16 @@ auto PumpSceneOnce(PathSpace& space,
 
 auto InvalidateThemes(PathSpace& space,
                       SP::App::AppRootPathView app_root) -> void {
-    (void)space;
-    std::lock_guard<std::mutex> guard(g_lifecycle_mutex);
-    for (auto const& [_, worker] : g_lifecycle_workers) {
-        if (worker && worker->matches_app(app_root.getPath())) {
-            worker->request_theme_invalidation();
+    auto app_root_path = std::string(app_root.getPath());
+    {
+        std::lock_guard<std::mutex> guard(g_lifecycle_mutex);
+        for (auto const& [_, worker] : g_lifecycle_workers) {
+            if (worker && worker->matches_app(app_root_path)) {
+                worker->request_theme_invalidation();
+            }
         }
     }
+    mark_app_widgets_dirty(space, app_root_path);
 }
 
 auto StopAll(PathSpace& space) -> void {

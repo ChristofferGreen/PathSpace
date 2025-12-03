@@ -22,10 +22,12 @@ endif()
 # Define the project name and the language used
 # Keep platform independence by enabling ObjC++ only on Apple (for example window helper)
 if(APPLE)
-  project(PathSpaceTests LANGUAGES CXX OBJCXX)
+  project(PathSpaceTests LANGUAGES C CXX OBJCXX)
 else()
-  project(PathSpaceTests LANGUAGES CXX)
+  project(PathSpaceTests LANGUAGES C CXX)
 endif()
+
+find_package(OpenSSL REQUIRED)
 
 # Additional GCC settings for macOS
 if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -78,6 +80,15 @@ endif()
 enable_testing()
 add_subdirectory(src/pathspace)
 
+add_library(bcrypt STATIC
+    third_party/libbcrypt/src/bcrypt.c
+    third_party/libbcrypt/src/crypt_blowfish.c
+    third_party/libbcrypt/src/crypt_gensalt.c
+    third_party/libbcrypt/src/wrapper.c)
+target_include_directories(bcrypt PUBLIC
+    third_party/libbcrypt/include
+    third_party/libbcrypt/include/bcrypt)
+
 add_executable(pathspace_history_inspect tools/history_inspect.cpp)
 target_link_libraries(pathspace_history_inspect PRIVATE PathSpace)
 
@@ -92,6 +103,21 @@ target_link_libraries(pathspace_paint_screenshot_card PRIVATE PathSpace)
 
 add_executable(pathspace_inspector_server tools/inspector_server.cpp)
 target_link_libraries(pathspace_inspector_server PRIVATE PathSpace)
+
+add_library(PathSpaceServeHtml STATIC
+    src/pathspace/web/ServeHtmlServer.cpp)
+target_link_libraries(PathSpaceServeHtml PUBLIC PathSpace bcrypt OpenSSL::SSL OpenSSL::Crypto)
+target_include_directories(PathSpaceServeHtml PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/pathspace
+)
+target_include_directories(PathSpaceServeHtml PRIVATE
+    ${cpp_httplib_SOURCE_DIR}
+)
+
+add_executable(pathspace_serve_html tools/serve_html.cpp)
+target_link_libraries(pathspace_serve_html PRIVATE PathSpaceServeHtml)
 
 add_executable(pathspace_dump_json tools/pathspace_dump_json.cpp)
 target_link_libraries(pathspace_dump_json PRIVATE PathSpace)
@@ -135,7 +161,7 @@ if(BUILD_PATHSPACE_EXAMPLES)
 
     add_library(paint_example_lib STATIC
         examples/paint_example.cpp)
-    target_link_libraries(paint_example_lib PUBLIC PathSpace)
+    target_link_libraries(paint_example_lib PUBLIC PathSpace PathSpaceServeHtml)
     target_compile_definitions(paint_example_lib PRIVATE PATHSPACE_PAINT_EXAMPLE_NO_MAIN=1)
 
     add_executable(paint_example
@@ -181,7 +207,7 @@ if(BUILD_PATHSPACE_EXAMPLES)
     endif()
 
     add_executable(widgets_example examples/widgets_example.cpp)
-    target_link_libraries(widgets_example PRIVATE PathSpace)
+    target_link_libraries(widgets_example PRIVATE PathSpace PathSpaceServeHtml)
     if(APPLE)
         target_link_libraries(widgets_example PRIVATE
             "-framework Cocoa"

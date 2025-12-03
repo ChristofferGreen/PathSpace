@@ -8,10 +8,12 @@
 #include <algorithm>
 #include <pathspace/examples/cli/ExampleCli.hpp>
 #include <cstdlib>
+#include <filesystem>
 #include <system_error>
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <span>
 #include <sstream>
 #include <string>
@@ -22,6 +24,7 @@ namespace ScreenshotCli = SP::UI::Screenshot;
 namespace PaintControlsNS = SP::Examples::PaintControls;
 namespace PaintScreenshot = SP::Examples::PaintScreenshot;
 using PaintControlsNS::BrushState;
+namespace ServeHtml = SP::ServeHtml;
 
 namespace {
 
@@ -30,6 +33,15 @@ struct CommandLineOptions {
     int height = 800;
     bool headless = false;
     ScreenshotCli::DeclarativeScreenshotCliOptions screenshot;
+    std::optional<std::filesystem::path> export_html_dir;
+    bool serve_html = false;
+    int serve_html_port = 8080;
+    std::string serve_html_host{"127.0.0.1"};
+    std::string serve_html_view{"widgets_gallery"};
+    std::string serve_html_target{"widgets_gallery"};
+    std::string serve_html_user{"demo"};
+    std::string serve_html_password{"demo"};
+    bool serve_html_allow_unauthenticated = false;
 };
 
 auto parse_options(int argc, char** argv) -> CommandLineOptions {
@@ -38,10 +50,59 @@ auto parse_options(int argc, char** argv) -> CommandLineOptions {
     ExampleCli cli;
     cli.set_program_name("widgets_example");
 
+    auto to_path = [](std::string_view value) {
+        return std::filesystem::path(std::string(value.begin(), value.end()));
+    };
+
     cli.add_flag("--headless", {.on_set = [&] { opts.headless = true; }});
     cli.add_int("--width", {.on_value = [&](int value) { opts.width = value; }});
     cli.add_int("--height", {.on_value = [&](int value) { opts.height = value; }});
     ScreenshotCli::RegisterDeclarativeScreenshotCliOptions(cli, opts.screenshot);
+
+    ExampleCli::ValueOption export_option{};
+    export_option.on_value = [&](std::optional<std::string_view> text) -> ExampleCli::ParseError {
+        if (!text || text->empty()) {
+            return "--export-html requires a path";
+        }
+        opts.export_html_dir = to_path(*text);
+        opts.headless = true;
+        return std::nullopt;
+    };
+    cli.add_value("--export-html", std::move(export_option));
+
+    cli.add_flag("--serve-html", {.on_set = [&] { opts.serve_html = true; }});
+    cli.add_int("--serve-html-port",
+                {.on_value = [&](int value) {
+                    opts.serve_html = true;
+                    opts.serve_html_port = value;
+                }});
+
+    auto add_serve_html_value = [&](std::string_view flag,
+                                    std::string& target) {
+        ExampleCli::ValueOption option{};
+        option.on_value = [&, option_name = std::string(flag)](std::optional<std::string_view> text)
+                              -> ExampleCli::ParseError {
+            if (!text || text->empty()) {
+                return option_name + " requires a value";
+            }
+            opts.serve_html = true;
+            target = std::string(*text);
+            return std::nullopt;
+        };
+        cli.add_value(flag, std::move(option));
+    };
+
+    add_serve_html_value("--serve-html-host", opts.serve_html_host);
+    add_serve_html_value("--serve-html-view", opts.serve_html_view);
+    add_serve_html_value("--serve-html-target", opts.serve_html_target);
+    add_serve_html_value("--serve-html-user", opts.serve_html_user);
+    add_serve_html_value("--serve-html-password", opts.serve_html_password);
+
+    cli.add_flag("--serve-html-allow-unauthenticated",
+                 {.on_set = [&] {
+                     opts.serve_html = true;
+                     opts.serve_html_allow_unauthenticated = true;
+                 }});
 
     (void)cli.parse(argc, argv);
 
@@ -50,6 +111,31 @@ auto parse_options(int argc, char** argv) -> CommandLineOptions {
     ScreenshotCli::ApplyDeclarativeScreenshotEnvOverrides(opts.screenshot);
     if (ScreenshotCli::DeclarativeScreenshotRequested(opts.screenshot)) {
         opts.headless = true;
+    }
+    if (opts.export_html_dir) {
+        std::error_code ec;
+        auto resolved = std::filesystem::absolute(*opts.export_html_dir, ec);
+        if (!ec) {
+            opts.export_html_dir = resolved;
+        }
+    }
+    if (opts.serve_html) {
+        if (opts.serve_html_port <= 0 || opts.serve_html_port > 65535) {
+            std::cerr << "widgets_example: --serve-html-port must be within 1-65535\n";
+            std::exit(EXIT_FAILURE);
+        }
+        if (opts.serve_html_host.empty()) {
+            std::cerr << "widgets_example: --serve-html-host must not be empty\n";
+            std::exit(EXIT_FAILURE);
+        }
+        if (opts.serve_html_view.empty()) {
+            std::cerr << "widgets_example: --serve-html-view must not be empty\n";
+            std::exit(EXIT_FAILURE);
+        }
+        if (opts.serve_html_target.empty()) {
+            std::cerr << "widgets_example: --serve-html-target must not be empty\n";
+            std::exit(EXIT_FAILURE);
+        }
     }
     return opts;
 }
@@ -75,7 +161,24 @@ auto log_error(SP::Expected<void> const& status, std::string const& context) -> 
 int main(int argc, char** argv) {
     auto options = parse_options(argc, argv);
 
-    SP::PathSpace space;
+    if (options.export_html_dir && ScreenshotCli::DeclarativeScreenshotRequested(options.screenshot)) {
+        std::cerr << "widgets_example: --export-html cannot be combined with screenshot capture\n";
+        return 1;
+    }
+
+    if (options.serve_html) {
+        if (ScreenshotCli::DeclarativeScreenshotRequested(options.screenshot)
+            || options.export_html_dir) {
+            std::cerr << "widgets_example: --serve-html cannot be combined with screenshot or export modes\n";
+            return 1;
+        }
+        if (options.headless) {
+            std::cerr << "widgets_example: --serve-html requires the native window to be visible\n";
+            return 1;
+        }
+    }
+
+    ServeHtml::ServeHtmlSpace space;
     auto launch = SP::System::LaunchStandard(space);
     if (!launch) {
         std::cerr << "widgets_example: failed to launch declarative runtime\n";
@@ -372,6 +475,84 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    std::optional<HtmlMirrorContext> serve_html_mirror;
+    std::optional<ServeHtmlServerHandle> serve_html_server;
+    bool serve_html_present_failed = false;
+    if (options.serve_html) {
+        HtmlMirrorConfig mirror_config{
+            .renderer_name = "html",
+            .target_name = options.serve_html_target,
+            .view_name = options.serve_html_view,
+        };
+        auto mirror = SetupHtmlMirror(space,
+                                      app_root,
+                                      window->path,
+                                      scene->path,
+                                      mirror_config);
+        if (!mirror) {
+            std::cerr << "widgets_example: failed to attach HTML mirror: "
+                      << SP::describeError(mirror.error()) << "\n";
+            options.serve_html = false;
+        } else {
+            serve_html_mirror = *mirror;
+            ServeHtml::ServeHtmlOptions server_options{};
+            server_options.host = options.serve_html_host;
+            server_options.port = options.serve_html_port;
+            server_options.renderer = mirror_config.renderer_name;
+            server_options.auth_optional = options.serve_html_allow_unauthenticated;
+
+            if (!ServeHtml::EnsureUserPassword(space,
+                                               server_options,
+                                               options.serve_html_user,
+                                               options.serve_html_password)) {
+                std::cerr << "widgets_example: failed to seed serve-html credentials\n";
+                serve_html_mirror.reset();
+                options.serve_html = false;
+            } else {
+                auto handle = StartServeHtmlServer(space, server_options);
+                serve_html_server = std::move(handle);
+
+                std::string app_name = app_root.getPath();
+                auto slash = app_name.find_last_of('/') + 1;
+                if (slash < app_name.size()) {
+                    app_name = app_name.substr(slash);
+                }
+                std::cout << "widgets_example: serving HTML at http://" << server_options.host << ":"
+                          << server_options.port << "/apps/" << app_name << "/"
+                          << options.serve_html_view << "\n";
+            }
+        }
+    }
+
+    if (options.export_html_dir) {
+        HtmlExportOptions export_options{
+            .output_dir = *options.export_html_dir,
+            .renderer_name = "html",
+            .target_name = "widgets_gallery",
+        };
+        auto export_result = ExportHtmlBundle(space,
+                                              app_root,
+                                              window->path,
+                                              window->view_name,
+                                              scene->path,
+                                              export_options);
+        if (!export_result) {
+            std::cerr << "widgets_example: HTML export failed: "
+                      << SP::describeError(export_result.error()) << "\n";
+            SP::System::ShutdownDeclarativeRuntime(space);
+            return 1;
+        }
+        std::cout << "widgets_example: exported HTML bundle to "
+                  << export_result->output_dir.string()
+                  << " (revision " << export_result->revision
+                  << ", mode " << export_result->mode
+                  << ", assets " << export_result->asset_count
+                  << (export_result->used_canvas_fallback ? ", fallback=canvas" : "")
+                  << ")\n";
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return 0;
+    }
+
     if (ScreenshotCli::DeclarativeScreenshotRequested(options.screenshot)) {
         auto pose = [&]() -> SP::Expected<void> {
             if (slider) {
@@ -434,6 +615,19 @@ int main(int argc, char** argv) {
     install_local_window_bridge(bridge);
 
     PresentLoopHooks hooks{};
+    if (serve_html_mirror) {
+        hooks.after_present = [&]() {
+            if (serve_html_present_failed) {
+                return;
+            }
+            auto status = PresentHtmlMirror(space, *serve_html_mirror);
+            if (!status) {
+                serve_html_present_failed = true;
+                std::cerr << "widgets_example: HTML mirror present failed: "
+                          << SP::describeError(status.error()) << "\n";
+            }
+        };
+    }
     run_present_loop(space,
                      window->path,
                      window->view_name,
@@ -443,5 +637,8 @@ int main(int argc, char** argv) {
                     hooks);
 
     SP::System::ShutdownDeclarativeRuntime(space);
+    if (serve_html_server) {
+        StopServeHtmlServer(*serve_html_server);
+    }
     return 0;
 }

@@ -1,0 +1,80 @@
+# PathSpace web server configuration reference (mirrors the CLI flags in tools/serve_html.cpp).
+# Persist these values once the adapter consumes on-disk config; today they document
+# the expected keys and defaults.
+
+[server]
+host = "127.0.0.1"
+port = 8080
+
+[paths]
+# Apps and users are scoped under /system by default. Overriding these keeps both
+# native and web adapters pointing at the same PathSpace tree.
+apps_root = "/system/applications"
+users_root = "/system/auth/users"
+
+[auth]
+# Cookie and timeout knobs map to --session-cookie, --session-timeout, and
+# --session-max-age. Setting require_login=false mirrors --allow-unauthenticated
+# for local development only.
+session_cookie = "ps_session"
+idle_timeout_seconds = 1800     # 30 minutes
+max_lifetime_seconds = 28800    # 8 hours
+require_login = true
+
+[auth.session_store]
+# Backend matches --session-store. Use "memory" for single-process dev sessions
+# or "pathspace" to persist sessions inside the PathSpace tree under the path
+# below (mirrors --session-store-root).
+backend = "memory"
+path = "/system/web/sessions"
+
+[auth.google]
+# Enable Google Sign-In by supplying the OAuth client id/secret issued by Google
+# along with the redirect URI that points at /login/google/callback on your
+# deployment. Endpoints default to Google's production hosts but can be
+# overridden for testing.
+client_id = ""
+client_secret = ""
+redirect_uri = "http://127.0.0.1:8080/login/google/callback"
+auth_endpoint = "https://accounts.google.com/o/oauth2/v2/auth"
+token_endpoint = "https://oauth2.googleapis.com/token"
+jwks_endpoint = "https://www.googleapis.com/oauth2/v3/certs"
+users_root = "/system/auth/oauth/google"
+scope = "openid email profile"
+
+[auth.demo_seed]
+# Demo credentials injected when --seed-demo is passed; replace or remove this
+# stanza in production. The password is hashed via bcrypt and seeded in PathSpace.
+username = "demo"
+password_bcrypt = "$2b$10$demo-placeholder-replace-on-deployment"
+
+[security.rate_limit]
+# Token-bucket throttles used by pathspace_serve_html. Set any value to 0 to
+# disable that bucket. CLI equivalents: --rate-limit-{ip,session}-{per-minute,burst}.
+ip_per_minute = 600
+ip_burst = 120
+session_per_minute = 300
+session_burst = 60
+
+[apps.demo_web]
+# Renderer/target pairing used for the seeded gallery app.
+renderer = "html"
+default_view = "gallery"
+
+# TLS is terminated by a reverse proxy (NGINX, Caddy, Envoy). See
+# docs/finished/Plan_WebServer_Adapter_Finished.md for the recommended proxy snippet and
+# certificate management workflow.
+
+[scaling.multi_instance]
+# Reference settings for running multiple frontends behind a load balancer.
+# The adapter is stateless once sessions live in PathSpace, so each instance
+# points at the same apps/users roots and session path.
+cluster_id = "prod-cluster-a"
+session_store_backend = "pathspace"
+session_store_root = "/system/web/sessions/prod-cluster-a"
+asset_staging_dir = "/srv/pathspace/html_mirror"
+sticky_cookie = "ps_session"
+sse_affinity_required = true
+# Load balancers should pin `/apps/*/events` to a single node (cookie/IP
+# affinity) and call `/healthz` before routing requests. Update this stanza per
+# cluster so operators know how each deployment shares PathSpace state.

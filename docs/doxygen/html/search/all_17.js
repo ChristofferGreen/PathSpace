@@ -134,7 +134,7 @@ var searchData=
   ['plan_5fscenegraph_5fimplementation_2emd_131',['Plan_SceneGraph_Implementation.md',['../_plan___scene_graph___implementation_8md.html',1,'']]],
   ['plan_5fscenegraph_5frenderer_2emd_132',['Plan_SceneGraph_Renderer.md',['../_plan___scene_graph___renderer_8md.html',1,'']]],
   ['plan_5fsurface_5fray_5fcache_2emd_133',['Plan_Surface_Ray_Cache.md',['../_plan___surface___ray___cache_8md.html',1,'']]],
-  ['plan_5fwebserver_5fadapter_2emd_134',['Plan_WebServer_Adapter.md',['../_plan___web_server___adapter_8md.html',1,'']]],
+  ['plan_5fwebserver_5fadapter_2emd_134',['finished/Plan_WebServer_Adapter_Finished.md',['../_plan___web_server___adapter_8md.html',1,'']]],
   ['plans_20overview_135',['PathSpace Plans Overview',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_plan___overview.html#autotoc_md148',1,'']]],
   ['playbook_136',['PathSpace — Debugging Playbook',['../md__2_users_2chrgre01_2src_2_path_space_2docs_2_a_i___debugging___playbook.html#autotoc_md65',1,'']]],
   ['point_5finside_5fbounds_137',['point_inside_bounds',['../namespace_s_p_1_1_u_i_1_1detail.html#abe0e188cc263666be9ffabe9b796eb65',1,'SP::UI::detail']]],

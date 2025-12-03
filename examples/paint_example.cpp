@@ -45,6 +45,7 @@
 #include <unordered_map>
 
 using namespace PathSpaceExamples;
+namespace ServeHtml = SP::ServeHtml;
 
 namespace {
 
@@ -96,6 +97,7 @@ auto parse_options(int argc, char** argv) -> CommandLineOptions {
     add_path_option("--screenshot-compare", opts.screenshot_compare_path, false);
     add_path_option("--screenshot-diff", opts.screenshot_diff_path, false);
     add_path_option("--screenshot-metrics-json", opts.screenshot_metrics_path, false);
+    add_path_option("--export-html", opts.export_html_dir, true);
 
     cli.add_double("--screenshot-max-mean-error",
                    {.on_value = [&](double value) { opts.screenshot_max_mean_error = value; }});
@@ -119,12 +121,65 @@ auto parse_options(int argc, char** argv) -> CommandLineOptions {
     };
     cli.add_value("--gpu-smoke", gpu_option);
 
+    cli.add_flag("--serve-html", {.on_set = [&] { opts.serve_html = true; }});
+    cli.add_int("--serve-html-port",
+                {.on_value = [&](int value) {
+                    opts.serve_html = true;
+                    opts.serve_html_port = value;
+                }});
+
+    auto add_serve_html_value = [&](std::string_view flag,
+                                    std::string& target) {
+        ExampleCli::ValueOption option{};
+        option.on_value = [&, option_name = std::string(flag)](std::optional<std::string_view> text)
+                              -> ExampleCli::ParseError {
+            if (!text || text->empty()) {
+                return option_name + " requires a value";
+            }
+            opts.serve_html = true;
+            target = std::string(*text);
+            return std::nullopt;
+        };
+        cli.add_value(flag, std::move(option));
+    };
+
+    add_serve_html_value("--serve-html-host", opts.serve_html_host);
+    add_serve_html_value("--serve-html-view", opts.serve_html_view);
+    add_serve_html_value("--serve-html-target", opts.serve_html_target);
+    add_serve_html_value("--serve-html-user", opts.serve_html_user);
+    add_serve_html_value("--serve-html-password", opts.serve_html_password);
+
+    cli.add_flag("--serve-html-allow-unauthenticated",
+                 {.on_set = [&] {
+                     opts.serve_html = true;
+                     opts.serve_html_allow_unauthenticated = true;
+                 }});
+
     (void)cli.parse(argc, argv);
 
     opts.width = std::max(800, opts.width);
     opts.height = std::max(600, opts.height);
     if (opts.screenshot_max_mean_error < 0.0) {
         opts.screenshot_max_mean_error = 0.0;
+    }
+
+    if (opts.serve_html) {
+        if (opts.serve_html_port <= 0 || opts.serve_html_port > 65535) {
+            std::cerr << "paint_example: --serve-html-port must be within 1-65535\n";
+            std::exit(EXIT_FAILURE);
+        }
+        if (opts.serve_html_host.empty()) {
+            std::cerr << "paint_example: --serve-html-host must not be empty\n";
+            std::exit(EXIT_FAILURE);
+        }
+        if (opts.serve_html_view.empty()) {
+            std::cerr << "paint_example: --serve-html-view must not be empty\n";
+            std::exit(EXIT_FAILURE);
+        }
+        if (opts.serve_html_target.empty()) {
+            std::cerr << "paint_example: --serve-html-target must not be empty\n";
+            std::exit(EXIT_FAILURE);
+        }
     }
 
     if (auto env_force = read_env_string("PATHSPACE_SCREENSHOT_FORCE_SOFTWARE")) {
@@ -1521,6 +1576,7 @@ auto RunPaintExample(CommandLineOptions options) -> int {
     absolutize_if_present(options.screenshot_compare_path);
     absolutize_if_present(options.screenshot_diff_path);
     absolutize_if_present(options.screenshot_metrics_path);
+    absolutize_if_present(options.export_html_dir);
     absolutize_if_present(options.gpu_texture_path);
 
     auto baseline_version_env = read_env_string("PAINT_EXAMPLE_BASELINE_VERSION");
@@ -1577,15 +1633,34 @@ auto RunPaintExample(CommandLineOptions options) -> int {
         }
     }
 
-    SP::PathSpace space;
+    bool screenshot_mode = options.screenshot_path.has_value();
+    if (options.export_html_dir && screenshot_mode) {
+        std::cerr << "paint_example: --export-html cannot be combined with screenshot capture flags\n";
+        return 1;
+    }
+    if (options.export_html_dir && options.gpu_smoke) {
+        std::cerr << "paint_example: --export-html cannot be combined with --gpu-smoke\n";
+        return 1;
+    }
+
+    if (options.serve_html) {
+        if (screenshot_mode || options.export_html_dir || options.gpu_smoke) {
+            std::cerr << "paint_example: --serve-html cannot be combined with screenshot, export, or GPU smoke modes\n";
+            return 1;
+        }
+        if (options.headless) {
+            std::cerr << "paint_example: --serve-html requires the native window to be visible\n";
+            return 1;
+        }
+    }
+
+    ServeHtml::ServeHtmlSpace space;
 
     auto window_context = create_paint_window_context(space, options);
     if (!window_context) {
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
-
-    bool screenshot_mode = options.screenshot_path.has_value();
 
     auto ui_context = mount_paint_ui(space, *window_context, options, screenshot_mode);
     if (!ui_context) {
@@ -1624,6 +1699,84 @@ auto RunPaintExample(CommandLineOptions options) -> int {
         std::cerr << "paint_example: scene readiness did not produce a revision\n";
         SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
+    }
+
+    std::optional<HtmlMirrorContext> serve_html_mirror;
+    std::optional<ServeHtmlServerHandle> serve_html_server;
+    bool serve_html_present_failed = false;
+    if (options.serve_html) {
+        HtmlMirrorConfig mirror_config{
+            .renderer_name = "html",
+            .target_name = options.serve_html_target,
+            .view_name = options.serve_html_view,
+        };
+        auto mirror = SetupHtmlMirror(space,
+                                      window_context->app_root,
+                                      window_result.path,
+                                      scene_result.path,
+                                      mirror_config);
+        if (!mirror) {
+            std::cerr << "paint_example: failed to attach HTML mirror: "
+                      << SP::describeError(mirror.error()) << "\n";
+            options.serve_html = false;
+        } else {
+            serve_html_mirror = *mirror;
+            ServeHtml::ServeHtmlOptions server_options{};
+            server_options.host = options.serve_html_host;
+            server_options.port = options.serve_html_port;
+            server_options.renderer = mirror_config.renderer_name;
+            server_options.auth_optional = options.serve_html_allow_unauthenticated;
+
+            if (!ServeHtml::EnsureUserPassword(space,
+                                               server_options,
+                                               options.serve_html_user,
+                                               options.serve_html_password)) {
+                std::cerr << "paint_example: failed to seed serve-html credentials\n";
+                serve_html_mirror.reset();
+                options.serve_html = false;
+            } else {
+                auto handle = StartServeHtmlServer(space, server_options);
+                serve_html_server = std::move(handle);
+
+                std::string app_name = window_context->app_root.getPath();
+                auto slash = app_name.find_last_of('/') + 1;
+                if (slash < app_name.size()) {
+                    app_name = app_name.substr(slash);
+                }
+                std::cout << "paint_example: serving HTML at http://" << server_options.host << ":"
+                          << server_options.port << "/apps/" << app_name << "/"
+                          << options.serve_html_view << "\n";
+            }
+        }
+    }
+
+    if (options.export_html_dir) {
+        HtmlExportOptions export_options{
+            .output_dir = *options.export_html_dir,
+            .renderer_name = "html",
+            .target_name = "paint_web",
+        };
+        auto export_result = ExportHtmlBundle(space,
+                                              window_context->app_root,
+                                              window_result.path,
+                                              window_result.view_name,
+                                              scene_result.path,
+                                              export_options);
+        if (!export_result) {
+            std::cerr << "paint_example: HTML export failed: "
+                      << describeError(export_result.error()) << "\n";
+            SP::System::ShutdownDeclarativeRuntime(space);
+            return 1;
+        }
+        std::cout << "paint_example: exported HTML bundle to "
+                  << export_result->output_dir.string()
+                  << " (revision " << export_result->revision
+                  << ", mode " << export_result->mode
+                  << ", assets " << export_result->asset_count
+                  << (export_result->used_canvas_fallback ? ", fallback=canvas" : "")
+                  << ")\n";
+        SP::System::ShutdownDeclarativeRuntime(space);
+        return 0;
     }
 
     if (options.gpu_smoke) {
@@ -1832,6 +1985,20 @@ auto RunPaintExample(CommandLineOptions options) -> int {
 
     PresentLoopHooks hooks{};
 
+    if (serve_html_mirror) {
+        hooks.after_present = [&]() {
+            if (serve_html_present_failed) {
+                return;
+            }
+            auto status = PresentHtmlMirror(space, *serve_html_mirror);
+            if (!status) {
+                serve_html_present_failed = true;
+                std::cerr << "paint_example: HTML mirror present failed: "
+                          << SP::describeError(status.error()) << "\n";
+            }
+        };
+    }
+
     run_present_loop(space,
                      window_result.path,
                      window_result.view_name,
@@ -1841,6 +2008,9 @@ auto RunPaintExample(CommandLineOptions options) -> int {
                      hooks);
 
     SP::System::ShutdownDeclarativeRuntime(space);
+    if (serve_html_server) {
+        StopServeHtmlServer(*serve_html_server);
+    }
     return 0;
 }
 

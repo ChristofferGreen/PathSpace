@@ -74,6 +74,33 @@ Tip: Enable sanitizers when debugging concurrency/path issues, and pair `ENABLE_
 Scripts:
 - ./scripts/compile.sh
 - ./scripts/update_compile_commands.sh (keeps compile_commands.json in repo root)
+- ./build/pathspace_serve_html [--seed-demo] (serves `/apps/<app>/<view>` plus `/assets/<app>/<relative>` for HTML adapter targets; see docs/finished/Plan_WebServer_Adapter_Finished.md)
+- ./build/paint_example --serve-html / ./build/widgets_example --serve-html (attach HTML mirror targets, seed demo credentials, and launch an embedded `pathspace_serve_html` thread so you can open `http://127.0.0.1:8080/apps/<app>/<view>` in a browser while the native window is running.)
+
+## HTML bundle export
+
+The declarative examples can emit standalone HTML bundles that mirror
+`renderers/<renderer>/targets/html/<view>/output/v1/html/*`. Run either example with
+`--export-html <output_dir>` to capture the DOM, CSS, commands, metadata, and asset blobs without
+starting the LocalWindow loop:
+
+```
+./build/paint_example --export-html out/html/paint
+./build/widgets_example --export-html out/html/widgets
+```
+
+Each export rewrites the target directory with:
+
+- `dom.html` — the rendered DOM fragment
+- `styles.css` — the adapter’s CSS output (may be empty when commands drive the UI)
+- `commands.json` — Canvas replay commands used when DOM fallback isn’t possible
+- `metadata.txt` — renderer/target/view identifiers, revision, mode, fallback flag, asset count
+- `assets_manifest.txt` plus `assets/` — fingerprinted binary payloads (fonts, images, etc.)
+
+`--export-html` implies headless mode and cannot be combined with screenshot/GPU smoke flags. The
+files above are what `pathspace_serve_html` and future web adapters expect; copy them into a staging
+directory or serve them directly from the prototype server while the distributed PathSpace plumbing
+is still under construction.
 
 ## Inspector quick start
 

@@ -177,7 +177,7 @@ PathSpace App ──(distributed mount)──> Web Server Inspector API ──SS
 - ✅ (December 1, 2025) Inspector write toggles now drain stale bool values before applying a new state, so `/inspector/actions/toggles` actually flips `/app/*` flags and the `Inspector write toggles enforce confirmation and log audits` doctest (plus the workflow loop’s `PathSpaceTests`) stay green again.
 
 ## Integration Points
-- ✅ (December 2, 2025) Updated `docs/Plan_WebServer_Adapter.md` with inspector SPA + `/inspector/*` endpoint coverage (SSE budgets, remote mount diagnostics, ACL wiring, and config knobs) so the web adapter ships the same introspection surface without a separate server.
+- ✅ (December 2, 2025) Updated `docs/finished/Plan_WebServer_Adapter_Finished.md` with inspector SPA + `/inspector/*` endpoint coverage (SSE budgets, remote mount diagnostics, ACL wiring, and config knobs) so the web adapter ships the same introspection surface without a separate server.
 - ✅ (December 2, 2025) Referenced inspector availability in `docs/Plan_Distributed_PathSpace.md`, wiring the distributed mount story to the inspector plan so client tools know how `/remote/<alias>` snapshots, SSE, and remotes metrics show up in shared deployments.
 - ✅ (December 2, 2025) Added a README “Inspector quick start” snippet that shows how to launch `pathspace_inspector_server`, embed `InspectorHttpServer`, and connect a browser to the running app.
 
