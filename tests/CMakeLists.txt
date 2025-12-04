@@ -34,6 +34,11 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/pathspace/test_PathSpaceJsonExporter.cpp
   unit/runtime/test_IOPump.cpp
   unit/runtime/test_TelemetryControl.cpp
+  unit/web/test_ServeHtmlOptions.cpp
+  unit/web/test_ServeHtmlSessionStore.cpp
+  unit/web/test_HtmlHelpers.cpp
+  unit/web/test_ServeHtmlSseBroadcaster.cpp
+  unit/web/test_ServeHtmlOAuthGoogle.cpp
   test_main.cpp
 )
 
@@ -139,6 +144,7 @@ target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_SOURCE_DIR="${CMAKE_
 target_link_libraries(PathSpaceTests
   PRIVATE
   PathSpace
+  PathSpaceServeHtml
 )
 
 include(CTest)

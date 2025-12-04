@@ -1,9 +1,48 @@
 ## Repository Memory
  This file is for remembering architecture details about the PathSPace project so it becomes easier to get up to speed about details later.
-No need to store details about a worklog of dates when things where added.
+ No need to store details about a worklog of dates when things where added.
 
+- 2025-12-04: Phase 0 guardrails for `pathspace_serve_html` captured golden HTTP/SSE transcripts under `tests/data/serve_html/` and taught `tests/tools/test_pathspace_serve_html_{http,sse}.py` to assert `/session`, `/logout`, invalid-cookie, and `429` rate-limit behavior plus SSE frame/diagnostic schemas so modularization work has stable baselines.
+- 2025-12-04: `PathRenderer2D::target_cache` now holds per-target entries that bundle a mutex with the cached drawable/material state; renders grab the global map lock only long enough to create/find an entry and then serialize same-target work on the entry mutex, preventing the auto-render/manual race described in `docs/Plan_SceneGraph_Renderer.md`.
+- 2025-12-04: Phase 6 of `Plan_ServeHtml_Modularization` closed out the docs sweep:
+  `docs/serve_html/README.md` now explains the module layout, README +
+  `docs/finished/Plan_WebServer_Adapter_Finished.md` + `docs/AI_Debugging_Playbook.md` +
+  `docs/Plan_Overview.md` reference the split, and the plan itself moved to
+  `docs/finished/Plan_ServeHtml_Modularization_Finished.md` so contributors know
+  to start with the module guide.
+- 2025-12-04: Phase 3 of `docs/finished/Plan_ServeHtml_Modularization_Finished.md` began with `AuthController` (under
+  `src/pathspace/web/serve_html/routing/`) and the new `HttpRequestContext`/metrics modules so ServeHtml’s
+  auth routes moved out of `ServeHtmlServer.cpp`. The binary now instantiates the shared context, registers
+  `/login`, `/logout`, `/session`, and Google OAuth via the controller, and reuses the exported rate-limit,
+  session, and cookie helpers across the remaining routes.
+- 2025-12-04: Phase 3 continued by extracting `/api/ops` into `OpsController` (`src/pathspace/web/serve_html/routing/`)
+  so render trigger posts reuse the shared `HttpRequestContext` rate limiting/session helpers, the metrics
+  wiring stays intact, and `ServeHtmlServer.cpp` shrinks to wiring code while the controller owns the JSON
+  validation + queue insertion path.
+- 2025-12-04: Phase 3 pulled `/apps/<app>/<view>` + `/assets/<app>/<asset>` into `HtmlController`
+  (`src/pathspace/web/serve_html/routing/HtmlController.*`) and factored the shared HTML payload + asset-path
+  helpers into `include/pathspace/web/serve_html/{HtmlPayload,AssetPath}.hpp`. `ServeHtmlServer.cpp` now just wires
+  Auth/Ops/Html controllers, while `tests/unit/web/test_HtmlHelpers.cpp` covers the escaping logic and
+  asset-path validator. SSE routing still lives in the monolith until Phase 4 extracts the broadcaster.
+- 2025-12-04: Phase 4 carved the SSE logic out of `ServeHtmlServer.cpp` into
+  `include/pathspace/web/serve_html/streaming/SseBroadcaster.hpp` +
+  `src/pathspace/web/serve_html/streaming/SseBroadcaster.cpp`, so the main TU only wires controllers.
+  `tests/unit/web/test_ServeHtmlSseBroadcaster.cpp` now drives `HtmlEventStreamSession` against a real
+  `ServeHtmlSpace` to cover initial snapshots, keep-alives, and revision-gap reload emission while `PathSpace`
+  watchers trigger updates.
+- 2025-12-04: Phase 5 kicked off by adding `serve_html/auth/OAuthGoogle.{hpp,cpp}` with JWKS cache, PKCE
+  state store, HTTP helpers, and structured error reporting. `AuthController` now delegates Google Sign-In to
+  the module (logging `describe_error` output) and the metrics subsystem exposes a reusable
+  `MetricsCollector::MetricsSnapshot` plus `capture_snapshot()`, so `/metrics` and the background publisher
+  share one DTO via `render_prometheus(snapshot)` / `snapshot_json(snapshot)` instead of recomputing data per
+  consumer.
+- 2025-12-04: Phase 1 of `docs/finished/Plan_ServeHtml_Modularization_Finished.md` started by moving `ServeHtmlOptions` + CLI/env parsing out of `ServeHtmlServer.cpp` into `include/pathspace/web/ServeHtmlOptions.hpp` / `src/pathspace/web/ServeHtmlOptions.cpp`, wiring the new `PATHSPACE_SERVE_HTML_*` overrides, exposing `is_identifier` via `include/pathspace/web/ServeHtmlIdentifier.hpp`, and covering the validators/env plumbing with doctests in `tests/unit/web/test_ServeHtmlOptions.cpp`.
+- 2025-12-04: Phase 2 moved ServeHtml auth/session logic into `include/pathspace/web/serve_html/auth/SessionStore.hpp`, `src/pathspace/web/serve_html/auth/{SessionStore,Credentials}.cpp`, and `src/pathspace/web/serve_html/DemoSeed.cpp`, trimmed `ServeHtmlServer.cpp` down to wiring code, taught `tests/unit/web/test_ServeHtmlSessionStore.cpp` to cover both backends, and documented the change in `docs/finished/Plan_ServeHtml_Modularization_Finished.md` + `docs/Plan_Overview.md`.
 - 2025-12-03: `tools/serve_html.cpp` now injects an EventSource-driven live update script and serves `/apps/<app>/<view>?format=json` so browser users get automatic DOM/CSS/commands refreshes plus diagnostic banners; `docs/finished/Plan_WebServer_Adapter_Finished.md` and `docs/Plan_Overview.md` document the feature for Phase 2 and `tests/tools/test_pathspace_serve_html_http.py` verifies the JSON mode.
-- 2025-12-03: Authored `docs/Plan_ServeHtml_Modularization.md`, the work plan for splitting `ServeHtmlServer.cpp` into dedicated config/auth/router/streaming/metrics modules so ServeHtml work stops landing in a single TU; referenced it from `docs/Plan_Overview.md` for contributors.
+- 2025-12-03: Authored `docs/Plan_ServeHtml_Modularization.md` (now archived at
+  `docs/finished/Plan_ServeHtml_Modularization_Finished.md`), the work plan for splitting
+  `ServeHtmlServer.cpp` into dedicated config/auth/router/streaming/metrics modules so ServeHtml work stops
+  landing in a single TU; referenced it from `docs/Plan_Overview.md` for contributors.
 - 2025-12-03: Drafted `docs/Plan_PathSpaceHtmlServer.md` to track the embeddable HTML server helper (`PathSpaceHtmlServer<Space>`), including refactoring paint/widgets examples off the bespoke `--serve-html` flow and documenting the new embedding workflow.
 - 2025-12-03: `pathspace_serve_html` gained Google Sign-In support (`/login/google` + `/login/google/callback`). The adapter performs PKCE, calls Google’s token endpoint, verifies ID token signatures/audience via JWKS, and maps each Google `sub` to `/system/auth/oauth/google/<sub>` before issuing the standard session. CLI + `[auth.google]` config knobs landed alongside `tests/tools/test_pathspace_serve_html_google.py` and new debugging guidance in `docs/AI_Debugging_Playbook.md` §9.6.
 - 2025-12-03: `pathspace_serve_html` ships the Phase 5 observability stack—request/op histograms, SSE connection counts, rate-limit/auth/asset counters, and render enqueue latency now feed the `/metrics` Prometheus endpoint plus the JSON snapshot under `<apps_root>/io/metrics/web_server/serve_html/live`; the HTTP + SSE integration tests cover metrics scrapes, asset 304s, session expiry, and Last-Event-ID resume while `docs/finished/Plan_WebServer_Adapter_Finished.md` + `docs/AI_Debugging_Playbook.md` explain how to consume the data.

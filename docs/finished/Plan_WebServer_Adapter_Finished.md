@@ -34,6 +34,25 @@ Browser ──HTTP(S)──> Web Server Adapter ──PathSpace Client API──
 - **Browser Client** — receives HTML/JS/CSS, optionally listens to Server-Sent Events (SSE) or WebSocket notifications for live updates.
 - **Inspector Bridge** — embeds `SP::Inspector::InspectorHttpServer` (or proxies to the standalone binary) so `/inspector/*` routes share the same PathSpace, reuse `InspectorHttpServer::Options` (snapshot caps, remote mounts, ACLs, diagnostics), and deliver the bundled SPA without another process.
 
+### ServeHtml modular layout (December 2025)
+The prototype binary now wires a modular set of components described in
+`docs/serve_html/README.md` and `docs/finished/Plan_ServeHtml_Modularization_Finished.md`:
+
+- `ServeHtmlOptions` parses CLI/env overrides and publishes shared identifier helpers.
+- `serve_html/auth/*` hosts session stores, bcrypt helpers, demo fixtures, and
+  `OAuthGoogle` so authentication evolves without touching routing code.
+- `serve_html/routing/*` contains controllers for `/login`, `/logout`, `/session`,
+  `/apps`, `/assets`, `/api/ops`, and future routes plus their shared
+  `HttpRequestContext` middleware.
+- `serve_html/streaming/SseBroadcaster.*` owns the SSE lifecycle and Last-Event-ID
+  resume logic.
+- `serve_html/Metrics.*` renders Prometheus output and JSON snapshots that both
+  `/metrics` and the background publisher reuse.
+
+`ServeHtmlServer.cpp` is now a thin bootstrap that instantiates the modules above,
+registers their routes on `httplib::Server`, and handles lifecycle signals.
+Contributors adding features should follow the module guide referenced above.
+
 ### Native/Web Parity Strategy
 - Applications author scenes, renderers, and presenters once under app-relative paths.
 - Native desktop apps consume software/Metal outputs (`output/v1/common`, framebuffer, textures).

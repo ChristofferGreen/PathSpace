@@ -118,6 +118,44 @@ task {
 }
 
 task {
+  name: "ServeHtml Multi-Instance Deployment [FEATURE]"
+  description: "Run multiple `pathspace_serve_html` instances behind a load balancer with shared session stores and SSE resilience."
+  status: planned
+  priority: P1
+
+  acceptance_criteria: [
+    "Provide a durable SessionStore backend (PathSpace namespace or external DB) that keeps cookies valid across nodes",
+    "Document sticky-session + health-check guidance (docs/serve_html/README.md, finished plans) for `/apps/*` and `/apps/*/events`",
+    "Add metrics/diagnostics nodes that expose per-instance identity so dashboards confirm cluster balance"
+  ]
+
+  steps: [
+    "Design and implement the shared SessionStore backend plus configuration knobs",
+    "Update docs (Plan_WebServer_Adapter, serve_html README, debugging playbook) with clustering guidance",
+    "Extend integration tests or harnesses to simulate two nodes and verify SSE reconnect + Last-Event-ID resume works across them"
+  ]
+}
+
+task {
+  name: "ServeHtml Inspector Proxy [FEATURE]"
+  description: "Embed the inspector SPA/json endpoints inside ServeHtml controllers so operators can debug without running a separate binary."
+  status: planned
+  priority: P2
+
+  acceptance_criteria: [
+    "Optional `/inspector/*` controller proxies PathSpace inspector APIs with the same ACL enforcement",
+    "docs/serve_html/README.md and finished plans explain how to enable the proxy and which knobs govern diagnostics",
+    "Integration or smoke tests exercise the proxy route to ensure inspector SPA assets load and SSE streams stay isolated from app routes"
+  ]
+
+  steps: [
+    "Define controller wiring (`serve_html/routing/InspectorController.*`) that reuses InspectorHttpServer options",
+    "Plumb CLI/config flags plus docs/web_server.toml entries to toggle the proxy",
+    "Add tests/scripts (or reuse inspector harness) to load `/inspector/` through ServeHtml and verify auth + SSE flows"
+  ]
+}
+
+task {
   name: "Widget Slider & List Builders [FEATURE]"
   description: "Extend the widget toolkit with slider and list builders that publish canonical scenes and metadata alongside the existing button/toggle support."
   status: completed

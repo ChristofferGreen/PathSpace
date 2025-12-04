@@ -7,9 +7,11 @@ import http.client
 import json
 import sys
 import time
+from typing import Any, Mapping
 
 from pathspace_serve_html_testutil import (
     find_free_port,
+    load_sse_transcript,
     start_server,
     terminate_process,
     wait_for_health,
@@ -56,11 +58,69 @@ def stream_sse_events(response, timeout: float):
                 yield event
 
 
+def validate_payload_schema(name: str,
+                            payload: Mapping[str, Any],
+                            expectation: Mapping[str, Any]) -> bool:
+    required_keys = expectation.get("required_keys", [])
+    for key in required_keys:
+        if key not in payload:
+            print(f"[{name}] Missing required key '{key}'", file=sys.stderr)
+            return False
+    type_value = expectation.get("type_value")
+    if type_value and payload.get("type") != type_value:
+        print(
+            f"[{name}] Expected type '{type_value}', got '{payload.get('type')}'",
+            file=sys.stderr,
+        )
+        return False
+    return True
+
+
+def validate_frame_sequence(frames, expectation: Mapping[str, Any]) -> bool:
+    if not expectation:
+        return True
+    monotonic = expectation.get("monotonic_revision")
+    last_revision = None
+    for idx, frame in enumerate(frames):
+        name = f"frame#{idx}"
+        if not validate_payload_schema(name, frame, expectation):
+            return False
+        if monotonic:
+            revision = frame.get("revision")
+            if not isinstance(revision, (int, float)):
+                print(f"[{name}] Revision is not numeric: {revision}", file=sys.stderr)
+                return False
+            if last_revision is not None and revision <= last_revision:
+                print(
+                    f"[{name}] Revision {revision} did not increase past {last_revision}",
+                    file=sys.stderr,
+                )
+                return False
+            last_revision = revision
+    return True
+
+
+def validate_diagnostic_events(events, expectation: Mapping[str, Any]) -> bool:
+    if not expectation:
+        return True
+    for idx, payload in enumerate(events):
+        name = f"diagnostic#{idx}"
+        if not validate_payload_schema(name, payload, expectation):
+            return False
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate SSE events from pathspace_serve_html")
     parser.add_argument("--repo-root", required=True)
     parser.add_argument("--server", required=True)
     args = parser.parse_args()
+
+    sse_transcript = load_sse_transcript(args.repo_root)
+    expectations = sse_transcript.get("expectations", {})
+    frame_expectation = expectations.get("frame", {})
+    diagnostic_expectation = expectations.get("diagnostic", {})
+    resume_requires_higher = expectations.get("resume_requires_higher_revision", True)
 
     port = find_free_port()
     extra_args = [
@@ -106,6 +166,10 @@ def main() -> int:
         if not diagnostics:
             print("Did not receive any diagnostic events", file=sys.stderr)
             return 1
+        if not validate_frame_sequence(frames, frame_expectation):
+            return 1
+        if not validate_diagnostic_events(diagnostics, diagnostic_expectation):
+            return 1
         if frames[-1].get("revision", 0) <= frames[0].get("revision", 0):
             print("Frame revisions did not advance", file=sys.stderr)
             return 1
@@ -135,7 +199,7 @@ def main() -> int:
         if resumed_frame is None:
             print("Reconnect stream did not deliver a frame", file=sys.stderr)
             return 1
-        if resumed_frame.get("revision", 0) <= resume_revision:
+        if resume_requires_higher and resumed_frame.get("revision", 0) <= resume_revision:
             print("Reconnect frame revision did not advance beyond resume id", file=sys.stderr)
             return 1
 

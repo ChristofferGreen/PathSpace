@@ -54,8 +54,8 @@ using namespace PathRenderer2DDetail;
 PathRenderer2D::PathRenderer2D(PathSpace& space)
     : space_(space) {}
 
-auto PathRenderer2D::target_cache() -> std::unordered_map<std::string, TargetState>& {
-    static std::unordered_map<std::string, TargetState> cache;
+auto PathRenderer2D::target_cache() -> TargetCache& {
+    static TargetCache cache;
     return cache;
 }
 
@@ -212,7 +212,15 @@ auto const start = std::chrono::steady_clock::now();
     }
 #endif
     auto target_key = std::string(params.target_path.getPath());
-    auto& state = target_cache()[target_key];
+    auto& cache = target_cache();
+    std::shared_ptr<TargetCacheEntry> cache_entry;
+    {
+        std::lock_guard<std::mutex> cache_lock(cache.mutex);
+        auto [it, inserted] = cache.entries.try_emplace(target_key, std::make_shared<TargetCacheEntry>());
+        cache_entry = it->second;
+    }
+    auto target_state_lock = std::unique_lock<std::mutex>(cache_entry->mutex);
+    auto& state = cache_entry->state;
     auto& material_descriptors = state.material_descriptors;
     material_descriptors.clear();
     if (!bucket->material_ids.empty()) {

@@ -9,10 +9,11 @@ import http.client
 import json
 import sys
 import time
-from typing import Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 from pathspace_serve_html_testutil import (
     find_free_port,
+    load_http_transcript,
     start_server,
     terminate_process,
     wait_for_health,
@@ -33,12 +34,80 @@ def request(method: str,
     return conn.getresponse()
 
 
+def validate_http_response(check_name: str,
+                           response: http.client.HTTPResponse,
+                           transcript: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    expected = transcript.get(check_name)
+    if not expected:
+        print(f"Transcript missing check '{check_name}'", file=sys.stderr)
+        response.read()
+        response.close()
+        return None
+
+    headers = {name.lower(): value for name, value in response.getheaders()}
+    body_bytes = response.read()
+    response.close()
+    body_text = body_bytes.decode("utf-8", errors="ignore")
+    status = response.status
+
+    expected_status = expected.get("status")
+    if expected_status is not None and status != expected_status:
+        print(f"[{check_name}] Expected status {expected_status}, got {status}", file=sys.stderr)
+        print(body_text[:200], file=sys.stderr)
+        return None
+
+    expected_headers = expected.get("headers", {})
+    for key, value in expected_headers.items():
+        key_lower = key.lower()
+        actual_value = headers.get(key_lower)
+        if actual_value != value:
+            print(
+                f"[{check_name}] Header mismatch for {key}: expected '{value}', got '{actual_value}'",
+                file=sys.stderr,
+            )
+            return None
+
+    for header_name in expected.get("required_headers", []):
+        header_lower = header_name.lower()
+        if header_lower not in headers:
+            print(f"[{check_name}] Missing required header: {header_name}", file=sys.stderr)
+            return None
+
+    for header_name, needle in expected.get("header_substrings", {}).items():
+        header_lower = header_name.lower()
+        header_value = headers.get(header_lower, "")
+        if needle not in header_value:
+            print(
+                f"[{check_name}] Header {header_name} missing substring '{needle}': {header_value}",
+                file=sys.stderr,
+            )
+            return None
+
+    json_payload = None
+    if "json" in expected:
+        try:
+            json_payload = json.loads(body_text)
+        except json.JSONDecodeError as exc:
+            print(f"[{check_name}] Failed to decode JSON payload: {exc}", file=sys.stderr)
+            return None
+        for key, value in expected["json"].items():
+            if json_payload.get(key) != value:
+                print(
+                    f"[{check_name}] JSON mismatch for '{key}': expected '{value}', got '{json_payload.get(key)}'",
+                    file=sys.stderr,
+                )
+                return None
+
+    return {"headers": headers, "body": body_text, "json": json_payload}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="HTML fetch regression for pathspace_serve_html")
     parser.add_argument("--repo-root", required=True)
     parser.add_argument("--server", required=True)
     args = parser.parse_args()
 
+    http_transcript = load_http_transcript(args.repo_root)
     port = find_free_port()
     extra_args = [
         "--seed-demo",
@@ -64,11 +133,7 @@ def main() -> int:
 
         # Unauthenticated access should be rejected.
         unauth = request("GET", port, "/apps/demo_web/gallery")
-        body = unauth.read().decode("utf-8", errors="ignore")
-        unauth.close()
-        if unauth.status != 401:
-            print(f"Expected 401 for unauthenticated request, got {unauth.status}", file=sys.stderr)
-            print(body, file=sys.stderr)
+        if validate_http_response("unauthenticated_apps", unauth, http_transcript) is None:
             return 1
 
         # Authenticate using the seeded demo credentials.
@@ -76,20 +141,27 @@ def main() -> int:
                         port,
                         "/login",
                         body={"username": "demo", "password": "demo"})
-        if login.status != 200:
-            print(f"Login failed with {login.status}", file=sys.stderr)
-            print(login.read().decode("utf-8", errors="ignore"), file=sys.stderr)
-            login.close()
+        login_result = validate_http_response("login_success", login, http_transcript)
+        if login_result is None:
             return 1
-        cookie_header = login.getheader("Set-Cookie")
-        login.read()
-        login.close()
+        cookie_header = login_result["headers"].get("set-cookie")
         if not cookie_header:
             print("Server did not return a session cookie", file=sys.stderr)
             return 1
         cookie = cookie_header.split(";", 1)[0]
 
         headers = {"Cookie": cookie}
+
+        session_resp = request("GET", port, "/session", headers=headers)
+        if validate_http_response("session_authenticated", session_resp, http_transcript) is None:
+            return 1
+
+        cookie_name = cookie.split("=", 1)[0]
+        invalid_cookie = f"{cookie_name}=invalid-session"
+        invalid_headers = {"Cookie": invalid_cookie}
+        invalid_resp = request("GET", port, "/apps/demo_web/gallery", headers=invalid_headers)
+        if validate_http_response("invalid_cookie_apps", invalid_resp, http_transcript) is None:
+            return 1
         html_resp = request("GET", port, "/apps/demo_web/gallery", headers=headers)
         status = html_resp.status
         cache_control = html_resp.getheader("Cache-Control")
@@ -227,20 +299,14 @@ def main() -> int:
         rate_limit_triggered = False
         for attempt in range(25):
             rl_resp = request("GET", port, "/session", headers=headers)
-            rl_body = rl_resp.read().decode("utf-8", errors="ignore")
             status = rl_resp.status
-            rl_resp.close()
             if status == 429:
-                try:
-                    payload = json.loads(rl_body)
-                except json.JSONDecodeError as exc:
-                    print(f"Failed to parse rate limit payload: {exc}", file=sys.stderr)
-                    return 1
-                if payload.get("error") != "rate_limited":
-                    print(f"Unexpected rate limit payload: {payload}", file=sys.stderr)
+                if validate_http_response("rate_limit_session", rl_resp, http_transcript) is None:
                     return 1
                 rate_limit_triggered = True
                 break
+            rl_resp.read()
+            rl_resp.close()
         if not rate_limit_triggered:
             print("Expected per-session rate limit to trigger", file=sys.stderr)
             return 1
@@ -256,6 +322,31 @@ def main() -> int:
             return 1
         if not expired_cookie or "Max-Age=0" not in expired_cookie:
             print("Expired session should clear cookie", file=sys.stderr)
+            return 1
+
+        # Fresh login to validate the explicit logout/session endpoints using transcript guardrails.
+        second_login = request(
+            "POST",
+            port,
+            "/login",
+            body={"username": "demo", "password": "demo"},
+        )
+        second_login_result = validate_http_response("login_success", second_login, http_transcript)
+        if second_login_result is None:
+            return 1
+        second_cookie_header = second_login_result["headers"].get("set-cookie")
+        if not second_cookie_header:
+            print("Second login did not return a session cookie", file=sys.stderr)
+            return 1
+        second_cookie = second_cookie_header.split(";", 1)[0]
+        logout_headers = {"Cookie": second_cookie}
+
+        logout_resp = request("POST", port, "/logout", headers=logout_headers)
+        if validate_http_response("logout_success", logout_resp, http_transcript) is None:
+            return 1
+
+        session_after_logout = request("GET", port, "/session")
+        if validate_http_response("session_after_logout", session_after_logout, http_transcript) is None:
             return 1
 
         return 0

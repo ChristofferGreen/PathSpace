@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "examples": {
+    "frame": {
+      "event": "frame",
+      "data": {
+        "type": "frame",
+        "revision": 42,
+        "frameIndex": 0,
+        "timestamp": "2025-12-03T18:10:00Z"
+      }
+    },
+    "diagnostic": {
+      "event": "diagnostic",
+      "data": {
+        "type": "diagnostic",
+        "severity": "info",
+        "message": "demo renderer heartbeat",
+        "active": true
+      }
+    }
+  },
+  "expectations": {
+    "frame": {
+      "required_keys": ["type", "revision", "frameIndex", "timestamp"],
+      "type_value": "frame",
+      "monotonic_revision": true
+    },
+    "diagnostic": {
+      "required_keys": ["type", "severity", "message"],
+      "type_value": "diagnostic"
+    },
+    "resume_requires_higher_revision": true
+  }
+}

@@ -201,6 +201,11 @@ Authoring concurrency (proposed vs resolved)
 - Renderer param adoption uses a short local mutex; the render loop reads from adopted, immutable state
 - Presenters marshal final present to the correct thread/runloop (e.g., macOS/Metal)
 
+### Target cache concurrency (resolved December 4, 2025)
+
+- `PathRenderer2D::target_cache` now stores per-target entries that bundle a mutex with the cached `TargetState`. Lookups grab a short-lived global mutex only long enough to insert or find an entry, and each render holds the entry mutex while mutating drawable caches, linear buffers, and diagnostic stats.
+- Auto-render triggers and manual renders can now overlap safely because same-target work serializes on the entry mutex while different targets continue in parallel without racing the shared cache.
+
 ## Frame orchestration
 
 Renderer (per target):
@@ -2352,7 +2357,6 @@ Invariants:
 
 These items clarify edge cases or finalize small inconsistencies. Resolve and reflect updates in `docs/AI_ARCHITECTURE.md`, tests, and any affected examples. (Items already reflected in the main text have been removed from this list.)
 
-- Thread-safe target cache (November 8, 2025) — `PathRenderer2D::target_cache()` is a process-wide `std::unordered_map` with no locking. Before we allow overlapping renders per target (e.g., auto-render + manual trigger), wrap the cache in a mutex or shard it per-target so cache mutations stay race-free.
 - Damage pipeline ownership (November 8, 2025) — Extract the dirty-rect merge heuristics and stats accumulation from `PathRenderer2D` into a dedicated helper module. This keeps the renderer core lean and enables focused unit tests for hint coalescing and tile snapping.
 - Progressive/presenter stress tests (November 8, 2025) — Add a regression that renders while presenting on a separate thread, rapidly mutating progressive tiles to validate the seq/epoch retry logic. Integrate it into the 5× loop so concurrency races surface reliably.
 - Surface cache lifecycle hooks (November 8, 2025) — Teach the Builders caches to drop `PathSurfaceSoftware`/`PathSurfaceMetal` entries when their renderer target or app root is removed. Prevents stale buffers from leaking across long-lived sessions and reduces cross-test coupling.

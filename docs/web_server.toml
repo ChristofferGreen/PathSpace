@@ -1,6 +1,14 @@
 # PathSpace web server configuration reference (mirrors the CLI flags in tools/serve_html.cpp).
 # Persist these values once the adapter consumes on-disk config; today they document
 # the expected keys and defaults.
+# Every option also honors a `PATHSPACE_SERVE_HTML_*` environment variable
+# (HOST, PORT, APPS_ROOT, USERS_ROOT, RENDERER, SESSION_COOKIE, SESSION_TIMEOUT,
+# SESSION_MAX_AGE, SESSION_STORE, SESSION_STORE_ROOT, RATE_LIMIT_IP_PER_MINUTE,
+# RATE_LIMIT_IP_BURST, RATE_LIMIT_SESSION_PER_MINUTE, RATE_LIMIT_SESSION_BURST,
+# ALLOW_UNAUTHENTICATED, SEED_DEMO, DEMO_REFRESH_INTERVAL_MS, GOOGLE_CLIENT_ID,
+# GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, GOOGLE_AUTH_ENDPOINT,
+# GOOGLE_TOKEN_ENDPOINT, GOOGLE_JWKS_ENDPOINT, GOOGLE_USERS_ROOT, GOOGLE_SCOPE)
+# so deployments without a config file can rely on environment overrides.
 
 [server]
 host = "127.0.0.1"

@@ -74,8 +74,8 @@ Tip: Enable sanitizers when debugging concurrency/path issues, and pair `ENABLE_
 Scripts:
 - ./scripts/compile.sh
 - ./scripts/update_compile_commands.sh (keeps compile_commands.json in repo root)
-- ./build/pathspace_serve_html [--seed-demo] (serves `/apps/<app>/<view>` plus `/assets/<app>/<relative>` for HTML adapter targets; see docs/finished/Plan_WebServer_Adapter_Finished.md)
-- ./build/paint_example --serve-html / ./build/widgets_example --serve-html (attach HTML mirror targets, seed demo credentials, and launch an embedded `pathspace_serve_html` thread so you can open `http://127.0.0.1:8080/apps/<app>/<view>` in a browser while the native window is running.)
+- ./build/pathspace_serve_html [--seed-demo] (serves `/apps/<app>/<view>` plus `/assets/<app>/<relative>` for HTML adapter targets; see docs/serve_html/README.md for the module map and docs/finished/Plan_WebServer_Adapter_Finished.md for deployment details.)
+- ./build/paint_example --serve-html / ./build/widgets_example --serve-html (attach HTML mirror targets, seed demo credentials, and launch an embedded `pathspace_serve_html` thread so you can open `http://127.0.0.1:8080/apps/<app>/<view>` in a browser while the native window is running. Use the ServeHtml module guide when extending these flows.)
 
 ## HTML bundle export
 

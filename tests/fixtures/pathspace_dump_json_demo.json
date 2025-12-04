@@ -65,7 +65,7 @@
         {
           "category": "Fundamental",
           "index": 0,
-          "type": "y",
+          "type": "uint64_t",
           "value": 5
         }
       ],

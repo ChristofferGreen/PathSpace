@@ -105,7 +105,20 @@ add_executable(pathspace_inspector_server tools/inspector_server.cpp)
 target_link_libraries(pathspace_inspector_server PRIVATE PathSpace)
 
 add_library(PathSpaceServeHtml STATIC
-    src/pathspace/web/ServeHtmlServer.cpp)
+    src/pathspace/web/ServeHtmlServer.cpp
+    src/pathspace/web/ServeHtmlOptions.cpp
+    src/pathspace/web/serve_html/DemoSeed.cpp
+    src/pathspace/web/serve_html/AssetPath.cpp
+    src/pathspace/web/serve_html/HtmlPayload.cpp
+    src/pathspace/web/serve_html/Metrics.cpp
+    src/pathspace/web/serve_html/TimeUtils.cpp
+    src/pathspace/web/serve_html/streaming/SseBroadcaster.cpp
+    src/pathspace/web/serve_html/routing/HtmlController.cpp
+    src/pathspace/web/serve_html/routing/AuthController.cpp
+    src/pathspace/web/serve_html/routing/HttpHelpers.cpp
+    src/pathspace/web/serve_html/auth/Credentials.cpp
+    src/pathspace/web/serve_html/auth/SessionStore.cpp
+    src/pathspace/web/serve_html/auth/OAuthGoogle.cpp)
 target_link_libraries(PathSpaceServeHtml PUBLIC PathSpace bcrypt OpenSSL::SSL OpenSSL::Crypto)
 target_include_directories(PathSpaceServeHtml PUBLIC
     ${CMAKE_SOURCE_DIR}/include

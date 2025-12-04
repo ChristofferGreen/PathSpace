@@ -5,11 +5,13 @@
 from __future__ import annotations
 
 import http.client
+import json
 import socket
 import subprocess
 import sys
 import time
-from typing import Iterable, Sequence
+from pathlib import Path
+from typing import Iterable, Mapping, Sequence
 
 
 def find_free_port() -> int:
@@ -91,3 +93,18 @@ def read_body(response: http.client.HTTPResponse) -> bytes:
 
 def format_headers(headers: Iterable[tuple[str, str]]) -> str:
     return "\n".join(f"{name}: {value}" for name, value in headers)
+
+
+def _load_json_file(repo_root: str, relative_path: str) -> Mapping[str, object]:
+    path = Path(repo_root, relative_path)
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def load_http_transcript(repo_root: str) -> Mapping[str, object]:
+    data = _load_json_file(repo_root, "tests/data/serve_html/http_transcript.json")
+    return data.get("checks", {})
+
+
+def load_sse_transcript(repo_root: str) -> Mapping[str, object]:
+    return _load_json_file(repo_root, "tests/data/serve_html/sse_transcript.json")

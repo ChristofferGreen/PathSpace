@@ -544,6 +544,12 @@ With the shared test runner and this playbook, every failure leaves behind actio
 
 ## 9. Web Server Adapter
 
+> **Module map reminder (December 4, 2025):** `pathspace_serve_html` now wires
+> the modular components documented in `docs/serve_html/README.md`. Instrument
+> the module that owns your failing route (auth/session, controller, streaming,
+> metrics) instead of sprinkling logs through `ServeHtmlServer.cpp`—each file is
+> scoped to a single responsibility after the split.
+
 ### 9.1 Quick smoke setup
 - Build as usual (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j`) and launch the prototype server:
 
@@ -589,6 +595,11 @@ With the shared test runner and this playbook, every failure leaves behind actio
 - When testing exported bundles, run `./build/widgets_example --export-html out/html/widgets` (or paint equivalent) and point the server at the directory via `--apps-root` overrides so browser fetches mirror the renderer output.
 - `GET /session` and `POST /logout` help confirm cookie lifetimes before involving the UI; both endpoints serialize the session state defined in `docs/web_server.toml`.
 - Metrics scrape: reuse the authenticated cookie jar to hit `/metrics` and confirm the Prometheus view is alive. You should see counters such as `pathspace_serve_html_requests_total{route="apps"}` and the latency histogram buckets. For dashboards without Prometheus, read the structured JSON snapshot under `<apps_root>/io/metrics/web_server/serve_html/live` (the collector rewrites it every ~2 s).
+- When a subsystem misbehaves, instrument its module directly—`serve_html/auth/*`
+  for credential/session churn, `serve_html/routing/*` for middleware or
+  controller bugs, `serve_html/streaming/SseBroadcaster.*` for SSE stalls, and
+  `serve_html/Metrics.*` for `/metrics` drift. Keeping logs close to the module
+  avoids regressions elsewhere and keeps diffs reviewable.
 
 ### 9.2 SSE and event stream triage
 - Use curl or the integration harness (`scripts/test_web_server.sh`) to watch live events without a browser:

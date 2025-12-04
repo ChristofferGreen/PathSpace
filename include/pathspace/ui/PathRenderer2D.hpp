@@ -14,6 +14,8 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -113,11 +115,21 @@ private:
         double last_approx_area_alpha = 0.0;
     };
 
+    struct TargetCacheEntry {
+        std::mutex mutex;
+        TargetState state;
+    };
+
+    struct TargetCache {
+        std::mutex mutex;
+        std::unordered_map<std::string, std::shared_ptr<TargetCacheEntry>> entries;
+    };
+
     PathSpace& space_;
     ImageCache image_cache_;
     FontAtlasCache font_atlas_cache_;
 
-    static auto target_cache() -> std::unordered_map<std::string, TargetState>&;
+    static auto target_cache() -> TargetCache&;
 };
 
 } // namespace SP::UI

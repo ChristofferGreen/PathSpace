@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "checks": {
+    "unauthenticated_apps": {
+      "status": 401,
+      "json": {
+        "error": "unauthorized",
+        "message": "Authentication required"
+      },
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8"
+      }
+    },
+    "login_success": {
+      "status": 200,
+      "json": {
+        "status": "ok",
+        "username": "demo"
+      },
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8"
+      },
+      "required_headers": ["set-cookie"]
+    },
+    "session_authenticated": {
+      "status": 200,
+      "json": {
+        "authenticated": true
+      },
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8"
+      }
+    },
+    "logout_success": {
+      "status": 200,
+      "json": {
+        "status": "ok"
+      },
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8"
+      },
+      "required_headers": ["set-cookie"],
+      "header_substrings": {
+        "set-cookie": "Max-Age=0"
+      }
+    },
+    "session_after_logout": {
+      "status": 200,
+      "json": {
+        "authenticated": false
+      },
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8"
+      }
+    },
+    "invalid_cookie_apps": {
+      "status": 401,
+      "json": {
+        "error": "unauthorized",
+        "message": "Authentication required"
+      },
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8"
+      },
+      "required_headers": ["set-cookie"],
+      "header_substrings": {
+        "set-cookie": "Max-Age=0"
+      }
+    },
+    "rate_limit_session": {
+      "status": 429,
+      "json": {
+        "error": "rate_limited",
+        "message": "Too many requests"
+      },
+      "headers": {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8"
+      }
+    }
+  }
+}
