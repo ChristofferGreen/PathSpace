@@ -7,7 +7,7 @@
 ## Purpose
 Provide a single index of active planning documents, ordered by current priority and grouped by theme. Use this as your starting point before diving into any specific plan.
 
-## Priority Ordering (October 21, 2025)
+## Priority Ordering
 
 1. **Plan_SceneGraph_Renderer.md**  
    Core rendering/presenter roadmap, snapshot semantics, target contracts. Aligns all UI work.
@@ -21,29 +21,30 @@ Provide a single index of active planning documents, ordered by current priority
 4. **Plan_Surface_Ray_Cache.md** (deferred)  
    Future ray-query cache design. Read only when GPU path work resumes.
 
-5. **Plan_WebServer_Adapter_Finished.md** (archived)  
-   Final record for the HTML/web delivery work. Phases 0–6 (prototype, auth, SSE/live updates, ops bridge, hardened deployment, observability, Google Sign-In) are captured in `docs/finished/Plan_WebServer_Adapter_Finished.md` for historical reference.
 
-6. **Plan_PathSpaceWindowManager.md**  
+6. **Plan_ServeHtml_Modularization_Finished.md**  
+   Finished December 4, 2025. The modularization record lives in
+   `docs/finished/Plan_ServeHtml_Modularization_Finished.md`, and the active
+   ServeHtml module map lives in `docs/serve_html/README.md` for contributors.
+
+7. **Plan_PathSpaceHtmlServer.md**  
+   NEW (December 3, 2025): roadmap for embedding ServeHtml directly inside PathSpace apps via `PathSpaceHtmlServer<Space>` and refactoring the examples to the helper so manual `--serve-html` plumbing disappears.
+
+8. **Plan_WidgetComposableRuntime.md**  
+   Capsule-based widget runtime plan (per-widget render surfaces, mailboxes, primitives, HTML-compatible fragments). Executes after `Plan_SceneGraph_Renderer.md` and `Plan_SceneGraph.md` stabilize the renderer contracts.
+
+9. **Plan_PathSpaceWindowManager.md**  
    NextStep-inspired window manager that manages declarative windows, chrome, and the dock on top of the UI layer.
 
-7. **Plan_PathSpaceTerminal.md**  
+10. **Plan_PathSpaceTerminal.md**  
    Carta Linea-aware terminal emulator where commands launch apps, capture returned PathSpaces, and visualize them with generic viewers.
 
-8. **Plan_CartaLinea.md** (paused)  
+11. **Plan_CartaLinea.md** (paused)  
    Cross-app deck/timeline/filesystem concept; re-evaluate once renderer priorities stabilize.
 
-9. **Plan_PrimeScript.md** (research)  
-   Exploratory unified scripting/shading language idea; draft syntax/semantics spec lives in `docs/PrimeScript_SyntaxSpec.md` (2025-11-21) to unblock parser prototype scoping.
+12. **Plan_PrimeScript.md** (research)  
+   Exploratory unified scripting/shading language investigation; the syntax/semantics draft lives in `docs/PrimeScript_SyntaxSpec.md` (November 21, 2025) to unblock parser prototype scoping.
 
-10. **Plan_IOPump_Finished.md**  
-   Input runtime roadmap that introduces the IO Trellis, IO Pump, routing Trellis, and telemetry/throttling knobs feeding declarative widgets. _Completed November 17, 2025 — see `docs/finished/Plan_IOPump_Finished.md` for history._
-
-11. **Plan_PathSpaceTrellis_Finished.md**  
-   Final record for the completed trellis redesign. _Historical fan-in work has been archived in `docs/finished/Plan_PathSpace_FanIn_Abandoned.md` for reference._
-
-12. **Plan_PathSpace_Inspector_Finished.md**  
-   Archived December 2, 2025. Serves as the historical record for the inspector rollout (SSE search/watchlists, remote mounts, ACLs, developer tooling, polish) and lives in `docs/finished/Plan_PathSpace_Inspector_Finished.md`.
 
 ## Recommended Implementation Focus (Q4 2025)
 1. **Plan_SceneGraph.md** — active execution path for the renderer/presenter stack defined in `Plan_SceneGraph_Renderer.md`; keep driving the in-flight phases to completion while validating against the renderer blueprint.
@@ -54,6 +55,12 @@ Provide a single index of active planning documents, ordered by current priority
 6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
 ## Status Snapshot — December 1, 2025
+- ✅ (December 4, 2025) `Plan_ServeHtml_Modularization` finished: options parsing,
+  session/auth backends, routing/controllers, SSE broadcasting, metrics
+  publishing, and demo scaffolding all live in dedicated modules with unit+
+  integration coverage. See `docs/serve_html/README.md` for the active module
+  guide and `docs/finished/Plan_ServeHtml_Modularization_Finished.md` for the
+  historical record.
 - ✅ (December 2, 2025) `docs/finished/Plan_WebServer_Adapter_Finished.md` Phase 1 auth milestone landed: `pathspace_serve_html` now enforces bcrypt-backed `/login` + HTTP-only cookies, exposes `/logout` and `/session`, seeds demo credentials, and documents its knobs in `docs/web_server.toml`.
 - 🚧 (December 2, 2025) `docs/finished/Plan_WebServer_Adapter_Finished.md` Phase 0 prototype is live: `pathspace_serve_html` (tools/serve_html.cpp) serves `/apps/<app>/<view>` directly from `renderers/<renderer>/targets/html/<view>/output/v1/html/{dom,css,js,commands}` and seeds a demo gallery via `--seed-demo`. Remaining gaps before Phase 2: config-driven renderer selection and CDN/backfill plumbing for the new `/assets` route.
 - ✅ (December 2, 2025) `docs/finished/Plan_WebServer_Adapter_Finished.md` Next Action 3 shipped: `paint_example` and `widgets_example` now have `--export-html <dir>` which emits DOM/CSS/commands/assets bundles (`dom.html`, `styles.css`, `commands.json`, `metadata.txt`, `assets_manifest.txt`, `assets/*`) for the prototype server and future CDN workflows; README documents the workflow.
