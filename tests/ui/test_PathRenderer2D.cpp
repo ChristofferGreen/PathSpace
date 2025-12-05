@@ -6,6 +6,7 @@
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/PipelineFlags.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
+#include <pathspace/ui/PathRenderer2DInternal.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/MaterialShaderKey.hpp>
@@ -28,6 +29,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <set>
 #include <bit>
 #include <sstream>
 #include <string_view>
@@ -71,6 +73,7 @@ using SP::UI::Scene::MeshCommand;
 using SP::UI::Scene::StrokeCommand;
 using namespace SP::UI::PipelineFlags;
 namespace UIScene = SP::UI::Scene;
+namespace RendererInternal = SP::UI::PathRenderer2DInternal;
 
 namespace SP::UI::Runtime {
 auto maybe_schedule_auto_render(PathSpace& space,
@@ -5121,6 +5124,99 @@ TEST_CASE("progressive-only surfaces present via progressive path") {
     CHECK(stats.frame.revision == renderStats->revision);
     CHECK(stats.present_ms >= 0.0);
     CHECK(stats.error.empty());
+}
+
+namespace {
+auto make_bounds(int min_x, int min_y, int max_x, int max_y) -> PathRenderer2D::DrawableBounds {
+    PathRenderer2D::DrawableBounds bounds{};
+    bounds.min_x = min_x;
+    bounds.min_y = min_y;
+    bounds.max_x = max_x;
+    bounds.max_y = max_y;
+    return bounds;
+}
+}
+
+TEST_CASE("Damage helper tracks fingerprint deltas and tiles") {
+    RendererInternal::DamageComputationOptions options{
+        .width = 256,
+        .height = 256,
+        .tile_size_px = 64,
+        .force_full_repaint = false,
+        .missing_bounds = false,
+        .collect_damage_metrics = true,
+    };
+
+    PathRenderer2D::DrawableStateMap previous;
+    PathRenderer2D::DrawableState prev_state{};
+    prev_state.bounds = make_bounds(0, 0, 32, 32);
+    prev_state.fingerprint = 10;
+    previous.emplace(1, prev_state);
+
+    PathRenderer2D::DrawableStateMap current;
+    PathRenderer2D::DrawableState moved_state{};
+    moved_state.bounds = make_bounds(16, 16, 48, 48);
+    moved_state.fingerprint = 25;
+    current.emplace(1, moved_state);
+
+    PathRenderer2D::DrawableState new_state{};
+    new_state.bounds = make_bounds(96, 96, 120, 128);
+    new_state.fingerprint = 50;
+    current.emplace(2, new_state);
+
+    auto result = RendererInternal::compute_damage(options, previous, current, {});
+    CHECK_FALSE(result.full_repaint);
+    CHECK_FALSE(result.damage.empty());
+    CHECK(result.damage_tiles.size() >= 1);
+    CHECK(result.statistics.fingerprint_changed == 1);
+    CHECK(result.statistics.fingerprint_new == 1);
+    CHECK(result.statistics.fingerprint_removed == 0);
+    CHECK(result.statistics.damage_rect_count >= 1);
+}
+
+TEST_CASE("Damage helper applies dirty rect hints to tile grid") {
+    RendererInternal::DamageComputationOptions options{
+        .width = 128,
+        .height = 128,
+        .tile_size_px = 32,
+        .force_full_repaint = true,
+        .missing_bounds = false,
+        .collect_damage_metrics = false,
+    };
+
+    PathRenderer2D::DrawableStateMap empty_previous;
+    PathRenderer2D::DrawableStateMap current;
+
+    Runtime::DirtyRectHint hint{};
+    hint.min_x = 8.0f;
+    hint.min_y = 12.0f;
+    hint.max_x = 70.0f;
+    hint.max_y = 68.0f;
+    std::vector<Runtime::DirtyRectHint> hints{hint};
+
+    auto result = RendererInternal::compute_damage(options, empty_previous, current, hints);
+    auto rects = result.damage.rectangles();
+    REQUIRE_FALSE(rects.empty());
+    std::set<std::pair<int, int>> corners;
+    for (auto const& rect : rects) {
+        CHECK(rect.max_x - rect.min_x == 32);
+        CHECK(rect.max_y - rect.min_y == 32);
+        CHECK(rect.min_x % 32 == 0);
+        CHECK(rect.min_y % 32 == 0);
+        corners.emplace(rect.min_x, rect.min_y);
+    }
+    CHECK(corners.count({0, 0}) == 1);
+    CHECK(corners.count({32, 0}) == 1);
+    CHECK(corners.count({0, 32}) == 1);
+    CHECK(corners.count({32, 32}) == 1);
+
+    CHECK(result.damage_tiles.size() == rects.size());
+    for (auto const& tile : result.damage_tiles) {
+        auto aligned_x = static_cast<int>(std::lround(tile.min_x));
+        auto aligned_y = static_cast<int>(std::lround(tile.min_y));
+        CHECK(aligned_x % 32 == 0);
+        CHECK(aligned_y % 32 == 0);
+    }
 }
 
 } // TEST_SUITE

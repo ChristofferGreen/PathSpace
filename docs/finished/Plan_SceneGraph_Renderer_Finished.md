@@ -4,6 +4,8 @@
 
 # PathSpace — Scene Graph and Renderer Plan
 
+> **Status (December 4, 2025):** All milestones and clarifications in this plan are complete. The document now lives under `docs/finished/Plan_SceneGraph_Renderer_Finished.md` as the archival record for the renderer/presenter contract.
+
 > **Context update (October 15, 2025):** All renderer milestones now track the assistant context introduced in this launch; treat previous context references as historical.
 > **Decision update (October 16, 2025):** macOS presenters now use a CAMetalLayer-backed Metal swapchain instead of CoreGraphics blits so fullscreen windows avoid CPU copies; treat the Metal presenter as MVP-critical.
 > **Follow-up (October 17, 2025):** Present pipeline must eliminate software framebuffer copies—PathSurfaceSoftware and the presenter will move to a shared IOSurface-backed buffer so the renderer writes directly into the drawable without memcpy.
@@ -602,6 +604,7 @@ Policy interaction
 Metrics (software presenter)
 - progressiveTilesCopied, progressiveRectsCoalesced, progressiveSkipOddSeq, progressiveRecopyAfterSeqChange
 - presentLatencyMs (min/avg/max), copyBytesPerSecond
+- **Contention metrics (December 4, 2025):** With `PATHSPACE_UI_DAMAGE_METRICS=1`, the renderer/presenter pair now publish encode worker stall telemetry (`encodeWorkerStallMsTotal`, `encodeWorkerStallMsMax`, `encodeWorkerStallWorkers`) and the progressive tile retry counters (`progressiveTileSeqRetryCount`, `progressiveTileSeqSkipCount`) under `renderers/<rid>/targets/<tid>/output/v1/diagnostics/metrics/*`. Dashboards consume these nodes to flag when multithreaded encode/copy paths are throttled by contention.
 
 Safety and correctness
 - Seqlock per tile avoids locks and prevents torn reads.
@@ -2357,7 +2360,9 @@ Invariants:
 
 These items clarify edge cases or finalize small inconsistencies. Resolve and reflect updates in `docs/AI_ARCHITECTURE.md`, tests, and any affected examples. (Items already reflected in the main text have been removed from this list.)
 
-- Damage pipeline ownership (November 8, 2025) — Extract the dirty-rect merge heuristics and stats accumulation from `PathRenderer2D` into a dedicated helper module. This keeps the renderer core lean and enables focused unit tests for hint coalescing and tile snapping.
-- Progressive/presenter stress tests (November 8, 2025) — Add a regression that renders while presenting on a separate thread, rapidly mutating progressive tiles to validate the seq/epoch retry logic. Integrate it into the 5× loop so concurrency races surface reliably.
-- Surface cache lifecycle hooks (November 8, 2025) — Teach the Builders caches to drop `PathSurfaceSoftware`/`PathSurfaceMetal` entries when their renderer target or app root is removed. Prevents stale buffers from leaking across long-lived sessions and reduces cross-test coupling.
-- Contention instrumentation (November 8, 2025) — Emit optional metrics for encode worker stall time and progressive tile retry counts under `targets/<tid>/output/v1/diagnostics/metrics`. Helps us detect when multithreaded paths regress under load.
+- ✅ (December 4, 2025) Damage pipeline ownership — `PathRenderer2D` now delegates dirty-rect hint coalescing, tile snapping, and fingerprint delta accounting to the dedicated helper implemented in `src/pathspace/ui/PathRenderer2DDamage.cpp`. The helper is unit-tested via `tests/ui/test_PathRenderer2D.cpp` (“Damage helper tracks fingerprint deltas and tiles” / “Damage helper applies dirty rect hints to tile grid”), so renderer code only consumes the summarized region + tiles.
+- ✅ (December 4, 2025) Progressive/presenter stress tests — `tests/ui/test_PathWindowView.cpp` now ships “present tolerates concurrent progressive tile mutation”, which spins a progressive writer thread against `PathWindowView::present` and asserts the skip/seq counters while the standard 5× PathSpaceUITests loop exercises the race.
+- ✅ (December 4, 2025) Surface cache lifecycle hooks — renderer targets now host `diagnostics/cacheWatch` sentinel values (written by RuntimeDetail) so deleting a target or app root destroys the sentinel, which in turn evicts the matching `PathSurfaceSoftware`/`PathSurfaceMetal` cache entries. This keeps builder caches from leaking buffers across long-lived sessions and looped tests.
+- ✅ (December 4, 2025) Contention instrumentation — `targets/<tid>/output/v1/diagnostics/metrics/*` now publishes `encodeWorkerStallMs{Total,Max}`, `encodeWorkerStallWorkers`, and the presenter’s progressive tile retry counters (`progressiveTileSeqRetryCount`, `progressiveTileSeqSkipCount`) whenever `PATHSPACE_UI_DAMAGE_METRICS=1`. Dashboards can alert when encode workers consistently stall or when progressive readers keep rereading tiles due to writer contention.
+
+Remaining TODO: —

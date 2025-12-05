@@ -22,7 +22,7 @@ Review these documents (order matters):
 2. `docs/AI_Architecture.md` — PathSpace core architecture, concurrency policies, snapshot pipeline.
 3. `docs/AI_Paths.md` — canonical namespace/layout conventions.
 4. `docs/WidgetDeclarativeAPI.md` — declarative runtime workflow (bootstrap, widget helpers, readiness guard, handler/focus/runtime services, testing discipline).
-5. `docs/Plan_SceneGraph_Renderer.md` — renderer stack plan, snapshot semantics, target contracts.
+5. `docs/finished/Plan_SceneGraph_Renderer_Finished.md` — renderer stack plan, snapshot semantics, target contracts.
 6. `docs/Plan_SceneGraph.md` — current phase status and outstanding tasks.
 7. `docs/AI_Debugging_Playbook.md` — hands-on troubleshooting steps, log capture workflow, and diagnostics quick reference.
 8. Any task-specific plans under `docs/` (e.g., `Plan_CartaLinea.md`) when relevant.
@@ -80,7 +80,7 @@ Before ending a session, record progress in the relevant plan (e.g., `docs/Plan_
 5. Connect widget reducers to the new binding helpers (`Widgets::Bindings::Dispatch{Button,Toggle,Slider}`) so UI interactions emit dirty hints and ops under `widgets/<id>/ops/inbox/queue` instead of republishing full scenes.
 
 ---
-**Need a deeper dive?** Start with `docs/AI_Architecture.md` and follow the cross-references. For renderer-specific tasks, consult `docs/Plan_SceneGraph_Renderer.md` and its linked plans.
+**Need a deeper dive?** Start with `docs/AI_Architecture.md` and follow the cross-references. For renderer-specific tasks, consult `docs/finished/Plan_SceneGraph_Renderer_Finished.md` and its linked plans.
 # Handoff Notice
 
 > **Handoff note (October 19, 2025):** The workflow below captures the outgoing assistant. A fresh AI instance should start with `docs/AI_Onboarding_Next.md`, which summarizes the streamlined entry checklist, current priorities, and contacts. Keep this legacy file for context when reconciling older conversations or artifacts.

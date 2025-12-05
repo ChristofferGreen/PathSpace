@@ -65,7 +65,7 @@ task {
   acceptance_criteria: [
     "PathSurfaceSoftware allocates/owns an IOSurface that the renderer writes into directly; no std::vector memcpy in copy_buffered_frame.",
     "Presenter binds the IOSurface (or texture alias) without copying, and the paint_example runs fullscreen without regressions.",
-    "Docs updated (Plan_SceneGraph_Renderer.md, AI_Architecture.md) to reflect the zero-copy pipeline; tests cover the new path."
+    "Docs updated (Plan_SceneGraph_Renderer_Finished.md, AI_Architecture.md) to reflect the zero-copy pipeline; tests cover the new path."
   ]
 
   steps: [

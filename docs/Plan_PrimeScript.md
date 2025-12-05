@@ -232,7 +232,7 @@ float blend(float a, float b) {
 
 ## Dependencies & Related Work
 - Stable IR definition & serialization (std::serialization once available).
-- Scene graph/rendering plans (`docs/Plan_SceneGraph_Renderer.md`).
+- Scene graph/rendering plans (`docs/finished/Plan_SceneGraph_Renderer_Finished.md`).
 - PathIO/device plans for IO abstractions (`docs/AI_Paths.md`).
 
 ## Risks & Research Tasks

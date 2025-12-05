@@ -72,6 +72,9 @@ public:
         std::uint64_t progressive_jobs = 0;
         std::uint64_t encode_workers_used = 0;
         std::uint64_t encode_jobs = 0;
+        double encode_worker_stall_ms_total = 0.0;
+        double encode_worker_stall_ms_max = 0.0;
+        std::uint64_t encode_worker_stall_workers = 0;
         std::uint64_t progressive_tiles_dirty = 0;
         std::uint64_t progressive_tiles_total = 0;
         std::uint64_t progressive_tiles_skipped = 0;
@@ -89,17 +92,18 @@ public:
         std::vector<MaterialResourceResidency> resource_residency;
     };
 
-    explicit PathRenderer2D(PathSpace& space);
-
-    auto render(RenderParams params) -> SP::Expected<RenderStats>;
-
-private:
     struct DrawableState {
         DrawableBounds bounds{};
         std::uint64_t fingerprint = 0;
     };
 
     using DrawableStateMap = phmap::flat_hash_map<std::uint64_t, DrawableState>;
+
+    explicit PathRenderer2D(PathSpace& space);
+
+    auto render(RenderParams params) -> SP::Expected<RenderStats>;
+
+private:
     using MaterialDescriptorMap = phmap::flat_hash_map<std::uint32_t, MaterialDescriptor>;
 
     struct TargetState {

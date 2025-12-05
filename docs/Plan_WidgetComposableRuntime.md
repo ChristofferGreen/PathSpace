@@ -2,7 +2,7 @@
 
 _Status:_ Draft - December 4, 2025  
 _Owner:_ PathSpace UI Runtime Team  
-_Related:_ `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`, `docs/WidgetDeclarativeAPI.md`, `docs/Plan_SceneGraph_Renderer.md`
+_Related:_ `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`, `docs/WidgetDeclarativeAPI.md`, `docs/finished/Plan_SceneGraph_Renderer_Finished.md`
 
 ## 1. Motivation
 Declarative widgets replaced the imperative builders, but each widget still relies on shared reducers, shared lifecycle workers, and runtime-global render caches. The next refinement aims to make widgets self-contained "capsules" so that:
@@ -154,7 +154,7 @@ Declarative widgets replaced the imperative builders, but each widget still reli
 - Composed button/toggle demonstrate that replacing primitives (e.g., alternate text widget) requires no runtime changes.
 
 ## 9. Dependencies
-- Renderer/lifecycle code from `Plan_SceneGraph_Renderer.md` must stay stable; walker work depends on that pipeline.
+- Renderer/lifecycle code from `Plan_SceneGraph_Renderer_Finished.md` must stay stable; walker work depends on that pipeline.
 - Declarative runtime infrastructure from `docs/WidgetDeclarativeAPI.md` (LaunchStandard, readiness helpers).
 - IO Trellis + WidgetEventTrellis from `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`.
 

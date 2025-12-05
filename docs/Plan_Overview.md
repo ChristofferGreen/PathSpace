@@ -9,45 +9,43 @@ Provide a single index of active planning documents, ordered by current priority
 
 ## Priority Ordering
 
-1. **Plan_SceneGraph_Renderer.md**  
-   Core rendering/presenter roadmap, snapshot semantics, target contracts. Aligns all UI work.
+> **Update (December 4, 2025):** `Plan_SceneGraph_Renderer` is complete and archived at `docs/finished/Plan_SceneGraph_Renderer_Finished.md`. Use it as the renderer/presenter contract reference while the plans below track active or ongoing work.
 
-2. **Plan_SceneGraph.md**  
+1. **Plan_SceneGraph.md**  
    Execution plan for landing the renderer stack (phases, diagnostics, testing discipline).
 
-3. **Plan_Distributed_PathSpace.md**  
+2. **Plan_Distributed_PathSpace.md**  
    Network mounting architecture enabling remote PathSpace access; prerequisite for web deployments and cross-host tooling.
 
-4. **Plan_Surface_Ray_Cache.md** (deferred)  
+3. **Plan_Surface_Ray_Cache.md** (deferred)  
    Future ray-query cache design. Read only when GPU path work resumes.
 
-
-6. **Plan_ServeHtml_Modularization_Finished.md**  
+4. **Plan_ServeHtml_Modularization_Finished.md**  
    Finished December 4, 2025. The modularization record lives in
    `docs/finished/Plan_ServeHtml_Modularization_Finished.md`, and the active
    ServeHtml module map lives in `docs/serve_html/README.md` for contributors.
 
-7. **Plan_PathSpaceHtmlServer.md**  
+5. **Plan_PathSpaceHtmlServer.md**  
    NEW (December 3, 2025): roadmap for embedding ServeHtml directly inside PathSpace apps via `PathSpaceHtmlServer<Space>` and refactoring the examples to the helper so manual `--serve-html` plumbing disappears.
 
-8. **Plan_WidgetComposableRuntime.md**  
-   Capsule-based widget runtime plan (per-widget render surfaces, mailboxes, primitives, HTML-compatible fragments). Executes after `Plan_SceneGraph_Renderer.md` and `Plan_SceneGraph.md` stabilize the renderer contracts.
+6. **Plan_WidgetComposableRuntime.md**  
+   Capsule-based widget runtime plan (per-widget render surfaces, mailboxes, primitives, HTML-compatible fragments). Executes after `docs/finished/Plan_SceneGraph_Renderer_Finished.md` and `Plan_SceneGraph.md` stabilize the renderer contracts.
 
-9. **Plan_PathSpaceWindowManager.md**  
+7. **Plan_PathSpaceWindowManager.md**  
    NextStep-inspired window manager that manages declarative windows, chrome, and the dock on top of the UI layer.
 
-10. **Plan_PathSpaceTerminal.md**  
+8. **Plan_PathSpaceTerminal.md**  
    Carta Linea-aware terminal emulator where commands launch apps, capture returned PathSpaces, and visualize them with generic viewers.
 
-11. **Plan_CartaLinea.md** (paused)  
+9. **Plan_CartaLinea.md** (paused)  
    Cross-app deck/timeline/filesystem concept; re-evaluate once renderer priorities stabilize.
 
-12. **Plan_PrimeScript.md** (research)  
+10. **Plan_PrimeScript.md** (research)  
    Exploratory unified scripting/shading language investigation; the syntax/semantics draft lives in `docs/PrimeScript_SyntaxSpec.md` (November 21, 2025) to unblock parser prototype scoping.
 
 
 ## Recommended Implementation Focus (Q4 2025)
-1. **Plan_SceneGraph.md** — active execution path for the renderer/presenter stack defined in `Plan_SceneGraph_Renderer.md`; keep driving the in-flight phases to completion while validating against the renderer blueprint.
+1. **Plan_SceneGraph.md** — active execution path for the renderer/presenter stack defined in `docs/finished/Plan_SceneGraph_Renderer_Finished.md`; keep driving the in-flight phases to completion while validating against the renderer blueprint.
 2. **Plan_Distributed_PathSpace.md** — begin Phase 0 once the current implementation milestone is stable; web/server work and the inspector depend on it.
 3. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
 4. **Plan_PathSpaceWindowManager.md** — design shared window chrome/dock controls so multi-app sessions feel cohesive once the renderer work stabilizes.

@@ -11,9 +11,12 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <numeric>
+#include <thread>
 #include <vector>
 
 #if defined(__APPLE__)
@@ -312,6 +315,91 @@ TEST_CASE("progressive copy records skip when tile write in-flight") {
     CHECK(stats.progressive_rects_coalesced == 1);
     CHECK(stats.progressive_skip_seq_odd == 1);
     CHECK(stats.progressive_recopy_after_seq_change == 0);
+}
+
+TEST_CASE("present tolerates concurrent progressive tile mutation") {
+    PathSurfaceSoftware::Options opts{
+        .enable_progressive = true,
+        .enable_buffered = true,
+        .progressive_tile_size_px = 8,
+    };
+    PathSurfaceSoftware surface{make_desc(32, 32), opts};
+
+    auto stage = surface.staging_span();
+    REQUIRE(stage.size() == surface.frame_bytes());
+    std::iota(stage.begin(), stage.end(), std::uint8_t{0});
+    surface.publish_buffered_frame({
+        .frame_index = 1,
+        .revision = 1,
+        .render_ms = 2.0,
+    });
+
+    auto const tile_count = surface.progressive_tile_count();
+    REQUIRE(tile_count > 0);
+    std::vector<std::size_t> dirty_tiles(tile_count);
+    std::iota(dirty_tiles.begin(), dirty_tiles.end(), std::size_t{0});
+
+    std::atomic<bool> keep_running{true};
+    std::atomic<std::size_t> inflight_tile{0};
+
+    std::thread render_thread([&]() {
+        std::uint64_t epoch = 2;
+        while (keep_running.load(std::memory_order_acquire)) {
+            for (std::size_t tile_index = 0; tile_index < dirty_tiles.size(); ++tile_index) {
+                if (!keep_running.load(std::memory_order_acquire)) {
+                    break;
+                }
+                auto writer = surface.begin_progressive_tile(tile_index, TilePass::AlphaInProgress);
+                inflight_tile.store(tile_index + 1, std::memory_order_release);
+                auto tile_pixels = writer.pixels();
+                REQUIRE(tile_pixels.data != nullptr);
+                auto const row_bytes = static_cast<std::size_t>(tile_pixels.dims.width) * 4u;
+                for (int row = 0; row < tile_pixels.dims.height; ++row) {
+                    auto* row_base = tile_pixels.data
+                                     + static_cast<std::size_t>(row) * tile_pixels.stride_bytes;
+                    std::fill_n(row_base, row_bytes, static_cast<std::uint8_t>(epoch & 0xFFu));
+                }
+                std::this_thread::sleep_for(std::chrono::microseconds{50});
+                writer.commit(TilePass::AlphaDone, epoch++);
+                inflight_tile.store(0, std::memory_order_release);
+            }
+        }
+        inflight_tile.store(0, std::memory_order_release);
+    });
+
+    PathWindowView view;
+    std::vector<std::uint8_t> framebuffer(surface.frame_bytes(), 0);
+    PathWindowView::PresentPolicy policy{};
+    PathWindowView::PresentRequest request{};
+    request.framebuffer = std::span<std::uint8_t>{framebuffer.data(), framebuffer.size()};
+    request.dirty_tiles = std::span<std::size_t const>{dirty_tiles.data(), dirty_tiles.size()};
+
+    std::size_t total_skip_seq = 0;
+    std::size_t total_tiles_copied = 0;
+    constexpr int kPresentIterations = 120;
+
+    for (int i = 0; i < kPresentIterations; ++i) {
+        for (int spin = 0; spin < 2000; ++spin) {
+            if (inflight_tile.load(std::memory_order_acquire) != 0) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::microseconds{5});
+        }
+        request.now = std::chrono::steady_clock::now();
+        request.vsync_deadline = request.now + std::chrono::milliseconds{8};
+        auto stats = view.present(surface, policy, request);
+        CHECK(stats.error.empty());
+        CHECK(stats.presented);
+        total_skip_seq += stats.progressive_skip_seq_odd;
+        total_tiles_copied += stats.progressive_tiles_copied;
+        CHECK(stats.progressive_tiles_copied <= dirty_tiles.size());
+    }
+
+    keep_running.store(false, std::memory_order_release);
+    render_thread.join();
+
+    CHECK(total_tiles_copied > 0);
+    CHECK(total_skip_seq > 0);
 }
 
 TEST_CASE("always fresh skips when buffered frame missing") {

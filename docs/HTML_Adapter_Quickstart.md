@@ -57,7 +57,7 @@
   ```
   This wrapper will also trigger `HtmlCanvasVerify` and `HtmlAssetInspect` when Node is available.
 - When HTML outputs change intentionally, update:
-  1. `docs/Plan_SceneGraph_Renderer.md` (fidelity, HSAT schema, mode semantics).
+  1. `docs/finished/Plan_SceneGraph_Renderer_Finished.md` (fidelity, HSAT schema, mode semantics).
   2. `docs/Plan_SceneGraph.md` (status snapshot + follow-ups).
   3. This quickstart with new commands, environment variables, or failure signatures.
 - Capture notable regressions in `docs/AI_Todo.task` with acceptance criteria so the next cycle can prioritize the fix.
@@ -67,6 +67,6 @@
 - `scripts/verify_html_canvas.js` — Parity checker for DOM/CSS/Canvas outputs (themes, geometry, assets).
 - `tools/hsat_inspect.cpp` — HSAT decoder used by both the CLI and verification script.
 - `docs/AI_Debugging_Playbook.md` §5 — Command reference for running the harnesses alongside the standard test loop.
-- `docs/Plan_SceneGraph_Renderer.md` — Source of truth for adapter options (`prefer_dom`, `max_dom_nodes`, `allow_canvas_fallback`) and HSAT framing details.
+- `docs/finished/Plan_SceneGraph_Renderer_Finished.md` — Source of truth for adapter options (`prefer_dom`, `max_dom_nodes`, `allow_canvas_fallback`) and HSAT framing details.
 
 Keep this document lightweight but current—future render/adapter changes should land here first so incoming maintainers can validate HTML fidelity without spelunking.

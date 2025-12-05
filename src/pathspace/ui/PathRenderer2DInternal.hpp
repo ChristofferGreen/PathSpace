@@ -86,6 +86,38 @@ auto choose_progressive_tile_size(int width,
                                   bool full_repaint,
                                   PathSurfaceSoftware const& surface) -> int;
 
+struct DamageStatistics {
+    std::uint64_t fingerprint_matches_exact = 0;
+    std::uint64_t fingerprint_matches_remap = 0;
+    std::uint64_t fingerprint_changed = 0;
+    std::uint64_t fingerprint_new = 0;
+    std::uint64_t fingerprint_removed = 0;
+    std::uint64_t damage_rect_count = 0;
+    double damage_coverage_ratio = 0.0;
+};
+
+struct DamageComputationOptions {
+    int width = 0;
+    int height = 0;
+    int tile_size_px = 1;
+    bool force_full_repaint = false;
+    bool missing_bounds = false;
+    bool collect_damage_metrics = false;
+};
+
+struct DamageComputationResult {
+    DamageRegion damage;
+    bool full_repaint = false;
+    std::vector<DamageRect> hint_rectangles;
+    std::vector<SP::UI::Runtime::DirtyRectHint> damage_tiles;
+    DamageStatistics statistics;
+};
+
+auto compute_damage(DamageComputationOptions const& options,
+                    PathRenderer2D::DrawableStateMap const& previous_states,
+                    PathRenderer2D::DrawableStateMap const& current_states,
+                    std::span<SP::UI::Runtime::DirtyRectHint const> dirty_rect_hints)
+    -> DamageComputationResult;
+
 } // namespace PathRenderer2DInternal
 } // namespace SP::UI
-

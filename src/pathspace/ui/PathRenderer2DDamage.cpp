@@ -1,12 +1,17 @@
 #include "PathRenderer2DInternal.hpp"
+#include "PathRenderer2DDetail.hpp"
 
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/ProgressiveSurfaceBuffer.hpp>
 
+#include <parallel_hashmap/phmap.h>
+
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <exception>
+#include <optional>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -522,5 +527,316 @@ auto choose_progressive_tile_size(int width,
     return tile_size;
 }
 
-} // namespace SP::UI::PathRenderer2DInternal
+namespace {
 
+auto tile_rect_from_index(std::uint32_t index,
+                          int width,
+                          int height,
+                          int tile_size_px) -> DamageRect {
+    if (tile_size_px <= 0) {
+        return {};
+    }
+    int const tiles_x = (width + tile_size_px - 1) / tile_size_px;
+    if (tiles_x <= 0) {
+        return {};
+    }
+    int const ty = static_cast<int>(index / static_cast<std::uint32_t>(tiles_x));
+    int const tx = static_cast<int>(index % static_cast<std::uint32_t>(tiles_x));
+    int const min_x = std::clamp(tx * tile_size_px, 0, width);
+    int const min_y = std::clamp(ty * tile_size_px, 0, height);
+    int const max_x = std::clamp(min_x + tile_size_px, 0, width);
+    int const max_y = std::clamp(min_y + tile_size_px, 0, height);
+    return DamageRect{min_x, min_y, max_x, max_y};
+}
+
+template <typename Fn>
+void enumerate_tile_indices(DamageRect const& rect,
+                            int width,
+                            int height,
+                            int tile_size_px,
+                            Fn&& fn) {
+    if (tile_size_px <= 0 || rect.empty()) {
+        return;
+    }
+    int tiles_x = (width + tile_size_px - 1) / tile_size_px;
+    int tiles_y = (height + tile_size_px - 1) / tile_size_px;
+    if (tiles_x <= 0 || tiles_y <= 0) {
+        return;
+    }
+
+    int min_x = std::clamp(rect.min_x, 0, width);
+    int min_y = std::clamp(rect.min_y, 0, height);
+    int max_x = std::clamp(rect.max_x, 0, width);
+    int max_y = std::clamp(rect.max_y, 0, height);
+    if (min_x >= max_x || min_y >= max_y) {
+        return;
+    }
+
+    int start_tx = min_x / tile_size_px;
+    int start_ty = min_y / tile_size_px;
+    int end_tx = (std::max(max_x - 1, min_x) / tile_size_px);
+    int end_ty = (std::max(max_y - 1, min_y) / tile_size_px);
+
+    start_tx = std::clamp(start_tx, 0, tiles_x - 1);
+    start_ty = std::clamp(start_ty, 0, tiles_y - 1);
+    end_tx = std::clamp(end_tx, 0, tiles_x - 1);
+    end_ty = std::clamp(end_ty, 0, tiles_y - 1);
+
+    for (int ty = start_ty; ty <= end_ty; ++ty) {
+        for (int tx = start_tx; tx <= end_tx; ++tx) {
+            auto index = static_cast<std::uint32_t>(ty) * static_cast<std::uint32_t>(tiles_x)
+                         + static_cast<std::uint32_t>(tx);
+            fn(index);
+        }
+    }
+}
+
+auto make_hint_rect(SP::UI::Runtime::DirtyRectHint const& hint,
+                    int width,
+                    int height) -> DamageRect {
+    DamageRect rect{};
+    rect.min_x = static_cast<int>(std::floor(hint.min_x));
+    rect.min_y = static_cast<int>(std::floor(hint.min_y));
+    rect.max_x = static_cast<int>(std::ceil(hint.max_x));
+    rect.max_y = static_cast<int>(std::ceil(hint.max_y));
+    rect.clamp(width, height);
+    return rect;
+}
+
+auto bounds_equal(PathRenderer2D::DrawableBounds const& lhs,
+                  PathRenderer2D::DrawableBounds const& rhs) -> bool {
+    return lhs.min_x == rhs.min_x && lhs.min_y == rhs.min_y && lhs.max_x == rhs.max_x
+           && lhs.max_y == rhs.max_y;
+}
+
+} // namespace
+
+auto compute_damage(DamageComputationOptions const& options,
+                    PathRenderer2D::DrawableStateMap const& previous_states,
+                    PathRenderer2D::DrawableStateMap const& current_states,
+                    std::span<SP::UI::Runtime::DirtyRectHint const> dirty_rect_hints)
+    -> DamageComputationResult {
+    DamageComputationResult result{};
+    int const width = std::max(options.width, 0);
+    int const height = std::max(options.height, 0);
+    int const tile_size_px = std::max(options.tile_size_px, 1);
+
+    auto collect_hint_rectangles = [&]() {
+        std::vector<std::uint32_t> hint_tile_indices;
+        hint_tile_indices.reserve(dirty_rect_hints.size());
+        for (auto const& hint : dirty_rect_hints) {
+            auto rect = make_hint_rect(hint, width, height);
+            if (rect.empty()) {
+                continue;
+            }
+            enumerate_tile_indices(rect, width, height, tile_size_px, [&](std::uint32_t index) {
+                hint_tile_indices.push_back(index);
+            });
+        }
+        if (hint_tile_indices.empty()) {
+            return;
+        }
+        std::sort(hint_tile_indices.begin(), hint_tile_indices.end());
+        hint_tile_indices.erase(std::unique(hint_tile_indices.begin(), hint_tile_indices.end()),
+                                hint_tile_indices.end());
+        result.hint_rectangles.reserve(hint_tile_indices.size());
+        for (auto index : hint_tile_indices) {
+            auto rect = tile_rect_from_index(index, width, height, tile_size_px);
+            if (!rect.empty()) {
+                result.hint_rectangles.push_back(rect);
+            }
+        }
+    };
+
+    collect_hint_rectangles();
+
+    DamageRegion damage;
+    auto& stats = result.statistics;
+
+    result.full_repaint = options.force_full_repaint || options.missing_bounds;
+    if (result.full_repaint) {
+        damage.set_full(width, height);
+        if (options.collect_damage_metrics) {
+            stats.fingerprint_removed = static_cast<std::uint64_t>(previous_states.size());
+            if (previous_states.empty()) {
+                stats.fingerprint_new = static_cast<std::uint64_t>(current_states.size());
+            } else {
+                stats.fingerprint_changed = static_cast<std::uint64_t>(current_states.size());
+            }
+        }
+    } else {
+        phmap::flat_hash_map<std::uint64_t, std::vector<std::uint64_t>> previous_by_fingerprint;
+        previous_by_fingerprint.reserve(previous_states.size());
+        for (auto const& [prev_id, prev_state] : previous_states) {
+            previous_by_fingerprint[prev_state.fingerprint].push_back(prev_id);
+        }
+
+        phmap::flat_hash_set<std::uint64_t> consumed_previous_ids;
+        consumed_previous_ids.reserve(previous_states.size());
+
+        auto add_bounds = [&](PathRenderer2D::DrawableBounds const& bounds) {
+            if (!bounds.empty()) {
+                damage.add(bounds, width, height, 1);
+            }
+        };
+
+        for (auto const& [id, current_state] : current_states) {
+            auto prev_it = previous_states.find(id);
+            if (prev_it != previous_states.end()) {
+                consumed_previous_ids.insert(id);
+                auto const& prev_state = prev_it->second;
+                bool fingerprint_changed_now = current_state.fingerprint != prev_state.fingerprint;
+                bool bounds_changed = !bounds_equal(current_state.bounds, prev_state.bounds);
+                if (fingerprint_changed_now || bounds_changed) {
+                    add_bounds(current_state.bounds);
+                    add_bounds(prev_state.bounds);
+                    if (options.collect_damage_metrics) {
+                        ++stats.fingerprint_changed;
+                    }
+                } else if (options.collect_damage_metrics) {
+                    ++stats.fingerprint_matches_exact;
+                }
+                continue;
+            }
+
+            PathRenderer2D::DrawableState const* matched_prev = nullptr;
+            if (current_state.fingerprint != 0) {
+                auto map_it = previous_by_fingerprint.find(current_state.fingerprint);
+                if (map_it != previous_by_fingerprint.end()) {
+                    auto& candidates = map_it->second;
+                    std::optional<std::size_t> best_index;
+                    for (std::size_t idx = 0; idx < candidates.size(); ++idx) {
+                        auto candidate_id = candidates[idx];
+                        if (consumed_previous_ids.contains(candidate_id)) {
+                            continue;
+                        }
+                        if (current_states.find(candidate_id) != current_states.end()) {
+                            continue;
+                        }
+                        auto prev_found = previous_states.find(candidate_id);
+                        if (prev_found == previous_states.end()) {
+                            continue;
+                        }
+                        if (!matched_prev) {
+                            matched_prev = &prev_found->second;
+                            best_index = idx;
+                        }
+                        if (bounds_equal(current_state.bounds, prev_found->second.bounds)) {
+                            matched_prev = &prev_found->second;
+                            best_index = idx;
+                            break;
+                        }
+                    }
+                    if (best_index.has_value() && matched_prev) {
+                        consumed_previous_ids.insert(candidates[*best_index]);
+                        candidates.erase(candidates.begin() + static_cast<std::ptrdiff_t>(*best_index));
+                    } else {
+                        matched_prev = nullptr;
+                    }
+                }
+            }
+
+            if (matched_prev) {
+                bool fingerprint_changed_now = current_state.fingerprint != matched_prev->fingerprint;
+                bool bounds_changed = !bounds_equal(current_state.bounds, matched_prev->bounds);
+                if (fingerprint_changed_now || bounds_changed) {
+                    add_bounds(current_state.bounds);
+                    add_bounds(matched_prev->bounds);
+                    if (options.collect_damage_metrics) {
+                        ++stats.fingerprint_changed;
+                    }
+                } else if (options.collect_damage_metrics) {
+                    ++stats.fingerprint_matches_remap;
+                }
+            } else {
+                add_bounds(current_state.bounds);
+                if (options.collect_damage_metrics) {
+                    ++stats.fingerprint_new;
+                }
+            }
+        }
+
+        for (auto const& [prev_id, prev_state] : previous_states) {
+            if (!consumed_previous_ids.contains(prev_id)) {
+                add_bounds(prev_state.bounds);
+                if (options.collect_damage_metrics) {
+                    ++stats.fingerprint_removed;
+                }
+            }
+        }
+    }
+
+    damage.finalize(width, height);
+
+    if (!result.hint_rectangles.empty()) {
+        auto hint_span = std::span<DamageRect const>(result.hint_rectangles);
+        if (damage.empty()) {
+            damage.replace_with_rects(hint_span, width, height);
+        } else {
+            damage.restrict_to(hint_span);
+        }
+    }
+
+    auto& damage_tile_hints = result.damage_tiles;
+    damage_tile_hints.clear();
+    if (!damage.empty()) {
+        std::vector<std::uint32_t> damage_tile_indices;
+        std::vector<DamageRect> damage_tile_rects;
+        if (tile_size_px > 1) {
+            for (auto const& rect : damage.rectangles()) {
+                enumerate_tile_indices(rect, width, height, tile_size_px, [&](std::uint32_t index) {
+                    damage_tile_indices.push_back(index);
+                });
+            }
+        }
+
+        if (!damage_tile_indices.empty()) {
+            std::sort(damage_tile_indices.begin(), damage_tile_indices.end());
+            damage_tile_indices.erase(std::unique(damage_tile_indices.begin(), damage_tile_indices.end()),
+                                      damage_tile_indices.end());
+            damage_tile_rects.reserve(damage_tile_indices.size());
+            damage_tile_hints.reserve(damage_tile_indices.size());
+            for (auto index : damage_tile_indices) {
+                auto rect = tile_rect_from_index(index, width, height, tile_size_px);
+                if (rect.empty()) {
+                    continue;
+                }
+                damage_tile_rects.push_back(rect);
+                SP::UI::Runtime::DirtyRectHint hint{};
+                hint.min_x = static_cast<float>(rect.min_x);
+                hint.min_y = static_cast<float>(rect.min_y);
+                hint.max_x = static_cast<float>(rect.max_x);
+                hint.max_y = static_cast<float>(rect.max_y);
+                damage_tile_hints.push_back(hint);
+            }
+            if (!damage_tile_rects.empty()) {
+                damage.replace_with_rects(damage_tile_rects, width, height);
+            } else {
+                damage_tile_hints.clear();
+            }
+        }
+
+        if (damage_tile_hints.empty()) {
+            auto rects = damage.rectangles();
+            damage_tile_hints.reserve(rects.size());
+            for (auto const& rect : rects) {
+                SP::UI::Runtime::DirtyRectHint hint{};
+                hint.min_x = static_cast<float>(rect.min_x);
+                hint.min_y = static_cast<float>(rect.min_y);
+                hint.max_x = static_cast<float>(rect.max_x);
+                hint.max_y = static_cast<float>(rect.max_y);
+                damage_tile_hints.push_back(hint);
+            }
+        }
+    }
+
+    if (options.collect_damage_metrics) {
+        stats.damage_rect_count = static_cast<std::uint64_t>(damage.rectangles().size());
+        stats.damage_coverage_ratio = damage.coverage_ratio(width, height);
+    }
+
+    result.damage = std::move(damage);
+    return result;
+}
+
+} // namespace SP::UI::PathRenderer2DInternal

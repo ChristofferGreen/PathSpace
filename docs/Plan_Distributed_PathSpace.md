@@ -110,7 +110,7 @@ Local PathSpace (client) ── RPC/stream ── Remote PathSpace (server)
 ## Required Documentation Updates
 - `docs/AI_Architecture.md` — add distributed architecture section.
 - `docs/AI_Paths.md` — describe mount path conventions and reserved namespaces (e.g., `/remote/<host>/<mount>`).
-- `docs/Plan_SceneGraph_Renderer.md` / `docs/finished/Plan_WebServer_Adapter_Finished.md` — reference distributed mounts where relevant.
+- `docs/finished/Plan_SceneGraph_Renderer_Finished.md` / `docs/finished/Plan_WebServer_Adapter_Finished.md` — reference distributed mounts where relevant.
 - `docs/AI_Debugging_Playbook.md` — troubleshooting steps for network mounts (connectivity, certificate issues).
 
 ## Open Questions

@@ -318,7 +318,7 @@ task {
     "Dirty-hint bucketing or adaptive tile sizing keeps copied pixel counts proportional to brush area, not full-surface area.",
     "paint_example maintains ≥75 FPS at 2560×1600 and ≥70 FPS at 3840×2160 on reference hardware, with PATHSPACE_TRACE_DAMAGE logs confirming bounded damage regions.",
     "Encode/raster pass is parallelised across dirty tiles; benchmark captures show full-repaint FPS on the reference Mac Studio more than doubles vs the current single-threaded baseline.",
-    "Docs updated (Plan_SceneGraph.md, Plan_SceneGraph_Renderer.md, AI_Debugging_Playbook.md) with the new algorithm, metrics flag guidance, and measured results."
+    "Docs updated (Plan_SceneGraph.md, Plan_SceneGraph_Renderer_Finished.md, AI_Debugging_Playbook.md) with the new algorithm, metrics flag guidance, and measured results."
   ]
 
   steps: [
@@ -950,7 +950,7 @@ task {
   acceptance_criteria: [
     "docs/AI_Architecture.md#html-adapter-modes describes adapter_mode values, shared command stream, and downgrade rules.",
     "Manifest schema example covers runtime module, capability flags, dom_overlays, and schema_version handling.",
-    "docs/Plan_SceneGraph_Renderer.md references stay aligned when adapter milestones land."
+    "docs/finished/Plan_SceneGraph_Renderer_Finished.md references stay aligned when adapter milestones land."
   ]
 }
 task {

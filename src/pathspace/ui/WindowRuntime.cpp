@@ -319,6 +319,9 @@ auto Present(PathSpace& space,
     auto presentPolicy = *policy;
 
     auto target_key = std::string(context->target_path.getPath());
+    if (auto watch = ensure_surface_cache_watch(space, target_key); !watch) {
+        return std::unexpected(watch.error());
+    }
     auto& surface = acquire_surface(target_key, context->target_desc);
 
 #if PATHSPACE_UI_METAL
@@ -417,6 +420,9 @@ auto Present(PathSpace& space,
         presentStats.progressive_jobs = stats_value.progressive_jobs;
         presentStats.encode_workers_used = stats_value.encode_workers_used;
         presentStats.encode_jobs = stats_value.encode_jobs;
+        presentStats.encode_worker_stall_ms_total = stats_value.encode_worker_stall_ms_total;
+        presentStats.encode_worker_stall_ms_max = stats_value.encode_worker_stall_ms_max;
+        presentStats.encode_worker_stall_workers = stats_value.encode_worker_stall_workers;
         presentStats.progressive_tiles_dirty = stats_value.progressive_tiles_dirty;
         presentStats.progressive_tiles_total = stats_value.progressive_tiles_total;
         presentStats.progressive_tiles_skipped = stats_value.progressive_tiles_skipped;

@@ -721,6 +721,9 @@ auto PresentWindowFrame(SP::PathSpace& space,
     }
 
     auto target_key = std::string(context->target_path.getPath());
+    if (auto watch = SP::UI::Runtime::Detail::ensure_surface_cache_watch(space, target_key); !watch) {
+        return std::unexpected(watch.error());
+    }
     auto& surface = acquire_surface(target_key, context->target_desc);
 
 #if PATHSPACE_UI_METAL

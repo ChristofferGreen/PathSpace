@@ -29,7 +29,7 @@ Links:
 - **Wait/notify** — Blocking reads register waiters in concrete/glob registries and wake via a `NotificationSink` token; timeouts surface as `Error::Timeout` (`Wait/notify` + `Blocking` in the architecture doc).
 - **Layers & PathIO** — Permission-checked views (`PathView`), alias mounts (`PathAlias`), and OS/event bridges live in `src/pathspace/layer/`. Enable macOS backends with `-DENABLE_PATHIO_MACOS=ON` and review the PathIO guidance near the end of `docs/AI_Architecture.md`.
 - **Declarative widget runtime** — Declarative helpers in `include/pathspace/ui/declarative/**` mount widgets entirely through PathSpace state. `SP::System::LaunchStandard`, `App::Create`, `Window::Create`, and `Scene::Create` bootstrap the runtime; widgets use `Button::Create`, `List::Create`, etc., instead of hand-built buckets. Legacy imperative builders are compatibility-only and will be removed once downstream consumers migrate (see `docs/WidgetDeclarativeAPI.md`).
-- **Canonical namespaces** — `docs/AI_Paths.md` defines system/app/render targets; renderer and presenter plans live in `docs/Plan_SceneGraph_Renderer.md`.
+- **Canonical namespaces** — `docs/AI_Paths.md` defines system/app/render targets; renderer and presenter plans live in `docs/finished/Plan_SceneGraph_Renderer_Finished.md`.
 
 ## Quick start
 
@@ -336,7 +336,7 @@ Tip: For high-throughput patterns, write with Immediate and read<FutureAny> to c
 
 ## Experimental IO providers (PathIO)
 
-The repository includes experimental providers under `src/pathspace/layer/io` and examples in `examples/devices_example.cpp` and `examples/paint_example.cpp`. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed event streams using the canonical `/system/devices/in/*` namespace; see `docs/Plan_SceneGraph_Renderer.md` for app/device path conventions. The paint example combines those providers with the software renderer to offer a minimal mouse-driven canvas.
+The repository includes experimental providers under `src/pathspace/layer/io` and examples in `examples/devices_example.cpp` and `examples/paint_example.cpp`. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed event streams using the canonical `/system/devices/in/*` namespace; see `docs/finished/Plan_SceneGraph_Renderer_Finished.md` for app/device path conventions. The paint example combines those providers with the software renderer to offer a minimal mouse-driven canvas.
 
 Sketch:
 ```cpp

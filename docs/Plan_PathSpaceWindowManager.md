@@ -22,7 +22,7 @@
 
 ## Dependencies
 - Declarative widget runtime (`docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`) for chrome controls and dock widgets.
-- UI renderer/presenter stack (`Plan_SceneGraph_Renderer.md`).
+- UI renderer/presenter stack (`docs/finished/Plan_SceneGraph_Renderer_Finished.md`).
 - Standard path schema (`AI_PATHS.md`) — window manager must only touch documented nodes.
 
 ## Architecture Overview

@@ -23,7 +23,7 @@
 > **Context update (October 15, 2025):** Implementation phases now assume the assistant context introduced for this cycle; convert prior context cues to the updated vocabulary during execution.
 
 ## Context and Objectives
-- Groundwork for implementing the renderer stack described in `docs/Plan_SceneGraph_Renderer.md` and the broader architecture contract in `docs/AI_Architecture.md`.
+- Groundwork for implementing the renderer stack described in `docs/finished/Plan_SceneGraph_Renderer_Finished.md` and the broader architecture contract in `docs/AI_Architecture.md`.
 - Deliver an incremental path from today's codebase to the MVP (software renderer, CAMetalLayer-based presenters, surfaces, snapshot builder), while keeping room for GPU rendering backends (Metal/Vulkan) and HTML adapters outlined in the master plan.
 - Maintain app-root atomic semantics, immutable snapshot guarantees, and observability expectations throughout the rollout.
 
@@ -133,15 +133,15 @@ Completed:
 - ✅ (October 14, 2025) Added doctest coverage in `tests/ui/test_Builders.cpp` for idempotent scene creation, cross-app rejection, and atomic `Renderer::UpdateSettings` behaviour (path containment + queue draining).
 - ✅ (October 14, 2025) Validated Builders via `./scripts/compile.sh --loop=15 --per-test-timeout 20` (15 iterations, 20 s per-test timeout).
 - ✅ (October 11, 2025) Initial UI helper implementations (`src/pathspace/ui/Helpers.cpp`) enforce app-root containment for scene/renderer/surface/window calls with accompanying doctests in `tests/ui/test_SceneHelpers.cpp`; remaining work will flesh out Builders.hpp and atomic settings writes.
-- ✅ (October 14, 2025) Documented Builders usage patterns and invariants in `docs/Plan_SceneGraph_Renderer.md` (idempotent creates, atomic settings, app-root enforcement); no new canonical paths required for `AI_Paths.md`.
+- ✅ (October 14, 2025) Documented Builders usage patterns and invariants in `docs/finished/Plan_SceneGraph_Renderer_Finished.md` (idempotent creates, atomic settings, app-root enforcement); no new canonical paths required for `AI_Paths.md`.
 
 ### Phase 2 — Scene Schema & Snapshot Builder (2 sprints)
 Completed:
-- ✅ (October 14, 2025) `SceneSnapshotBuilder` now emits full SoA drawable data (transforms, bounds, material/pipeline metadata, command offsets/counts, command stream, opaque/alpha/per-layer indices) and documents the layout in `docs/Plan_SceneGraph_Renderer.md` / `docs/AI_Architecture.md`.
+- ✅ (October 14, 2025) `SceneSnapshotBuilder` now emits full SoA drawable data (transforms, bounds, material/pipeline metadata, command offsets/counts, command stream, opaque/alpha/per-layer indices) and documents the layout in `docs/finished/Plan_SceneGraph_Renderer_Finished.md` / `docs/AI_Architecture.md`.
 - ✅ (October 14, 2025) Added doctests in `tests/ui/test_SceneSnapshotBuilder.cpp` covering round-trip decoding plus retention under burst publishes.
 - ✅ (October 15, 2025) Added long-running publish/prune stress coverage with metrics validation and GC metric emission (retained/evicted/last_revision/total_fingerprint_count) in `tests/ui/test_SceneSnapshotBuilder.cpp`.
 - ✅ (October 15, 2025) Snapshot metadata now records resource fingerprints per revision; GC metrics aggregate total fingerprint counts for residency planning.
-- ✅ (October 15, 2025) Documented the finalized binary artifact split (`drawables.bin`, `transforms.bin`, `bounds.bin`, `state.bin`, `cmd-buffer.bin`, index files) and retired the Alpaca fallback in `docs/AI_Architecture.md` / `docs/Plan_SceneGraph_Renderer.md`.
+- ✅ (October 15, 2025) Documented the finalized binary artifact split (`drawables.bin`, `transforms.bin`, `bounds.bin`, `state.bin`, `cmd-buffer.bin`, index files) and retired the Alpaca fallback in `docs/AI_Architecture.md` / `docs/finished/Plan_SceneGraph_Renderer_Finished.md`.
 
 ### Phase 3 — Software Renderer Core (2 sprints)
 Completed:
@@ -183,7 +183,7 @@ Next:
   - ✅ (October 22, 2025) Persist baseline metrics (frame time, residency, tile stats) from the harness under `docs/perf/` via `--write-baseline`; JSON captures live stats for regression comparisons.
   - ✅ (October 22, 2025) Landed `scripts/capture_pixel_noise_baseline.sh` to produce/update versioned baselines (default output `docs/perf/pixel_noise_baseline.json`).
   - ✅ (October 22, 2025) Spun a Metal-enabled variant via `--backend=metal`, captured `docs/perf/pixel_noise_metal_baseline.json`, and added the `PixelNoisePerfHarnessMetal` CTest (PATHSPACE_ENABLE_METAL_UPLOADS-gated) so the loop covers both Software2D and Metal2D backends with the same perf budgets.
-  - ✅ (October 22, 2025) Mirrored the harness expectations in `docs/Plan_SceneGraph_Renderer.md`, covering the new Metal2D backend switch, paired baselines, and the extended CTest coverage.
+  - ✅ (October 22, 2025) Mirrored the harness expectations in `docs/finished/Plan_SceneGraph_Renderer_Finished.md`, covering the new Metal2D backend switch, paired baselines, and the extended CTest coverage.
   - ✅ (October 22, 2025) Documented baseline workflow in `docs/AI_Debugging_Playbook.md` (Tooling §5.1) covering capture script usage and JSON interpretation.
   - ✅ (October 23, 2025) Captured a representative frame grab (`docs/images/perf/pixel_noise.png`) via the pixel noise example’s new `--write-frame` option; docs now describe capturing the PNG so perf regressions ship with a visual reference alongside metrics.
   - ✅ (October 22, 2025) Added `scripts/check_pixel_noise_baseline.py` and routed `PixelNoisePerfHarness` through it so looped runs fail whenever runtime averages exceed the baseline budgets.
@@ -279,9 +279,9 @@ Next:
   5. **Tooling & CI**
      - ✅ (October 19, 2025) Added the Node-based `HtmlCanvasVerify` CTest (backed by `scripts/verify_html_canvas.js`) so CI exercises DOM vs Canvas outputs when `node` is present and emits a skip notice otherwise.
   6. **Documentation**
-     - ✅ (October 19, 2025) Documented HTML adapter fidelity tiers, configuration knobs (`max_dom_nodes`, `prefer_dom`, `allow_canvas_fallback`), asset hydration, and debugging steps in `docs/Plan_SceneGraph_Renderer.md`; keep the section current as adapter behavior evolves.
+     - ✅ (October 19, 2025) Documented HTML adapter fidelity tiers, configuration knobs (`max_dom_nodes`, `prefer_dom`, `allow_canvas_fallback`), asset hydration, and debugging steps in `docs/finished/Plan_SceneGraph_Renderer_Finished.md`; keep the section current as adapter behavior evolves.
 - ✅ (October 20, 2025) Resource loader integration (HTML + renderers) now hydrates image/font assets and persists them under `output/v1/html/assets` using a stable binary `Html::Asset` codec; `Renderer::RenderHtml hydrates image assets into output` and the new `Html::Asset vectors survive PathSpace round-trip` doctest both pass with hydrated bytes.
-- ✅ (October 20, 2025) Documented the HTML asset codec (HSAT framing, legacy migration) in `docs/Plan_SceneGraph_Renderer.md`; update the renderer plan when fields or versions change.
+- ✅ (October 20, 2025) Documented the HTML asset codec (HSAT framing, legacy migration) in `docs/finished/Plan_SceneGraph_Renderer_Finished.md`; update the renderer plan when fields or versions change.
 - ✅ (October 20, 2025) Removed the legacy Alpaca serializer fallback; HSAT payloads are now required for `output/v1/html/assets`.
 - ✅ (October 21, 2025) Added the `pathspace_hsat_inspect` CLI plus `HtmlAssetInspect` regression (Node harness) to decode HSAT payloads; extend the fixture when new asset fields (e.g., material descriptors) land.
 
@@ -340,7 +340,7 @@ Next:
   - ✅ (October 23, 2025) Landed the initial layout container widgets (vertical/horizontal stacks) with `Widgets::CreateStack`/`UpdateStackLayout`. They measure child widget scenes, compute spacing/alignment metadata, publish aggregated stack snapshots, and surface dirty hints through bindings. UITests cover layout computation and binding dirty propagation; gallery follow-ups remain to showcase the containers in the demo and add grid variants.
   - ✅ (October 23, 2025) Built a tree view widget supporting expand/collapse, selection, and async data loading hooks, complete with bindings, reducer support, canonical paths, and UITest coverage (gallery demo follow-up tracked below).
 - ✅ (October 24, 2025) Extended `widgets_example` to showcase layout containers and the tree view, wiring stack/tree bindings with keyboard controls (`[`/`]` spacing, `H` axis toggle), pointer/keyboard navigation, and reducer telemetry so contributors can exercise them interactively.
-- ✅ (October 24, 2025) Updated `docs/Plan_SceneGraph_Renderer.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage guidance, and troubleshooting notes.
+- ✅ (October 24, 2025) Updated `docs/finished/Plan_SceneGraph_Renderer_Finished.md` and `docs/AI_Architecture.md` with widget path conventions, builder usage guidance, and troubleshooting notes.
 - ✅ (October 20, 2025) Documented widget ops schema: queue path (`widgets/<id>/ops/inbox/queue`), `WidgetOp` fields (kind, pointer metadata, value, timestamp) and reducer sample wiring.
 - ✅ (October 20, 2025) Reducer samples now live in `Widgets::Reducers`, publishing actions under `widgets/<id>/ops/actions/inbox/queue`; keep telemetry/docs in sync when new action fields or op kinds land.
   - ✅ (October 27, 2025) Added automated window capture: `widgets_example --screenshot <path>` now runs headless, drives a scripted slider drag, renders once, and writes a PNG via stb_image_write—useful for visual regression checks and focus/highlight debugging even on GUI-less hosts.
@@ -390,13 +390,13 @@ Next:
 
 ## Documentation & Rollout Checklist
 - Update `README.md` build instructions once UI flags ship.
-- Keep `docs/Plan_SceneGraph_Renderer.md` cross-references aligned; link to this implementation plan from that doc and vice versa.
+- Keep `docs/finished/Plan_SceneGraph_Renderer_Finished.md` cross-references aligned; link to this implementation plan from that doc and vice versa.
 - Add developer onboarding snippets (how to run tests, inspect outputs) to `docs/`.
 - Track milestone completion in `AI_Todo.task` or equivalent planning artifact.
-- As of October 19, 2025, `docs/AI_Onboarding.md`, `docs/AI_Architecture.md`, `docs/Plan_SceneGraph_Renderer.md`, and `docs/AI_Debugging_Playbook.md` already capture the Metal presenter metrics, residency counters, and looped test workflow; keep future changes synchronized across those references.
+- As of October 19, 2025, `docs/AI_Onboarding.md`, `docs/AI_Architecture.md`, `docs/finished/Plan_SceneGraph_Renderer_Finished.md`, and `docs/AI_Debugging_Playbook.md` already capture the Metal presenter metrics, residency counters, and looped test workflow; keep future changes synchronized across those references.
 
 ## Related Documents
-- Specification: `docs/Plan_SceneGraph_Renderer.md`
+- Specification: `docs/finished/Plan_SceneGraph_Renderer_Finished.md`
 - Core architecture overview: `docs/AI_Architecture.md`
 
 ## Maintenance Considerations

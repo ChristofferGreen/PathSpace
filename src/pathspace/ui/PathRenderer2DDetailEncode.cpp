@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <exception>
 #include <mutex>
 #include <thread>
@@ -67,13 +68,39 @@ auto run_encode_jobs(std::span<EncodeJob const> jobs, EncodeContext const& ctx) 
     std::atomic<std::size_t> next{0};
     std::exception_ptr error;
     std::mutex error_mutex;
+    auto const start_time = std::chrono::steady_clock::now();
+    std::atomic<std::uint64_t> stall_total_ns{0};
+    std::atomic<std::uint64_t> stall_max_ns{0};
+    std::atomic<std::size_t> stall_workers{0};
+
+    auto record_stall = [&](std::chrono::steady_clock::time_point now) {
+        auto stall_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now - start_time).count();
+        if (stall_ns < 0) {
+            stall_ns = 0;
+        }
+        stall_total_ns.fetch_add(static_cast<std::uint64_t>(stall_ns), std::memory_order_relaxed);
+        auto observed = stall_max_ns.load(std::memory_order_relaxed);
+        auto const current = static_cast<std::uint64_t>(stall_ns);
+        while (current > observed
+               && !stall_max_ns.compare_exchange_weak(observed,
+                                                      current,
+                                                      std::memory_order_relaxed,
+                                                      std::memory_order_relaxed)) {
+        }
+        stall_workers.fetch_add(1, std::memory_order_relaxed);
+    };
 
     auto worker = [&]() {
         try {
+            bool recorded = false;
             while (true) {
                 auto idx = next.fetch_add(1, std::memory_order_relaxed);
                 if (idx >= jobs.size()) {
                     break;
+                }
+                if (!recorded) {
+                    record_stall(std::chrono::steady_clock::now());
+                    recorded = true;
                 }
                 encode_rows(jobs[idx], ctx);
             }
@@ -101,6 +128,11 @@ auto run_encode_jobs(std::span<EncodeJob const> jobs, EncodeContext const& ctx) 
     }
 
     stats.workers_used = worker_count;
+    auto const total_ns = stall_total_ns.load(std::memory_order_relaxed);
+    auto const max_ns = stall_max_ns.load(std::memory_order_relaxed);
+    stats.stall_ms_total = static_cast<double>(total_ns) / 1'000'000.0;
+    stats.stall_ms_max = static_cast<double>(max_ns) / 1'000'000.0;
+    stats.stall_workers = stall_workers.load(std::memory_order_relaxed);
     return stats;
 }
 

@@ -135,12 +135,15 @@ auto RenderOnce(PathSpace& space,
         return std::unexpected(context.error());
     }
 
-    auto& surface = acquire_surface(std::string(context->target_path.getPath()), context->target_desc);
+    auto target_key = std::string(context->target_path.getPath());
+    if (auto watch = ensure_surface_cache_watch(space, target_key); !watch) {
+        return std::unexpected(watch.error());
+    }
+    auto& surface = acquire_surface(target_key, context->target_desc);
 #if PATHSPACE_UI_METAL
     PathSurfaceMetal* metal_surface = nullptr;
     if (context->renderer_kind == RendererKind::Metal2D) {
-        metal_surface = &acquire_metal_surface(std::string(context->target_path.getPath()),
-                                               context->target_desc);
+        metal_surface = &acquire_metal_surface(target_key, context->target_desc);
     }
     auto stats = render_into_target(space,
                                     *context,

@@ -373,6 +373,9 @@ auto TriggerRender(PathSpace& space,
     };
 
     auto surface_key = std::string(context.target_path.getPath());
+    if (auto watch = ensure_surface_cache_watch(space, surface_key); !watch) {
+        return std::unexpected(watch.error());
+    }
     auto& surface = acquire_surface(surface_key, context.target_desc);
 
 #if PATHSPACE_UI_METAL

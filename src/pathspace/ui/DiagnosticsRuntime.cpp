@@ -1,8 +1,67 @@
 #include "RuntimeDetail.hpp"
 
+#include <cstdlib>
+#include <cstring>
+#include <optional>
+
 namespace SP::UI::Runtime::Diagnostics {
 
 using namespace Detail;
+
+namespace {
+
+auto contention_metrics_enabled() -> bool {
+    static std::optional<bool> cached;
+    if (!cached.has_value()) {
+        if (auto* env = std::getenv("PATHSPACE_UI_DAMAGE_METRICS")) {
+            cached = !(std::strcmp(env, "0") == 0 || std::strcmp(env, "false") == 0
+                       || std::strcmp(env, "off") == 0);
+        } else {
+            cached = false;
+        }
+    }
+    return *cached;
+}
+
+auto write_contention_metrics(PathSpace& space,
+                              ConcretePathView targetPath,
+                              PathWindowPresentStats const& stats) -> SP::Expected<void> {
+    if (!contention_metrics_enabled()) {
+        return {};
+    }
+
+    auto base = std::string(targetPath.getPath()) + "/output/v1/diagnostics/metrics";
+
+    if (auto status = replace_single<double>(space,
+                                             base + "/encodeWorkerStallMsTotal",
+                                             stats.encode_worker_stall_ms_total); !status) {
+        return status;
+    }
+    if (auto status = replace_single<double>(space,
+                                             base + "/encodeWorkerStallMsMax",
+                                             stats.encode_worker_stall_ms_max); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/encodeWorkerStallWorkers",
+                                               stats.encode_worker_stall_workers); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/progressiveTileSeqRetryCount",
+                                               static_cast<uint64_t>(stats.progressive_recopy_after_seq_change)); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/progressiveTileSeqSkipCount",
+                                               static_cast<uint64_t>(stats.progressive_skip_seq_odd)); !status) {
+        return status;
+    }
+
+    return {};
+}
+
+} // namespace
 
 auto ReadTargetMetrics(PathSpace const& space,
                        ConcretePathView targetPath) -> SP::Expected<TargetMetrics> {
@@ -257,6 +316,43 @@ auto ReadTargetMetrics(PathSpace const& space,
 
     if (auto value = read_value<uint64_t>(space, base + "/progressiveRecopyAfterSeqChange"); value) {
         metrics.progressive_recopy_after_seq_change = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    auto diagBase = std::string(targetPath.getPath()) + "/output/v1/diagnostics/metrics";
+
+    if (auto value = read_value<double>(space, diagBase + "/encodeWorkerStallMsTotal"); value) {
+        metrics.encode_worker_stall_ms_total = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<double>(space, diagBase + "/encodeWorkerStallMsMax"); value) {
+        metrics.encode_worker_stall_ms_max = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, diagBase + "/encodeWorkerStallWorkers"); value) {
+        metrics.encode_worker_stall_workers = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, diagBase + "/progressiveTileSeqRetryCount"); value) {
+        metrics.progressive_recopy_after_seq_change = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, diagBase + "/progressiveTileSeqSkipCount"); value) {
+        metrics.progressive_skip_seq_odd = *value;
     } else if (value.error().code != SP::Error::Code::NoObjectFound
                && value.error().code != SP::Error::Code::NoSuchPath) {
         return std::unexpected(value.error());
@@ -703,6 +799,9 @@ auto WritePresentMetrics(PathSpace& space,
                           PathWindowPresentPolicy const& policy) -> SP::Expected<void> {
     auto base = std::string(targetPath.getPath()) + "/output/v1/common";
     if (auto status = write_present_metrics_to_base(space, base, stats, policy); !status) {
+        return status;
+    }
+    if (auto status = write_contention_metrics(space, targetPath, stats); !status) {
         return status;
     }
 

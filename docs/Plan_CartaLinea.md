@@ -59,7 +59,7 @@ PathSpace provides the storage substrate and path-based API used by Carta Linea.
 
 Cards, Lifestream, and Filesystem are presented using the SceneGraph and Renderer. A card is a SceneGraph application/scene bound to an object id (or a stack) and reading from `index/builds/<revision>/*` selected via `index/current_revision`; the exact equivalence of “task” and “application” is intentionally flexible and may vary per app.
 
-See docs/AI_Architecture.md and docs/Plan_SceneGraph_Renderer.md for details. Scenes operate on app-relative paths inside the Carta app root and consume derived assets published under `index/builds/<revision>/...` via `index/current_revision`; they should not traverse arbitrary OS paths during rendering.
+See docs/AI_Architecture.md and docs/finished/Plan_SceneGraph_Renderer_Finished.md for details. Scenes operate on app-relative paths inside the Carta app root and consume derived assets published under `index/builds/<revision>/...` via `index/current_revision`; they should not traverse arbitrary OS paths during rendering.
 
 ## Card forms: typed vs freeform (SceneGraph subtrees)
 
@@ -89,7 +89,7 @@ Path layout (under Carta app root):
 SceneGraph contract (v1):
 - Inputs: object id; card scene reads `index/builds/<revision>/objects/<id>/*` and uses derived assets under `index/builds/<revision>/objects/<id>/derived/*`. Scenes must read only app-relative paths under the Carta app root and must not open arbitrary filesystem paths at render time.
 - Standard slots: header, body, footer. Typed forms fill these consistently; freeform fills minimally.
-- Output: drawable subtree authored under the form’s scene; rendering/publishing follows the snapshot rules in docs/Plan_SceneGraph_Renderer.md.
+- Output: drawable subtree authored under the form’s scene; rendering/publishing follows the snapshot rules in docs/finished/Plan_SceneGraph_Renderer_Finished.md.
 
 Examples (non-normative):
 - email: header(from, subject, time), body preview, actions (reply/archive).
@@ -235,7 +235,7 @@ Optional sidecar hints:
 - Apps can write `.carta/meta.json` with stable tags or display hints.
 - If desired, apps can manage `.carta/id` on copy/duplicate workflows.
 
-UI surfaces (built within the existing rendering system; see docs/Plan_SceneGraph_Renderer.md):
+UI surfaces (built within the existing rendering system; see docs/finished/Plan_SceneGraph_Renderer_Finished.md):
 - `scenes/cards` — renders `index/builds/<revision>/cards/*` selected via `index/current_revision` with stacking and pin order.
 - `scenes/deck` — renders `index/builds/<revision>/decks/<deck-id>/cards/*` selected via `index/current_revision` as a deck (application or explicit) and composes child card forms.
 - `scenes/lifestream` — renders `index/builds/<revision>/stream/*` selected via `index/current_revision` with date buckets.
@@ -287,4 +287,4 @@ Example wiring (abridged):
 ## Cross-references
 
 - See docs/AI_Paths.md for canonical path conventions and app roots.
-- See docs/Plan_SceneGraph_Renderer.md for scene/surface organization; Carta views should adopt the same atomic publication and snapshot patterns.
+- See docs/finished/Plan_SceneGraph_Renderer_Finished.md for scene/surface organization; Carta views should adopt the same atomic publication and snapshot patterns.

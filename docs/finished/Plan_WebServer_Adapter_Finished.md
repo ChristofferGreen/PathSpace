@@ -154,7 +154,7 @@ Contributors adding features should follow the module guide referenced above.
 - **Renderer Targets** — For each view, define both:
   - `renderers/<rid>/targets/surfaces/<view>` (native framebuffer).
   - `renderers/<rid>/targets/html/<view>` (HTML adapter).
-- **Present Policies** — Native windows use configured policy; HTML always uses `AlwaysLatestComplete`. Document in `docs/Plan_SceneGraph_Renderer.md`.
+- **Present Policies** — Native windows use configured policy; HTML always uses `AlwaysLatestComplete`. Document in `docs/finished/Plan_SceneGraph_Renderer_Finished.md`.
 - **Input/Interaction** — Web clients post events to `ops/` inbox paths via HTTP APIs; native clients use local PathSpace insertions. The adapter now exposes `POST /api/ops/<op>` (JSON `{"app":"<app>","schema":"<id>","payload":{...}}`, ≤ 1 MiB, auth required) which writes directly to `/system/applications/<app>/ops/<op>/inbox/queue` so browser actions feed the same reducers/handlers that native presenters observe. Future `/api/path/<path>` writes still route through the same allowlist/CSRF policy once implemented.
 
 ## Deployment Models
@@ -368,7 +368,7 @@ Use this section as the canonical reference when someone asks “how do we run t
 Backlog tracking: Phases 3–5 are now represented in `docs/AI_TODO.task` as “Web Server Dual Delivery Parity,” “Web Server Hardened Deployment,” and “Web Server Observability & Tooling” so their acceptance criteria stay visible even while the plan focuses on Phase 2 polish.
 
 ## Required Updates Elsewhere
-- `docs/Plan_SceneGraph_Renderer.md` — Reference this plan; document the HTML server’s role.
+- `docs/finished/Plan_SceneGraph_Renderer_Finished.md` — Reference this plan; document the HTML server’s role.
 - `docs/AI_Architecture.md` — Add note under HTML adapter about server delivery.
 - `docs/AI_Debugging_Playbook.md` — Include troubleshooting steps for web server logs/SSE.
 - `docs/AI_Todo.task` — Log implementation steps with priorities.

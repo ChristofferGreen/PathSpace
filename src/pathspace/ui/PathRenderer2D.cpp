@@ -18,6 +18,7 @@
 #include <limits>
 #include <atomic>
 #include <numeric>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -44,10 +45,13 @@
 namespace SP::UI {
 using PathRenderer2DInternal::DamageRect;
 using PathRenderer2DInternal::DamageRegion;
+using PathRenderer2DInternal::DamageComputationOptions;
+using PathRenderer2DInternal::DamageComputationResult;
 using PathRenderer2DInternal::ProgressiveTileCopyContext;
 using PathRenderer2DInternal::ProgressiveTileCopyStats;
 using PathRenderer2DInternal::choose_progressive_tile_size;
 using PathRenderer2DInternal::copy_progressive_tiles;
+using PathRenderer2DInternal::compute_damage;
 using namespace PathRenderer2DDetail;
 
 
@@ -60,11 +64,14 @@ auto PathRenderer2D::target_cache() -> TargetCache& {
 }
 
 auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
-auto const start = std::chrono::steady_clock::now();
+    auto const start = std::chrono::steady_clock::now();
     double damage_ms = 0.0;
     double encode_ms = 0.0;
     double progressive_copy_ms = 0.0;
     double publish_ms = 0.0;
+    double encode_stall_ms_total = 0.0;
+    double encode_stall_ms_max = 0.0;
+    std::size_t encode_stall_workers = 0;
 
     auto app_root = SP::App::derive_app_root(params.target_path);
     if (!app_root) {
@@ -156,50 +163,6 @@ auto const start = std::chrono::steady_clock::now();
 
     auto const pixel_count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
     int const tile_size_px = std::max(1, desc.progressive_tile_size_px);
-    int const tiles_x = (width + tile_size_px - 1) / tile_size_px;
-    int const tiles_y = (height + tile_size_px - 1) / tile_size_px;
-
-    auto tile_rect_from_index = [&](std::uint32_t index) -> DamageRect {
-        int const ty = static_cast<int>(index / static_cast<std::uint32_t>(tiles_x));
-        int const tx = static_cast<int>(index % static_cast<std::uint32_t>(tiles_x));
-        int const min_x = std::clamp(tx * tile_size_px, 0, width);
-        int const min_y = std::clamp(ty * tile_size_px, 0, height);
-        int const max_x = std::clamp(min_x + tile_size_px, 0, width);
-        int const max_y = std::clamp(min_y + tile_size_px, 0, height);
-        return DamageRect{min_x, min_y, max_x, max_y};
-    };
-
-    auto enumerate_tile_indices = [&](DamageRect const& rect,
-                                      auto&& fn) {
-        if (rect.empty()) {
-            return;
-        }
-        int min_x = std::clamp(rect.min_x, 0, width);
-        int min_y = std::clamp(rect.min_y, 0, height);
-        int max_x = std::clamp(rect.max_x, 0, width);
-        int max_y = std::clamp(rect.max_y, 0, height);
-        if (min_x >= max_x || min_y >= max_y) {
-            return;
-        }
-
-        int start_tx = min_x / tile_size_px;
-        int start_ty = min_y / tile_size_px;
-        int end_tx = (std::max(max_x - 1, min_x) / tile_size_px);
-        int end_ty = (std::max(max_y - 1, min_y) / tile_size_px);
-
-        start_tx = std::clamp(start_tx, 0, tiles_x - 1);
-        start_ty = std::clamp(start_ty, 0, tiles_y - 1);
-        end_tx = std::clamp(end_tx, 0, tiles_x - 1);
-        end_ty = std::clamp(end_ty, 0, tiles_y - 1);
-
-        for (int ty = start_ty; ty <= end_ty; ++ty) {
-            for (int tx = start_tx; tx <= end_tx; ++tx) {
-                auto index = static_cast<std::uint32_t>(ty) * static_cast<std::uint32_t>(tiles_x)
-                              + static_cast<std::uint32_t>(tx);
-                fn(index);
-            }
-        }
-    };
 
     bool metal_active = false;
 #if defined(__APPLE__) && PATHSPACE_UI_METAL
@@ -263,10 +226,6 @@ auto const start = std::chrono::steady_clock::now();
     }
 
     std::vector<SP::UI::Runtime::DirtyRectHint> dirty_rect_hints;
-    std::vector<DamageRect> hint_rects;
-    std::vector<std::uint32_t> hint_tile_indices;
-    std::vector<std::uint32_t> damage_tile_indices;
-    std::vector<DamageRect> damage_tile_rects;
     std::vector<SP::UI::Runtime::DirtyRectHint> damage_tile_hints;
     {
         auto hints_path = target_key + "/hints/dirtyRects";
@@ -278,30 +237,6 @@ auto const start = std::chrono::steady_clock::now();
             if (error.code != SP::Error::Code::NoObjectFound
                 && error.code != SP::Error::Code::NoSuchPath) {
                 return std::unexpected(error);
-            }
-        }
-    }
-
-    if (!dirty_rect_hints.empty()) {
-        hint_tile_indices.reserve(dirty_rect_hints.size());
-        for (auto const& hint : dirty_rect_hints) {
-            DamageRect rect{};
-            rect.min_x = static_cast<int>(std::floor(hint.min_x));
-            rect.min_y = static_cast<int>(std::floor(hint.min_y));
-            rect.max_x = static_cast<int>(std::ceil(hint.max_x));
-            rect.max_y = static_cast<int>(std::ceil(hint.max_y));
-            rect.clamp(width, height);
-            enumerate_tile_indices(rect, [&](std::uint32_t index) {
-                hint_tile_indices.push_back(index);
-            });
-        }
-        if (!hint_tile_indices.empty()) {
-            std::sort(hint_tile_indices.begin(), hint_tile_indices.end());
-            hint_tile_indices.erase(std::unique(hint_tile_indices.begin(), hint_tile_indices.end()),
-                                    hint_tile_indices.end());
-            hint_rects.reserve(hint_tile_indices.size());
-            for (auto index : hint_tile_indices) {
-                hint_rects.push_back(tile_rect_from_index(index));
             }
         }
     }
@@ -380,202 +315,42 @@ auto const start = std::chrono::steady_clock::now();
     std::uint64_t progressive_tiles_skipped = 0;
     std::uint64_t target_texture_bytes = 0;
 
-    DamageRegion damage;
-    if (full_repaint) {
-        damage.set_full(width, height);
-        if (collect_damage_metrics) {
-            fingerprint_removed = static_cast<std::uint64_t>(state.drawable_states.size());
-            if (state.drawable_states.empty()) {
-                fingerprint_new = static_cast<std::uint64_t>(current_states.size());
-            } else {
-                fingerprint_changed = static_cast<std::uint64_t>(current_states.size());
-            }
-        }
-    } else {
-        phmap::flat_hash_map<std::uint64_t, std::vector<std::uint64_t>> previous_by_fingerprint;
-        previous_by_fingerprint.reserve(state.drawable_states.size());
-        for (auto const& [prev_id, prev_state] : state.drawable_states) {
-            previous_by_fingerprint[prev_state.fingerprint].push_back(prev_id);
-        }
+    DamageComputationOptions damage_options{
+        .width = width,
+        .height = height,
+        .tile_size_px = tile_size_px,
+        .force_full_repaint = full_repaint,
+        .missing_bounds = missing_bounds,
+        .collect_damage_metrics = collect_damage_metrics,
+    };
 
-        phmap::flat_hash_set<std::uint64_t> consumed_previous_ids;
-        consumed_previous_ids.reserve(state.drawable_states.size());
+    auto damage_result = compute_damage(damage_options, state.drawable_states, current_states, dirty_rect_hints);
+    DamageRegion damage = std::move(damage_result.damage);
+    damage_tile_hints = std::move(damage_result.damage_tiles);
+    full_repaint = damage_result.full_repaint;
 
-        auto add_bounds = [&](PathRenderer2D::DrawableBounds const& bounds) {
-            if (!bounds.empty()) {
-                damage.add(bounds, width, height, 1);
-            }
-        };
-
-        for (auto const& [id, current_state] : current_states) {
-            auto prev_it = state.drawable_states.find(id);
-            if (prev_it != state.drawable_states.end()) {
-                consumed_previous_ids.insert(id);
-
-                auto const& prev_state = prev_it->second;
-                bool fingerprint_changed_now = current_state.fingerprint != prev_state.fingerprint;
-                bool bounds_changed = !bounds_equal(current_state.bounds, prev_state.bounds);
-                if (fingerprint_changed_now || bounds_changed) {
-                    add_bounds(current_state.bounds);
-                    add_bounds(prev_state.bounds);
-                    if (collect_damage_metrics) {
-                        ++fingerprint_changed;
-                    }
-                } else {
-                    if (collect_damage_metrics) {
-                        ++fingerprint_matches_exact;
-                    }
-                }
-                continue;
-            }
-
-            PathRenderer2D::DrawableState const* matched_prev = nullptr;
-            if (current_state.fingerprint != 0) {
-                auto map_it = previous_by_fingerprint.find(current_state.fingerprint);
-                if (map_it != previous_by_fingerprint.end()) {
-                    auto& candidates = map_it->second;
-                    std::optional<std::size_t> best_index;
-                    for (std::size_t idx = 0; idx < candidates.size(); ++idx) {
-                        auto candidate_id = candidates[idx];
-                        if (consumed_previous_ids.contains(candidate_id)) {
-                            continue;
-                        }
-                        if (current_states.find(candidate_id) != current_states.end()) {
-                            continue;
-                        }
-                        auto prev_found = state.drawable_states.find(candidate_id);
-                        if (prev_found == state.drawable_states.end()) {
-                            continue;
-                        }
-                        if (!matched_prev) {
-                            matched_prev = &prev_found->second;
-                            best_index = idx;
-                        }
-                        if (bounds_equal(current_state.bounds, prev_found->second.bounds)) {
-                            matched_prev = &prev_found->second;
-                            best_index = idx;
-                            break;
-                        }
-                    }
-                    if (best_index.has_value() && matched_prev) {
-                        consumed_previous_ids.insert(candidates[*best_index]);
-                        candidates.erase(candidates.begin() + static_cast<std::ptrdiff_t>(*best_index));
-                    } else {
-                        matched_prev = nullptr;
-                    }
-                }
-            }
-
-            if (matched_prev) {
-                bool fingerprint_changed_now = current_state.fingerprint != matched_prev->fingerprint;
-                bool bounds_changed = !bounds_equal(current_state.bounds, matched_prev->bounds);
-                if (fingerprint_changed_now || bounds_changed) {
-                    add_bounds(current_state.bounds);
-                    add_bounds(matched_prev->bounds);
-                    if (collect_damage_metrics) {
-                        ++fingerprint_changed;
-                    }
-                } else {
-                    if (collect_damage_metrics) {
-                        ++fingerprint_matches_remap;
-                    }
-                }
-            } else {
-                add_bounds(current_state.bounds);
-                if (collect_damage_metrics) {
-                    ++fingerprint_new;
-                }
-            }
-        }
-
-        for (auto const& [prev_id, prev_state] : state.drawable_states) {
-            if (!consumed_previous_ids.contains(prev_id)) {
-                add_bounds(prev_state.bounds);
-                if (collect_damage_metrics) {
-                    ++fingerprint_removed;
-                }
-            }
-        }
+    if (collect_damage_metrics) {
+        fingerprint_matches_exact = damage_result.statistics.fingerprint_matches_exact;
+        fingerprint_matches_remap = damage_result.statistics.fingerprint_matches_remap;
+        fingerprint_changed = damage_result.statistics.fingerprint_changed;
+        fingerprint_new = damage_result.statistics.fingerprint_new;
+        fingerprint_removed = damage_result.statistics.fingerprint_removed;
+        damage_rect_count = damage_result.statistics.damage_rect_count;
+        damage_coverage_ratio = damage_result.statistics.damage_coverage_ratio;
     }
-    if (!hint_rects.empty()) {
+
+    if (!damage_result.hint_rectangles.empty()) {
         if (auto* trace = std::getenv("PATHSPACE_TRACE_DAMAGE")) {
             (void)trace;
-            std::cout << "hint rectangles (" << hint_rects.size() << ")" << std::endl;
-            for (auto const& rect : hint_rects) {
+            std::cout << "hint rectangles (" << damage_result.hint_rectangles.size() << ")"
+                      << std::endl;
+            for (auto const& rect : damage_result.hint_rectangles) {
                 std::cout << "  hint=" << rect.min_x << ',' << rect.min_y
                           << " -> " << rect.max_x << ',' << rect.max_y << std::endl;
             }
         }
     }
 
-    damage.finalize(width, height);
-    if (!hint_rects.empty()) {
-        if (damage.empty()) {
-            damage.replace_with_rects(hint_rects, width, height);
-        } else {
-            damage.restrict_to(hint_rects);
-        }
-    }
-    auto update_damage_tiles = [&]() {
-        damage_tile_indices.clear();
-        damage_tile_rects.clear();
-        damage_tile_hints.clear();
-        if (damage.empty()) {
-            return;
-        }
-
-        if (tile_size_px > 1) {
-            for (auto const& rect : damage.rectangles()) {
-                enumerate_tile_indices(rect, [&](std::uint32_t index) {
-                    damage_tile_indices.push_back(index);
-                });
-            }
-        }
-
-        if (!damage_tile_indices.empty()) {
-            std::sort(damage_tile_indices.begin(), damage_tile_indices.end());
-            damage_tile_indices.erase(std::unique(damage_tile_indices.begin(), damage_tile_indices.end()),
-                                      damage_tile_indices.end());
-            damage_tile_rects.reserve(damage_tile_indices.size());
-            damage_tile_hints.reserve(damage_tile_indices.size());
-            for (auto index : damage_tile_indices) {
-                auto rect = tile_rect_from_index(index);
-                if (rect.empty()) {
-                    continue;
-                }
-                damage_tile_rects.push_back(rect);
-                SP::UI::Runtime::DirtyRectHint hint{};
-                hint.min_x = static_cast<float>(rect.min_x);
-                hint.min_y = static_cast<float>(rect.min_y);
-                hint.max_x = static_cast<float>(rect.max_x);
-                hint.max_y = static_cast<float>(rect.max_y);
-                damage_tile_hints.push_back(hint);
-            }
-            if (!damage_tile_rects.empty()) {
-                damage.replace_with_rects(damage_tile_rects, width, height);
-                return;
-            }
-            damage_tile_hints.clear();
-        }
-
-        // Fallback for 1px tiles or when no indices were generated.
-        auto rects = damage.rectangles();
-        damage_tile_hints.reserve(rects.size());
-        for (auto const& rect : rects) {
-            SP::UI::Runtime::DirtyRectHint hint{};
-            hint.min_x = static_cast<float>(rect.min_x);
-            hint.min_y = static_cast<float>(rect.min_y);
-            hint.max_x = static_cast<float>(rect.max_x);
-            hint.max_y = static_cast<float>(rect.max_y);
-            damage_tile_hints.push_back(hint);
-        }
-    };
-
-    update_damage_tiles();
-    if (collect_damage_metrics) {
-        damage_rect_count = static_cast<std::uint64_t>(damage.rectangles().size());
-        damage_coverage_ratio = damage.coverage_ratio(width, height);
-    }
     bool const has_damage = !damage.empty();
     auto const damage_phase_end = std::chrono::steady_clock::now();
     damage_ms = std::chrono::duration<double, std::milli>(damage_phase_end - damage_phase_start).count();
@@ -1268,7 +1043,7 @@ auto const start = std::chrono::steady_clock::now();
     }
 
 auto const encode_srgb = needs_srgb_encode(desc);
-EncodeRunStats encode_stats{};
+    EncodeRunStats encode_stats{};
     if (!metal_active && has_damage) {
         auto const encode_start = std::chrono::steady_clock::now();
         auto encode_jobs = build_encode_jobs(
@@ -1301,6 +1076,9 @@ EncodeRunStats encode_stats{};
         }
         encode_jobs_used = encode_stats.jobs;
         encode_workers_used = encode_stats.workers_used;
+        encode_stall_ms_total = encode_stats.stall_ms_total;
+        encode_stall_ms_max = encode_stats.stall_ms_max;
+        encode_stall_workers = encode_stats.stall_workers;
 
         auto const encode_end = std::chrono::steady_clock::now();
         encode_ms = std::chrono::duration<double, std::milli>(encode_end - encode_start).count();
@@ -1308,6 +1086,9 @@ EncodeRunStats encode_stats{};
     if (!has_damage) {
         encode_jobs_used = encode_stats.jobs;
         encode_workers_used = encode_stats.workers_used;
+        encode_stall_ms_total = encode_stats.stall_ms_total;
+        encode_stall_ms_max = encode_stats.stall_ms_max;
+        encode_stall_workers = encode_stats.stall_workers;
     }
 
     if (!metal_active && has_progressive && has_damage) {
@@ -1599,6 +1380,9 @@ EncodeRunStats encode_stats{};
     stats.progressive_jobs = static_cast<std::uint64_t>(progressive_jobs);
     stats.encode_workers_used = static_cast<std::uint64_t>(encode_workers_used);
     stats.encode_jobs = static_cast<std::uint64_t>(encode_jobs_used);
+    stats.encode_worker_stall_ms_total = encode_stall_ms_total;
+    stats.encode_worker_stall_ms_max = encode_stall_ms_max;
+    stats.encode_worker_stall_workers = static_cast<std::uint64_t>(encode_stall_workers);
     if (collect_damage_metrics) {
         stats.progressive_tiles_dirty = progressive_tiles_dirty;
         stats.progressive_tiles_total = progressive_tiles_total;

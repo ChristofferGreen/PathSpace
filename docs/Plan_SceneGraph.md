@@ -4,7 +4,7 @@
 > Focus update (November 10, 2025): HarfBuzz shaping now flows through `TextBuilder` and the widget pipeline, glyph buckets persist atlas fingerprints, and `PathRenderer2D` renders shaped text when the pipeline flag is enabled. The shaped path currently lands behind the existing environment/debug toggles while the default remains `GlyphQuads` to keep interactive workloads responsive (Software2D pixel noise baseline now ~28 FPS / 35 ms present-call). Budgets and perf baselines have been updated under `docs/perf/*.json` to reflect the higher text cost while Phase 4 optimization tasks are queued.
 
 ## Context and Objectives
-- Groundwork for implementing the renderer stack described in `docs/Plan_SceneGraph_Renderer.md` and the broader architecture contract in `docs/AI_Architecture.md`.
+- Groundwork for implementing the renderer stack described in `docs/finished/Plan_SceneGraph_Renderer_Finished.md` and the broader architecture contract in `docs/AI_Architecture.md`.
 - Deliver an incremental path from today's codebase to the MVP (software renderer, CAMetalLayer-based presenters, surfaces, snapshot builder), while keeping room for GPU rendering backends (Metal/Vulkan) and HTML adapters outlined in the master plan.
 - Maintain app-root atomic semantics, immutable snapshot guarantees, and observability expectations throughout the rollout.
 
@@ -43,12 +43,12 @@
 ### Detailed Plan — Font & Resource Manager Integration
 
 **Goal**  
-Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Renderer.md` so TypographyStyle consumers (widgets, labels, HTML adapter) resolve fonts through PathSpace resources instead of hard-coded bitmap glyphs. The widget gallery should render with fonts supplied by the new manager, and renderers must receive resource fingerprints for atlas reuse.
+Ship the resource-backed font pipeline described in `docs/finished/Plan_SceneGraph_Renderer_Finished.md` so TypographyStyle consumers (widgets, labels, HTML adapter) resolve fonts through PathSpace resources instead of hard-coded bitmap glyphs. The widget gallery should render with fonts supplied by the new manager, and renderers must receive resource fingerprints for atlas reuse.
 
 **Prerequisites**
 - Confirm HarfBuzz/ICU build availability on macOS CI; add third-party pulls or stubs if licensing review blocks immediate integration.
 - Capture the current ASCII glyph builder footprint (TextBuilder) to preserve fallback behaviour during rollout.
-- Align schema with `Plan_SceneGraph_Renderer.md` §"Plan: Resource system (images, fonts, shaders)" and §"Decision: Text shaping, bidi, and font fallback".
+- Align schema with `Plan_SceneGraph_Renderer_Finished.md` §"Plan: Resource system (images, fonts, shaders)" and §"Decision: Text shaping, bidi, and font fallback".
 
 **Status Update (October 29, 2025)**  
 - Landed `App::resolve_resource` and font resource helpers/tests to codify `resources/fonts/<family>/<style>/` layout.  
@@ -61,7 +61,7 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 **Phase 0 – Schema & Storage (1–2 days)**
 - Define app-root resource layout under `resources/fonts/<family>/<style>/` with `meta/{family,style,weight,fallbacks,active_revision}`, `builds/<revision>/atlas.bin`, and optional per-revision metadata.
 - Extend typed helpers: `App::ResolveResourcePath`, `UI::Builders::Fonts::{FontResourcePath, RegisterFont}`.
-- Document schema in `docs/AI_PATHS.md` and update `docs/Plan_SceneGraph_Renderer.md` cross-links.
+- Document schema in `docs/AI_PATHS.md` and update `docs/finished/Plan_SceneGraph_Renderer_Finished.md` cross-links.
 
 **Phase 1 – Font Manager Foundations (2–3 days)**
 - ✅ (October 29, 2025) Landed the `SP::UI::FontManager` singleton with descriptor fingerprinting, fallback shaping, an LRU shaped-run cache, and diagnostics metrics under `diagnostics/metrics/fonts/*`. Current cache eviction is capacity-based; wire atlas-aware budgets once atlas persistence ships. HarfBuzz/ICU shaping remains stubbed out pending dependency review.
@@ -90,7 +90,7 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 **Phase 5 – Rollout & Hardening (ongoing)**
 - Run perf guardrail + renderer loop to establish baseline deltas (expect initial regression due to shaping; track metrics).
 - Provide rollback flag (`PATHSPACE_UI_FONT_MANAGER_ENABLED`) allowing fallback to bitmap glyphs until confidence is high.
-- Update docs (`AI_Debugging_Playbook.md`, `Widget_Contribution_Quickstart.md`, `Plan_SceneGraph_Renderer.md`) with new troubleshooting steps.
+- Update docs (`AI_Debugging_Playbook.md`, `Widget_Contribution_Quickstart.md`, `Plan_SceneGraph_Renderer_Finished.md`) with new troubleshooting steps.
 
 **Testing & Validation**
 - Augment CTest suite with shaping-specific doctests (Latin kern pairs, Arabic joining, Devanagari reordering).
@@ -119,13 +119,13 @@ Ship the resource-backed font pipeline described in `docs/Plan_SceneGraph_Render
 
 ## Documentation and Rollout Checklist
 - Update `README.md` build instructions once UI flags ship.
-- Keep `docs/Plan_SceneGraph_Renderer.md` cross-references aligned; link to this implementation plan from that doc and vice versa.
+- Keep `docs/finished/Plan_SceneGraph_Renderer_Finished.md` cross-references aligned; link to this implementation plan from that doc and vice versa.
 - Add developer onboarding snippets (how to run tests, inspect outputs) to `docs/`.
 - Track milestone completion in `AI_Todo.task` or the equivalent planning artifact.
 
 ## References
 - Completed implementation details: `docs/finished/Plan_SceneGraph_Implementation_Finished.md`.
-- Specification: `docs/Plan_SceneGraph_Renderer.md`.
+- Specification: `docs/finished/Plan_SceneGraph_Renderer_Finished.md`.
 - Core architecture overview: `docs/AI_Architecture.md`.
 
 ## Maintenance Considerations

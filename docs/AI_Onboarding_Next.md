@@ -65,7 +65,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 | `docs/AI_Architecture.md` | Core PathSpace architecture (paths, trie, concurrency). Archived but cross-referenced. |
 | `docs/AI_Paths.md` | Canonical path layout and namespace conventions. |
 | `docs/Widget_Schema_Reference.md` | Declarative widget namespace + per-widget node tables. |
-| `docs/Plan_SceneGraph_Renderer.md` | Renderer and presenter plan, including snapshot semantics. |
+| `docs/finished/Plan_SceneGraph_Renderer_Finished.md` | Renderer and presenter plan, including snapshot semantics. |
 | `docs/Plan_SceneGraph.md` | Phase tracker with latest renderer/diagnostics updates. |
 | `docs/AI_Debugging_Playbook.md` | Loop test expectations, log locations, and diagnostics tooling. |
 | `docs/AI_Todo.task` | Structured backlog (P1/P2) with acceptance criteria. |

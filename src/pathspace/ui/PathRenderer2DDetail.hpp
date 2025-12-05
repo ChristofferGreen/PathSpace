@@ -120,6 +120,9 @@ struct EncodeContext {
 struct EncodeRunStats {
     std::size_t workers_used = 0;
     std::size_t jobs = 0;
+    double stall_ms_total = 0.0;
+    double stall_ms_max = 0.0;
+    std::size_t stall_workers = 0;
 };
 
 auto ensure_linear_buffer_capacity(std::vector<float>& buffer,
