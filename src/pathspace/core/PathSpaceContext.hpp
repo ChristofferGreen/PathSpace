@@ -82,6 +82,21 @@ public:
     void notify(std::string_view path) {
         ensureWait_();
         wait_->notify(path);
+        std::shared_ptr<NotificationSink> sinkCopy;
+        {
+            std::lock_guard<std::mutex> lg(mutex_);
+            if (!sink_ || notifyingSink_) {
+                return;
+            }
+            notifyingSink_ = true;
+            sinkCopy       = sink_;
+        }
+        std::string pathCopy(path);
+        sinkCopy->notify(pathCopy);
+        {
+            std::lock_guard<std::mutex> lg(mutex_);
+            notifyingSink_ = false;
+        }
     }
 
     // Notify all waiters (used during shutdown and broad updates).
@@ -127,6 +142,7 @@ private:
     // Shared notification sink for lifetime-safe delivery.
     mutable std::mutex                 mutex_;
     std::shared_ptr<NotificationSink>  sink_;
+    bool                               notifyingSink_ = false;
 
     // Preferred executor for task scheduling.
     Executor*                          executor_ = nullptr;

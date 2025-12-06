@@ -6,6 +6,7 @@ namespace SP::UI::Declarative {
 
 namespace WidgetDetail = SP::UI::Declarative::Detail;
 using SP::UI::Runtime::WidgetPath;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
 
 namespace InputField {
 
@@ -16,13 +17,15 @@ auto Fragment(Args args) -> WidgetFragment {
                                    [args = std::move(args)](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
                                            if (auto status = WidgetDetail::write_value(ctx.space,
-                                                                                ctx.root + "/state/text",
+                                                                                WidgetSpacePath(ctx.root,
+                                                                                                "/state/text"),
                                                                                 args.text);
                                                !status) {
                                                return status;
                                            }
                                            if (auto status = WidgetDetail::write_value(ctx.space,
-                                                                                ctx.root + "/state/placeholder",
+                                                                                WidgetSpacePath(ctx.root,
+                                                                                                "/state/placeholder"),
                                                                                 args.placeholder);
                                                !status) {
                                                return status;
@@ -62,7 +65,7 @@ auto SetText(PathSpace& space,
              WidgetPath const& widget,
              std::string_view text) -> SP::Expected<void> {
     if (auto status = WidgetDetail::write_value(space,
-                                          widget.getPath() + "/state/text",
+                                          WidgetSpacePath(widget.getPath(), "/state/text"),
                                           std::string(text));
         !status) {
         return status;

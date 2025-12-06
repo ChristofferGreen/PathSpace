@@ -28,6 +28,7 @@ else()
 endif()
 
 find_package(OpenSSL REQUIRED)
+find_package(Threads REQUIRED)
 
 # Additional GCC settings for macOS
 if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -171,6 +172,9 @@ if(BUILD_PATHSPACE_EXAMPLES)
             "-framework IOSurface")
         target_compile_definitions(devices_example PRIVATE PATHIO_BACKEND_MACOS=1)
     endif()
+
+    add_executable(remote_mount_manual examples/remote_mount_manual.cpp)
+    target_link_libraries(remote_mount_manual PRIVATE PathSpace)
 
     add_library(paint_example_lib STATIC
         examples/paint_example.cpp)

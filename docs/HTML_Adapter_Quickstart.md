@@ -69,4 +69,15 @@
 - `docs/AI_Debugging_Playbook.md` §5 — Command reference for running the harnesses alongside the standard test loop.
 - `docs/finished/Plan_SceneGraph_Renderer_Finished.md` — Source of truth for adapter options (`prefer_dom`, `max_dom_nodes`, `allow_canvas_fallback`) and HSAT framing details.
 
+## 6. Distributed Mount Workflow (Remote HTML Surfaces)
+Use the distributed PathSpace client/server stack when the HTML adapter needs to mirror a PathSpace instance that runs on another machine.
+
+1. **Export the remote subtree:** Start the remote PathSpace with `RemoteMountServer` enabled (see `docs/finished/Plan_Distributed_PathSpace_Finished.md`). Configure the export alias/root (`RemoteMountExportOptions`) so it mirrors the renderer/scene tree you plan to serve, e.g., `/users/<user>/system/applications/widgets`. The server now emits `/inspector/metrics/remotes/<alias>/server/*` (sessions, waiters, lease expiry) and logs auth/mount events to `/diagnostics/web/inspector/acl/<alias>/events/*`, so you get the same telemetry the local inspector consumes.
+2. **Mount it locally:** On the HTML server host, run the distributed client (or the upcoming `pathspace mount` CLI) to create an alias such as `/remote/widgets-prod`. Provide the TLS credentials or OAuth token described in the plan so the handshake succeeds; the mount manager will stream wait/notify events for the exported subtree.
+3. **Verify the namespace:** Before running any harness, ensure `read /remote/widgets-prod/renderers/<rid>/targets/html/<view>/output/v1/html/dom` returns data and that `diagnostics/session` shows the alias as `Connected`. Fail fast if the alias is missing or in `Retrying` state.
+4. **Run the standard HTML adapter tests:** `ctest -R HtmlCanvasVerify` and `HtmlAssetInspect` work unchanged because they operate on the mounted namespace. Set `PATHSPACE_REMOTE_MOUNT_ALIAS=/remote/widgets-prod` (environment variable consumed by the upcoming helper) so scripts know which subtree to inspect.
+5. **Monitor mount health:** If the remote link drops, Publish loops will wake with `RemoteMountUnavailable`. Capture the error plus the `/inspector/metrics/remotes/<alias>/client/*` counters from `RemoteMountManager` (latency, `client/connected`, `waiters/current`) and include them in bug reports; most HTML failures in this mode are transport-related, not adapter regressions. The server-side metrics/diagnostics noted in step 1 make it easy to compare active sessions, waiter depth, and auth failures with whatever the client reports.
+
+Document any additional alias or credential requirements in `docs/finished/Plan_Distributed_PathSpace_Finished.md` so future updates keep the HTML adapter troubleshooting guide in sync with the distributed mount transport.
+
 Keep this document lightweight but current—future render/adapter changes should land here first so incoming maintainers can validate HTML fidelity without spelunking.

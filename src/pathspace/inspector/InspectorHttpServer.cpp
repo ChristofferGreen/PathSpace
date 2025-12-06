@@ -13,6 +13,7 @@
 #include <cctype>
 #include <charconv>
 #include <chrono>
+#include <cstdint>
 #include <deque>
 #include <limits>
 #include <optional>
@@ -252,6 +253,157 @@ struct WatchlistContext {
 };
 
 constexpr std::size_t kMaxWatchlistIdLength = 64;
+
+[[nodiscard]] auto build_watchlist_path(std::string const& root, std::string const& id) -> std::string;
+auto persist_watchlist(PathSpace& space,
+                       std::string const& path,
+                       WatchlistRecord const& record) -> Expected<void>;
+constexpr std::uint32_t kWatchlistSpaceVersion = 1;
+
+[[nodiscard]] auto watchlist_space_node(std::string path) -> std::string {
+    path.append("/space");
+    return path;
+}
+
+[[nodiscard]] auto build_watchlist_space_path(std::string const& root, std::string const& id) -> std::string {
+    return watchlist_space_node(build_watchlist_path(root, id));
+}
+
+[[nodiscard]] auto parse_watchlist_record(std::string const& payload, std::string const& id)
+    -> std::optional<WatchlistRecord> {
+    nlohmann::json json;
+    try {
+        json = nlohmann::json::parse(payload);
+    } catch (...) {
+        return std::nullopt;
+    }
+    if (!json.is_object()) {
+        return std::nullopt;
+    }
+
+    WatchlistRecord record;
+    record.id = json.value("id", id);
+    if (record.id.empty()) {
+        record.id = id;
+    }
+    record.name       = json.value("name", record.id);
+    record.created_ms = read_uint64(json, "created_ms");
+    record.updated_ms = read_uint64(json, "updated_ms");
+
+    if (auto paths_it = json.find("paths"); paths_it != json.end() && paths_it->is_array()) {
+        for (auto const& entry : *paths_it) {
+            if (entry.is_string()) {
+                record.paths.push_back(entry.get<std::string>());
+            }
+        }
+    }
+
+    return record;
+}
+
+[[nodiscard]] auto read_watchlist_legacy(PathSpace& space,
+                                         std::string const& path,
+                                         std::string const& id) -> std::optional<WatchlistRecord> {
+    auto payload = space.read<std::string, std::string>(path);
+    if (!payload) {
+        return std::nullopt;
+    }
+    return parse_watchlist_record(*payload, id);
+}
+
+[[nodiscard]] auto read_watchlist_from_nested(PathSpace& space,
+                                              std::string const& root,
+                                              std::string const& id) -> std::optional<WatchlistRecord> {
+    auto space_root = build_watchlist_space_path(root, id);
+
+    auto name    = space.read<std::string, std::string>(space_root + "/meta/name");
+    auto created = space.read<std::uint64_t, std::string>(space_root + "/meta/created_ms");
+    auto updated = space.read<std::uint64_t, std::string>(space_root + "/meta/updated_ms");
+    auto paths   = space.read<std::vector<std::string>, std::string>(space_root + "/paths");
+
+    if (!name || !created || !updated || !paths) {
+        return std::nullopt;
+    }
+
+    WatchlistRecord record;
+    if (auto stored_id = space.read<std::string, std::string>(space_root + "/meta/id"); stored_id && !stored_id->empty()) {
+        record.id = *stored_id;
+    } else {
+        record.id = id;
+    }
+    record.name       = *name;
+    record.paths      = *paths;
+    record.created_ms = *created;
+    record.updated_ms = *updated;
+    return record;
+}
+
+auto clear_legacy_watchlist_payload(PathSpace& space, std::string const& path) -> void {
+    while (true) {
+        auto removed = space.take<std::string>(path);
+        if (!removed) {
+            if (removed.error().code == Error::Code::NoSuchPath) {
+                break;
+            }
+            break;
+        }
+    }
+}
+
+auto migrate_watchlists(PathSpace& space, std::string const& root) -> void {
+    auto children = space.listChildren(SP::ConcretePathStringView{root});
+    for (auto const& child : children) {
+        if (child.empty() || child.front() == '.') {
+            continue;
+        }
+        auto space_path = build_watchlist_space_path(root, child);
+        auto version    = space.read<std::uint32_t, std::string>(space_path + "/meta/version");
+        if (version && version.value() == kWatchlistSpaceVersion) {
+            continue;
+        }
+        if (version && version.error().code != Error::Code::NoSuchPath) {
+            continue;
+        }
+        auto legacy_path = build_watchlist_path(root, child);
+        auto legacy      = read_watchlist_legacy(space, legacy_path, child);
+        if (!legacy) {
+            continue;
+        }
+        if (auto persisted = persist_watchlist(space, legacy_path, *legacy); !persisted) {
+            continue;
+        }
+        clear_legacy_watchlist_payload(space, legacy_path);
+    }
+}
+
+auto move_legacy_watchlist(PathSpace& space,
+                           std::string const& source_base,
+                           std::string const& destination_base,
+                           std::string const& id) -> Expected<bool> {
+    auto taken = space.take<std::string>(source_base);
+    if (!taken) {
+        if (taken.error().code == Error::Code::NoSuchPath) {
+            return false;
+        }
+        return std::unexpected(taken.error());
+    }
+
+    std::string payload = std::move(*taken);
+    if (auto parsed = parse_watchlist_record(payload, id)) {
+        parsed->id = id;
+        if (auto persisted = persist_watchlist(space, destination_base, *parsed); !persisted) {
+            return std::unexpected(persisted.error());
+        }
+    } else {
+        auto inserted = space.insert(destination_base, payload);
+        if (!inserted.errors.empty()) {
+            return std::unexpected(inserted.errors.front());
+        }
+    }
+
+    clear_legacy_watchlist_payload(space, source_base);
+    return true;
+}
 
 [[nodiscard]] auto now_ms() -> std::uint64_t {
     return to_millis_since_epoch(std::chrono::system_clock::now());
@@ -588,43 +740,24 @@ auto record_write_audit_event(PathSpace& space,
     return nullptr;
 }
 
-[[nodiscard]] auto read_watchlist(PathSpace& space, std::string const& path, std::string const& id)
+[[nodiscard]] auto read_watchlist(PathSpace& space, std::string const& root, std::string const& id)
     -> std::optional<WatchlistRecord> {
-    auto value = space.read<std::string, std::string>(path);
-    if (!value) {
-        return std::nullopt;
+    if (auto nested = read_watchlist_from_nested(space, root, id)) {
+        return nested;
     }
-    auto json = nlohmann::json::parse(*value, nullptr, false);
-    if (json.is_discarded() || !json.is_object()) {
-        return std::nullopt;
-    }
-
-    WatchlistRecord record;
-    record.id   = id;
-    record.name = json.value("name", id);
-    record.created_ms = read_uint64(json, "created_ms");
-    record.updated_ms = read_uint64(json, "updated_ms");
-
-    if (auto paths_it = json.find("paths"); paths_it != json.end() && paths_it->is_array()) {
-        for (auto const& entry : *paths_it) {
-            if (entry.is_string()) {
-                record.paths.push_back(entry.get<std::string>());
-            }
-        }
-    }
-
-    return record;
+    auto path = build_watchlist_path(root, id);
+    return read_watchlist_legacy(space, path, id);
 }
 
 [[nodiscard]] auto list_watchlists(PathSpace& space, std::string const& root) -> std::vector<WatchlistRecord> {
+    migrate_watchlists(space, root);
     std::vector<WatchlistRecord> records;
     auto children = space.listChildren(SP::ConcretePathStringView{root});
     for (auto const& child : children) {
         if (child.empty() || child.front() == '.') {
             continue;
         }
-        auto path   = build_watchlist_path(root, child);
-        auto record = read_watchlist(space, path, child);
+        auto record = read_watchlist(space, root, child);
         if (record) {
             records.push_back(std::move(*record));
         }
@@ -641,14 +774,39 @@ auto record_write_audit_event(PathSpace& space,
 
 auto persist_watchlist(PathSpace& space, std::string const& path, WatchlistRecord const& record)
     -> Expected<void> {
-    nlohmann::json payload{{"id", record.id},
-                           {"name", record.name},
-                           {"paths", record.paths},
-                           {"count", record.paths.size()},
-                           {"created_ms", record.created_ms},
-                           {"updated_ms", record.updated_ms},
-                           {"version", 1}};
-    auto inserted = space.insert(path, payload.dump());
+    auto nested = std::make_unique<PathSpace>();
+    auto insert_value = [&](std::string const& target, auto&& value) -> Expected<void> {
+        auto inserted = nested->insert(target, std::forward<decltype(value)>(value));
+        if (!inserted.errors.empty()) {
+            return std::unexpected(inserted.errors.front());
+        }
+        return {};
+    };
+
+    if (auto result = insert_value("/meta/id", record.id); !result) {
+        return result;
+    }
+    if (auto result = insert_value("/meta/name", record.name); !result) {
+        return result;
+    }
+    if (auto result = insert_value("/meta/created_ms", record.created_ms); !result) {
+        return result;
+    }
+    if (auto result = insert_value("/meta/updated_ms", record.updated_ms); !result) {
+        return result;
+    }
+    if (auto result = insert_value("/meta/count", static_cast<std::uint64_t>(record.paths.size())); !result) {
+        return result;
+    }
+    if (auto result = insert_value("/meta/version", kWatchlistSpaceVersion); !result) {
+        return result;
+    }
+    if (auto result = insert_value("/paths", record.paths); !result) {
+        return result;
+    }
+
+    auto target = watchlist_space_node(path);
+    auto inserted = space.insert(target, std::move(nested));
     if (!inserted.errors.empty()) {
         return std::unexpected(inserted.errors.front());
     }
@@ -659,20 +817,34 @@ auto remove_watchlist(PathSpace& space,
                       std::string const& root,
                       std::string const& trash_root,
                       std::string const& id) -> Expected<bool> {
-    auto source = build_watchlist_path(root, id);
+    auto source_space = build_watchlist_space_path(root, id);
+    auto source_base  = build_watchlist_path(root, id);
+
     auto dest_leaf = id;
     dest_leaf.push_back('-');
     dest_leaf.append(std::to_string(now_ms()));
-    auto destination = build_watchlist_path(trash_root, dest_leaf);
+    auto destination_base  = build_watchlist_path(trash_root, dest_leaf);
+    auto destination_space = build_watchlist_space_path(trash_root, dest_leaf);
 
-    auto relocated = space.relocateSubtree(source, destination);
-    if (!relocated) {
-        if (relocated.error().code == Error::Code::NoSuchPath) {
-            return false;
+    auto taken = space.take<std::unique_ptr<PathSpace>>(source_space);
+    if (taken) {
+        auto owned   = std::move(*taken);
+        auto inserted = space.insert(destination_space, std::move(owned));
+        if (!inserted.errors.empty()) {
+            return std::unexpected(inserted.errors.front());
         }
-        return std::unexpected(relocated.error());
+        clear_legacy_watchlist_payload(space, source_base);
+        return true;
     }
-    return true;
+    if (taken.error().code != Error::Code::NoSuchPath) {
+        return std::unexpected(taken.error());
+    }
+
+    auto legacy = move_legacy_watchlist(space, source_base, destination_base, id);
+    if (!legacy) {
+        return std::unexpected(legacy.error());
+    }
+    return legacy.value();
 }
 
 [[nodiscard]] auto make_watchlist_json(WatchlistRecord const& record) -> nlohmann::json {
@@ -820,16 +992,160 @@ struct SnapshotContext {
     return join_path(root, id);
 }
 
+[[nodiscard]] auto snapshot_space_root(std::string const& root, std::string const& id) -> std::string {
+    return join_path(snapshot_node_root(root, id), "space");
+}
+
 [[nodiscard]] auto snapshot_meta_path(std::string const& root, std::string const& id) -> std::string {
-    return join_path(snapshot_node_root(root, id), "meta");
+    return join_path(snapshot_space_root(root, id), "meta");
 }
 
 [[nodiscard]] auto snapshot_payload_path(std::string const& root, std::string const& id) -> std::string {
-    return join_path(snapshot_node_root(root, id), "inspector");
+    return join_path(snapshot_space_root(root, id), "inspector");
 }
 
 [[nodiscard]] auto snapshot_export_path(std::string const& root, std::string const& id) -> std::string {
+    return join_path(snapshot_space_root(root, id), "export");
+}
+
+[[nodiscard]] auto legacy_snapshot_meta_path(std::string const& root, std::string const& id) -> std::string {
+    return join_path(snapshot_node_root(root, id), "meta");
+}
+
+[[nodiscard]] auto legacy_snapshot_payload_path(std::string const& root, std::string const& id) -> std::string {
+    return join_path(snapshot_node_root(root, id), "inspector");
+}
+
+[[nodiscard]] auto legacy_snapshot_export_path(std::string const& root, std::string const& id) -> std::string {
     return join_path(snapshot_node_root(root, id), "export");
+}
+
+auto clear_legacy_snapshot_payload(PathSpace& space, std::string const& root, std::string const& id) -> void {
+    auto base = snapshot_node_root(root, id);
+    auto remove_value = [&](std::string const& suffix) {
+        auto target = join_path(base, suffix);
+        while (true) {
+            auto removed = space.take<std::string>(target);
+            if (!removed) {
+                if (removed.error().code == Error::Code::NoSuchPath) {
+                    break;
+                }
+                break;
+            }
+        }
+    };
+
+    remove_value("meta");
+    remove_value("inspector");
+    remove_value("export");
+}
+
+auto persist_snapshot_storage(PathSpace& space,
+                              std::string const& root,
+                              std::string const& id,
+                              std::string meta_payload,
+                              std::string inspector_payload,
+                              std::string export_payload) -> Expected<void> {
+    auto nested = std::make_unique<PathSpace>();
+    auto insert_value = [&](std::string const& target, std::string value) -> Expected<void> {
+        auto inserted = nested->insert(target, std::move(value));
+        if (!inserted.errors.empty()) {
+            return std::unexpected(inserted.errors.front());
+        }
+        return {};
+    };
+
+    if (auto result = insert_value("/meta", std::move(meta_payload)); !result) {
+        return result;
+    }
+    if (auto result = insert_value("/inspector", std::move(inspector_payload)); !result) {
+        return result;
+    }
+    if (auto result = insert_value("/export", std::move(export_payload)); !result) {
+        return result;
+    }
+
+    auto target  = snapshot_space_root(root, id);
+    auto inserted = space.insert(target, std::move(nested));
+    if (!inserted.errors.empty()) {
+        return std::unexpected(inserted.errors.front());
+    }
+    return {};
+}
+
+auto persist_snapshot_space(PathSpace& space,
+                            std::string const& root,
+                            SnapshotRecord const& record,
+                            std::string meta_payload) -> Expected<void> {
+    return persist_snapshot_storage(space,
+                                    root,
+                                    record.id,
+                                    std::move(meta_payload),
+                                    record.inspector_payload,
+                                    record.export_payload);
+}
+
+auto ensure_snapshot_nested(PathSpace& space,
+                            std::string const& root,
+                            std::string const& id) -> Expected<bool> {
+    auto nested_meta = space.read<std::string, std::string>(snapshot_meta_path(root, id));
+    if (nested_meta) {
+        return true;
+    }
+    if (nested_meta.error().code != Error::Code::NoSuchPath) {
+        return std::unexpected(nested_meta.error());
+    }
+
+    auto legacy_meta = space.read<std::string, std::string>(legacy_snapshot_meta_path(root, id));
+    if (!legacy_meta) {
+        if (legacy_meta.error().code == Error::Code::NoSuchPath) {
+            return false;
+        }
+        return std::unexpected(legacy_meta.error());
+    }
+
+    auto inspector_payload = space.read<std::string, std::string>(legacy_snapshot_payload_path(root, id));
+    if (!inspector_payload) {
+        if (inspector_payload.error().code == Error::Code::NoSuchPath) {
+            return false;
+        }
+        return std::unexpected(inspector_payload.error());
+    }
+
+    auto export_payload = space.read<std::string, std::string>(legacy_snapshot_export_path(root, id));
+    if (!export_payload) {
+        if (export_payload.error().code == Error::Code::NoSuchPath) {
+            return false;
+        }
+        return std::unexpected(export_payload.error());
+    }
+
+    if (auto persisted = persist_snapshot_storage(space,
+                                                  root,
+                                                  id,
+                                                  std::move(*legacy_meta),
+                                                  std::move(*inspector_payload),
+                                                  std::move(*export_payload));
+        !persisted) {
+        return std::unexpected(persisted.error());
+    }
+    clear_legacy_snapshot_payload(space, root, id);
+    return true;
+}
+
+auto migrate_snapshots(PathSpace& space, std::string const& root) -> void {
+    auto children = space.listChildren(SP::ConcretePathStringView{root});
+    for (auto const& child : children) {
+        if (child.empty() || child.front() == '.') {
+            continue;
+        }
+        auto migrated = ensure_snapshot_nested(space, root, child);
+        if (!migrated) {
+            if (migrated.error().code == Error::Code::NoSuchPath) {
+                continue;
+            }
+        }
+    }
 }
 
 [[nodiscard]] auto snapshot_options_to_json(InspectorSnapshotOptions const& options)
@@ -870,24 +1186,32 @@ struct SnapshotContext {
 }
 
 [[nodiscard]] auto read_snapshot_blob(PathSpace& space, std::string const& path)
-    -> std::optional<std::string> {
-    auto value = space.read<std::string, std::string>(path);
-    if (!value) {
-        return std::nullopt;
-    }
-    return *value;
+    -> Expected<std::string> {
+    return space.read<std::string, std::string>(path);
 }
 
 [[nodiscard]] auto read_snapshot_record(PathSpace& space,
                                         std::string const& root,
                                         std::string const& id,
                                         bool load_payloads) -> std::optional<SnapshotRecord> {
-    auto meta_value = read_snapshot_blob(space, snapshot_meta_path(root, id));
-    if (!meta_value) {
-        return std::nullopt;
+    auto meta_blob = read_snapshot_blob(space, snapshot_meta_path(root, id));
+    bool use_nested = true;
+    std::string meta_payload;
+    if (meta_blob) {
+        meta_payload = std::move(*meta_blob);
+    } else {
+        if (meta_blob.error().code != Error::Code::NoSuchPath) {
+            return std::nullopt;
+        }
+        use_nested = false;
+        auto legacy_meta = read_snapshot_blob(space, legacy_snapshot_meta_path(root, id));
+        if (!legacy_meta) {
+            return std::nullopt;
+        }
+        meta_payload = std::move(*legacy_meta);
     }
 
-    auto meta_json = nlohmann::json::parse(*meta_value, nullptr, false);
+    auto meta_json = nlohmann::json::parse(meta_payload, nullptr, false);
     if (meta_json.is_discarded() || !meta_json.is_object()) {
         return std::nullopt;
     }
@@ -903,15 +1227,24 @@ struct SnapshotContext {
     record.diagnostics     = static_cast<std::size_t>(meta_json.value("diagnostics", std::uint64_t{0}));
 
     if (load_payloads) {
-        auto inspector_json = read_snapshot_blob(space, snapshot_payload_path(root, id));
-        auto export_json    = read_snapshot_blob(space, snapshot_export_path(root, id));
-        if (!inspector_json || !export_json) {
+        auto inspector_blob = read_snapshot_blob(space,
+                                                use_nested ? snapshot_payload_path(root, id)
+                                                           : legacy_snapshot_payload_path(root, id));
+        auto export_blob = read_snapshot_blob(space,
+                                              use_nested ? snapshot_export_path(root, id)
+                                                         : legacy_snapshot_export_path(root, id));
+        if (!inspector_blob || !export_blob) {
             return std::nullopt;
         }
-        record.inspector_payload = std::move(*inspector_json);
-        record.export_payload    = std::move(*export_json);
+        record.inspector_payload = std::move(*inspector_blob);
+        record.export_payload    = std::move(*export_blob);
         record.inspector_bytes   = record.inspector_payload.size();
         record.export_bytes      = record.export_payload.size();
+    }
+
+    if (!use_nested) {
+        auto migrated = ensure_snapshot_nested(space, root, id);
+        (void)migrated;
     }
 
     return record;
@@ -919,6 +1252,7 @@ struct SnapshotContext {
 
 [[nodiscard]] auto list_snapshots(PathSpace& space, std::string const& root)
     -> std::vector<SnapshotRecord> {
+    migrate_snapshots(space, root);
     std::vector<SnapshotRecord> records;
     auto children = space.listChildren(SP::ConcretePathStringView{root});
     records.reserve(children.size());
@@ -962,17 +1296,6 @@ auto persist_snapshot_record(PathSpace& space,
         return ensured;
     }
 
-    auto inspector_path = snapshot_payload_path(context.root, record.id);
-    auto export_path    = snapshot_export_path(context.root, record.id);
-    auto meta_path      = snapshot_meta_path(context.root, record.id);
-
-    if (auto inserted = space.insert(inspector_path, record.inspector_payload); !inserted.errors.empty()) {
-        return std::unexpected(inserted.errors.front());
-    }
-    if (auto inserted = space.insert(export_path, record.export_payload); !inserted.errors.empty()) {
-        return std::unexpected(inserted.errors.front());
-    }
-
     nlohmann::json meta{{"id", record.id},
                         {"label", record.label},
                         {"note", record.note},
@@ -982,10 +1305,7 @@ auto persist_snapshot_record(PathSpace& space,
                         {"diagnostics", record.diagnostics},
                         {"options", snapshot_options_to_json(record.options)},
                         {"version", 1}};
-    if (auto inserted = space.insert(meta_path, meta.dump()); !inserted.errors.empty()) {
-        return std::unexpected(inserted.errors.front());
-    }
-    return {};
+    return persist_snapshot_space(space, context.root, record, meta.dump());
 }
 
 auto delete_snapshot_record(PathSpace& space,
@@ -994,18 +1314,39 @@ auto delete_snapshot_record(PathSpace& space,
     if (auto ensured = ensure_placeholder(space, context.trash_root); !ensured) {
         return std::unexpected(ensured.error());
     }
-    auto source     = snapshot_node_root(context.root, id);
-    auto dest_leaf  = id;
+    auto source_space = snapshot_space_root(context.root, id);
+    auto dest_leaf    = id;
     dest_leaf.push_back('-');
     dest_leaf.append(std::to_string(now_ms()));
-    auto destination = snapshot_node_root(context.trash_root, dest_leaf);
+    auto destination_space = snapshot_space_root(context.trash_root, dest_leaf);
 
-    auto relocated = space.relocateSubtree(source, destination);
-    if (!relocated) {
-        if (relocated.error().code == Error::Code::NoSuchPath) {
+    auto taken = space.take<std::unique_ptr<PathSpace>>(source_space);
+    if (!taken) {
+        if (taken.error().code != Error::Code::NoSuchPath) {
+            return std::unexpected(taken.error());
+        }
+        auto migrated = ensure_snapshot_nested(space, context.root, id);
+        if (!migrated) {
+            if (migrated.error().code == Error::Code::NoSuchPath) {
+                return false;
+            }
+            return std::unexpected(migrated.error());
+        }
+        if (!*migrated) {
             return false;
         }
-        return std::unexpected(relocated.error());
+        taken = space.take<std::unique_ptr<PathSpace>>(source_space);
+        if (!taken) {
+            if (taken.error().code == Error::Code::NoSuchPath) {
+                return false;
+            }
+            return std::unexpected(taken.error());
+        }
+    }
+
+    auto inserted = space.insert(destination_space, std::move(*taken));
+    if (!inserted.errors.empty()) {
+        return std::unexpected(inserted.errors.front());
     }
     return true;
 }

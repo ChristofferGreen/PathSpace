@@ -105,6 +105,76 @@ struct AutoRenderRequestEvent {
 
 namespace Widgets {
 
+namespace detail {
+
+template <typename T>
+using DecayRef = std::remove_cv_t<std::remove_reference_t<T>>;
+
+template <typename T>
+inline constexpr bool kIsWidgetPathLike
+    = std::is_same_v<DecayRef<T>, ConcretePath>
+      || std::is_same_v<DecayRef<T>, ConcretePathView>;
+
+template <typename Root>
+using EnableStringLike = std::enable_if_t<!kIsWidgetPathLike<Root>
+                                          && std::is_convertible_v<Root, std::string_view>, int>;
+
+[[nodiscard]] inline auto NormalizeWidgetRoot(std::string_view widget_root) -> std::string {
+    std::string base{widget_root};
+    while (base.size() > 1 && base.back() == '/') {
+        base.pop_back();
+    }
+    base.append("/space");
+    return base;
+}
+
+[[nodiscard]] inline auto BuildWidgetSpacePath(std::string_view widget_root,
+                                               std::string_view relative) -> std::string {
+    auto base = NormalizeWidgetRoot(widget_root);
+    if (relative.empty()) {
+        return base;
+    }
+    if (relative.front() == '/') {
+        base.append(relative);
+    } else {
+        base.push_back('/');
+        base.append(relative);
+    }
+    return base;
+}
+
+} // namespace detail
+
+template <typename Root, detail::EnableStringLike<Root> = 0>
+[[nodiscard]] inline auto WidgetSpaceRoot(Root&& widget_root) -> std::string {
+    return detail::NormalizeWidgetRoot(std::string_view{std::forward<Root>(widget_root)});
+}
+
+[[nodiscard]] inline auto WidgetSpaceRoot(ConcretePath const& widget) -> std::string {
+    return detail::NormalizeWidgetRoot(widget.getPath());
+}
+
+[[nodiscard]] inline auto WidgetSpaceRoot(ConcretePathView widget) -> std::string {
+    return detail::NormalizeWidgetRoot(widget.getPath());
+}
+
+template <typename Root, detail::EnableStringLike<Root> = 0>
+[[nodiscard]] inline auto WidgetSpacePath(Root&& widget_root, std::string_view relative)
+    -> std::string {
+    return detail::BuildWidgetSpacePath(std::string_view{std::forward<Root>(widget_root)},
+                                        relative);
+}
+
+[[nodiscard]] inline auto WidgetSpacePath(ConcretePath const& widget, std::string_view relative)
+    -> std::string {
+    return detail::BuildWidgetSpacePath(widget.getPath(), relative);
+}
+
+[[nodiscard]] inline auto WidgetSpacePath(ConcretePathView widget, std::string_view relative)
+    -> std::string {
+    return detail::BuildWidgetSpacePath(widget.getPath(), relative);
+}
+
 namespace Reducers {
 struct WidgetAction;
 } // namespace Reducers

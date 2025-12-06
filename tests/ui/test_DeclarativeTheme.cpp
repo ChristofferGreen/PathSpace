@@ -10,6 +10,7 @@
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/declarative/Theme.hpp>
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 namespace Declarative = SP::UI::Declarative;
@@ -17,6 +18,15 @@ namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 namespace DetailNS = SP::UI::Declarative::Detail;
 
 namespace {
+
+inline auto widget_space(std::string const& root, std::string_view relative) -> std::string {
+    return BuilderWidgets::WidgetSpacePath(root, relative);
+}
+
+inline auto widget_space(SP::UI::Runtime::WidgetPath const& widget,
+                        std::string_view relative) -> std::string {
+    return BuilderWidgets::WidgetSpacePath(widget.getPath(), relative);
+}
 
 struct ThemeFixture {
     ThemeFixture() {
@@ -683,7 +693,7 @@ TEST_CASE("InputField descriptor preserves explicit text color overrides") {
     BuilderWidgets::TextFieldStyle custom = theme.text_field;
     custom.text_color = {0.25f, 0.73f, 0.52f, 1.0f};
     BuilderWidgets::UpdateOverrides(custom);
-    auto style_path = input->getPath() + "/meta/style";
+    auto style_path = widget_space(*input, "/meta/style");
     auto replaced = DetailNS::replace_single(fx.space, style_path, custom);
     REQUIRE(replaced.has_value());
 
@@ -718,7 +728,7 @@ TEST_CASE("InputField descriptor preserves layout overrides while layering theme
     custom.padding_y = 14.0f;
     custom.corner_radius = 10.0f;
     BuilderWidgets::UpdateOverrides(custom);
-    auto style_path = input->getPath() + "/meta/style";
+    auto style_path = widget_space(*input, "/meta/style");
     REQUIRE(DetailNS::replace_single(fx.space, style_path, custom).has_value());
 
     auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, *input);

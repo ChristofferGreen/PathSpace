@@ -8,6 +8,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/core/test_WaitMap.cpp
   unit/type/test_InputMetadata.cpp
   unit/type/test_SlidingBuffer.cpp
+  unit/type/test_TypeMetadataRegistry.cpp
   unit/core/test_NodeDataSnapshot.cpp
   unit/ext/test_alpaca.cpp
   unit/task/test_TaskPool.cpp
@@ -17,6 +18,9 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/inspector/test_InspectorSearchMetrics.cpp
   unit/inspector/test_InspectorStreamMetrics.cpp
   unit/inspector/test_InspectorRemoteMount.cpp
+  unit/distributed/test_RemoteMountProtocol.cpp
+  unit/distributed/test_RemoteMountServer.cpp
+  unit/distributed/test_RemoteMountManager.cpp
   unit/test_PathSpace_read.cpp
   unit/test_PathSpace_nesting.cpp
   unit/test_PathSpace_extract.cpp

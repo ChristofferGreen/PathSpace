@@ -102,7 +102,7 @@ PathSpaceBase
 > **Status (November 30, 2025):** Inspector snapshotting now rides the visitor API, `pathspace_dump_json` ships as the supported exporter CLI, and the new `PathSpaceDumpJsonDemo` test exercises the CLI against a pinned fixture. Remaining work tracks documentation updates plus downstream consumers (inspector UI, distributed mounts).
 1. Migrate `InspectorSnapshot` to consume the visitor API (drop direct `Node*` usage).
 2. Add CLI (`tools/pathspace_dump_json.cpp`) to exercise `toJSON` with options (root path, depth, include values, output file).
-3. Update docs and onboarding to reference the new API, and cross-link with `docs/finished/Plan_PathSpace_Inspector_Finished.md` / `Plan_Distributed_PathSpace.md`.
+3. Update docs and onboarding to reference the new API, and cross-link with `docs/finished/Plan_PathSpace_Inspector_Finished.md` / `docs/finished/Plan_Distributed_PathSpace_Finished.md`.
 4. Optional: add test ensuring `pathspace_dump_json` output matches expected fixtures.
 
 ## Validation & Testing

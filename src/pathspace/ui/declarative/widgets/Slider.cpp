@@ -7,6 +7,7 @@ namespace SP::UI::Declarative {
 
 namespace WidgetDetail = SP::UI::Declarative::Detail;
 namespace BuilderWidgets = SP::UI::Runtime::Widgets;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
 using SP::UI::Runtime::WidgetPath;
 
 namespace {
@@ -69,7 +70,8 @@ auto Fragment(Args args) -> WidgetFragment {
                                            return status;
                                        }
                                        if (auto status = WidgetDetail::write_value(ctx.space,
-                                                                             ctx.root + "/meta/range",
+                                                                             WidgetSpacePath(ctx.root,
+                                                                                             "/meta/range"),
                                                                              range);
                                            !status) {
                                            return status;
@@ -104,12 +106,14 @@ auto Create(PathSpace& space,
 auto SetValue(PathSpace& space,
               WidgetPath const& widget,
               float value) -> SP::Expected<void> {
-    auto range = space.read<BuilderWidgets::SliderRange, std::string>(widget.getPath() + "/meta/range");
+    auto range = space.read<BuilderWidgets::SliderRange, std::string>(
+        WidgetSpacePath(widget.getPath(), "/meta/range"));
     if (!range) {
         return std::unexpected(range.error());
     }
     auto clamped = clamp_slider_value(value, *range);
-    auto state = space.read<BuilderWidgets::SliderState, std::string>(widget.getPath() + "/state");
+    auto state = space.read<BuilderWidgets::SliderState, std::string>(
+        WidgetSpacePath(widget.getPath(), "/state"));
     if (!state) {
         return std::unexpected(state.error());
     }

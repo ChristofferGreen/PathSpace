@@ -14,10 +14,86 @@ task {
   ]
 
   steps: [
-    "Finalize protocol schema and security requirements (Plan_Distributed_PathSpace.md Phase 0)",
+    "Finalize protocol schema and security requirements (docs/finished/Plan_Distributed_PathSpace_Finished.md Phase 0)",
     "Build Asio-based secure transport layer and server export + client mount prototype (read/wait)",
     "Extend to full operations, metrics, and error handling",
     "Document usage and update web server plan dependency"
+  ]
+}
+
+task {
+  name: "Distributed Mount Phase 0 Prototype [FEATURE]"
+  description: "Land the RemoteMountProtocol handshake plus read/wait plumbing so a PathSpace client can mount a remote subtree over TLS."
+  status: completed
+  priority: P1
+
+  acceptance_criteria: [
+    "Mount manager speaks RemoteMountProtocol (MountOpen/Heartbeat/Error) and enforces alias/export root validation",
+    "ReadRequest/ReadResponse + WaitSubscribeRequest/Notification round-trips reach the remote server and mirror results locally",
+    "/inspector/metrics/remotes/<alias> updates latency/status/waiter counts and ACL failures show up under /diagnostics/web/inspector/acl/*"
+  ]
+
+  steps: [
+    "Wire RemoteMountProtocol encoder/decoder into the client/server sockets and add an integration harness that reuses the doctest fixtures",
+    "Implement TLS auth + session lease management (heartbeat loop, retry-after handling) inside RemoteMountManager",
+    "Add mock-server tests covering MountOpen, Read, and Wait flows plus update docs/AI_Debugging_Playbook.md with the troubleshooting workflow"
+  ]
+}
+
+task {
+  name: "RemoteMountServer Phase 0 Export [FEATURE]"
+  description: "Implement the server-side export manager for Phase 0 so a single client can read/wait a remote subtree over TLS."
+  status: completed
+  priority: P1
+
+  acceptance_criteria: [
+    "Server exports /users/<user>/system/applications/<app> as a read-only subtree and validates MountOpenRequest payloads before granting sessions",
+    "ReadRequest and WaitSubscribeRequest frames hit the local PathSpace tree and return canonical ReadResponse/Notification payloads via RemoteMountProtocol",
+    "Server enforces Capability ACLs and logs mount lifecycle + auth failures under /diagnostics/web/inspector/acl/* with metrics under /inspector/metrics/remotes/<alias>"
+  ]
+
+  steps: [
+    "Build ExportManager that wraps PathSpace views plus capability checks and reuses RemoteMountProtocol validators for MountOpen",
+    "Bridge ReadRequest handlers into the existing read/wait APIs, mapping errors to protocol Error frames and preserving version metadata",
+    "Emit metrics/diagnostics for sessions, requests, waiters, and auth failures so inspector dashboards stay in sync with docs/finished/Plan_Distributed_PathSpace_Finished.md"
+  ]
+}
+
+task {
+  name: "RemoteMountManager Phase 0 Client [FEATURE]"
+  description: "Implement the client mount manager that mounts a remote export under /remote/<alias>/ and mirrors read/wait semantics locally."
+  status: completed
+  priority: P1
+
+  acceptance_criteria: [
+    "Mount manager loads mounts.toml entries, establishes TLS sessions, and publishes the remote subtree under /remote/<alias> with read parity",
+    "Wait subscriptions and notifications hydrate local waiters, propagate errors, and clean up on disconnect with explicit status nodes",
+    "Heartbeat/lease tracking tears down mounts gracefully and exposes status/latency counters under /inspector/metrics/remotes/<alias>"
+  ]
+
+  steps: [
+    "DONE (Dec 5, 2025) Implemented RemoteMountManager + RemoteMountSpace so mounts live under /remote/<alias>, negotiated via pluggable RemoteMountSessionFactory transports with heartbeat/lease tracking",
+    "DONE (Dec 5, 2025) Forwarded reads/waits through RemoteMountServer via `ReadRequest`/`Notification` payloads, decoding base64 NodeData snapshots so PathSpace::read sees native types",
+    "DONE (Dec 5, 2025) Published client-side metrics under /inspector/metrics/remotes/<alias>/client/* and covered the happy path in tests/unit/distributed/test_RemoteMountManager.cpp"
+  ]
+}
+
+task {
+  name: "RemoteMount Phase 0 Diagnostics & Manual Tests [TASK]"
+  description: "Document the TLS/manual test flow and ship the minimal integration harness so Phase 0 can be validated locally."
+  status: completed
+  priority: P1
+
+  acceptance_criteria: [
+    "docs/AI_Debugging_Playbook.md captures the self-signed TLS setup, MountOpen troubleshooting steps, and inspector metrics to watch",
+    "A manual harness (script or example) exercises localhost mounts with Read + Wait flows and records expected outputs/logs",
+    "docs/finished/Plan_Distributed_PathSpace_Finished.md and docs/AI_Todo.task reference the diagnostics hooks plus remaining TODOs for Phase 1"
+  ]
+
+  steps: [
+    "DONE (Dec 5, 2025) Expanded docs/AI_Debugging_Playbook.md with a self-signed TLS guide, MountOpen troubleshooting matrix, and the inspector metrics to capture when diagnosing distributed mounts.",
+    "DONE (Dec 5, 2025) Added the remote_mount_manual harness (examples/remote_mount_manual.cpp) plus the shared loopback helper (src/pathspace/distributed/RemoteMountLoopback.hpp) so localhost read + wait flows can be exercised outside doctests.",
+    "DONE (Dec 5, 2025) Updated docs/finished/Plan_Distributed_PathSpace_Finished.md with the completed diagnostics entry and a Phase 1 TODO snapshot (insert/take parity, diagnostics mirroring, streaming/backpressure + TLS transport) so future cycles know what remains."
   ]
 }
 

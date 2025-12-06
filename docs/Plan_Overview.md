@@ -9,50 +9,47 @@ Provide a single index of active planning documents, ordered by current priority
 
 ## Priority Ordering
 
+> **Update (December 6, 2025):** `Plan_Distributed_PathSpace.md` is complete and archived at `docs/finished/Plan_Distributed_PathSpace_Finished.md`. Use it as the distributed mount contract reference while the list below tracks active plans.
 > **Update (December 4, 2025):** `Plan_SceneGraph_Renderer` is complete and archived at `docs/finished/Plan_SceneGraph_Renderer_Finished.md`. Use it as the renderer/presenter contract reference while the plans below track active or ongoing work.
 
 1. **Plan_SceneGraph.md**  
    Execution plan for landing the renderer stack (phases, diagnostics, testing discipline).
 
-2. **Plan_Distributed_PathSpace.md**  
-   Network mounting architecture enabling remote PathSpace access; prerequisite for web deployments and cross-host tooling.
-
-3. **Plan_Surface_Ray_Cache.md** (deferred)  
+2. **Plan_Surface_Ray_Cache.md** (deferred)  
    Future ray-query cache design. Read only when GPU path work resumes.
 
-4. **Plan_ServeHtml_Modularization_Finished.md**  
-   Finished December 4, 2025. The modularization record lives in
-   `docs/finished/Plan_ServeHtml_Modularization_Finished.md`, and the active
-   ServeHtml module map lives in `docs/serve_html/README.md` for contributors.
-
-5. **Plan_PathSpaceHtmlServer.md**  
+3. **Plan_PathSpaceHtmlServer.md**  
    NEW (December 3, 2025): roadmap for embedding ServeHtml directly inside PathSpace apps via `PathSpaceHtmlServer<Space>` and refactoring the examples to the helper so manual `--serve-html` plumbing disappears.
 
-6. **Plan_WidgetComposableRuntime.md**  
+4. **Plan_WidgetComposableRuntime.md**  
    Capsule-based widget runtime plan (per-widget render surfaces, mailboxes, primitives, HTML-compatible fragments). Executes after `docs/finished/Plan_SceneGraph_Renderer_Finished.md` and `Plan_SceneGraph.md` stabilize the renderer contracts.
 
-7. **Plan_PathSpaceWindowManager.md**  
+5. **Plan_PathSpaceWindowManager.md**  
    NextStep-inspired window manager that manages declarative windows, chrome, and the dock on top of the UI layer.
 
-8. **Plan_PathSpaceTerminal.md**  
+6. **Plan_PathSpaceTerminal.md**  
    Carta Linea-aware terminal emulator where commands launch apps, capture returned PathSpaces, and visualize them with generic viewers.
 
-9. **Plan_CartaLinea.md** (paused)  
+7. **Plan_CartaLinea.md** (paused)  
    Cross-app deck/timeline/filesystem concept; re-evaluate once renderer priorities stabilize.
 
-10. **Plan_PrimeScript.md** (research)  
+8. **Plan_PrimeScript.md** (research)  
    Exploratory unified scripting/shading language investigation; the syntax/semantics draft lives in `docs/PrimeScript_SyntaxSpec.md` (November 21, 2025) to unblock parser prototype scoping.
 
 
 ## Recommended Implementation Focus (Q4 2025)
 1. **Plan_SceneGraph.md** — active execution path for the renderer/presenter stack defined in `docs/finished/Plan_SceneGraph_Renderer_Finished.md`; keep driving the in-flight phases to completion while validating against the renderer blueprint.
-2. **Plan_Distributed_PathSpace.md** — begin Phase 0 once the current implementation milestone is stable; web/server work and the inspector depend on it.
-3. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
-4. **Plan_PathSpaceWindowManager.md** — design shared window chrome/dock controls so multi-app sessions feel cohesive once the renderer work stabilizes.
-5. **Plan_PathSpaceTerminal.md** (after Carta Linea resumes) — prototype the command-driven launcher/visualizer so command outputs become Carta Linea cards.
-6. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
+2. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
+3. **Plan_PathSpaceWindowManager.md** — design shared window chrome/dock controls so multi-app sessions feel cohesive once the renderer work stabilizes.
+4. **Plan_PathSpaceTerminal.md** (after Carta Linea resumes) — prototype the command-driven launcher/visualizer so command outputs become Carta Linea cards.
+5. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
 
 ## Status Snapshot — December 1, 2025
+- ✅ (December 6, 2025) `docs/Plan_Distributed_PathSpace.md` graduated to `docs/finished/Plan_Distributed_PathSpace_Finished.md`, capturing the full distributed mount implementation (phases 0–2, diagnostics, TLS, throttling) so remote web/server work references a stable contract.
+- ✅ (December 5, 2025) RemoteMountServer Phase 0 export landed (`src/pathspace/distributed/RemoteMountServer.{hpp,cpp}` + `tests/unit/distributed/test_RemoteMountServer.cpp`): server-side exports now validate aliases, stream wait notifications, publish `/inspector/metrics/remotes/<alias>/server/*`, and log `/diagnostics/web/inspector/acl/<alias>/events/*` entries so the client + diagnostics backlog can build on a working transport.
+- ✅ (December 5, 2025) RemoteMountManager Phase 0 client landed (`src/pathspace/distributed/RemoteMountManager.{hpp,cpp}` + `tests/unit/distributed/test_RemoteMountManager.cpp`): mounts now appear under `/remote/<alias>`, blocking reads bridge onto remote wait subscriptions, and client metrics/heartbeat health flow through `/inspector/metrics/remotes/<alias>/client/*` for ServeHtml + inspector consumers.
+- ✅ (December 6, 2025) RemoteMount TLS transport landed (`src/pathspace/distributed/RemoteMountTls.{hpp,cpp}` + new TLS cert fixtures/tests): `RemoteMountTlsServer` wraps the export manager behind a mutual-TLS listener, `RemoteMountTlsSessionFactory` dials mounts over length-prefixed RemoteMountProtocol frames, diagnostics log JSON `{code,message,subject,audience,fingerprint}`, and `tests/unit/distributed/test_RemoteMountManager.cpp` now exercises the TLS path with the sample CA/cert/key bundle under `tests/data/remote_mount_tls/`.
+- ✅ (December 6, 2025) `PathSpace::relocateSubtree` removal completed; all inspector/widget movers now rely on nested `PathSpace` take+insert flows and the helper has been deleted. See `docs/finished/Plan_RemoveRelocateSubtree_Finished.md` for the archived rationale and schema notes.
 - ✅ (December 4, 2025) `Plan_ServeHtml_Modularization` finished: options parsing,
   session/auth backends, routing/controllers, SSE broadcasting, metrics
   publishing, and demo scaffolding all live in dedicated modules with unit+

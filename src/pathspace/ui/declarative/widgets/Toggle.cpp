@@ -6,6 +6,7 @@ namespace SP::UI::Declarative {
 
 namespace WidgetDetail = SP::UI::Declarative::Detail;
 namespace BuilderWidgets = SP::UI::Runtime::Widgets;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
 using SP::UI::Runtime::WidgetPath;
 
 namespace Toggle {
@@ -61,7 +62,8 @@ auto Create(PathSpace& space,
 auto SetChecked(PathSpace& space,
                 WidgetPath const& widget,
                 bool checked) -> SP::Expected<void> {
-    auto state = space.read<BuilderWidgets::ToggleState, std::string>(widget.getPath() + "/state");
+    auto state = space.read<BuilderWidgets::ToggleState, std::string>(
+        WidgetSpacePath(widget.getPath(), "/state"));
     if (!state) {
         return std::unexpected(state.error());
     }

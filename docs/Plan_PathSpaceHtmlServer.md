@@ -60,6 +60,7 @@ include/pathspace/web/PathSpaceHtmlServer.hpp
 - Implement `PathSpaceHtmlServer<Space>` using modular ServeHtml components (Router, Controllers, SessionStore).
 - Support start/stop, error reporting, and optional `std::function` hooks for logging.
 - Add unit tests (with a fake `Space`) to validate lifecycle and request forwarding stubs.
+- Introduce an optional `RemoteMountSource` config so the helper can resolve `/remote/<alias>/renderers/...` through `RemoteMountManager`, surface heartbeat/errors, and fall back cleanly when the distributed mount disconnects. The Phase 0 manager now lives in `src/pathspace/distributed/RemoteMountManager.{hpp,cpp}` so the helper can pull client metrics from `/inspector/metrics/remotes/<alias>/client/*` before deciding whether to retry or fail fast.
 
 ### Phase 2 – Mirror Helper Integration (1 day)
 - Move Html mirror wiring from `declarative_example_shared.hpp` into reusable helpers (exposed via new header).
@@ -99,6 +100,13 @@ Approximately 4–5 engineering days after the ServeHtml modularization base lan
 ## Dependencies
 - ServeHtml modularization (interfaces + router extraction) should be in progress or complete to avoid duplicating logic.
 - Existing integration tests (`test_pathspace_serve_html_*`) remain the regression suite; new embedded test adds coverage once helper ships.
+- Distributed PathSpace client/server work (`docs/finished/Plan_Distributed_PathSpace_Finished.md`) supplies the `RemoteMountManager` aliasing, TLS/auth handshake, and wait/notify bridge required when the HTML server embeds a remote space; keep options and diagnostics in sync with that plan.
+
+## Distributed Mount Alignment
+- `PathSpaceHtmlServer` must accept either a direct `Space&` or a remote alias resolved by the distributed mount client. Startup fails fast when `options.remote_mount` is set but the alias cannot be mounted or authenticated.
+- When running against `/remote/<alias>/…`, the helper only issues read/wait/take calls and lets `RemoteMountManager` enforce the single-writer rule. Notifications stay routed through the distributed client so local waiters wake the same way as native mounts.
+- Surface mount health (session state, TLS peer, latency/timeout metrics) alongside ServeHtml logs/metrics so operators can attribute outages to either the HTML server or the remote PathSpace export.
+- Document the exact HTML namespace expectations (`/remote/<alias>/renderers/<rid>/targets/html/<view>/output/v1/*`) and link back to `docs/finished/Plan_Distributed_PathSpace_Finished.md` so future updates keep both plans aligned.
 
 ## Exit Criteria
 - Examples and future apps call the embeddable helper instead of manual threading/CLI plumbing.

@@ -1,5 +1,6 @@
 #pragma once
 #include "core/Node.hpp"
+#include "core/NodeData.hpp"
 #include "task/IFutureAny.hpp"
 #include <string_view>
 
@@ -16,7 +17,9 @@ class UndoableSpace;
 class Leaf {
 public:
     auto in(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
+    auto insertSerialized(Iterator const& iter, NodeData const& payload, InsertReturn& ret) -> void;
     auto out(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
+    auto extractSerialized(Iterator const& iter, NodeData& payload) -> std::optional<Error>;
     auto clear() -> void;
 
     auto rootNode() -> Node& { return root; }
@@ -37,6 +40,7 @@ private:
     auto inIntermediateComponent(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
     auto outIntermediateComponent(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
     auto outFinalComponent(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;
+    auto extractSerializedAtNode(Node& node, Iterator const& iter, NodeData& payload) -> std::optional<Error>;
 
     // Internal helpers (members for friend access to PathSpaceBase)
     auto inAtNode(Node& node, Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;

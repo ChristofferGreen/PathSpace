@@ -1,14 +1,17 @@
 #include "Leaf.hpp"
 #include "PathSpaceBase.hpp"
+#include "PathSpace.hpp"
 
 #include "core/Error.hpp"
 #include "core/InsertReturn.hpp"
 #include "path/Iterator.hpp"
 #include "path/utils.hpp"
 #include "type/InputData.hpp"
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
+#include <typeinfo>
 #include <vector>
 
 namespace SP {
@@ -24,6 +27,14 @@ static auto outAtNode(Node& node,
                       bool const doExtract,
                       Node* parent,
                       std::string_view keyInParent) -> std::optional<Error>;
+static auto extractNestedSpace(Node& node,
+                              InputMetadata const& inputMetadata,
+                              void* obj,
+                              bool const doExtract) -> std::optional<Error>;
+static auto insertSerializedAtNode(Node& node,
+                                  Iterator const& iter,
+                                  NodeData const& payload,
+                                  InsertReturn& ret) -> void;
 
 auto Leaf::ensureNodeData(Node& n, InputData const& inputData, InsertReturn& ret) -> NodeData* {
     {
@@ -46,6 +57,127 @@ void Leaf::mergeInsertReturn(InsertReturn& into, InsertReturn const& from) {
     if (!from.errors.empty()) {
         into.errors.insert(into.errors.end(), from.errors.begin(), from.errors.end());
     }
+}
+
+namespace {
+
+auto appendPayload(Node& node, NodeData const& payload, InsertReturn& ret) -> bool {
+    std::lock_guard<std::mutex> guard(node.payloadMutex);
+    if (!node.data) {
+        node.data = std::make_unique<NodeData>(payload);
+    } else {
+        if (auto error = node.data->append(payload); error.has_value()) {
+            ret.errors.emplace_back(error.value());
+            return false;
+        }
+    }
+    ret.nbrValuesInserted += payload.valueCount();
+    return true;
+}
+
+} // namespace
+
+auto Leaf::insertSerialized(Iterator const& iter,
+                            NodeData const& payload,
+                            InsertReturn&   ret) -> void {
+    if (payload.valueCount() == 0) {
+        return;
+    }
+    if (auto error = iter.validate(ValidationLevel::Full)) {
+        ret.errors.emplace_back(*error);
+        return;
+    }
+    if (iter.isAtEnd() || iter.currentComponent().empty()) {
+        appendPayload(root, payload, ret);
+        return;
+    }
+    insertSerializedAtNode(root, iter, payload, ret);
+}
+
+static auto insertSerializedAtNode(Node& node,
+                                  Iterator const& iter,
+                                  NodeData const& payload,
+                                  InsertReturn& ret) -> void {
+    auto component = iter.currentComponent();
+    bool const final = iter.isAtFinalComponent();
+
+    if (component.empty()) {
+        appendPayload(node, payload, ret);
+        return;
+    }
+    if (is_glob(component)) {
+        ret.errors.emplace_back(Error::Code::InvalidPath,
+                                "Serialized inserts do not support glob paths");
+        return;
+    }
+
+    Node& child = node.getOrCreateChild(component);
+    if (final) {
+        appendPayload(child, payload, ret);
+        return;
+    }
+
+    PathSpaceBase* nested = nullptr;
+    {
+        std::lock_guard<std::mutex> guard(child.payloadMutex);
+        if (child.nested) {
+            nested = child.nested.get();
+        }
+    }
+    if (nested) {
+        ret.errors.emplace_back(Error::Code::NotSupported,
+                                "Serialized inserts cannot target nested PathSpaces yet");
+        return;
+    }
+
+    insertSerializedAtNode(child, iter.next(), payload, ret);
+}
+
+static auto extractNestedSpace(Node& node,
+                              InputMetadata const& inputMetadata,
+                              void* obj,
+                              bool const doExtract) -> std::optional<Error> {
+    if (!doExtract) {
+        return Error{Error::Code::NotSupported, "Nested PathSpaces can only be taken"};
+    }
+
+    bool const wantsPathSpace     = inputMetadata.typeInfo == &typeid(std::unique_ptr<PathSpace>);
+    bool const wantsBasePathSpace = inputMetadata.typeInfo == &typeid(std::unique_ptr<PathSpaceBase>);
+
+    if (!wantsPathSpace && !wantsBasePathSpace) {
+        return Error{Error::Code::InvalidType, "Unsupported unique_ptr<T> requested for nested space"};
+    }
+
+    std::unique_ptr<PathSpaceBase> moved;
+    PathSpace*                      derived = nullptr;
+
+    {
+        std::lock_guard<std::mutex> lg(node.payloadMutex);
+        if (!node.nested) {
+            return Error{Error::Code::NoSuchPath, "No nested PathSpace present at path"};
+        }
+        if (wantsPathSpace) {
+            derived = dynamic_cast<PathSpace*>(node.nested.get());
+            if (!derived) {
+                return Error{Error::Code::InvalidType, "Nested space is not an SP::PathSpace"};
+            }
+        }
+        moved = std::move(node.nested);
+    }
+
+    if (wantsPathSpace) {
+        auto* dest = static_cast<std::unique_ptr<PathSpace>*>(obj);
+        auto* raw  = moved.release();
+        if (!raw) {
+            return Error{Error::Code::NoSuchPath, "Nested PathSpace missing after extraction"};
+        }
+        *dest = std::unique_ptr<PathSpace>(static_cast<PathSpace*>(raw));
+    } else {
+        auto* dest = static_cast<std::unique_ptr<PathSpaceBase>*>(obj);
+        *dest      = std::move(moved);
+    }
+
+    return std::nullopt;
 }
 
 auto Leaf::inAtNode(Node& node, Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void {
@@ -236,6 +368,10 @@ auto Leaf::outAtNode(Node& node,
             return Error{Error::Code::NoSuchPath, "Path not found"};
         }
  
+        if (inputMetadata.dataCategory == DataCategory::UniquePtr) {
+            return extractNestedSpace(*child, inputMetadata, obj, doExtract);
+        }
+
         if (child->hasData()) {
             std::optional<Error> res;
             {
@@ -289,6 +425,88 @@ auto Leaf::outAtNode(Node& node,
     return outAtNode(*child, nextIter, inputMetadata, obj, doExtract, &node, nextIter.currentComponent());
 }
 
+auto Leaf::extractSerializedAtNode(Node& node,
+                                   Iterator const& iter,
+                                   NodeData&      payload) -> std::optional<Error> {
+    auto name = iter.currentComponent();
+
+    if (iter.isAtFinalComponent()) {
+        if (is_glob(name)) {
+            std::vector<std::string> matches;
+            node.children.for_each([&](auto const& kv) {
+                auto const& key = kv.first;
+                if (match_names(name, key)) {
+                    matches.emplace_back(key);
+                }
+            });
+            if (matches.empty()) {
+                return Error{Error::Code::NoSuchPath, "Path not found"};
+            }
+            std::sort(matches.begin(), matches.end());
+            std::optional<Error> lastError;
+            bool                 attempted = false;
+            for (auto const& key : matches) {
+                Node* childTry = node.getChild(key);
+                if (!childTry)
+                    continue;
+                std::lock_guard<std::mutex> lg(childTry->payloadMutex);
+                if (!childTry->data)
+                    continue;
+                attempted = true;
+                NodeData serialized;
+                auto     res = childTry->data->popFrontSerialized(serialized);
+                if (!res.has_value()) {
+                    payload = std::move(serialized);
+                    if (!childTry->data || childTry->data->empty()) {
+                        childTry->data.reset();
+                    }
+                    return std::nullopt;
+                }
+                lastError = res;
+            }
+            if (attempted && lastError.has_value()) {
+                return lastError;
+            }
+            return Error{Error::Code::NoSuchPath, "Path not found"};
+        }
+
+        Node* child = node.getChild(name);
+        if (!child) {
+            return Error{Error::Code::NoSuchPath, "Path not found"};
+        }
+
+        std::lock_guard<std::mutex> lg(child->payloadMutex);
+        if (!child->data) {
+            return Error{Error::Code::NoSuchPath, "Path not found"};
+        }
+        NodeData serialized;
+        auto     res = child->data->popFrontSerialized(serialized);
+        if (!res.has_value()) {
+            payload = std::move(serialized);
+            if (!child->data || child->data->empty()) {
+                child->data.reset();
+            }
+        }
+        return res;
+    }
+
+    if (is_glob(name)) {
+        return Error{Error::Code::NoSuchPath, "Path not found"};
+    }
+
+    Node* child = node.getChild(name);
+    if (!child) {
+        return Error{Error::Code::NoSuchPath, "Path not found"};
+    }
+
+    if (child->hasNestedSpace()) {
+        return Error{Error::Code::NotSupported,
+                     "Serialized extraction unsupported for nested PathSpaces"};
+    }
+
+    return extractSerializedAtNode(*child, iter.next(), payload);
+}
+
 
 
 auto Leaf::clear() -> void {
@@ -325,6 +543,10 @@ auto Leaf::outFinalComponent(Iterator const& iter, InputMetadata const& inputMet
 
 auto Leaf::outIntermediateComponent(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error> {
     return this->outAtNode(this->root, iter, inputMetadata, obj, doExtract, nullptr, {});
+}
+
+auto Leaf::extractSerialized(Iterator const& iter, NodeData& payload) -> std::optional<Error> {
+    return this->extractSerializedAtNode(this->root, iter, payload);
 }
 
 auto Leaf::peekFuture(Iterator const& iter) const -> std::optional<Future> {

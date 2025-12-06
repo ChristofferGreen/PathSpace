@@ -8,6 +8,7 @@ namespace SP::UI::Declarative {
 
 namespace WidgetDetail = SP::UI::Declarative::Detail;
 using SP::UI::Runtime::WidgetPath;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
 
 namespace PaintSurface {
 
@@ -17,19 +18,22 @@ auto Fragment(Args args) -> WidgetFragment {
                                    [args = std::move(args)](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
                                            if (auto status = WidgetDetail::write_value(ctx.space,
-                                                                                ctx.root + "/state/brush/size",
+                                                                                WidgetSpacePath(ctx.root,
+                                                                                                "/state/brush/size"),
                                                                                 args.brush_size);
                                                !status) {
                                                return status;
                                            }
                                            if (auto status = WidgetDetail::write_value(ctx.space,
-                                                                                ctx.root + "/state/brush/color",
+                                                                                WidgetSpacePath(ctx.root,
+                                                                                                "/state/brush/color"),
                                                                                 args.brush_color);
                                                !status) {
                                                return status;
                                            }
                                            if (auto status = WidgetDetail::write_value(ctx.space,
-                                                                                ctx.root + "/render/gpu/enabled",
+                                                                                WidgetSpacePath(ctx.root,
+                                                                                                "/render/gpu/enabled"),
                                                                                 args.gpu_enabled);
                                                !status) {
                                                return status;

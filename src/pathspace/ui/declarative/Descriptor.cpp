@@ -230,7 +230,7 @@ struct BucketVisitor {
                                                               descriptor.typography,
                                                               descriptor.color,
                                                               drawable_id,
-                                                              authoring_root + "/label",
+                                                              SP::UI::Runtime::Widgets::WidgetSpacePath(authoring_root, "/label"),
                                                               0.0f);
         if (!built) {
             return std::unexpected(DescriptorDetail::MakeDescriptorError("Failed to build label bucket"));
@@ -346,7 +346,7 @@ struct BucketVisitor {
         std::string bg_suffix{"paint/background"};
         std::string bg_authoring = authoring_root.empty()
             ? bg_suffix
-            : authoring_root + "/" + bg_suffix;
+            : SP::UI::Runtime::Widgets::WidgetSpacePath(authoring_root, "/") + bg_suffix;
         auto background_id = std::hash<std::string>{}(bg_authoring) ^ descriptor.buffer_revision;
         append_rect_drawable(bucket,
                              background_id,
@@ -467,7 +467,7 @@ auto LoadWidgetDescriptor(PathSpace& space,
                           SP::UI::Runtime::WidgetPath const& widget)
     -> SP::Expected<WidgetDescriptor> {
     auto root = widget.getPath();
-    auto removed_value = space.read<bool, std::string>(root + "/state/removed");
+    auto removed_value = space.read<bool, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/removed"));
     if (removed_value) {
         if (*removed_value) {
             return std::unexpected(DescriptorDetail::MakeDescriptorError("Widget removed",
@@ -481,7 +481,7 @@ auto LoadWidgetDescriptor(PathSpace& space,
         }
     }
 
-    auto kind_value = space.read<std::string, std::string>(root + "/meta/kind");
+    auto kind_value = space.read<std::string, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/kind"));
     if (!kind_value) {
         return std::unexpected(kind_value.error());
     }

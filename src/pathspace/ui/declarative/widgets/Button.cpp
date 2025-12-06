@@ -7,6 +7,7 @@ namespace SP::UI::Declarative {
 
 namespace WidgetDetail = SP::UI::Declarative::Detail;
 namespace BuilderWidgets = SP::UI::Runtime::Widgets;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
 using SP::UI::Runtime::WidgetPath;
 
 namespace {
@@ -50,14 +51,16 @@ auto Fragment(Args args) -> WidgetFragment {
                                                return status;
                                            }
                                            if (auto status = WidgetDetail::write_value(ctx.space,
-                                                                                ctx.root + "/meta/label",
+                                                                                WidgetSpacePath(ctx.root,
+                                                                                                "/meta/label"),
                                                                                 args.label);
                                                !status) {
                                                return status;
                                            }
                                            if (args.theme) {
                                                if (auto status = WidgetDetail::write_value(ctx.space,
-                                                                                    ctx.root + "/style/theme",
+                                                                                    WidgetSpacePath(ctx.root,
+                                                                                                "/style/theme"),
                                                                                     *args.theme);
                                                    !status) {
                                                    return status;
@@ -94,7 +97,7 @@ auto SetLabel(PathSpace& space,
               WidgetPath const& widget,
               std::string_view label) -> SP::Expected<void> {
     if (auto status = WidgetDetail::write_value(space,
-                                          widget.getPath() + "/meta/label",
+                                          WidgetSpacePath(widget.getPath(), "/meta/label"),
                                           std::string(label));
         !status) {
         return status;
@@ -105,7 +108,8 @@ auto SetLabel(PathSpace& space,
 auto SetEnabled(PathSpace& space,
                 WidgetPath const& widget,
                 bool enabled) -> SP::Expected<void> {
-    auto state = space.read<BuilderWidgets::ButtonState, std::string>(widget.getPath() + "/state");
+    auto state = space.read<BuilderWidgets::ButtonState, std::string>(
+        WidgetSpacePath(widget.getPath(), "/state"));
     if (!state) {
         return std::unexpected(state.error());
     }

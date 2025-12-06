@@ -5,6 +5,7 @@
 #include "task/IFutureAny.hpp"
 
 #include <memory>
+#include <type_traits>
 
 namespace SP {
 struct Task;

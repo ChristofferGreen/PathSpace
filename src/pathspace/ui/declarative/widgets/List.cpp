@@ -6,6 +6,7 @@ namespace SP::UI::Declarative {
 
 namespace WidgetDetail = SP::UI::Declarative::Detail;
 namespace BuilderWidgets = SP::UI::Runtime::Widgets;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
 using SP::UI::Runtime::WidgetPath;
 
 namespace {
@@ -45,7 +46,8 @@ auto Fragment(Args args) -> WidgetFragment {
                                                return status;
                                            }
                                            if (auto status = WidgetDetail::write_value(ctx.space,
-                                                                                ctx.root + "/meta/items",
+                                                                                WidgetSpacePath(ctx.root,
+                                                                                                "/meta/items"),
                                                                                 items);
                                                !status) {
                                                return status;
@@ -82,7 +84,7 @@ auto SetItems(PathSpace& space,
               std::vector<ListItem> items) -> SP::Expected<void> {
     items = sanitize_list_items(std::move(items));
     if (auto status = WidgetDetail::write_value(space,
-                                          widget.getPath() + "/meta/items",
+                                          WidgetSpacePath(widget.getPath(), "/meta/items"),
                                           std::move(items));
         !status) {
         return status;

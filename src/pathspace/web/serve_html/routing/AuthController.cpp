@@ -17,6 +17,7 @@
 #include <bcrypt/bcrypt.h>
 #include <nlohmann/json.hpp>
 
+#include <charconv>
 #include <iostream>
 
 #include <optional>
@@ -84,7 +85,7 @@ auto parse_url(std::string_view url) -> std::optional<OAuthGoogle::UrlView> {
         return std::nullopt;
     }
 
-    return UrlView{std::string{scheme}, std::move(host), std::move(path), port, tls};
+    return OAuthGoogle::UrlView{std::string{scheme}, std::move(host), std::move(path), port, tls};
 }
 
 

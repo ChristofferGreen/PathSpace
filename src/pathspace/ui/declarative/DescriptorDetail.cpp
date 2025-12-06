@@ -301,17 +301,17 @@ auto KindFromString(std::string_view raw) -> std::optional<WidgetKind> {
 auto ReadLabelDescriptor(PathSpace& space, std::string const& root)
     -> SP::Expected<LabelDescriptor> {
     LabelDescriptor descriptor{};
-    auto text = ReadRequired<std::string>(space, root + "/state/text");
+    auto text = ReadRequired<std::string>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/text"));
     if (!text) {
         return std::unexpected(text.error());
     }
     descriptor.text = *text;
-    auto typography = ReadRequired<BuilderWidgets::TypographyStyle>(space, root + "/meta/typography");
+    auto typography = ReadRequired<BuilderWidgets::TypographyStyle>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/typography"));
     if (!typography) {
         return std::unexpected(typography.error());
     }
     descriptor.typography = *typography;
-    auto color = ReadRequired<std::array<float, 4>>(space, root + "/meta/color");
+    auto color = ReadRequired<std::array<float, 4>>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/color"));
     if (!color) {
         return std::unexpected(color.error());
     }
@@ -324,17 +324,17 @@ auto ReadButtonDescriptor(PathSpace& space,
                           BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<ButtonDescriptor> {
     ButtonDescriptor descriptor{};
-    auto style = ReadRequired<BuilderWidgets::ButtonStyle>(space, root + "/meta/style");
+    auto style = ReadRequired<BuilderWidgets::ButtonStyle>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/style"));
     if (!style) {
         return std::unexpected(style.error());
     }
     descriptor.style = ApplyThemeToButtonStyle(*style, theme.button);
-    auto state = ReadRequired<BuilderWidgets::ButtonState>(space, root + "/state");
+    auto state = ReadRequired<BuilderWidgets::ButtonState>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state"));
     if (!state) {
         return std::unexpected(state.error());
     }
     descriptor.state = *state;
-    auto label = space.read<std::string, std::string>(root + "/meta/label");
+    auto label = space.read<std::string, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/label"));
     if (label) {
         descriptor.label = *label;
     } else {
@@ -352,12 +352,12 @@ auto ReadToggleDescriptor(PathSpace& space,
                           BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<ToggleDescriptor> {
     ToggleDescriptor descriptor{};
-    auto style = ReadRequired<BuilderWidgets::ToggleStyle>(space, root + "/meta/style");
+    auto style = ReadRequired<BuilderWidgets::ToggleStyle>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/style"));
     if (!style) {
         return std::unexpected(style.error());
     }
     descriptor.style = ApplyThemeToToggleStyle(*style, theme.toggle);
-    auto state = ReadRequired<BuilderWidgets::ToggleState>(space, root + "/state");
+    auto state = ReadRequired<BuilderWidgets::ToggleState>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state"));
     if (!state) {
         return std::unexpected(state.error());
     }
@@ -370,17 +370,17 @@ auto ReadSliderDescriptor(PathSpace& space,
                           BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<SliderDescriptor> {
     SliderDescriptor descriptor{};
-    auto style = ReadRequired<BuilderWidgets::SliderStyle>(space, root + "/meta/style");
+    auto style = ReadRequired<BuilderWidgets::SliderStyle>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/style"));
     if (!style) {
         return std::unexpected(style.error());
     }
     descriptor.style = ApplyThemeToSliderStyle(*style, theme.slider);
-    auto state = ReadRequired<BuilderWidgets::SliderState>(space, root + "/state");
+    auto state = ReadRequired<BuilderWidgets::SliderState>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state"));
     if (!state) {
         return std::unexpected(state.error());
     }
     descriptor.state = *state;
-    auto range = ReadRequired<BuilderWidgets::SliderRange>(space, root + "/meta/range");
+    auto range = ReadRequired<BuilderWidgets::SliderRange>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/range"));
     if (!range) {
         return std::unexpected(range.error());
     }
@@ -393,17 +393,17 @@ auto ReadListDescriptor(PathSpace& space,
                         BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<ListDescriptor> {
     ListDescriptor descriptor{};
-    auto style = ReadRequired<BuilderWidgets::ListStyle>(space, root + "/meta/style");
+    auto style = ReadRequired<BuilderWidgets::ListStyle>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/style"));
     if (!style) {
         return std::unexpected(style.error());
     }
     descriptor.style = ApplyThemeToListStyle(*style, theme.list);
-    auto state = ReadRequired<BuilderWidgets::ListState>(space, root + "/state");
+    auto state = ReadRequired<BuilderWidgets::ListState>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state"));
     if (!state) {
         return std::unexpected(state.error());
     }
     descriptor.state = *state;
-    auto items = ReadRequired<std::vector<BuilderWidgets::ListItem>>(space, root + "/meta/items");
+    auto items = ReadRequired<std::vector<BuilderWidgets::ListItem>>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/items"));
     if (!items) {
         return std::unexpected(items.error());
     }
@@ -416,17 +416,17 @@ auto ReadTreeDescriptor(PathSpace& space,
                         BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<TreeDescriptor> {
     TreeDescriptor descriptor{};
-    auto style = ReadRequired<BuilderWidgets::TreeStyle>(space, root + "/meta/style");
+    auto style = ReadRequired<BuilderWidgets::TreeStyle>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/style"));
     if (!style) {
         return std::unexpected(style.error());
     }
     descriptor.style = ApplyThemeToTreeStyle(*style, theme.tree);
-    auto state = ReadRequired<BuilderWidgets::TreeState>(space, root + "/state");
+    auto state = ReadRequired<BuilderWidgets::TreeState>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state"));
     if (!state) {
         return std::unexpected(state.error());
     }
     descriptor.state = *state;
-    auto nodes = ReadRequired<std::vector<BuilderWidgets::TreeNode>>(space, root + "/meta/nodes");
+    auto nodes = ReadRequired<std::vector<BuilderWidgets::TreeNode>>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/nodes"));
     if (!nodes) {
         return std::unexpected(nodes.error());
     }
@@ -437,31 +437,31 @@ auto ReadTreeDescriptor(PathSpace& space,
 auto ReadStackDescriptor(PathSpace& space, std::string const& root)
     -> SP::Expected<StackDescriptor> {
     StackDescriptor descriptor{};
-    auto active_panel = ReadOptionalValue<std::string>(space, root + "/state/active_panel");
+    auto active_panel = ReadOptionalValue<std::string>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/active_panel"));
     if (!active_panel) {
         return std::unexpected(active_panel.error());
     }
     descriptor.active_panel = active_panel->value_or("");
-    auto style = ReadOptionalValue<BuilderWidgets::StackLayoutStyle>(space, root + "/layout/style");
+    auto style = ReadOptionalValue<BuilderWidgets::StackLayoutStyle>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/layout/style"));
     if (!style) {
         return std::unexpected(style.error());
     }
     descriptor.style = style->value_or(BuilderWidgets::StackLayoutStyle{});
 
     auto layout_children = ReadOptionalValue<std::vector<BuilderWidgets::StackChildSpec>>(space,
-                                                                                         root + "/layout/children");
+                                                                                         SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/layout/children"));
     if (!layout_children) {
         return std::unexpected(layout_children.error());
     }
     descriptor.children = layout_children->value_or(std::vector<BuilderWidgets::StackChildSpec>{});
 
-    auto layout_state = ReadOptionalValue<BuilderWidgets::StackLayoutState>(space, root + "/layout/computed");
+    auto layout_state = ReadOptionalValue<BuilderWidgets::StackLayoutState>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/layout/computed"));
     if (!layout_state) {
         return std::unexpected(layout_state.error());
     }
     descriptor.layout = layout_state->value_or(BuilderWidgets::StackLayoutState{});
 
-    auto panels_root = root + "/panels";
+    auto panels_root = SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/panels");
     auto panels = space.listChildren(SP::ConcretePathStringView{panels_root});
     struct PanelRecord {
         StackPanelDescriptor panel;
@@ -472,19 +472,19 @@ auto ReadStackDescriptor(PathSpace& space, std::string const& root)
     for (auto const& panel_name : panels) {
         PanelRecord record{};
         record.panel.id = panel_name;
-        auto panel_root = panels_root + "/" + panel_name;
-        auto order_value = space.read<std::uint32_t, std::string>(panel_root + "/order");
+        auto panel_root = SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/") + panel_name;
+        auto order_value = space.read<std::uint32_t, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/order"));
         if (order_value) {
             record.order = *order_value;
         }
-        auto target_path = ReadOptionalValue<std::string>(space, panel_root + "/target");
+        auto target_path = ReadOptionalValue<std::string>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/target"));
         if (!target_path) {
             return std::unexpected(target_path.error());
         }
         if (target_path->has_value()) {
             record.panel.target = **target_path;
         }
-        auto visible = ReadOptionalValue<bool>(space, panel_root + "/visible");
+        auto visible = ReadOptionalValue<bool>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/visible"));
         if (!visible) {
             return std::unexpected(visible.error());
         }
@@ -493,12 +493,13 @@ auto ReadStackDescriptor(PathSpace& space, std::string const& root)
     }
 
     if (ordered.empty()) {
-        auto children_root = root + "/children";
+        auto children_root = SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/children");
         auto children = space.listChildren(SP::ConcretePathStringView{children_root});
         for (auto const& panel_name : children) {
             StackPanelDescriptor panel{};
             panel.id = panel_name;
-            auto target_path = ReadOptionalValue<std::string>(space, children_root + "/" + panel_name + "/target");
+            auto target_path = ReadOptionalValue<std::string>(space,
+                                                             SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/") + panel_name + "/target");
             if (target_path && target_path->has_value()) {
                 panel.target = **target_path;
             }
@@ -600,7 +601,7 @@ auto ReadInputFieldDescriptor(PathSpace& space,
     InputFieldDescriptor descriptor{};
     descriptor.state = BuilderWidgets::TextFieldState{};
 
-    auto style_value = ReadOptionalValue<BuilderWidgets::TextFieldStyle>(space, root + "/meta/style");
+    auto style_value = ReadOptionalValue<BuilderWidgets::TextFieldStyle>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/style"));
     if (!style_value) {
         return std::unexpected(style_value.error());
     }
@@ -610,49 +611,49 @@ auto ReadInputFieldDescriptor(PathSpace& space,
         descriptor.style = theme.text_field;
     }
 
-    auto text = ReadOptionalValue<std::string>(space, root + "/state/text");
+    auto text = ReadOptionalValue<std::string>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/text"));
     if (!text) {
         return std::unexpected(text.error());
     }
     descriptor.state.text = text->value_or(std::string{});
 
-    auto placeholder = ReadOptionalValue<std::string>(space, root + "/state/placeholder");
+    auto placeholder = ReadOptionalValue<std::string>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/placeholder"));
     if (!placeholder) {
         return std::unexpected(placeholder.error());
     }
     descriptor.state.placeholder = placeholder->value_or(std::string{});
 
-    auto focused = ReadOptionalValue<bool>(space, root + "/state/focused");
+    auto focused = ReadOptionalValue<bool>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/focused"));
     if (!focused) {
         return std::unexpected(focused.error());
     }
     descriptor.state.focused = focused->value_or(false);
 
-    auto hovered = ReadOptionalValue<bool>(space, root + "/state/hovered");
+    auto hovered = ReadOptionalValue<bool>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/hovered"));
     if (!hovered) {
         return std::unexpected(hovered.error());
     }
     descriptor.state.hovered = hovered->value_or(false);
 
-    auto enabled = ReadOptionalValue<bool>(space, root + "/state/enabled");
+    auto enabled = ReadOptionalValue<bool>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/enabled"));
     if (!enabled) {
         return std::unexpected(enabled.error());
     }
     descriptor.state.enabled = enabled->value_or(true);
 
-    auto cursor = ReadOptionalValue<std::uint32_t>(space, root + "/state/cursor");
+    auto cursor = ReadOptionalValue<std::uint32_t>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/cursor"));
     if (!cursor) {
         return std::unexpected(cursor.error());
     }
     descriptor.state.cursor = cursor->value_or(static_cast<std::uint32_t>(descriptor.state.text.size()));
 
-    auto selection_start = ReadOptionalValue<std::uint32_t>(space, root + "/state/selection_start");
+    auto selection_start = ReadOptionalValue<std::uint32_t>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/selection_start"));
     if (!selection_start) {
         return std::unexpected(selection_start.error());
     }
     descriptor.state.selection_start = selection_start->value_or(descriptor.state.cursor);
 
-    auto selection_end = ReadOptionalValue<std::uint32_t>(space, root + "/state/selection_end");
+    auto selection_end = ReadOptionalValue<std::uint32_t>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/selection_end"));
     if (!selection_end) {
         return std::unexpected(selection_end.error());
     }
@@ -668,7 +669,7 @@ auto ReadTextAreaDescriptor(PathSpace& space,
     auto root = widget.getPath();
     TextAreaDescriptor descriptor{};
 
-    auto style_value = ReadOptionalValue<BuilderWidgets::TextAreaStyle>(space, root + "/meta/style");
+    auto style_value = ReadOptionalValue<BuilderWidgets::TextAreaStyle>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/style"));
     if (!style_value) {
         return std::unexpected(style_value.error());
     }
@@ -678,92 +679,92 @@ auto ReadTextAreaDescriptor(PathSpace& space,
         descriptor.style = theme.text_area;
     }
 
-    auto text = ReadOptionalValue<std::string>(space, root + "/state/text");
+    auto text = ReadOptionalValue<std::string>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/text"));
     if (!text) {
         return std::unexpected(text.error());
     }
     descriptor.state.text = text->value_or(std::string{});
 
-    auto placeholder = ReadOptionalValue<std::string>(space, root + "/state/placeholder");
+    auto placeholder = ReadOptionalValue<std::string>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/placeholder"));
     if (!placeholder) {
         return std::unexpected(placeholder.error());
     }
     descriptor.state.placeholder = placeholder->value_or(std::string{});
 
-    auto focused = ReadOptionalValue<bool>(space, root + "/state/focused");
+    auto focused = ReadOptionalValue<bool>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/focused"));
     if (!focused) {
         return std::unexpected(focused.error());
     }
     descriptor.state.focused = focused->value_or(false);
 
-    auto hovered = ReadOptionalValue<bool>(space, root + "/state/hovered");
+    auto hovered = ReadOptionalValue<bool>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/hovered"));
     if (!hovered) {
         return std::unexpected(hovered.error());
     }
     descriptor.state.hovered = hovered->value_or(false);
 
-    auto enabled = ReadOptionalValue<bool>(space, root + "/state/enabled");
+    auto enabled = ReadOptionalValue<bool>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/enabled"));
     if (!enabled) {
         return std::unexpected(enabled.error());
     }
     descriptor.state.enabled = enabled->value_or(true);
 
-    auto read_only = ReadOptionalValue<bool>(space, root + "/state/read_only");
+    auto read_only = ReadOptionalValue<bool>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/read_only"));
     if (!read_only) {
         return std::unexpected(read_only.error());
     }
     descriptor.state.read_only = read_only->value_or(false);
 
-    auto cursor = ReadOptionalValue<std::uint32_t>(space, root + "/state/cursor");
+    auto cursor = ReadOptionalValue<std::uint32_t>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/cursor"));
     if (!cursor) {
         return std::unexpected(cursor.error());
     }
     descriptor.state.cursor = cursor->value_or(
         static_cast<std::uint32_t>(descriptor.state.text.size()));
 
-    auto selection_start = ReadOptionalValue<std::uint32_t>(space, root + "/state/selection_start");
+    auto selection_start = ReadOptionalValue<std::uint32_t>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/selection_start"));
     if (!selection_start) {
         return std::unexpected(selection_start.error());
     }
     descriptor.state.selection_start = selection_start->value_or(descriptor.state.cursor);
 
-    auto selection_end = ReadOptionalValue<std::uint32_t>(space, root + "/state/selection_end");
+    auto selection_end = ReadOptionalValue<std::uint32_t>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/selection_end"));
     if (!selection_end) {
         return std::unexpected(selection_end.error());
     }
     descriptor.state.selection_end = selection_end->value_or(descriptor.state.selection_start);
 
-    auto composition_active = ReadOptionalValue<bool>(space, root + "/state/composition_active");
+    auto composition_active = ReadOptionalValue<bool>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/composition_active"));
     if (!composition_active) {
         return std::unexpected(composition_active.error());
     }
     descriptor.state.composition_active = composition_active->value_or(false);
 
-    auto composition_text = ReadOptionalValue<std::string>(space, root + "/state/composition_text");
+    auto composition_text = ReadOptionalValue<std::string>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/composition_text"));
     if (!composition_text) {
         return std::unexpected(composition_text.error());
     }
     descriptor.state.composition_text = composition_text->value_or(std::string{});
 
-    auto composition_start = ReadOptionalValue<std::uint32_t>(space, root + "/state/composition_start");
+    auto composition_start = ReadOptionalValue<std::uint32_t>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/composition_start"));
     if (!composition_start) {
         return std::unexpected(composition_start.error());
     }
     descriptor.state.composition_start = composition_start->value_or(descriptor.state.cursor);
 
-    auto composition_end = ReadOptionalValue<std::uint32_t>(space, root + "/state/composition_end");
+    auto composition_end = ReadOptionalValue<std::uint32_t>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/composition_end"));
     if (!composition_end) {
         return std::unexpected(composition_end.error());
     }
     descriptor.state.composition_end = composition_end->value_or(descriptor.state.composition_start);
 
-    auto scroll_x = ReadOptionalValue<float>(space, root + "/state/scroll_x");
+    auto scroll_x = ReadOptionalValue<float>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/scroll_x"));
     if (!scroll_x) {
         return std::unexpected(scroll_x.error());
     }
     descriptor.state.scroll_x = scroll_x->value_or(0.0f);
 
-    auto scroll_y = ReadOptionalValue<float>(space, root + "/state/scroll_y");
+    auto scroll_y = ReadOptionalValue<float>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/scroll_y"));
     if (!scroll_y) {
         return std::unexpected(scroll_y.error());
     }
@@ -775,48 +776,48 @@ auto ReadTextAreaDescriptor(PathSpace& space,
 auto ReadPaintSurfaceDescriptor(PathSpace& space, std::string const& root)
     -> SP::Expected<PaintSurfaceDescriptor> {
     PaintSurfaceDescriptor descriptor{};
-    auto brush_size = ReadOptionalValue<float>(space, root + "/state/brush/size");
+    auto brush_size = ReadOptionalValue<float>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/brush/size"));
     if (!brush_size) {
         return std::unexpected(brush_size.error());
     }
     descriptor.brush_size = brush_size->value_or(0.0f);
-    auto brush_color = ReadOptionalValue<std::array<float, 4>>(space, root + "/state/brush/color");
+    auto brush_color = ReadOptionalValue<std::array<float, 4>>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/brush/color"));
     if (!brush_color) {
         return std::unexpected(brush_color.error());
     }
     descriptor.brush_color = brush_color->value_or(std::array<float, 4>{1.0f, 1.0f, 1.0f, 1.0f});
-    auto gpu_flag = ReadOptionalValue<bool>(space, root + "/render/gpu/enabled");
+    auto gpu_flag = ReadOptionalValue<bool>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/render/gpu/enabled"));
     if (!gpu_flag) {
         return std::unexpected(gpu_flag.error());
     }
     descriptor.gpu_enabled = gpu_flag->value_or(false);
-    auto gpu_state_value = ReadOptionalValue<std::string>(space, root + "/render/gpu/state");
+    auto gpu_state_value = ReadOptionalValue<std::string>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/render/gpu/state"));
     if (!gpu_state_value) {
         return std::unexpected(gpu_state_value.error());
     }
     descriptor.gpu_ready = gpu_state_value->value_or("Idle") == "Ready";
-    auto buffer_metrics = ReadOptionalValue<PaintBufferMetrics>(space, root + "/render/buffer/metrics");
+    auto buffer_metrics = ReadOptionalValue<PaintBufferMetrics>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/render/buffer/metrics"));
     if (!buffer_metrics) {
         return std::unexpected(buffer_metrics.error());
     }
     descriptor.buffer = buffer_metrics->value_or(PaintBufferMetrics{});
     auto dirty_rects = ReadOptionalValue<std::vector<SP::UI::Runtime::DirtyRectHint>>(space,
-                                                                                      root + "/render/buffer/pendingDirty");
+                                                                                      SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/render/buffer/pendingDirty"));
     if (!dirty_rects) {
         return std::unexpected(dirty_rects.error());
     }
     descriptor.pending_dirty = dirty_rects->value_or(std::vector<SP::UI::Runtime::DirtyRectHint>{});
-    auto viewport = ReadOptionalValue<PaintBufferViewport>(space, root + "/render/buffer/viewport");
+    auto viewport = ReadOptionalValue<PaintBufferViewport>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/render/buffer/viewport"));
     if (!viewport) {
         return std::unexpected(viewport.error());
     }
     descriptor.viewport = viewport->value_or(PaintBufferViewport{});
-    auto buffer_revision = ReadOptionalValue<std::uint64_t>(space, root + "/render/buffer/revision");
+    auto buffer_revision = ReadOptionalValue<std::uint64_t>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/render/buffer/revision"));
     if (!buffer_revision) {
         return std::unexpected(buffer_revision.error());
     }
     descriptor.buffer_revision = buffer_revision->value_or(0);
-    auto texture_payload = ReadOptionalValue<PaintTexturePayload>(space, root + "/assets/texture");
+    auto texture_payload = ReadOptionalValue<PaintTexturePayload>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/assets/texture"));
     if (!texture_payload) {
         return std::unexpected(texture_payload.error());
     }
@@ -825,21 +826,21 @@ auto ReadPaintSurfaceDescriptor(PathSpace& space, std::string const& root)
     } else {
         descriptor.texture.reset();
     }
-    auto gpu_stats = ReadOptionalValue<PaintGpuStats>(space, root + "/render/gpu/stats");
+    auto gpu_stats = ReadOptionalValue<PaintGpuStats>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/render/gpu/stats"));
     if (!gpu_stats) {
         return std::unexpected(gpu_stats.error());
     }
     descriptor.gpu_stats = gpu_stats->value_or(PaintGpuStats{});
 
-    auto strokes_root = root + "/state/history";
+    auto strokes_root = SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state/history");
     auto stroke_ids = space.listChildren(SP::ConcretePathStringView{strokes_root});
     for (auto const& id : stroke_ids) {
         auto parsed = parse_stroke_id(id);
         if (!parsed) {
             continue;
         }
-        auto stroke_root = strokes_root + "/" + id;
-        auto meta = ReadRequired<PaintStrokeMeta>(space, stroke_root + "/meta");
+        auto stroke_root = SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/") + id;
+        auto meta = ReadRequired<PaintStrokeMeta>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta"));
         if (!meta) {
             return std::unexpected(meta.error());
         }

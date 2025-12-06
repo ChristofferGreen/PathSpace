@@ -74,19 +74,19 @@ auto read_slider_data(PathSpace& space, std::string const& widget_path)
     }
 
     SliderData data{};
-    auto state = space.read<BuilderWidgets::SliderState, std::string>(widget_path + "/state");
+    auto state = space.read<BuilderWidgets::SliderState, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/state"));
     if (!state) {
         enqueue_error(space, "WidgetEventTrellis failed to read slider state for " + widget_path);
         return std::nullopt;
     }
     data.state = *state;
-    auto style = space.read<BuilderWidgets::SliderStyle, std::string>(widget_path + "/meta/style");
+    auto style = space.read<BuilderWidgets::SliderStyle, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/meta/style"));
     if (!style) {
         enqueue_error(space, "WidgetEventTrellis failed to read slider style for " + widget_path);
         return std::nullopt;
     }
     data.style = *style;
-    auto range = space.read<BuilderWidgets::SliderRange, std::string>(widget_path + "/meta/range");
+    auto range = space.read<BuilderWidgets::SliderRange, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/meta/range"));
     if (!range) {
         enqueue_error(space, "WidgetEventTrellis failed to read slider range for " + widget_path);
         return std::nullopt;
@@ -99,7 +99,7 @@ auto write_slider_state(PathSpace& space,
                         std::string const& widget_path,
                         BuilderWidgets::SliderState const& state) -> bool {
     auto status = DeclarativeDetail::replace_single<BuilderWidgets::SliderState>(space,
-                                                             widget_path + "/state",
+                                                             SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/state"),
                                                              state);
     if (!status) {
         enqueue_error(space,
@@ -140,19 +140,19 @@ auto read_list_data(PathSpace& space, std::string const& widget_path)
     }
 
     ListData data{};
-    auto state = space.read<BuilderWidgets::ListState, std::string>(widget_path + "/state");
+    auto state = space.read<BuilderWidgets::ListState, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/state"));
     if (!state) {
         enqueue_error(space, "WidgetEventTrellis failed to read list state for " + widget_path);
         return std::nullopt;
     }
     data.state = *state;
-    auto style = space.read<BuilderWidgets::ListStyle, std::string>(widget_path + "/meta/style");
+    auto style = space.read<BuilderWidgets::ListStyle, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/meta/style"));
     if (!style) {
         enqueue_error(space, "WidgetEventTrellis failed to read list style for " + widget_path);
         return std::nullopt;
     }
     data.style = *style;
-    auto items = space.read<std::vector<BuilderWidgets::ListItem>, std::string>(widget_path + "/meta/items");
+    auto items = space.read<std::vector<BuilderWidgets::ListItem>, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/meta/items"));
     if (!items) {
         enqueue_error(space, "WidgetEventTrellis failed to read list items for " + widget_path);
         return std::nullopt;
@@ -176,19 +176,19 @@ auto read_tree_data(PathSpace& space, std::string const& widget_path) -> std::op
     }
 
     TreeData data{};
-    auto state = space.read<BuilderWidgets::TreeState, std::string>(widget_path + "/state");
+    auto state = space.read<BuilderWidgets::TreeState, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/state"));
     if (!state) {
         enqueue_error(space, "WidgetEventTrellis failed to read tree state for " + widget_path);
         return std::nullopt;
     }
     data.state = *state;
-    auto style = space.read<BuilderWidgets::TreeStyle, std::string>(widget_path + "/meta/style");
+    auto style = space.read<BuilderWidgets::TreeStyle, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/meta/style"));
     if (!style) {
         enqueue_error(space, "WidgetEventTrellis failed to read tree style for " + widget_path);
         return std::nullopt;
     }
     data.style = *style;
-    auto nodes = space.read<std::vector<BuilderWidgets::TreeNode>, std::string>(widget_path + "/meta/nodes");
+    auto nodes = space.read<std::vector<BuilderWidgets::TreeNode>, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/meta/nodes"));
     if (!nodes) {
         enqueue_error(space, "WidgetEventTrellis failed to read tree nodes for " + widget_path);
         return std::nullopt;
@@ -245,7 +245,7 @@ auto tree_row_index(std::vector<TreeRowInfo> const& rows,
 
 auto read_text_state(PathSpace& space, std::string const& widget_path)
     -> std::optional<BuilderWidgets::TextFieldState> {
-    auto state = space.read<BuilderWidgets::TextFieldState, std::string>(widget_path + "/state");
+    auto state = space.read<BuilderWidgets::TextFieldState, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/state"));
     if (!state) {
         enqueue_error(space, "WidgetEventTrellis failed to read text state for " + widget_path);
         return std::nullopt;
@@ -257,7 +257,7 @@ auto write_text_state(PathSpace& space,
                       std::string const& widget_path,
                       BuilderWidgets::TextFieldState const& state) -> bool {
     auto status = DeclarativeDetail::replace_single<BuilderWidgets::TextFieldState>(space,
-                                                                widget_path + "/state",
+                                                                SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/state"),
                                                                 state);
     if (!status) {
         enqueue_error(space,
@@ -463,7 +463,7 @@ auto write_stack_active_panel(PathSpace& space,
                               std::string const& widget_path,
                               std::string const& panel_id) -> bool {
     auto status = DeclarativeDetail::replace_single<std::string>(space,
-                                              widget_path + "/state/active_panel",
+                                              SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/state/active_panel"),
                                               panel_id);
     if (!status) {
         enqueue_error(space,

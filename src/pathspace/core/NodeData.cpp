@@ -5,9 +5,10 @@
 #include "task/Task.hpp"
 
 #include <cstring>
+#include <span>
 
 namespace {
-constexpr std::uint32_t HISTORY_PAYLOAD_VERSION = 1;
+constexpr std::uint32_t HISTORY_PAYLOAD_VERSION = 2;
 
 template <typename T>
 void appendScalar(std::vector<std::byte>& bytes, T value) {
@@ -67,6 +68,8 @@ auto NodeData::serialize(const InputData& inputData) -> std::optional<Error> {
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
         size_t oldSize = data.size();
         inputData.metadata.serialize(inputData.obj, data);
+        auto appended = data.size() - oldSize;
+        valueSizes.push_back(appended);
         sp_log("Buffer size before: " + std::to_string(oldSize) + ", after: " + std::to_string(data.size()), "NodeData");
     }
 
@@ -82,6 +85,42 @@ auto NodeData::deserialize(void* obj, const InputMetadata& inputMetadata) const 
 auto NodeData::deserializePop(void* obj, const InputMetadata& inputMetadata) -> std::optional<Error> {
     sp_log("NodeData::deserializePop", "Function Called");
     return this->deserializeImpl(obj, inputMetadata, true);
+}
+
+auto NodeData::popFrontSerialized(NodeData& destination) -> std::optional<Error> {
+    sp_log("NodeData::popFrontSerialized", "Function Called");
+    if (this->types.empty()) {
+        return Error{Error::Code::NoObjectFound, "No data available for serialization"};
+    }
+    if (this->types.front().category == DataCategory::Execution) {
+        return Error{Error::Code::NotSupported, "Execution payloads cannot be serialized"};
+    }
+    if (this->valueSizes.empty()) {
+        return Error{Error::Code::MalformedInput,
+                     "Serialized payload missing value length metadata"};
+    }
+
+    auto length = this->valueSizes.front();
+    if (length > this->data.size()) {
+        return Error{Error::Code::MalformedInput, "Serialized payload exceeds buffer"};
+    }
+
+    NodeData payload;
+    if (length > 0) {
+        payload.data.append(this->data.data(), length);
+    }
+    payload.valueSizes.push_back(length);
+
+    ElementType entry = this->types.front();
+    entry.elements    = 1;
+    payload.types.push_back(entry);
+
+    this->data.advance(length);
+    this->valueSizes.pop_front();
+    popType();
+
+    destination = std::move(payload);
+    return std::nullopt;
 }
 
 auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, bool doPop) -> std::optional<Error> {
@@ -217,6 +256,9 @@ auto NodeData::deserializeData(void* obj, const InputMetadata& inputMetadata, bo
         if (!inputMetadata.deserializePop)
             return Error{Error::Code::UnserializableType, "No pop deserialization function provided"};
         inputMetadata.deserializePop(obj, data);
+        if (!valueSizes.empty()) {
+            valueSizes.pop_front();
+        }
         sp_log("After pop, buffer size: " + std::to_string(data.size()), "NodeData");
         popType();
     } else {
@@ -251,6 +293,49 @@ auto NodeData::popType() -> void {
     if (!this->types.empty())
         if (--this->types.front().elements == 0)
             this->types.erase(this->types.begin());
+}
+
+auto NodeData::append(NodeData const& other) -> std::optional<Error> {
+    sp_log("NodeData::append", "Function Called");
+    if (other.hasExecutionPayload()) {
+        return Error{Error::Code::NotSupported,
+                     "Execution payloads cannot be serialized across mounts"};
+    }
+
+    auto sourceRaw   = other.rawBuffer();
+    auto frontOffset = other.rawBufferFrontOffset();
+    if (frontOffset > sourceRaw.size()) {
+        return Error{Error::Code::MalformedInput, "Invalid serialized buffer"};
+    }
+    auto payload = sourceRaw.subspan(frontOffset);
+    if (!payload.empty()) {
+        data.append(payload.data(), payload.size());
+    }
+
+    for (auto const& type : other.types) {
+        if (!types.empty() && types.back().typeInfo == type.typeInfo
+            && types.back().category == type.category) {
+            types.back().elements += type.elements;
+        } else {
+            types.push_back(type);
+        }
+    }
+
+    if (!other.valueSizes.empty()) {
+        valueSizes.insert(valueSizes.end(), other.valueSizes.begin(), other.valueSizes.end());
+    }
+
+    return std::nullopt;
+}
+
+auto NodeData::valueCount() const -> std::size_t {
+    std::size_t count = 0;
+    for (auto const& type : types) {
+        if (type.category != DataCategory::Execution) {
+            count += type.elements;
+        }
+    }
+    return count;
 }
 
 auto NodeData::peekAnyFuture() const -> std::optional<FutureAny> {
@@ -292,6 +377,11 @@ std::optional<std::vector<std::byte>> NodeData::serializeSnapshot() const {
         bytes.push_back(std::byte{0});
     }
 
+    appendScalar<std::uint32_t>(bytes, static_cast<std::uint32_t>(this->valueSizes.size()));
+    for (auto length : this->valueSizes) {
+        appendScalar<std::uint32_t>(bytes, static_cast<std::uint32_t>(length));
+    }
+
     appendScalar<std::uint32_t>(bytes, static_cast<std::uint32_t>(this->data.rawSize()));
     appendScalar<std::uint32_t>(bytes, static_cast<std::uint32_t>(this->data.virtualFront()));
 
@@ -306,10 +396,15 @@ std::optional<std::vector<std::byte>> NodeData::serializeSnapshot() const {
 std::optional<NodeData> NodeData::deserializeSnapshot(std::span<const std::byte> bytes) {
     sp_log("NodeData::deserializeSnapshot", "Function Called");
     auto version = readScalar<std::uint32_t>(bytes);
-    if (!version.has_value() || *version != HISTORY_PAYLOAD_VERSION) {
+    if (!version.has_value()) {
+        sp_log("Missing history payload version", "NodeData");
+        return std::nullopt;
+    }
+    if (*version == 0 || *version > HISTORY_PAYLOAD_VERSION) {
         sp_log("Unsupported history payload version", "NodeData");
         return std::nullopt;
     }
+    bool const hasValueSizes = (*version) >= 2;
 
     auto countOpt = readScalar<std::uint32_t>(bytes);
     if (!countOpt.has_value())
@@ -333,6 +428,20 @@ std::optional<NodeData> NodeData::deserializeSnapshot(std::span<const std::byte>
         restoredTypes[i] = element;
     }
 
+    std::vector<std::size_t> restoredValueSizes;
+    if (hasValueSizes) {
+        auto countOpt = readScalar<std::uint32_t>(bytes);
+        if (!countOpt.has_value())
+            return std::nullopt;
+        restoredValueSizes.resize(*countOpt);
+        for (std::uint32_t i = 0; i < *countOpt; ++i) {
+            auto lengthOpt = readScalar<std::uint32_t>(bytes);
+            if (!lengthOpt.has_value())
+                return std::nullopt;
+            restoredValueSizes[i] = *lengthOpt;
+        }
+    }
+
     auto rawSizeOpt = readScalar<std::uint32_t>(bytes);
     auto frontOpt   = readScalar<std::uint32_t>(bytes);
     if (!rawSizeOpt.has_value() || !frontOpt.has_value())
@@ -349,7 +458,40 @@ std::optional<NodeData> NodeData::deserializeSnapshot(std::span<const std::byte>
     NodeData node;
     node.data.assignRaw(std::move(raw), front);
     node.types = std::move(restoredTypes);
+    if (hasValueSizes) {
+        node.valueSizes.assign(restoredValueSizes.begin(), restoredValueSizes.end());
+    }
     return node;
+}
+
+auto NodeData::fromSerializedValue(InputMetadata const& metadata,
+                                   std::span<const std::byte> bytes) -> Expected<NodeData> {
+    if (metadata.typeInfo == nullptr) {
+        return std::unexpected(Error{Error::Code::InvalidType, "Missing type metadata"});
+    }
+    NodeData node;
+    if (!bytes.empty()) {
+        auto raw = std::span<const std::byte>(bytes.data(), bytes.size());
+        auto as_u8 = std::span<const std::uint8_t>(reinterpret_cast<std::uint8_t const*>(raw.data()),
+                                                   raw.size());
+        node.data.append(as_u8);
+    }
+    node.valueSizes.push_back(bytes.size());
+    node.pushType(metadata);
+    return node;
+}
+
+auto NodeData::frontSerializedValueBytes() const -> std::optional<std::span<const std::byte>> {
+    if (valueSizes.empty()) {
+        return std::nullopt;
+    }
+    auto const length = valueSizes.front();
+    auto const raw    = std::as_bytes(data.rawData());
+    auto const front  = data.virtualFront();
+    if (front + length > raw.size()) {
+        return std::nullopt;
+    }
+    return raw.subspan(front, length);
 }
 
 auto NodeData::hasExecutionPayload() const noexcept -> bool {

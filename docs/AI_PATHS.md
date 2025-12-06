@@ -45,6 +45,11 @@ Conventions:
 - System IO (logs)
   - `/system/io/stdout`
   - `/system/io/stderr`
+- Remote mount namespaces
+  - `/remote/<alias>` — placeholder node representing the mounted subtree. The distributed mount manager inserts a stub immediately after `MountOpenResponse` succeeds so the inspector, CLI, and dashboards can see the alias before the first snapshot arrives.
+  - `/remote/<alias>/<path>` — mirrors the remote PathSpace tree (read-only in Phase 0). All absolute paths returned by the remote server are prefixed with `/remote/<alias>` on arrival.
+  - `/inspector/metrics/remotes/<alias>/{server,client}/…` — per-remote health. The server subtree reports export-side sessions/waiters, while the client subtree (new `RemoteMountManager`) exposes `client/connected`, last/avg/max latency, request counters, and `waiters/current` so dashboards can diagnose either side of the link.
+  - `/diagnostics/web/inspector/acl/<timestamp>` — audit log entries for every handshake attempt, capturing alias, principal, auth kind, and result (`accepted`, `denied`, `throttled`).
 - Telemetry + push control (runtime-managed)
   - `/_system/telemetry/start/queue` / `/_system/telemetry/stop/queue` — accept `TelemetryToggleCommand` payloads to flip telemetry+
     device mirrors via `CreateTelemetryControl`.
@@ -104,7 +109,7 @@ The following subtrees are standardized within each application root (one of the
 | **Window** | `<app>/windows/<windowId>` | `state/title`, `state/visible`, `style/theme`, `views/<viewId>/{scene,surface,renderer,present}`, `widgets/<widgetName>`, `events/{close,focus}/handler`, `render/dirty` | `SP::Window::Create` mounts this subtree, registers `/system/widgets/runtime/windows/<token>` subscriptions, and becomes the parent for declarative widget roots. |
 | **Scene** | `<app>/scenes/<sceneId>` | `structure/widgets/<widgetPath>`, `structure/window/<windowId>/{focus,current,metrics/dpi}`, `views/<viewId>/dirty`, `snapshot/<rev>`, `metrics/*`, `events/present/handler`, `state/attached`, `render/dirty` | `SP::Scene::Create` spawns the lifecycle worker and wires the window view bindings; `SceneLifecycle::PumpSceneOnce` lives under this namespace. |
 | **Theme** | `<app>/themes/<name>` | `colors/<token>`, `typography/<token>`, `spacing/<token>`, `style/inherits`, compiled mirror at `config/theme/<name>/value` | Declarative widgets inherit `style/theme` from the widget → parent → window → application (`themes/default`) chain. |
-| **Widget root** | `<app>/windows/<windowId>/widgets/<widgetId>` | `state/*`, `layout/*`, `children/*`, `events/<event>/{handler,queue}`, `render/{synthesize,bucket,dirty}`, `focus/*`, `metrics/*`, `log/events` | Details live in `docs/Widget_Schema_Reference.md`; every widget also exposes `ops/{inbox,actions}/queue` plus the handler registry binding stored at `events/<event>/handler`. |
+| **Widget root** | `<app>/windows/<windowId>/widgets/<widgetId>` | `/space/{meta,state,render,focus,events,panels}`, `children/*`, `layout/*`, `ops/{inbox,actions}/queue`, `metrics/*`, `log/events` | All widget metadata/state/render/focus/event bindings now live under `/space`; only structural children remain at `/children`. See `docs/Widget_Schema_Reference.md` for the `/space` contract and handler binding layout. |
 
 Keep this table in sync with `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md` (“Canonical Path Schema”) and `docs/Widget_Schema_Reference.md`. Whenever you add or retire leaves under any of these anchors, update all three references in the same change so authors never have to reconcile conflicting schemas.
 

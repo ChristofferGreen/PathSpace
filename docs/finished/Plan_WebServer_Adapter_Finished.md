@@ -171,7 +171,7 @@ Phase 4 requires the adapter to stay stateless so multiple `pathspace_serve_ht
 | --- | --- | --- |
 | **Embedded fan-out** | Multiple server threads/processes inside the same binary as the PathSpace workload. | Each worker shares an in-process `ServeHtmlSpace` so reads/writes go through the host PathSpace context. Use this while load stays on a single host. |
 | **Sidecar per host** | Dedicated PathSpace process plus one `pathspace_serve_html` sidecar on the same machine. | Communicate over shared memory/IPC; mount the same `/system/applications` tree so renders and ops stay in sync. Frontends remain stateless and rely on a shared session path. |
-| **Remote/clustered** | Multiple web frontends on separate hosts behind a load balancer. | Requires the distributed PathSpace mount (Plan_Distributed_PathSpace.md) so every frontend can read `/system/applications` and `/system/web/sessions`. Assets move through shared storage or CDN. |
+| **Remote/clustered** | Multiple web frontends on separate hosts behind a load balancer. | Requires the distributed PathSpace mount (`docs/finished/Plan_Distributed_PathSpace_Finished.md`) so every frontend can read `/system/applications` and `/system/web/sessions`. Assets move through shared storage or CDN. |
 
 ### Shared state requirements
 1. **Session store:** Run the server with `--session-store pathspace --session-store-root /system/web/sessions/<cluster>` (mirrors `[auth.session_store]` in `docs/web_server.toml`). All instances then read/write the same JSON session blobs so cookies issued by node A remain valid on node B.
@@ -375,7 +375,7 @@ Backlog tracking: Phases 3–5 are now represented in `docs/AI_TODO.task` as “
 - `docs/web_server.toml` — New `[auth.google]` stanza documents client id/secret, redirect URI, endpoints, and mapping roots for the Google Sign-In flow.
 - Example README(s) — Add instructions for launching the server and visiting the browser demo.
 
-> **Dependency:** Remote deployments assume distributed mounts per `docs/Plan_Distributed_PathSpace.md` so the web server can reach user app roots securely.
+> **Dependency:** Remote deployments assume distributed mounts per `docs/finished/Plan_Distributed_PathSpace_Finished.md` so the web server can reach user app roots securely.
 
 ## Open Questions
 - **API Transport** — Evaluate when we will need HTTP/2 or gRPC layering on top of the native C++ HTTP server (e.g., for sidecar/cluster deployments).

@@ -95,4 +95,58 @@ TEST_SUITE("NodeData snapshot serialization") {
         auto restoredOpt = NodeData::deserializeSnapshot(std::span<const std::byte>{corrupted.data(), corrupted.size()});
         CHECK_FALSE(restoredOpt.has_value());
     }
+
+    TEST_CASE("popFrontSerialized extracts front value") {
+        NodeData node;
+        int      first  = 21;
+        std::string second = "next";
+
+        CHECK_FALSE(node.serialize(InputData(first)).has_value());
+        CHECK_FALSE(node.serialize(InputData(second)).has_value());
+
+        NodeData extracted;
+        auto     error = node.popFrontSerialized(extracted);
+        CHECK_FALSE(error.has_value());
+
+        auto snapshot = extracted.serializeSnapshot();
+        REQUIRE(snapshot.has_value());
+        auto restored = NodeData::deserializeSnapshot(
+            std::span<const std::byte>(snapshot->data(), snapshot->size()));
+        REQUIRE(restored.has_value());
+
+        int decoded = 0;
+        CHECK_FALSE(restored->deserialize(&decoded, metadataForInt()).has_value());
+        CHECK(decoded == first);
+
+        std::string remaining;
+        CHECK_FALSE(node.deserializePop(&remaining, metadataForString()).has_value());
+        CHECK(remaining == second);
+    }
+
+    TEST_CASE("popFrontSerialized survives snapshot round trip") {
+        NodeData node;
+        double   value = 99.5;
+        CHECK_FALSE(node.serialize(InputData(value)).has_value());
+
+        auto snapshot = node.serializeSnapshot();
+        REQUIRE(snapshot.has_value());
+
+        auto restored = NodeData::deserializeSnapshot(
+            std::span<const std::byte>(snapshot->data(), snapshot->size()));
+        REQUIRE(restored.has_value());
+
+        NodeData extracted;
+        auto     error = restored->popFrontSerialized(extracted);
+        CHECK_FALSE(error.has_value());
+
+        auto encoded = extracted.serializeSnapshot();
+        REQUIRE(encoded.has_value());
+        auto decoded = NodeData::deserializeSnapshot(
+            std::span<const std::byte>(encoded->data(), encoded->size()));
+        REQUIRE(decoded.has_value());
+
+        double roundtrip = 0;
+        CHECK_FALSE(decoded->deserialize(&roundtrip, metadataForDouble()).has_value());
+        CHECK(roundtrip == Approx(value));
+    }
 }

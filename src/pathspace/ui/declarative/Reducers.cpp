@@ -7,6 +7,7 @@
 namespace SP::UI::Declarative::Reducers {
 
 namespace Bindings = SP::UI::Runtime::Widgets::Bindings;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
 
 auto MakeWidgetAction(Bindings::WidgetOp const& op) -> WidgetAction {
     WidgetAction action{};
@@ -33,14 +34,12 @@ auto MakeWidgetAction(Bindings::WidgetOp const& op) -> WidgetAction {
 }
 
 auto WidgetOpsQueue(WidgetPath const& widget_root) -> ConcretePath {
-    std::string queue_path = widget_root.getPath();
-    queue_path.append("/ops/inbox/queue");
+    auto queue_path = WidgetSpacePath(widget_root, "/ops/inbox/queue");
     return ConcretePath{std::move(queue_path)};
 }
 
 auto DefaultActionsQueue(WidgetPath const& widget_root) -> ConcretePath {
-    std::string queue_path = widget_root.getPath();
-    queue_path.append("/ops/actions/inbox/queue");
+    auto queue_path = WidgetSpacePath(widget_root, "/ops/actions/inbox/queue");
     return ConcretePath{std::move(queue_path)};
 }
 

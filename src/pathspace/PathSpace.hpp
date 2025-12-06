@@ -15,6 +15,7 @@
 #include "type/InputData.hpp"
 #include "type/InputMetadata.hpp"
 #include <memory>
+#include <span>
 #include <string_view>
 #include <vector>
 #include "task/IFutureAny.hpp"
@@ -40,10 +41,6 @@ public:
     ~PathSpace();
 
     virtual auto clear() -> void;
-
-    auto relocateSubtree(std::string_view sourcePath,
-                         std::string_view destinationPath) -> Expected<void>;
-
 
 protected:
     /**
@@ -88,6 +85,7 @@ protected:
     // If non-null, this PathSpace owns the TaskPool and will shut it down and destroy it at teardown.
     std::unique_ptr<TaskPool> ownedPool;
     Leaf        leaf;
+
 };
 
 } // namespace SP

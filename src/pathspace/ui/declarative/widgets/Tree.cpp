@@ -6,6 +6,7 @@ namespace SP::UI::Declarative {
 
 namespace WidgetDetail = SP::UI::Declarative::Detail;
 namespace BuilderWidgets = SP::UI::Runtime::Widgets;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
 using SP::UI::Runtime::WidgetPath;
 
 namespace Tree {
@@ -29,7 +30,8 @@ auto Fragment(Args args) -> WidgetFragment {
                                                return status;
                                            }
                                            if (auto status = WidgetDetail::write_value(ctx.space,
-                                                                                ctx.root + "/meta/nodes",
+                                                                                WidgetSpacePath(ctx.root,
+                                                                                                "/meta/nodes"),
                                                                                 args.nodes);
                                                !status) {
                                                return status;
@@ -65,7 +67,7 @@ auto SetNodes(PathSpace& space,
               WidgetPath const& widget,
               std::vector<TreeNode> nodes) -> SP::Expected<void> {
     if (auto status = WidgetDetail::write_value(space,
-                                          widget.getPath() + "/meta/nodes",
+                                          WidgetSpacePath(widget.getPath(), "/meta/nodes"),
                                           std::move(nodes));
         !status) {
         return status;

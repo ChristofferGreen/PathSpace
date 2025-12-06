@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <mutex>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -465,70 +466,6 @@ auto PathSpace::listChildrenCanonical(std::string_view canonicalPath) const -> s
         current = child;
     }
 
-    return {};
-}
-
-auto PathSpace::relocateSubtree(std::string_view sourcePath,
-                                std::string_view destinationPath) -> Expected<void> {
-    auto canonicalSource = canonicalize(sourcePath);
-    if (!canonicalSource) {
-        return std::unexpected(canonicalSource.error());
-    }
-    auto canonicalDestination = canonicalize(destinationPath);
-    if (!canonicalDestination) {
-        return std::unexpected(canonicalDestination.error());
-    }
-
-    auto const& src = *canonicalSource;
-    auto const& dst = *canonicalDestination;
-
-    if (src == "/" || dst == "/") {
-        return std::unexpected(make_error(Error::Code::InvalidPath,
-                                          "cannot relocate the root path"));
-    }
-    if (src == dst) {
-        return {};
-    }
-    if (dst.rfind(src, 0) == 0 && (dst.size() == src.size() || dst[src.size()] == '/')) {
-        return std::unexpected(make_error(Error::Code::InvalidPath,
-                                          "destination lies within source subtree"));
-    }
-
-    auto sourceComponents = split_components(src);
-    if (!sourceComponents) {
-        return std::unexpected(sourceComponents.error());
-    }
-    auto destinationComponents = split_components(dst);
-    if (!destinationComponents) {
-        return std::unexpected(destinationComponents.error());
-    }
-
-    auto sourceParent = locate_parent(this->leaf.rootNode(), *sourceComponents, false);
-    if (!sourceParent) {
-        return std::unexpected(sourceParent.error());
-    }
-    auto destParent = locate_parent(this->leaf.rootNode(), *destinationComponents, true);
-    if (!destParent) {
-        return std::unexpected(destParent.error());
-    }
-
-    if (auto* existing = destParent->parent->getChild(destParent->leaf); existing) {
-        return std::unexpected(make_error(Error::Code::InvalidPath,
-                                          "destination already exists"));
-    }
-
-    auto sourceIt = sourceParent->parent->children.find(sourceParent->leaf);
-    if (sourceIt == sourceParent->parent->children.end()) {
-        return std::unexpected(make_error(Error::Code::NoSuchPath,
-                                          "source widget missing"));
-    }
-
-    auto nodePtr = std::move(sourceIt->second);
-    sourceParent->parent->children.erase(sourceIt);
-    destParent->parent->children.emplace(destParent->leaf, std::move(nodePtr));
-
-    this->context_->notify(src);
-    this->context_->notify(dst);
     return {};
 }
 

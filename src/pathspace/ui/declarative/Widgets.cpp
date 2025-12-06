@@ -5,10 +5,13 @@
 #include "widgets/Common.hpp"
 
 #include <algorithm>
+#include <memory>
 
 namespace SP::UI::Declarative {
 
 namespace WidgetDetail = SP::UI::Declarative::Detail;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
+using SP::UI::Runtime::Widgets::WidgetSpaceRoot;
 
 namespace {
 
@@ -21,7 +24,7 @@ auto parent_path(std::string const& path) -> std::string {
 }
 
 auto mark_if_widget(PathSpace& space, std::string const& path) -> void {
-    auto kind = space.read<std::string, std::string>(path + "/meta/kind");
+    auto kind = space.read<std::string, std::string>(WidgetSpacePath(path, "/meta/kind"));
     if (!kind) {
         return;
     }
@@ -43,6 +46,10 @@ auto MountFragment(PathSpace& space,
 
     auto base = WidgetDetail::mount_base(parent.getPath(), options);
     auto root = WidgetDetail::make_path(base, name);
+
+    if (auto reset = WidgetDetail::reset_widget_space(space, root); !reset) {
+        return std::unexpected(reset.error());
+    }
 
     if (auto status = WidgetDetail::write_kind(space, root, fragment.kind); !status) {
         return std::unexpected(status.error());
@@ -90,7 +97,7 @@ auto Widgets::Mount(PathSpace& space,
 
 auto Remove(PathSpace& space, SP::UI::Runtime::WidgetPath const& widget) -> SP::Expected<void> {
     if (auto status = WidgetDetail::write_value(space,
-                                                widget.getPath() + "/state/removed",
+                                                WidgetSpacePath(widget.getPath(), "/state/removed"),
                                                 true);
         !status) {
         return status;
@@ -124,9 +131,17 @@ auto Move(PathSpace& space,
                                                        SP::Error::Code::InvalidPath));
     }
 
-    auto relocated = space.relocateSubtree(source_root, destination_root);
+    auto source_space = WidgetSpaceRoot(source_root);
+    auto destination_space = WidgetSpaceRoot(destination_root);
+
+    auto relocated = space.take<std::unique_ptr<PathSpace>>(source_space);
     if (!relocated) {
         return std::unexpected(relocated.error());
+    }
+
+    auto inserted = space.insert(destination_space, std::move(*relocated));
+    if (!inserted.errors.empty()) {
+        return std::unexpected(inserted.errors.front());
     }
 
     if (auto rebind = WidgetDetail::rebind_handlers(space, source_root, destination_root); !rebind) {

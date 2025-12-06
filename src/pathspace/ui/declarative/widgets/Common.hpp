@@ -12,6 +12,8 @@ namespace SP::UI::Declarative::Detail {
 
 namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
+using SP::UI::Runtime::Widgets::WidgetSpaceRoot;
 
 using DeclarativeDetail::make_error;
 
@@ -269,7 +271,7 @@ template <typename State>
 inline auto write_state(PathSpace& space,
                         std::string const& root,
                         State const& state) -> SP::Expected<void> {
-    return write_value(space, root + "/state", state);
+    return write_value(space, WidgetSpacePath(root, "/state"), state);
 }
 
 template <typename Style>
@@ -278,7 +280,7 @@ inline auto write_style(PathSpace& space,
                         Style const& style,
                         bool track_overrides = true) -> SP::Expected<void> {
     auto serialized = track_overrides ? prepare_style_for_serialization(style) : style;
-    return write_value(space, root + "/meta/style", serialized);
+    return write_value(space, WidgetSpacePath(root, "/meta/style"), serialized);
 }
 
 auto write_kind(PathSpace& space,
@@ -291,6 +293,9 @@ auto initialize_render(PathSpace& space,
 
 auto mark_render_dirty(PathSpace& space,
                        std::string const& root) -> SP::Expected<void>;
+
+auto reset_widget_space(PathSpace& space,
+                        std::string const& root) -> SP::Expected<void>;
 
 auto write_handler(PathSpace& space,
                    std::string const& root,

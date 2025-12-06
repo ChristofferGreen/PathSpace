@@ -309,8 +309,8 @@ auto CreateButton(PathSpace& space,
         .scene = *scenePath,
         .states = *stateScenes,
         .root = WidgetPath{widgetRoot->getPath()},
-        .state = ConcretePath{widgetRoot->getPath() + "/state"},
-        .label = ConcretePath{widgetRoot->getPath() + "/meta/label"},
+        .state = ConcretePath{SP::UI::Runtime::Widgets::WidgetSpacePath(*widgetRoot, "/state")},
+        .label = ConcretePath{SP::UI::Runtime::Widgets::WidgetSpacePath(*widgetRoot, "/meta/label")},
     };
     return paths;
 }
@@ -319,11 +319,11 @@ auto write_toggle_metadata(PathSpace& space,
                            std::string const& rootPath,
                            Widgets::ToggleState const& state,
                            Widgets::ToggleStyle const& style) -> SP::Expected<void> {
-    auto statePath = rootPath + "/state";
+    auto statePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/state");
     if (auto status = replace_single<Widgets::ToggleState>(space, statePath, state); !status) {
         return std::unexpected(status.error());
     }
-    auto stylePath = rootPath + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/style");
     if (auto status = replace_single<Widgets::ToggleStyle>(space, stylePath, style); !status) {
         return std::unexpected(status.error());
     }
@@ -376,7 +376,7 @@ auto CreateToggle(PathSpace& space,
         .scene = *scenePath,
         .states = *stateScenes,
         .root = WidgetPath{widgetRoot->getPath()},
-        .state = ConcretePath{widgetRoot->getPath() + "/state"},
+        .state = ConcretePath{SP::UI::Runtime::Widgets::WidgetSpacePath(*widgetRoot, "/state")},
     };
     return paths;
 }
@@ -451,8 +451,8 @@ auto CreateSlider(PathSpace& space,
         .scene = *scenePath,
         .states = *stateScenes,
         .root = WidgetPath{widgetRoot->getPath()},
-        .state = ConcretePath{widgetRoot->getPath() + "/state"},
-        .range = ConcretePath{widgetRoot->getPath() + "/meta/range"},
+        .state = ConcretePath{SP::UI::Runtime::Widgets::WidgetSpacePath(*widgetRoot, "/state")},
+        .range = ConcretePath{SP::UI::Runtime::Widgets::WidgetSpacePath(*widgetRoot, "/meta/range")},
     };
     return paths;
 }
@@ -540,8 +540,8 @@ auto CreateList(PathSpace& space,
         .scene = *scenePath,
         .states = *stateScenes,
         .root = WidgetPath{widgetRoot->getPath()},
-        .state = ConcretePath{widgetRoot->getPath() + "/state"},
-        .items = ConcretePath{widgetRoot->getPath() + "/meta/items"},
+        .state = ConcretePath{SP::UI::Runtime::Widgets::WidgetSpacePath(*widgetRoot, "/state")},
+        .items = ConcretePath{SP::UI::Runtime::Widgets::WidgetSpacePath(*widgetRoot, "/meta/items")},
     };
     return paths;
 }
@@ -607,8 +607,8 @@ auto CreateTree(PathSpace& space,
         .scene = *scenePath,
         .states = *stateScenes,
         .root = WidgetPath{widgetRoot->getPath()},
-        .state = ConcretePath{widgetRoot->getPath() + "/state"},
-        .nodes = ConcretePath{widgetRoot->getPath() + "/meta/nodes"},
+        .state = ConcretePath{SP::UI::Runtime::Widgets::WidgetSpacePath(*widgetRoot, "/state")},
+        .nodes = ConcretePath{SP::UI::Runtime::Widgets::WidgetSpacePath(*widgetRoot, "/meta/nodes")},
     };
     return paths;
 }
@@ -657,7 +657,7 @@ auto CreateTextField(PathSpace& space,
         .scene = *scenePath,
         .states = *stateScenes,
         .root = WidgetPath{widgetRoot->getPath()},
-        .state = ConcretePath{widgetRoot->getPath() + "/state"},
+        .state = ConcretePath{SP::UI::Runtime::Widgets::WidgetSpacePath(*widgetRoot, "/state")},
     };
     return paths;
 }
@@ -707,7 +707,7 @@ auto CreateTextArea(PathSpace& space,
         .scene = *scenePath,
         .states = *stateScenes,
         .root = WidgetPath{widgetRoot->getPath()},
-        .state = ConcretePath{widgetRoot->getPath() + "/state"},
+        .state = ConcretePath{SP::UI::Runtime::Widgets::WidgetSpacePath(*widgetRoot, "/state")},
     };
     return paths;
 }
@@ -728,7 +728,7 @@ auto UpdateButtonState(PathSpace& space,
         return std::unexpected(status.error());
     }
 
-    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(paths.root.getPath(), "/meta/style");
     auto styleValue = space.read<Widgets::ButtonStyle, std::string>(stylePath);
     if (!styleValue) {
         return std::unexpected(styleValue.error());
@@ -807,7 +807,7 @@ auto UpdateToggleState(PathSpace& space,
         return std::unexpected(status.error());
     }
 
-    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(paths.root.getPath(), "/meta/style");
     auto styleValue = space.read<Widgets::ToggleStyle, std::string>(stylePath);
     if (!styleValue) {
         return std::unexpected(styleValue.error());
@@ -874,7 +874,7 @@ auto UpdateSliderState(PathSpace& space,
         return std::unexpected(status.error());
     }
 
-    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(paths.root.getPath(), "/meta/style");
     auto styleValue = space.read<Widgets::SliderStyle, std::string>(stylePath);
     if (!styleValue) {
         return std::unexpected(styleValue.error());
@@ -1064,7 +1064,7 @@ auto Input::TranslateTreeLayout(TreeLayout& layout, float dx, float dy) -> void 
 auto UpdateListState(PathSpace& space,
                      Widgets::ListPaths const& paths,
                      Widgets::ListState const& new_state) -> SP::Expected<bool> {
-    auto itemsPath = std::string(paths.root.getPath()) + "/meta/items";
+    auto itemsPath = SP::UI::Runtime::Widgets::WidgetSpacePath(paths.root.getPath(), "/meta/items");
     auto itemsValue = read_optional<std::vector<Widgets::ListItem>>(space, itemsPath);
     if (!itemsValue) {
         return std::unexpected(itemsValue.error());
@@ -1074,7 +1074,7 @@ auto UpdateListState(PathSpace& space,
         items = **itemsValue;
     }
 
-    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(paths.root.getPath(), "/meta/style");
     auto styleValue = space.read<Widgets::ListStyle, std::string>(stylePath);
     if (!styleValue) {
         return std::unexpected(styleValue.error());
@@ -1355,7 +1355,7 @@ auto UpdateTreeState(PathSpace& space,
         return std::unexpected(nodesValue.error());
     }
 
-    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(paths.root.getPath(), "/meta/style");
     auto styleValue = space.read<TreeStyle, std::string>(stylePath);
     if (!styleValue) {
         return std::unexpected(styleValue.error());
@@ -1402,7 +1402,7 @@ auto UpdateTreeState(PathSpace& space,
 auto UpdateTextFieldState(PathSpace& space,
                           Widgets::TextFieldPaths const& paths,
                           Widgets::TextFieldState const& new_state) -> SP::Expected<bool> {
-    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(paths.root.getPath(), "/meta/style");
     auto styleValue = space.read<Widgets::TextFieldStyle, std::string>(stylePath);
     if (!styleValue) {
         return std::unexpected(styleValue.error());
@@ -1452,7 +1452,7 @@ auto UpdateTextFieldState(PathSpace& space,
 auto UpdateTextAreaState(PathSpace& space,
                          Widgets::TextAreaPaths const& paths,
                          Widgets::TextAreaState const& new_state) -> SP::Expected<bool> {
-    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(paths.root.getPath(), "/meta/style");
     auto styleValue = space.read<Widgets::TextAreaStyle, std::string>(stylePath);
     if (!styleValue) {
         return std::unexpected(styleValue.error());
@@ -1942,9 +1942,12 @@ inline auto layout_equal(Widgets::StackLayoutState const& lhs,
 inline auto stack_paths_from_root(std::string const& rootPath) -> StackPaths {
     StackPaths paths{};
     paths.root = WidgetPath{rootPath};
-    paths.style = ConcretePath{rootPath + "/layout/style"};
-    paths.children = ConcretePath{rootPath + "/layout/children"};
-    paths.computed = ConcretePath{rootPath + "/layout/computed"};
+    paths.style = ConcretePath{
+        SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/layout/style")};
+    paths.children = ConcretePath{
+        SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/layout/children")};
+    paths.computed = ConcretePath{
+        SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/layout/computed")};
     return paths;
 }
 
@@ -2172,7 +2175,7 @@ auto widget_scene_path(std::string const& app_root,
 
 auto determine_widget_kind(PathSpace& space,
                            std::string const& rootPath) -> SP::Expected<WidgetKind> {
-    auto kindPath = rootPath + "/meta/kind";
+    auto kindPath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/kind");
     auto kindValue = read_optional<std::string>(space, kindPath);
     if (!kindValue) {
         return std::unexpected(kindValue.error());
@@ -2214,7 +2217,7 @@ auto determine_widget_kind(PathSpace& space,
         }
     }
 
-    auto computedPath = rootPath + "/layout/computed";
+    auto computedPath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/layout/computed");
     auto computedValue = read_optional<Widgets::StackLayoutState>(space, computedPath);
     if (!computedValue) {
         return std::unexpected(computedValue.error());
@@ -2223,7 +2226,7 @@ auto determine_widget_kind(PathSpace& space,
         return WidgetKind::Stack;
     }
 
-    auto nodesPath = rootPath + "/meta/nodes";
+    auto nodesPath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/nodes");
     auto nodesValue = read_optional<std::vector<TreeNode>>(space, nodesPath);
     if (!nodesValue) {
         return std::unexpected(nodesValue.error());
@@ -2232,7 +2235,7 @@ auto determine_widget_kind(PathSpace& space,
         return WidgetKind::Tree;
     }
 
-    auto itemsPath = rootPath + "/meta/items";
+    auto itemsPath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/items");
     auto itemsValue = read_optional<std::vector<Widgets::ListItem>>(space, itemsPath);
     if (!itemsValue) {
         return std::unexpected(itemsValue.error());
@@ -2241,7 +2244,7 @@ auto determine_widget_kind(PathSpace& space,
         return WidgetKind::List;
     }
 
-    auto rangePath = rootPath + "/meta/range";
+    auto rangePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/range");
     auto rangeValue = read_optional<Widgets::SliderRange>(space, rangePath);
     if (!rangeValue) {
         return std::unexpected(rangeValue.error());
@@ -2250,7 +2253,7 @@ auto determine_widget_kind(PathSpace& space,
         return WidgetKind::Slider;
     }
 
-    auto labelPath = rootPath + "/meta/label";
+    auto labelPath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/label");
     auto labelValue = read_optional<std::string>(space, labelPath);
     if (!labelValue) {
         return std::unexpected(labelValue.error());
@@ -2266,7 +2269,7 @@ auto update_button_focus(PathSpace& space,
                          std::string const& widget_root,
                          std::string const& app_root,
                          bool focused) -> SP::Expected<bool> {
-    auto statePath = widget_root + "/state";
+    auto statePath = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root, "/state");
     auto stateValue = space.read<Widgets::ButtonState, std::string>(statePath);
     if (!stateValue) {
         return std::unexpected(stateValue.error());
@@ -2285,7 +2288,8 @@ auto update_button_focus(PathSpace& space,
         .states = {},
         .root = WidgetPath{widget_root},
         .state = ConcretePath{statePath},
-        .label = ConcretePath{widget_root + "/meta/label"},
+        .label = ConcretePath{
+            SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root, "/meta/label")},
     };
     auto updated = Widgets::UpdateButtonState(space, paths, desired);
     if (!updated) {
@@ -2298,7 +2302,7 @@ auto update_toggle_focus(PathSpace& space,
                          std::string const& widget_root,
                          std::string const& app_root,
                          bool focused) -> SP::Expected<bool> {
-    auto statePath = widget_root + "/state";
+    auto statePath = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root, "/state");
     auto stateValue = space.read<Widgets::ToggleState, std::string>(statePath);
     if (!stateValue) {
         return std::unexpected(stateValue.error());
@@ -2329,7 +2333,7 @@ auto update_slider_focus(PathSpace& space,
                          std::string const& widget_root,
                          std::string const& app_root,
                          bool focused) -> SP::Expected<bool> {
-    auto statePath = widget_root + "/state";
+    auto statePath = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root, "/state");
     auto stateValue = space.read<Widgets::SliderState, std::string>(statePath);
     if (!stateValue) {
         return std::unexpected(stateValue.error());
@@ -2348,7 +2352,8 @@ auto update_slider_focus(PathSpace& space,
         .states = {},
         .root = WidgetPath{widget_root},
         .state = ConcretePath{statePath},
-        .range = ConcretePath{widget_root + "/meta/range"},
+        .range = ConcretePath{
+            SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root, "/meta/range")},
     };
     auto updated = Widgets::UpdateSliderState(space, paths, desired);
     if (!updated) {
@@ -2361,7 +2366,7 @@ auto update_list_focus(PathSpace& space,
                        std::string const& widget_root,
                        std::string const& app_root,
                        bool focused) -> SP::Expected<bool> {
-    auto statePath = widget_root + "/state";
+    auto statePath = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root, "/state");
     auto stateValue = space.read<Widgets::ListState, std::string>(statePath);
     if (!stateValue) {
         return std::unexpected(stateValue.error());
@@ -2369,7 +2374,7 @@ auto update_list_focus(PathSpace& space,
     Widgets::ListState desired = *stateValue;
     desired.focused = focused;
 
-    auto itemsPath = widget_root + "/meta/items";
+    auto itemsPath = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root, "/meta/items");
     auto itemsValue = space.read<std::vector<Widgets::ListItem>, std::string>(itemsPath);
     if (!itemsValue) {
         return std::unexpected(itemsValue.error());
@@ -2417,19 +2422,19 @@ auto update_tree_focus(PathSpace& space,
                       std::string const& widget_root,
                       std::string const& app_root,
                       bool focused) -> SP::Expected<bool> {
-    auto statePath = widget_root + "/state";
+    auto statePath = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root, "/state");
     auto stateValue = space.read<TreeState, std::string>(statePath);
     if (!stateValue) {
         return std::unexpected(stateValue.error());
     }
 
-    auto stylePath = widget_root + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root, "/meta/style");
     auto styleValue = space.read<TreeStyle, std::string>(stylePath);
     if (!styleValue) {
         return std::unexpected(styleValue.error());
     }
 
-    auto nodesPath = widget_root + "/meta/nodes";
+    auto nodesPath = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root, "/meta/nodes");
     auto nodesValue = space.read<std::vector<TreeNode>, std::string>(nodesPath);
     if (!nodesValue) {
         return std::unexpected(nodesValue.error());
@@ -2480,7 +2485,7 @@ auto update_text_field_focus(PathSpace& space,
                              std::string const& widget_root,
                              std::string const& app_root,
                              bool focused) -> SP::Expected<bool> {
-    auto statePath = widget_root + "/state";
+    auto statePath = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root, "/state");
     auto stateValue = space.read<Widgets::TextFieldState, std::string>(statePath);
     if (!stateValue) {
         return std::unexpected(stateValue.error());
@@ -2513,7 +2518,7 @@ auto update_text_area_focus(PathSpace& space,
                             std::string const& widget_root,
                             std::string const& app_root,
                             bool focused) -> SP::Expected<bool> {
-    auto statePath = widget_root + "/state";
+    auto statePath = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root, "/state");
     auto stateValue = space.read<Widgets::TextAreaState, std::string>(statePath);
     if (!stateValue) {
         return std::unexpected(stateValue.error());

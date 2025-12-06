@@ -274,6 +274,10 @@ public:
         return this->listChildrenCanonical("/");
     }
 
+    [[nodiscard]] std::shared_ptr<PathSpaceContext> sharedContext() const {
+        return context_;
+    }
+
     auto listChildren(ConcretePathStringView subpath) const -> std::vector<std::string> {
         auto canonical = subpath.canonicalized();
         if (!canonical) {

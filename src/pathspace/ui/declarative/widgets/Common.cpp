@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <unordered_map>
@@ -12,6 +13,10 @@
 #include <vector>
 
 namespace SP::UI::Declarative::Detail {
+
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
+using SP::UI::Runtime::Widgets::WidgetSpaceRoot;
+
 namespace {
 
 class CallbackRegistry {
@@ -56,7 +61,7 @@ public:
 private:
     auto handler_path_string(std::string const& widget_root,
                              std::string_view event_name) -> std::string {
-        auto path = make_path(widget_root, "events");
+        auto path = WidgetSpacePath(widget_root, "events");
         path = make_path(std::move(path), event_name);
         return make_path(std::move(path), "handler");
     }
@@ -193,7 +198,7 @@ auto make_path(std::string base, std::string_view component) -> std::string {
 }
 
 auto handler_binding_path(std::string const& root, std::string_view event) -> std::string {
-    auto path = make_path(root, "events");
+    auto path = WidgetSpacePath(root, "events");
     path = make_path(std::move(path), event);
     return make_path(std::move(path), "handler");
 }
@@ -221,19 +226,22 @@ auto mount_base(std::string_view parent,
 auto write_kind(PathSpace& space,
                 std::string const& root,
                 std::string const& kind) -> SP::Expected<void> {
-    return write_value(space, root + "/meta/kind", kind);
+    return write_value(space, WidgetSpacePath(root, "/meta/kind"), kind);
 }
 
 auto initialize_render(PathSpace& space,
                        std::string const& root,
                        WidgetKind kind) -> SP::Expected<void> {
     if (auto status = write_value(space,
-                                  root + "/render/synthesize",
+                                  WidgetSpacePath(root, "/render/synthesize"),
                                   RenderDescriptor{kind});
         !status) {
         return status;
     }
-    if (auto status = write_value(space, root + "/render/dirty_version", std::uint64_t{0}); !status) {
+    if (auto status = write_value(space,
+                                  WidgetSpacePath(root, "/render/dirty_version"),
+                                  std::uint64_t{0});
+        !status) {
         return status;
     }
     return mark_render_dirty(space, root);
@@ -241,19 +249,39 @@ auto initialize_render(PathSpace& space,
 
 auto mark_render_dirty(PathSpace& space,
                        std::string const& root) -> SP::Expected<void> {
-    if (auto status = write_value(space, root + "/render/dirty", true); !status) {
+    if (auto status = write_value(space, WidgetSpacePath(root, "/render/dirty"), true); !status) {
         return status;
     }
-    auto event_path = root + "/render/events/dirty";
+    auto event_path = WidgetSpacePath(root, "/render/events/dirty");
     auto inserted = space.insert(event_path, root);
     if (!inserted.errors.empty()) {
         return std::unexpected(inserted.errors.front());
     }
-    auto version_path = root + "/render/dirty_version";
+    auto version_path = WidgetSpacePath(root, "/render/dirty_version");
     auto current_version = space.read<std::uint64_t, std::string>(version_path);
     std::uint64_t next_version = current_version ? (*current_version + 1) : 1;
     if (auto status = replace_single<std::uint64_t>(space, version_path, next_version); !status) {
         return status;
+    }
+    return {};
+}
+
+auto reset_widget_space(PathSpace& space,
+                        std::string const& root) -> SP::Expected<void> {
+    auto space_root = WidgetSpaceRoot(root);
+    auto taken = space.take<std::unique_ptr<PathSpace>>(space_root);
+    if (!taken) {
+        auto const& error = taken.error();
+        if (error.code != SP::Error::Code::NoSuchPath
+            && error.code != SP::Error::Code::NoObjectFound) {
+            return std::unexpected(error);
+        }
+    }
+
+    auto nested = std::make_unique<PathSpace>();
+    auto inserted = space.insert(space_root, std::move(nested));
+    if (!inserted.errors.empty()) {
+        return std::unexpected(inserted.errors.front());
     }
     return {};
 }
@@ -305,10 +333,10 @@ auto rebind_handlers(PathSpace& space,
                      std::string const& old_root,
                      std::string const& new_root) -> SP::Expected<void> {
     (void)old_root;
-    auto events_base = new_root + "/events";
+    auto events_base = WidgetSpacePath(new_root, "events");
     auto events = space.listChildren(SP::ConcretePathStringView{events_base});
     for (auto const& event : events) {
-        auto handler_path = make_path(make_path(new_root, "events"), event) + "/handler";
+        auto handler_path = make_path(events_base, event) + "/handler";
         auto binding = space.read<HandlerBinding, std::string>(handler_path);
         if (!binding) {
             continue;

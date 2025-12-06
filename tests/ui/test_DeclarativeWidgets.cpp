@@ -13,6 +13,7 @@
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/WidgetDetail.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 
 #include <algorithm>
 #include <string>
@@ -28,6 +29,15 @@ namespace Runtime = SP::UI::Runtime;
 namespace WidgetsNS = SP::UI::Runtime::Widgets;
 namespace DetailNS = SP::UI::Declarative::Detail;
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
+
+inline auto widget_space(std::string const& root, std::string_view relative) -> std::string {
+    return WidgetsNS::WidgetSpacePath(root, relative);
+}
+
+inline auto widget_space(SP::UI::Runtime::WidgetPath const& widget,
+                        std::string_view relative) -> std::string {
+    return WidgetsNS::WidgetSpacePath(widget.getPath(), relative);
+}
 
 auto LoadActiveThemeName(PathSpace& space, SP::App::AppRootPathView app_root) -> std::string {
     if (auto active = ThemeConfig::LoadActive(space, app_root)) {
@@ -92,19 +102,18 @@ TEST_CASE("Declarative Button mounts under window widgets") {
                                  Button::Args{.label = "Hello"});
     REQUIRE(button.has_value());
 
-    auto state =
-        fx.space.read<SP::UI::Runtime::Widgets::ButtonState, std::string>(button->getPath()
-                                                                           + "/state");
+    auto state = fx.space.read<SP::UI::Runtime::Widgets::ButtonState, std::string>(
+        widget_space(*button, "/state"));
     REQUIRE(state.has_value());
     CHECK(state->enabled);
     auto label =
-        fx.space.read<std::string, std::string>(button->getPath() + "/meta/label");
+        fx.space.read<std::string, std::string>(widget_space(*button, "/meta/label"));
     REQUIRE(label.has_value());
     CHECK_EQ(*label, "Hello");
 
     REQUIRE(Button::SetLabel(fx.space, *button, "Updated").has_value());
     auto updated =
-        fx.space.read<std::string, std::string>(button->getPath() + "/meta/label");
+        fx.space.read<std::string, std::string>(widget_space(*button, "/meta/label"));
     REQUIRE(updated.has_value());
     CHECK_EQ(*updated, "Updated");
 }
@@ -120,8 +129,9 @@ TEST_CASE("Declarative List mounts child fragments") {
         List::Create(fx.space, fx.parent_view(), "list_widget", std::move(args));
     REQUIRE(list.has_value());
 
+    auto child_root = list->getPath() + "/children/label_child";
     auto child_text = fx.space.read<std::string, std::string>(
-        list->getPath() + "/children/label_child/state/text");
+        widget_space(child_root, "/state/text"));
     REQUIRE(child_text.has_value());
     CHECK_EQ(*child_text, "Nested");
 }
@@ -138,14 +148,12 @@ TEST_CASE("Slider clamps value and SetValue updates render flag") {
     REQUIRE(slider.has_value());
 
     REQUIRE(Slider::SetValue(fx.space, *slider, 42.0f).has_value());
-    auto state =
-        fx.space.read<SP::UI::Runtime::Widgets::SliderState, std::string>(
-            slider->getPath() + "/state");
+    auto state = fx.space.read<SP::UI::Runtime::Widgets::SliderState, std::string>(
+        widget_space(*slider, "/state"));
     REQUIRE(state.has_value());
     CHECK_EQ(state->value, doctest::Approx(10.0f));
 
-    auto dirty =
-        fx.space.read<bool, std::string>(slider->getPath() + "/render/dirty");
+    auto dirty = fx.space.read<bool, std::string>(widget_space(*slider, "/render/dirty"));
     REQUIRE(dirty.has_value());
     CHECK(*dirty);
 }
@@ -374,16 +382,16 @@ TEST_CASE("Declarative focus metadata mirrors window and widget state") {
     REQUIRE(set_button.has_value());
     CHECK(set_button->changed);
 
-    auto button_order = fx.space.read<std::uint32_t, std::string>((*button).getPath()
-                                                                  + "/focus/order");
+    auto button_order = fx.space.read<std::uint32_t, std::string>(
+        widget_space(*button, "/focus/order"));
     REQUIRE(button_order.has_value());
-    auto slider_order = fx.space.read<std::uint32_t, std::string>((*slider).getPath()
-                                                                  + "/focus/order");
+    auto slider_order = fx.space.read<std::uint32_t, std::string>(
+        widget_space(*slider, "/focus/order"));
     REQUIRE(slider_order.has_value());
     CHECK_NE(*button_order, *slider_order);
 
-    auto read_focus_flag = [&](std::string const& path) {
-        auto value = fx.space.read<bool, std::string>(path);
+    auto read_focus_flag = [&](SP::UI::Runtime::WidgetPath const& widget) {
+        auto value = fx.space.read<bool, std::string>(widget_space(widget, "/focus/current"));
         if (!value) {
             auto code = value.error().code;
             if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
@@ -395,8 +403,8 @@ TEST_CASE("Declarative focus metadata mirrors window and widget state") {
         return *value;
     };
 
-    CHECK(read_focus_flag((*button).getPath() + "/focus/current"));
-    CHECK_FALSE(read_focus_flag((*slider).getPath() + "/focus/current"));
+    CHECK(read_focus_flag(*button));
+    CHECK_FALSE(read_focus_flag(*slider));
 
     auto focus_path = std::string(scene->path.getPath())
                      + "/structure/window/" + fx.window_name + "/focus/current";
@@ -412,7 +420,7 @@ TEST_CASE("Declarative focus metadata mirrors window and widget state") {
     REQUIRE(move_forward->has_value());
     CHECK_EQ(move_forward->value().widget.getPath(), slider->getPath());
 
-    CHECK(read_focus_flag((*slider).getPath() + "/focus/current"));
+    CHECK(read_focus_flag(*slider));
     window_focus = fx.space.read<std::string, std::string>(focus_path);
     REQUIRE(window_focus.has_value());
     CHECK_EQ(*window_focus, slider->getPath());
@@ -420,7 +428,7 @@ TEST_CASE("Declarative focus metadata mirrors window and widget state") {
     auto cleared = Runtime::Widgets::Focus::Clear(fx.space, config);
     REQUIRE(cleared);
     CHECK(*cleared);
-    CHECK_FALSE(read_focus_flag((*slider).getPath() + "/focus/current"));
+    CHECK_FALSE(read_focus_flag(*slider));
     window_focus = fx.space.read<std::string, std::string>(focus_path);
     REQUIRE(window_focus.has_value());
     CHECK(window_focus->empty());
@@ -495,8 +503,10 @@ TEST_CASE("Stack::SetActivePanel rewrites visibility metadata") {
     auto stack = Stack::Create(fx.space, fx.parent_view(), "visibility_stack", std::move(args));
     REQUIRE(stack.has_value());
 
-    auto alpha_visible = fx.space.read<bool, std::string>(stack->getPath() + "/panels/alpha/visible");
-    auto beta_visible = fx.space.read<bool, std::string>(stack->getPath() + "/panels/beta/visible");
+    auto alpha_visible = fx.space.read<bool, std::string>(
+        widget_space(*stack, "/panels/alpha/visible"));
+    auto beta_visible = fx.space.read<bool, std::string>(
+        widget_space(*stack, "/panels/beta/visible"));
     REQUIRE(alpha_visible.has_value());
     REQUIRE(beta_visible.has_value());
     CHECK(*alpha_visible);
@@ -504,8 +514,10 @@ TEST_CASE("Stack::SetActivePanel rewrites visibility metadata") {
 
     auto switched = Stack::SetActivePanel(fx.space, *stack, "beta");
     REQUIRE(switched.has_value());
-    alpha_visible = fx.space.read<bool, std::string>(stack->getPath() + "/panels/alpha/visible");
-    beta_visible = fx.space.read<bool, std::string>(stack->getPath() + "/panels/beta/visible");
+    alpha_visible = fx.space.read<bool, std::string>(
+        widget_space(*stack, "/panels/alpha/visible"));
+    beta_visible = fx.space.read<bool, std::string>(
+        widget_space(*stack, "/panels/beta/visible"));
     REQUIRE(alpha_visible.has_value());
     REQUIRE(beta_visible.has_value());
     CHECK_FALSE(*alpha_visible);
@@ -600,7 +612,8 @@ TEST_CASE("Widgets::Move relocates widget and preserves handlers") {
                                label_args);
     REQUIRE(child.has_value());
 
-    auto original_binding = fx.space.read<HandlerBinding, std::string>(child->getPath() + "/events/activate/handler");
+    auto original_binding = fx.space.read<HandlerBinding, std::string>(
+        widget_space(*child, "/events/activate/handler"));
     REQUIRE(original_binding.has_value());
 
     auto moved = Move(fx.space,
@@ -610,15 +623,16 @@ TEST_CASE("Widgets::Move relocates widget and preserves handlers") {
     REQUIRE_MESSAGE(moved.has_value(), SP::describeError(moved.error()));
 
     auto new_path = moved->getPath();
-    auto text = fx.space.read<std::string, std::string>(new_path + "/state/text");
+    auto text = fx.space.read<std::string, std::string>(widget_space(new_path, "/state/text"));
     REQUIRE(text.has_value());
     CHECK_EQ(*text, "Alpha");
 
-    auto binding = fx.space.read<HandlerBinding, std::string>(new_path + "/events/activate/handler");
+    auto binding = fx.space.read<HandlerBinding, std::string>(
+        widget_space(new_path, "/events/activate/handler"));
     REQUIRE(binding.has_value());
     CHECK(binding->registry_key != original_binding->registry_key);
 
-    auto dirty = fx.space.read<bool, std::string>(new_path + "/render/dirty");
+    auto dirty = fx.space.read<bool, std::string>(widget_space(new_path, "/render/dirty"));
     REQUIRE(dirty.has_value());
     CHECK(*dirty);
 
@@ -650,7 +664,8 @@ TEST_CASE("Widget fragments register handlers during mount") {
     auto mounted = Widgets::Mount(fx.space, fx.parent_view(), "fragment_button", fragment);
     REQUIRE(mounted.has_value());
 
-    auto binding = fx.space.read<HandlerBinding, std::string>(mounted->getPath() + "/events/press/handler");
+    auto binding = fx.space.read<HandlerBinding, std::string>(
+        widget_space(*mounted, "/events/press/handler"));
     REQUIRE(binding.has_value());
     auto handler = Handlers::Read(fx.space, *mounted, "press");
     REQUIRE(handler);
@@ -680,7 +695,8 @@ TEST_CASE("Handler helpers replace, wrap, and restore callbacks") {
                                            std::move(override_handler));
     REQUIRE(replace_token.has_value());
 
-    auto binding = fx.space.read<HandlerBinding, std::string>(button->getPath() + "/events/press/handler");
+    auto binding = fx.space.read<HandlerBinding, std::string>(
+        widget_space(*button, "/events/press/handler"));
     REQUIRE(binding.has_value());
     auto handler = Handlers::Read(fx.space, *button, "press");
     REQUIRE(handler);
@@ -692,7 +708,8 @@ TEST_CASE("Handler helpers replace, wrap, and restore callbacks") {
 
     REQUIRE(Handlers::Restore(fx.space, *replace_token));
 
-    auto restored = fx.space.read<HandlerBinding, std::string>(button->getPath() + "/events/press/handler");
+    auto restored = fx.space.read<HandlerBinding, std::string>(
+        widget_space(*button, "/events/press/handler"));
     REQUIRE(restored.has_value());
     auto restored_handler = Handlers::Read(fx.space, *button, "press");
     REQUIRE(restored_handler);
@@ -715,7 +732,8 @@ TEST_CASE("Handler helpers replace, wrap, and restore callbacks") {
         });
     REQUIRE(wrap_token.has_value());
 
-    auto label_binding = fx.space.read<HandlerBinding, std::string>(label->getPath() + "/events/activate/handler");
+    auto label_binding = fx.space.read<HandlerBinding, std::string>(
+        widget_space(*label, "/events/activate/handler"));
     REQUIRE(label_binding.has_value());
     auto label_handler = Handlers::Read(fx.space, *label, "activate");
     REQUIRE(label_handler);
@@ -725,7 +743,8 @@ TEST_CASE("Handler helpers replace, wrap, and restore callbacks") {
     CHECK(wrapped_called);
 
     REQUIRE(Handlers::Restore(fx.space, *wrap_token));
-    auto missing = fx.space.read<HandlerBinding, std::string>(label->getPath() + "/events/activate/handler");
+    auto missing = fx.space.read<HandlerBinding, std::string>(
+        widget_space(*label, "/events/activate/handler"));
     REQUIRE_FALSE(missing.has_value());
     auto code = missing.error().code;
     bool expected_code = (code == Error::Code::NoObjectFound)
@@ -765,12 +784,12 @@ TEST_CASE("Theme resolver uses inherited theme when child theme omits value") {
                                  Button::Args{.label = "Child"});
     REQUIRE(button.has_value());
     REQUIRE(DetailNS::replace_single(fx.space,
-                                     button->getPath() + "/style/theme",
+                                     widget_space(*button, "/style/theme"),
                                      std::string{"child_theme"})
                 .has_value());
 
     auto widget_theme_override = fx.space.read<std::string, std::string>(
-        button->getPath() + "/style/theme");
+        widget_space(*button, "/style/theme"));
     INFO("widget theme override present=" << widget_theme_override.has_value()
          << " value=" << (widget_theme_override ? *widget_theme_override : std::string{"<missing>"}));
     auto child_theme_value = fx.space.read<WidgetsNS::WidgetTheme, std::string>(

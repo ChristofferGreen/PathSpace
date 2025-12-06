@@ -9,10 +9,12 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 #define SERIALIZATION_TYPE uint8_t
 #include <alpaca/alpaca.h>
@@ -56,7 +58,17 @@ template <typename T>
 concept StringType = std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>;
 
 template <typename T>
-concept AlpacaCompatible = !std::is_pointer_v<T> && requires(T t, SlidingBuffer& buffer) { SP::serialize<T>(t, buffer); };
+struct is_shared_ptr : std::false_type {};
+
+template <typename T>
+struct is_shared_ptr<std::shared_ptr<T>> : std::true_type {};
+
+template <typename T>
+concept SharedPtrType = is_shared_ptr<std::remove_cvref_t<T>>::value;
+
+template <typename T>
+concept AlpacaCompatible = !std::is_pointer_v<T> && !SharedPtrType<T>
+    && requires(T t, SlidingBuffer& buffer) { SP::serialize<T>(t, buffer); };
 
 // ########### Serialization Helpers ###########
 

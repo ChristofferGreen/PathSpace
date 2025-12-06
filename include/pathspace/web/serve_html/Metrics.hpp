@@ -38,6 +38,13 @@ enum class RouteMetric : std::size_t {
 
 class MetricsCollector {
 public:
+    struct HistogramSnapshot {
+        static constexpr std::size_t kBucketCount = 10;
+        std::array<std::uint64_t, kBucketCount>   buckets{};
+        std::uint64_t                             count{0};
+        std::uint64_t                             sum_micros{0};
+    };
+
     struct MetricsSnapshot {
         struct RouteCounters {
             HistogramSnapshot latency;
@@ -88,13 +95,6 @@ public:
     auto snapshot_json(MetricsSnapshot const& snapshot) const -> nlohmann::json;
 
 private:
-    struct HistogramSnapshot {
-        static constexpr std::size_t kBucketCount = 10;
-        std::array<std::uint64_t, kBucketCount>   buckets{};
-        std::uint64_t                             count{0};
-        std::uint64_t                             sum_micros{0};
-    };
-
     class Histogram {
     public:
         void observe(std::chrono::microseconds value);

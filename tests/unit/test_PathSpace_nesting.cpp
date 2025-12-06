@@ -26,6 +26,25 @@ TEST_CASE("PathSpace Nesting") {
         CHECK(result2.value() == "hello");
     }
 
+    SUBCASE("Take and reinsert nested PathSpace") {
+        PathSpace root;
+        auto      nested = std::make_unique<PathSpace>();
+        REQUIRE(nested->insert("/payload", 123).nbrValuesInserted == 1);
+        REQUIRE(root.insert("/watchlists/foo/space", std::move(nested)).nbrSpacesInserted == 1);
+
+        auto extracted = root.take<std::unique_ptr<PathSpace>>("/watchlists/foo/space");
+        REQUIRE(extracted.has_value());
+        auto owned = std::move(*extracted);
+        auto value = owned->read<int>("/payload", Block{});
+        REQUIRE(value.has_value());
+        CHECK(value.value() == 123);
+
+        REQUIRE(root.insert("/trash/foo/space", std::move(owned)).nbrSpacesInserted == 1);
+        auto movedValue = root.read<int>("/trash/foo/space/payload", Block{});
+        REQUIRE(movedValue.has_value());
+        CHECK(movedValue.value() == 123);
+    }
+
     SUBCASE("Deep Nesting") {
         PathSpace level1;
         auto      level2 = std::make_unique<PathSpace>();

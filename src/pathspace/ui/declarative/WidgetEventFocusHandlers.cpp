@@ -551,13 +551,13 @@ void WidgetEventTrellisWorker::handle_button_event(WindowBinding const& binding,
     }
 
     auto WidgetEventTrellisWorker::focus_target_for_widget(std::string const& widget_path) -> std::optional<TargetInfo> {
-        auto kind = space_.read<std::string, std::string>(widget_path + "/meta/kind");
+        auto kind = space_.read<std::string, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/meta/kind"));
         if (!kind) {
             auto const& error = kind.error();
             if (error.code != SP::Error::Code::NoObjectFound
                 && error.code != SP::Error::Code::NoSuchPath) {
                 enqueue_error(space_, "WidgetEventTrellis failed to read widget kind for "
-                        + widget_path + ": " + error.message.value_or("unknown error"));
+                        + SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, ": ") + error.message.value_or("unknown error"));
             }
             return std::nullopt;
         }
@@ -567,7 +567,7 @@ void WidgetEventTrellisWorker::handle_button_event(WindowBinding const& binding,
         parse_component(info);
         if (!info.valid()) {
             enqueue_error(space_, "WidgetEventTrellis could not derive focus target for "
-                    + widget_path + " (kind=" + *kind + ")");
+                    + SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, " (kind=") + *kind + ")");
             return std::nullopt;
         }
         return info;

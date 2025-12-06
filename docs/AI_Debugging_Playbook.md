@@ -444,10 +444,10 @@ With the shared test runner and this playbook, every failure leaves behind actio
 
 ### 8.4 Watchlists, bookmarks, and imports
 
-- Saved watchlists persist per authenticated user under `/inspector/user/<id>/watchlists/*` (soft-deleted entries move to `/inspector/user/<id>/watchlists_trash/*` so ops can audit removals). The backend exposes:
+- Saved watchlists persist per authenticated user under `/inspector/user/<id>/watchlists/*` (soft-deleted entries move to `/inspector/user/<id>/watchlists_trash/*` so ops can audit removals). Each entry owns a nested `PathSpace` at `/watchlists/<id>/space` that stores `/meta/{id,name,count,created_ms,updated_ms,version}` plus a typed `/paths` vector; legacy JSON nodes are auto-migrated the next time they’re listed. The backend exposes:
   - `GET /inspector/watchlists` — returns `{ user, user_id, count, limits, watchlists: [...] }` where each watchlist mirrors the stored JSON.
   - `POST /inspector/watchlists` — create/update a set. Pass `{ "name": "Critical nodes", "paths": ["/app/state/foo"], "id": "optional-slug", "overwrite": true }` to overwrite an existing record.
-  - `DELETE /inspector/watchlists?id=<id>` — delete a saved set (the server relocates it under the trash path).
+  - `DELETE /inspector/watchlists?id=<id>` — delete a saved set (the server `take`s the nested `/space` and reinserts it under the trash path, preserving the structured layout; legacy payloads fall back to the old string format so nothing is lost).
   - `GET /inspector/watchlists/export` / `POST /inspector/watchlists/import` — export/import JSON payloads so bug repros and dashboards can share curated watchlists. Import requests accept `{ "mode": "replace" | "merge", "watchlists": [ ... ] }` bodies.
 - `InspectorHttpServer::Options::watchlists` defines per-user limits (`max_saved_sets`, `max_paths_per_set`). Defaults: 32 saved sets, 256 paths per set. Override them only when you have a clear operational need, document the new values, and keep them in sync with service README files.
 - `POST /inspector/metrics/usage` accepts `{ "timestamp_ms": <optional>, "panels": [{ "id": "tree", "dwell_ms": 4200, "entries": 1 }] }` from the SPA’s panel tracker; the server sanitizes the IDs, pushes totals into `/diagnostics/web/inspector/usage/*`, and acknowledges with `202`. Use it when embedding the SPA elsewhere or when synthetic clients want to describe scripted sessions.
@@ -456,10 +456,11 @@ With the shared test runner and this playbook, every failure leaves behind actio
 
 ### 8.5 Snapshots, exports, and diffs
 
-- `POST /inspector/snapshots` captures the current tree bounds using `InspectorSnapshotOptions` plus a `PathSpaceJsonExporter` dump. Pass `{ "label": "Search baseline", "note": "before rollback", "options": { "root": "/app", "max_depth": 3, "max_children": 64, "include_values": true } }` to label the capture; the server stores both the inspector snapshot (for SSE-style diffs) and the exporter JSON under `/inspector/user/<id>/snapshots/<slug>/...` and trims the oldest entries when you exceed `InspectorHttpServer::Options::snapshots.max_saved_snapshots` (default 20).
+- `POST /inspector/snapshots` captures the current tree bounds using `InspectorSnapshotOptions` plus a `PathSpaceJsonExporter` dump. Pass `{ "label": "Search baseline", "note": "before rollback", "options": { "root": "/app", "max_depth": 3, "max_children": 64, "include_values": true } }` to label the capture; the server stores the inspector snapshot, exporter JSON, and metadata under `/inspector/user/<id>/snapshots/<slug>/space/{inspector,export,meta}` and trims the oldest entries when you exceed `InspectorHttpServer::Options::snapshots.max_saved_snapshots` (default 20). Legacy nodes are auto-migrated into the `/space` layout the next time they are listed or deleted.
 - `GET /inspector/snapshots` returns `{ user, user_id, count, limit, max_snapshot_bytes, snapshots: [...] }`. Each entry mirrors the stored metadata (created timestamp, label, traversal bounds, byte counts) so automation can list available attachments before requesting the heavy payloads.
 - `GET /inspector/snapshots/export?id=<id>` streams the `PathSpaceJsonExporter` payload augmented with the capture `options` block (root/depth/children/values) and a `Content-Disposition` filename. Drop the body directly into bug reports or archive directories—no need to shell into the host and run `pathspace_dump_json` manually.
 - `POST /inspector/snapshots/diff` accepts `{ "before": "snapshot-a", "after": "snapshot-b" }` and replies with the Inspector delta schema (`changes.added/updated/removed`, diagnostics, and options). Because it reuses `BuildInspectorStreamDelta`, the JSON matches what `/inspector/stream` would have emitted live.
+- Deletes move the nested `/space` via `take`/`insert`, so `/inspector/user/<id>/snapshots_trash/<timestamped-id>/space` mirrors the live layout for auditing, and trash viewers can still read `/meta`, `/inspector`, and `/export` without bespoke migrations.
 - The SPA’s “Snapshots” panel wraps all of the above: capture form (root/depth/children default to the current view), saved snapshot select, download/delete buttons, and a diff viewer that renders the `/inspector/snapshots/diff` payload. Operators can now capture evidence, compare revisions, and attach JSON bundles without leaving the browser.
 
 ### 8.6 Troubleshooting & rollout notes
@@ -488,10 +489,12 @@ With the shared test runner and this playbook, every failure leaves behind actio
   ```
 
 - The embedded `RemoteMountManager` opens one HTTP client per alias, fetches `/inspector/tree?root=<remote.root>` on the configured interval, and rewrites every path under `/remote/<alias>`. The local `/inspector/tree` and `/inspector/node` responses now include a synthetic `/remote` node with children for each mount so dashboards immediately see which aliases are live/offline.
+- The distributed `RemoteMountManager` client (PathSpace core) now lands under `/remote/<alias>` as well. When debugging disconnected mounts, inspect `/inspector/metrics/remotes/<alias>/client/*` to see `connected`, `message`, latency, and `waiters/current` plus the manager logs in `sp_log(RemoteMountManager, ...)`. A failing heartbeat automatically drops the session and emits `client/connected = 0`, so capture both the server + client metric trees in bug reports.
 - `/inspector/stream` automatically multiplexes the cached remote snapshots into the session’s snapshot/delta sequence, so consumers receive local + remote changes via a single EventSource connection (no per-client remote SSE fans). Remote fetches happen on background threads, so slow/offline mounts can’t stall local polling.
 - Offline mounts publish placeholders plus status strings (last error, timeout, etc.) in both the tree diagnostics and the SPA’s detail panes; once a mount reconnects the placeholder is replaced by the live subtree.
 - `GET /inspector/remotes` now exposes the configured aliases with their `/remote/<alias>` path, connection status, last update timestamp, and the optional `access_hint`. The SPA, dashboards, and automation can poll this endpoint without taking a full tree snapshot when they only care about mount health.
 - Remote diagnostics now mirror into `/inspector/metrics/remotes/<alias>/{status,latency,requests,waiters,timestamps,meta}`: the server records last/avg/max latency (in ms), total successes/errors, consecutive failure streaks, waiter depth/max waiter depth (covers both `/inspector/tree` remote roots and SSE sessions rooted at `/remote/<alias>`), plus last-update/error timestamps and the configured `access_hint`. `/inspector/remotes` exposes the same data via nested `latency`, `requests`, `waiters`, and `health` objects, so dashboards and the SPA can chart slow/offline mounts without scraping logs.
+- Distributed mounts now copy diagnostics and server metrics into the local namespace: `/diagnostics/errors/live/remotes/<alias>/…` tails the remote `/diagnostics/errors/live` queue, `/inspector/metrics/remotes/<alias>/server/*` mirrors the remote server metrics subtree, and any mirror configured via `RemoteMountClientOptions::MirrorPathOptions` (e.g., `/renderers/<rid>/targets/html`) stays refreshed so ServeHtml/inspector consumers can read remote data without custom polling.
 - The SPA’s quick-root dropdown consumes `/inspector/remotes`, persists the selected root via the page URL + `localStorage`, and shows per-alias status pills with hover hints (VPN/auth scope, last error). Clicking a badge switches the inspector to that mount immediately, keeping remote workflows fast for operators.
 - Document your aliases + hostnames in service READMEs so operators know which remote roots are expected; the quick-root dropdown renders whatever `/inspector/remotes` advertises, so stale config shows up immediately.
 
@@ -646,3 +649,79 @@ With the shared test runner and this playbook, every failure leaves behind actio
   2. **Signature/audience mismatch** — The adapter fetches JWKS from `jwks_endpoint` and verifies `aud == client_id`. Misconfigured endpoints or stale JWKS hosts show up as `unable to verify id_token signature` in the log; re-run `python3 tests/tools/test_pathspace_serve_html_google.py` locally to confirm the flow works end-to-end before debugging Google.
   3. **Unknown `sub`** — When the ID token is valid but `/system/auth/oauth/google/<sub>` is absent or empty, the adapter records an auth failure and returns 401. Seed the mapping manually (or rely on `--seed-demo`, which installs `google-user-123 → demo`) and re-run the flow.
 - Use the dedicated regression test `tests/tools/test_pathspace_serve_html_google.py` whenever you touch the OAuth path. It runs a stub OAuth/JWKS server, drives the PKCE handshake, and confirms the demo HTML route loads under the issued session cookie.
+
+## 10. Distributed Mount Troubleshooting (Phase 0)
+- **Decode the wire format first.** Capture the handshake/frames via the inspector’s remote dump or `tcpdump`+`gzip -d`, then feed the JSON into the helpers from `tests/unit/distributed/test_RemoteMountProtocol.cpp`. If `deserializeFrame` fails you’ll get a precise `malformed_input` error before digging into networking code, and it usually points at a bad alias, path, or auth blob.
+- **Handshake failure matrix.**
+  - `error.code == "invalid_credentials"` → mutual TLS fingerprint or bearer token scope mismatch. Check `/diagnostics/web/inspector/acl/<timestamp>` for the rejected principal + alias and confirm the `AuthContext.subject/audience` fields match the exported subtree.
+  - `error.code == "lease_expired"` → heartbeats stopped before `lease_expires_ms`. Compare the advertised `heartbeat_interval_ms` with your event loop; missing two intervals forces the server to tear down the session.
+  - `error.code == "too_many_waiters"` → throttling adapter rejected a `WaitSubscribeRequest`. Honor `retry_after_ms` before resubscribing or reduce the number of simultaneous subscriptions per alias.
+- **Throttle adapter telemetry.** When exports define `RemoteMountThrottleOptions`, RemoteMountServer exposes `/inspector/metrics/remotes/<alias>/server/throttle/{hits_total,last_sleep_ms,waiters_rejected,retry_after_ms}`. Use those gauges to tell whether a slowdown is caused by the token bucket (hits climb, `last_sleep_ms` > 0) or by per-session waiter limits (`waiters_rejected` increments, `retry_after_ms` mirrors the configured backoff). The throttle knobs live on each `RemoteMountExportOptions` stanza, so cap-sensitive deployments can tune limits without recompiling.
+- **Live metrics:** `/inspector/metrics/remotes/<alias>` exposes `{status,latency,requests,waiters,consecutive_errors}`. Use it to separate network drops (status toggles `offline`, latency pins at 0) from ACL issues (`status == denied`, `consecutive_errors` climbs). The inspector SPA mirrors the same data under `/remote/<alias>` so you can verify mounts without shell access.
+- **CLI reproductions:** `./build/pathspace_dump_json --remote-alias <alias> --root /remote/<alias>/<path>` issues a `ReadRequest` followed by a waiter. If it hangs, inspect the generated log alongside the recorded frames to confirm whether the remote server stopped emitting `Notification` frames.
+- **Test discipline:** Every code change touching distributed mounts must still run `ctest --test-dir build --output-on-failure -j --repeat-until-fail 5 --timeout 20` (or `./scripts/compile.sh --test --loop=5 --timeout=20`). The new doctests (`tests/unit/distributed/test_RemoteMountProtocol.cpp`) ensure the JSON schema and validation rules stay stable across the loop, and enabling `PATHSPACE_LOG=1` captures the serialized frames in each loop log for flake triage.
+
+### 10.1 Self-signed TLS quickstart (Phase 0 manual validation)
+1. Generate a throwaway CA plus server/client leaf certificates (store them under `build/remote_mount_tls` so they are ignored by git):
+
+   ```bash
+   mkdir -p build/remote_mount_tls && cd build/remote_mount_tls
+
+   # CA
+   openssl req -x509 -newkey rsa:4096 -nodes \
+     -subj "/CN=PathSpace RemoteMount CA" \
+     -keyout ca.key -out ca.crt -days 30 -sha256
+
+   # Server leaf signed by the CA
+   openssl req -new -newkey rsa:2048 -nodes \
+     -subj "/CN=RemoteMountServer" \
+     -keyout server.key -out server.csr -sha256
+   openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -set_serial 01 \
+     -out server.crt -days 30 -sha256
+
+   # Client leaf
+   openssl req -new -newkey rsa:2048 -nodes \
+     -subj "/CN=RemoteMountClient" \
+     -keyout client.key -out client.csr -sha256
+   openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -set_serial 02 \
+     -out client.crt -days 30 -sha256
+   ```
+
+2. Record the client fingerprint and reuse it for both `AuthContext.fingerprint` and the diagnostics you log when a mount connects:
+
+   ```bash
+   openssl x509 -in client.crt -noout -fingerprint -sha256 | tr -d ':' | tr 'A-Z' 'a-z'
+   ```
+
+   That output becomes `sha256:<hex>`; copy it into your mount configuration (or the manual harness flags listed below). Set `AuthContext.subject` to the client certificate subject (e.g., `CN=RemoteMountClient`), `AuthContext.audience` to the exported PathSpace scope (default `pathspace`), and `AuthContext.proof` to the same fingerprint or a signed challenge. The TLS transport now populates these fields automatically, but keeping your configs consistent with the real certificates prevents confusing diagnostics while you bootstrap.
+
+3. When using the TLS transport, point `RemoteMountTlsServerConfig` at `server.crt/server.key` and configure `RemoteMountTlsClientConfig` to trust `ca.crt`. Auth failures will surface under `/diagnostics/web/inspector/acl/<alias>/events/*` with the rejected fingerprint (stored as JSON `{code,message,subject,audience,fingerprint}`) so you can diff the cert metadata without packet captures.
+
+### 10.2 Localhost remote mount harness (`remote_mount_manual`)
+- Build with examples enabled (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_PATHSPACE_EXAMPLES=ON` followed by `cmake --build build -j`). The helper binary lives at `./build/remote_mount_manual`.
+- Run the harness to exercise a full client/server loopback, confirm reads, and watch a blocking wait wake up after a remote insert:
+
+  ```bash
+  ./build/remote_mount_manual \
+    --alias alpha \
+    --export-root /apps/demo \
+    --read state \
+    --wait events \
+    --initial "demo-ready" \
+    --wait-value "event-1" \
+    --delay-ms 200 --timeout-ms 1500 \
+    --subject "CN=RemoteMountClient" \
+    --audience pathspace \
+    --fingerprint sha256:manual-client \
+    --proof sha256:manual-proof
+  ```
+
+  The program prints the initial `/remote/<alias>/<read>` value, blocks on `/remote/<alias>/<wait>`, reports when the wait completes, and dumps both client and server metric nodes (`/inspector/metrics/remotes/<alias>/client/connected` and `/inspector/metrics/remotes/<alias>/server/sessions`). Override the auth fields with the fingerprints produced in §10.1 when testing loopback. Use `--quiet` when you only care about the metric summaries.
+- The harness still relies on the loopback session helper (`SP::Distributed::Loopback::makeFactory`). For end-to-end TLS runs use `RemoteMountTlsServer` + `RemoteMountTlsSessionFactory` (see §10.1) or run the new TLS doctest in `tests/unit/distributed/test_RemoteMountManager.cpp`. If you tweak the server/client structs, rerun both the harness and the TLS test before landing the change so the manual workflow stays green.
+
+### 10.3 Metrics, logs, and checklist
+- **Server metrics:** `/inspector/metrics/remotes/<alias>/server/{sessions,waiters,status,last_subject}` updates on every MountOpen/Heartbeat. Expect `server/sessions == 1` and `status == "ok"` after the harness runs. If it stays `0`, your server rejected the auth payload—grab the matching ACL log entry under `/diagnostics/web/inspector/acl/<alias>/events/<timestamp>`.
+- **Client metrics:** `/inspector/metrics/remotes/<alias>/client/{connected,latency_ms_last,waiters/current}` flips to `connected = 1` when the manager opens its session. The manual harness prints these nodes so you can capture them directly in bug reports; `latency_ms_last` should stay in the tens of milliseconds for the loopback transport.
+- **Wait troubleshooting:** A hung `remote_mount_manual` wait usually means the remote insert never fired. Watch `/remote/<alias>/<wait>/version` in the local tree and `/diagnostics/errors/live` on the server to confirm inserts are flowing. Setting `PATHSPACE_LOG=1` before running the harness will also capture `ReadRequest`/`Notification` frames in the standard loop logs.
+- **MountOpen failures:** When the harness reports `Failed to read initial state`, inspect `./build/remote_mount_manual --quiet --alias <alias> --read <path>` alongside `/diagnostics/web/inspector/acl/<alias>/events/*`. The ACL nodes now store JSON `{code,message,subject,audience,fingerprint,proof}` so you can tell whether you misspelled the alias, used a disallowed capability, or presented an expired certificate.
+- **Next steps:** Phase 1 is complete; reference `docs/finished/Plan_Distributed_PathSpace_Finished.md` for the JSON serialization tests and diagnostics mirroring flow, and extend this checklist as additional distributed tooling requirements surface. For now, always finish manual sessions by double-checking that `/remote/<alias>` disappears from the local PathSpace once the manager stops; lingering nodes indicate a leaked `RemoteMountSpace` and should be filed immediately.

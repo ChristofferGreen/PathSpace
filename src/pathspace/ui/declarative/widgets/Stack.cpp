@@ -10,12 +10,13 @@ namespace SP::UI::Declarative {
 namespace WidgetDetail = SP::UI::Declarative::Detail;
 using SP::UI::Runtime::WidgetPath;
 namespace BuilderWidgets = SP::UI::Runtime::Widgets;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
 
 namespace {
 
 auto panels_root(std::string const& root) -> std::string {
-    return root + "/panels";
+    return WidgetSpacePath(root, "/panels");
 }
 
 auto write_panel_metadata(PathSpace& space,
@@ -140,7 +141,8 @@ auto builder = WidgetDetail::FragmentBuilder{"stack",
                                     active_panel = std::move(args.active_panel)](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
                                            if (auto status = WidgetDetail::write_value(ctx.space,
-                                                                                ctx.root + "/state/active_panel",
+                                                                                WidgetSpacePath(ctx.root,
+                                                                                                "/state/active_panel"),
                                                                                 active_panel);
                                                !status) {
                                                return status;
@@ -200,7 +202,7 @@ auto SetActivePanel(PathSpace& space,
                     std::string_view panel_id) -> SP::Expected<void> {
     auto root = widget.getPath();
     if (auto status = WidgetDetail::write_value(space,
-                                                root + "/state/active_panel",
+                                                WidgetSpacePath(root, "/state/active_panel"),
                                                 std::string(panel_id));
         !status) {
         return status;

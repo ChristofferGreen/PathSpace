@@ -33,6 +33,14 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(alpaca)
 
 FetchContent_Declare(
+    asio
+    GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+    GIT_TAG asio-1-30-2
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(asio)
+
+FetchContent_Declare(
     cpp_httplib
     GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
     GIT_TAG v0.15.3
@@ -65,6 +73,11 @@ add_library(PathSpace
     core/Leaf.cpp
     PathSpaceVisit.cpp
     tools/PathSpaceJsonExporter.cpp
+    distributed/RemoteMountProtocol.cpp
+    distributed/RemoteMountManager.cpp
+    distributed/RemoteMountServer.cpp
+    distributed/TypedPayloadBridge.cpp
+    distributed/RemoteMountTls.cpp
     history/UndoHistoryUtils.cpp
     history/UndoJournalEntry.cpp
     history/UndoJournalState.cpp
@@ -80,6 +93,7 @@ add_library(PathSpace
     task/TaskStateAtomic.cpp
     task/Future.cpp
     type/SlidingBuffer.cpp
+    type/TypeMetadataRegistry.cpp
     log/TaggedLogger.cpp
     PathSpace.cpp
     inspector/PaintScreenshotCard.cpp
@@ -295,7 +309,10 @@ target_include_directories(PathSpace
     ${alpaca_SOURCE_DIR}/include
     ${foonathan_memory_SOURCE_DIR}/include
     ${cpp_httplib_SOURCE_DIR}
+    ${asio_SOURCE_DIR}/asio/include
 )
+
+target_compile_definitions(PathSpace PRIVATE ASIO_STANDALONE=1)
 
 # Opt-in debug logging to keep test runs fast by default
 option(PATHSPACE_ENABLE_LOG_DEBUG "Enable SP_LOG_DEBUG logging" OFF)
@@ -305,6 +322,9 @@ endif()
 
 target_link_libraries(PathSpace
     PRIVATE
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    Threads::Threads
 
     # glaze::glaze
     # foonathan_memory

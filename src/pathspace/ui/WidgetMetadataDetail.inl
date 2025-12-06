@@ -64,7 +64,7 @@ inline auto ensure_text_area_scene(PathSpace& space,
 inline auto write_widget_kind(PathSpace& space,
                        std::string const& rootPath,
                        std::string_view kind) -> SP::Expected<void> {
-    auto kindPath = rootPath + "/meta/kind";
+    auto kindPath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/kind");
     if (auto status = replace_single<std::string>(space, kindPath, std::string{kind}); !status) {
         return status;
     }
@@ -76,17 +76,17 @@ inline auto write_button_metadata(PathSpace& space,
                            std::string const& label,
                            Widgets::ButtonState const& state,
                            Widgets::ButtonStyle const& style) -> SP::Expected<void> {
-    auto statePath = rootPath + "/state";
+    auto statePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/state");
     if (auto status = replace_single<Widgets::ButtonState>(space, statePath, state); !status) {
         return status;
     }
 
-    auto labelPath = rootPath + "/meta/label";
+    auto labelPath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/label");
     if (auto status = replace_single<std::string>(space, labelPath, label); !status) {
         return status;
     }
 
-    auto stylePath = rootPath + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/style");
     if (auto status = replace_single<Widgets::ButtonStyle>(space, stylePath, style); !status) {
         return status;
     }
@@ -103,17 +103,17 @@ inline auto write_slider_metadata(PathSpace& space,
                            Widgets::SliderState const& state,
                            Widgets::SliderStyle const& style,
                            Widgets::SliderRange const& range) -> SP::Expected<void> {
-    auto statePath = rootPath + "/state";
+    auto statePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/state");
     if (auto status = replace_single<Widgets::SliderState>(space, statePath, state); !status) {
         return status;
     }
 
-    auto stylePath = rootPath + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/style");
     if (auto status = replace_single<Widgets::SliderStyle>(space, stylePath, style); !status) {
         return status;
     }
 
-    auto rangePath = rootPath + "/meta/range";
+    auto rangePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/range");
     if (auto status = replace_single<Widgets::SliderRange>(space, rangePath, range); !status) {
         return status;
     }
@@ -129,7 +129,7 @@ inline auto write_slider_metadata(PathSpace& space,
     footprint.max_y = std::max(style.height, 0.0f);
     footprint = ensure_valid_hint(footprint);
     if (footprint.max_x > footprint.min_x && footprint.max_y > footprint.min_y) {
-        auto footprintPath = rootPath + "/meta/footprint";
+        auto footprintPath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/footprint");
         if (auto status = replace_single<DirtyRectHint>(space, footprintPath, footprint); !status) {
             return status;
         }
@@ -143,15 +143,15 @@ inline auto write_list_metadata(PathSpace& space,
                          Widgets::ListState const& state,
                          Widgets::ListStyle const& style,
                          std::vector<Widgets::ListItem> const& items) -> SP::Expected<void> {
-    auto statePath = rootPath + "/state";
+    auto statePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/state");
     if (auto status = replace_single<Widgets::ListState>(space, statePath, state); !status) {
         return status;
     }
-    auto stylePath = rootPath + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/style");
     if (auto status = replace_single<Widgets::ListStyle>(space, stylePath, style); !status) {
         return status;
     }
-    auto itemsPath = rootPath + "/meta/items";
+    auto itemsPath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/items");
     if (auto status = replace_single<std::vector<Widgets::ListItem>>(space, itemsPath, items); !status) {
         return status;
     }
@@ -167,17 +167,17 @@ inline auto write_tree_metadata(PathSpace& space,
                          Widgets::TreeState const& state,
                          Widgets::TreeStyle const& style,
                          std::vector<Widgets::TreeNode> const& nodes) -> SP::Expected<void> {
-    auto statePath = rootPath + "/state";
+    auto statePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/state");
     if (auto status = replace_single<Widgets::TreeState>(space, statePath, state); !status) {
         return status;
     }
 
-    auto stylePath = rootPath + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/style");
     if (auto status = replace_single<Widgets::TreeStyle>(space, stylePath, style); !status) {
         return status;
     }
 
-    auto nodesPath = rootPath + "/meta/nodes";
+    auto nodesPath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/nodes");
     if (auto status = replace_single<std::vector<Widgets::TreeNode>>(space, nodesPath, nodes); !status) {
         return status;
     }
@@ -193,17 +193,17 @@ inline auto write_stack_metadata(PathSpace& space,
                           Widgets::StackLayoutStyle const& style,
                           std::vector<Widgets::StackChildSpec> const& children,
                           Widgets::StackLayoutState const& layout) -> SP::Expected<void> {
-    auto stylePath = rootPath + "/layout/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/layout/style");
     if (auto status = replace_single<Widgets::StackLayoutStyle>(space, stylePath, style); !status) {
         return status;
     }
 
-    auto childrenPath = rootPath + "/layout/children";
+    auto childrenPath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/layout/children");
     if (auto status = replace_single<std::vector<Widgets::StackChildSpec>>(space, childrenPath, children); !status) {
         return status;
     }
 
-    auto computedPath = rootPath + "/layout/computed";
+    auto computedPath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/layout/computed");
     if (auto status = replace_single<Widgets::StackLayoutState>(space, computedPath, layout); !status) {
         return status;
     }
@@ -221,12 +221,12 @@ inline auto write_text_field_metadata(PathSpace& space,
     auto sanitized_style = sanitize_text_field_style(style);
     auto sanitized_state = sanitize_text_field_state(state, sanitized_style);
 
-    auto statePath = rootPath + "/state";
+    auto statePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/state");
     if (auto status = replace_single<Widgets::TextFieldState>(space, statePath, sanitized_state); !status) {
         return status;
     }
 
-    auto stylePath = rootPath + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/style");
     if (auto status = replace_single<Widgets::TextFieldStyle>(space, stylePath, sanitized_style); !status) {
         return status;
     }
@@ -235,7 +235,7 @@ inline auto write_text_field_metadata(PathSpace& space,
         return status;
     }
 
-    auto footprintPath = rootPath + "/meta/footprint";
+    auto footprintPath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/footprint");
     auto hint = text_input_dirty_hint(sanitized_style);
     if (hint.max_x > hint.min_x && hint.max_y > hint.min_y) {
         if (auto status = replace_single<DirtyRectHint>(space, footprintPath, hint); !status) {
@@ -252,12 +252,12 @@ inline auto write_text_area_metadata(PathSpace& space,
     auto sanitized_style = sanitize_text_area_style(style);
     auto sanitized_state = sanitize_text_area_state(state, sanitized_style);
 
-    auto statePath = rootPath + "/state";
+    auto statePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/state");
     if (auto status = replace_single<Widgets::TextAreaState>(space, statePath, sanitized_state); !status) {
         return status;
     }
 
-    auto stylePath = rootPath + "/meta/style";
+    auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/style");
     if (auto status = replace_single<Widgets::TextAreaStyle>(space, stylePath, sanitized_style); !status) {
         return status;
     }
@@ -266,7 +266,7 @@ inline auto write_text_area_metadata(PathSpace& space,
         return status;
     }
 
-    auto footprintPath = rootPath + "/meta/footprint";
+    auto footprintPath = SP::UI::Runtime::Widgets::WidgetSpacePath(rootPath, "/meta/footprint");
     auto hint = text_input_dirty_hint(sanitized_style);
     if (hint.max_x > hint.min_x && hint.max_y > hint.min_y) {
         if (auto status = replace_single<DirtyRectHint>(space, footprintPath, hint); !status) {
