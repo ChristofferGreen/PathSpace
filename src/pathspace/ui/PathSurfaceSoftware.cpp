@@ -283,7 +283,7 @@ PathSurfaceSoftware::PathSurfaceSoftware(SurfaceDesc desc)
 PathSurfaceSoftware::PathSurfaceSoftware(SurfaceDesc desc, Options options)
     : desc_(std::move(desc))
     , options_(options) {
-    options_.progressive_tile_size_px = std::max(64, options_.progressive_tile_size_px);
+    options_.progressive_tile_size_px = std::max(1, options_.progressive_tile_size_px);
     configured_progressive_tile_size_px_ = options_.progressive_tile_size_px;
     reallocate_buffers();
     reset_progressive();
@@ -291,7 +291,7 @@ PathSurfaceSoftware::PathSurfaceSoftware(SurfaceDesc desc, Options options)
 
 void PathSurfaceSoftware::resize(SurfaceDesc const& desc) {
     desc_ = desc;
-    options_.progressive_tile_size_px = std::max(64, options_.progressive_tile_size_px);
+    options_.progressive_tile_size_px = std::max(1, options_.progressive_tile_size_px);
     reallocate_buffers();
     reset_progressive();
     configured_progressive_tile_size_px_ = std::max(1, options_.progressive_tile_size_px);
@@ -320,14 +320,14 @@ auto PathSurfaceSoftware::progressive_tile_size() const -> int {
     if (progressive_) {
         return progressive_->tile_size();
     }
-    return std::max(64, options_.progressive_tile_size_px);
+    return std::max(1, options_.progressive_tile_size_px);
 }
 
 void PathSurfaceSoftware::ensure_progressive_tile_size(int tile_size_px) {
     if (!options_.enable_progressive) {
         return;
     }
-    auto const clamped = std::max(64, tile_size_px);
+    auto const clamped = std::max(1, tile_size_px);
     if (configured_progressive_tile_size_px_ == clamped
         && progressive_
         && progressive_->tile_size() == clamped) {
@@ -746,9 +746,9 @@ void PathSurfaceSoftware::reset_progressive() {
     progressive_ = std::make_unique<ProgressiveSurfaceBuffer>(
         desc_.size_px.width,
         desc_.size_px.height,
-        std::max(64, options_.progressive_tile_size_px));
+        std::max(1, options_.progressive_tile_size_px));
     progressive_dirty_tiles_.clear();
-    configured_progressive_tile_size_px_ = std::max(64, options_.progressive_tile_size_px);
+    configured_progressive_tile_size_px_ = std::max(1, options_.progressive_tile_size_px);
 }
 
 } // namespace SP::UI

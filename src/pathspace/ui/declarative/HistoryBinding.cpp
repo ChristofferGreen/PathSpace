@@ -4,6 +4,7 @@
 #include <pathspace/history/UndoableSpace.hpp>
 #include <pathspace/layer/PathAlias.hpp>
 #include <pathspace/path/ConcretePath.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 
 #include <chrono>
 #include <iostream>
@@ -63,11 +64,13 @@ void write_history_metric(SP::PathSpace& space,
 
 namespace SP::UI::Declarative {
 
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
+
 auto HistoryMetricsRoot(std::string const& widget_path) -> std::string {
     if (widget_path.empty()) {
         return {};
     }
-    return widget_path + "/metrics/history_binding";
+    return WidgetSpacePath(widget_path, "/metrics/history_binding");
 }
 
 void InitializeHistoryMetrics(SP::PathSpace& space, std::string const& widget_path) {

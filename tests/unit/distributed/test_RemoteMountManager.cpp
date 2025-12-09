@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <optional>
 #include <memory>
+#include <sstream>
 #include <thread>
 #include <vector>
 
@@ -28,6 +29,22 @@ namespace Loopback = SP::Distributed::Loopback;
 PATHSPACE_REGISTER_REMOTE_EXECUTION_ENCODER(std::vector<int>);
 
 namespace {
+
+auto describe_status(RemoteMountManager const& manager) -> std::string {
+    std::ostringstream oss;
+    auto statuses = manager.statuses();
+    if (statuses.empty()) {
+        oss << "<none>";
+        return oss.str();
+    }
+    auto const& status = statuses.front();
+    oss << "connected=" << status.connected << " message=\"" << status.message << "\"";
+    return oss.str();
+}
+
+void capture_status(RemoteMountManager const& manager) {
+    CAPTURE(describe_status(manager));
+}
 
 [[nodiscard]] auto make_auth() -> AuthContext {
     AuthContext auth;
@@ -217,6 +234,19 @@ private:
     return std::make_shared<CountingFactory>(std::move(server), std::move(counter));
 }
 
+[[nodiscard]] auto fixture_path(std::string_view relative) -> std::string {
+#ifdef PATHSPACE_SOURCE_DIR
+    std::string base{PATHSPACE_SOURCE_DIR};
+    if (!base.empty() && base.back() != '/') {
+        base.push_back('/');
+    }
+    base.append(relative.begin(), relative.end());
+    return base;
+#else
+    return std::string(relative);
+#endif
+}
+
 } // namespace
 
 TEST_CASE("RemoteMountManager reads remote values") {
@@ -242,8 +272,9 @@ TEST_CASE("RemoteMountManager reads remote values") {
     RemoteMountManager manager(make_options(local, metrics, mount), factory);
     manager.start();
 
+    CAPTURE(describe_status(manager));
     auto value = local.read<std::string>("/remote/alpha/state");
-    REQUIRE(value.has_value());
+    REQUIRE_MESSAGE(value.has_value(), SP::describeError(value.error()));
     CHECK(value.value() == "demo");
 
     auto connected = metrics.read<int>("/inspector/metrics/remotes/alpha/client/connected");
@@ -272,6 +303,7 @@ TEST_CASE("RemoteMountManager waits for remote notifications") {
     RemoteMountManager manager(make_options(local, metrics, mount), factory);
     manager.start();
 
+    capture_status(manager);
     std::thread inserter([&] {
         std::this_thread::sleep_for(50ms);
         remote.insert("/apps/demo/events", std::string{"event"});
@@ -342,6 +374,7 @@ TEST_CASE("RemoteMountManager forwards execution inserts with string results") {
     RemoteMountManager manager(make_options(local, metrics, mount), factory);
     manager.start();
 
+    capture_status(manager);
     auto result = local.insert("/remote/alpha/generated", []() -> std::string { return std::string{"remote-task"}; });
     CHECK(result.errors.empty());
     CHECK(result.nbrTasksInserted == 1);
@@ -410,6 +443,7 @@ TEST_CASE("RemoteMountManager forwards execution inserts for registered types") 
     RemoteMountManager manager(make_options(local, metrics, mount), factory);
     manager.start();
 
+    capture_status(manager);
     auto result = local.insert(
         "/remote/alpha/vector",
         []() -> std::vector<int> { return std::vector<int>{5, 8, 13, 21}; });
@@ -592,9 +626,9 @@ TEST_CASE("RemoteMountManager connects over TLS transport") {
     RemoteMountTlsServerConfig tls_server_config;
     tls_server_config.bind_address              = "127.0.0.1";
     tls_server_config.port                     = 0;
-    tls_server_config.certificate_path         = "tests/data/remote_mount_tls/server.crt";
-    tls_server_config.private_key_path         = "tests/data/remote_mount_tls/server.key";
-    tls_server_config.ca_cert_path             = "tests/data/remote_mount_tls/ca.crt";
+    tls_server_config.certificate_path         = fixture_path("tests/data/remote_mount_tls/server.crt");
+    tls_server_config.private_key_path         = fixture_path("tests/data/remote_mount_tls/server.key");
+    tls_server_config.ca_cert_path             = fixture_path("tests/data/remote_mount_tls/ca.crt");
     tls_server_config.require_client_certificate = true;
 
     RemoteMountTlsServer tls_server(tls_server_config, server);
@@ -616,9 +650,9 @@ TEST_CASE("RemoteMountManager connects over TLS transport") {
     mount.auth.fingerprint.clear();
 
     RemoteMountTlsClientConfig tls_client;
-    tls_client.ca_cert_path     = "tests/data/remote_mount_tls/ca.crt";
-    tls_client.client_cert_path = "tests/data/remote_mount_tls/client.crt";
-    tls_client.client_key_path  = "tests/data/remote_mount_tls/client.key";
+    tls_client.ca_cert_path     = fixture_path("tests/data/remote_mount_tls/ca.crt");
+    tls_client.client_cert_path = fixture_path("tests/data/remote_mount_tls/client.crt");
+    tls_client.client_key_path  = fixture_path("tests/data/remote_mount_tls/client.key");
     tls_client.sni_host         = "localhost";
     mount.tls                   = tls_client;
 
@@ -628,6 +662,7 @@ TEST_CASE("RemoteMountManager connects over TLS transport") {
     RemoteMountManager manager(make_options(local, client_metrics, mount), factory);
     manager.start();
 
+    capture_status(manager);
     bool connected = false;
     for (int attempt = 0; attempt < 100 && !connected; ++attempt) {
         auto statuses = manager.statuses();

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Minimal stub to satisfy sandboxed ctest runs that expect /bin/ps.
+exit 0

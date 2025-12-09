@@ -7,6 +7,7 @@
 #include <pathspace/system/Standard.hpp>
 #include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/Helpers.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
 
@@ -24,6 +25,10 @@ struct RuntimeGuard {
     ~RuntimeGuard() { SP::System::ShutdownDeclarativeRuntime(space); }
     SP::PathSpace& space;
 };
+
+inline auto widget_space(std::string const& root, std::string_view relative) -> std::string {
+    return SP::UI::Runtime::Widgets::WidgetSpacePath(root, relative);
+}
 
 constexpr std::string_view kPointerDevice = "/system/devices/in/pointer/default";
 constexpr std::string_view kKeyboardDevice = "/system/devices/in/text/default";
@@ -233,7 +238,7 @@ TEST_CASE("paint_example_new pointer hover updates button state") {
     for (int attempt = 0; attempt < 200; ++attempt) {
         present_once(harness);
         auto state = harness.space.read<SP::UI::Runtime::Widgets::ButtonState, std::string>(
-            harness.button_path + "/state");
+            widget_space(harness.button_path, "/state"));
         if (state && state->hovered) {
             hovered = true;
             break;

@@ -5,6 +5,7 @@
 #include "distributed/RemoteMountProtocol.hpp"
 #include "type/InputData.hpp"
 #include "type/InputMetadataT.hpp"
+#include "type/TypeMetadataRegistry.hpp"
 
 #include <mutex>
 #include <optional>
@@ -114,8 +115,12 @@ private:
 
 template <typename T>
 inline bool RegisterRemoteExecutionEncoder() {
-    return RemoteExecutionEncoderRegistry::instance().registerEncoder(
-        std::type_index(typeid(T)), &EncodeExecutionValue<T>);
+    auto& registry   = RemoteExecutionEncoderRegistry::instance();
+    auto  registered = registry.registerEncoder(std::type_index(typeid(T)),
+                                                &EncodeExecutionValue<T>);
+    [[maybe_unused]] bool metadata_registered =
+        TypeMetadataRegistry::instance().registerType<T>();
+    return registered;
 }
 
 #define PATHSPACE_INTERNAL_REMOTE_ENCODER_CONCAT(a, b) a##b

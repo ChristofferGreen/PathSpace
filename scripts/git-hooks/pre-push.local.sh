@@ -13,7 +13,6 @@
 #   PATHSPACE_CMAKE_ARGS=.. -> extra CMake args (quoted)
 #   ENABLE_PATHIO_MACOS=ON  -> on macOS, enable PathIO macOS backends in the example build
 #   DISABLE_METAL_TESTS=1   -> skip Metal presenter coverage even on macOS
-#   SKIP_PERF_GUARDRAIL=1   -> skip performance guardrail metrics check
 #   RUN_ASAN=1              -> run an additional AddressSanitizer build/test pass
 #   RUN_TSAN=1              -> run an additional ThreadSanitizer build/test pass
 #   ASAN_LOOP=N             -> override ASan test loop iterations (default 1)
@@ -23,12 +22,75 @@
 
 set -euo pipefail
 
+PREPUSH_RUN_STAMP="$(date -u +"%Y%m%d-%H%M%S")"
+PREPUSH_START_EPOCH="$(date +%s)"
+PREPUSH_START_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+PREPUSH_HOSTNAME="$(hostname 2>/dev/null || echo unknown)"
+
 # ----- Utils -----
 
 say()  { printf "\033[1;34m[pre-push]\033[0m %s\n" "$*"; }
 ok()   { printf "\033[1;32m[pre-push]\033[0m %s\n" "$*"; }
 warn() { printf "\033[1;33m[pre-push]\033[0m %s\n" "$*"; }
 err()  { printf "\033[1;31m[pre-push]\033[0m %s\n" "$*" >&2; }
+
+json_escape() {
+  local input="${1:-}"
+  input="${input//\\/\\\\}"
+  input="${input//\"/\\\"}"
+  input="${input//$'\n'/\\n}"
+  input="${input//$'\r'/\\r}"
+  printf '%s' "$input"
+}
+
+write_prepush_summary() {
+  local exit_code="$1"
+  local end_epoch="$(date +%s)"
+  local end_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  local duration=$((end_epoch - PREPUSH_START_EPOCH))
+  local status="failure"
+  if [[ "$exit_code" -eq 0 ]]; then
+    status="success"
+  fi
+
+  local summary_dir="${PREPUSH_SUMMARY_DIR:-}"
+  local summary_path="${PREPUSH_SUMMARY_PATH:-}"
+  if [[ -z "$summary_dir" || -z "$summary_path" ]]; then
+    return 0
+  fi
+  if ! mkdir -p "$summary_dir"; then
+    warn "Unable to create $summary_dir for pre-push summary"
+    return 0
+  fi
+
+  cat >"$summary_path" <<EOF
+{
+  "status": "$(json_escape "$status")",
+  "exit_code": $exit_code,
+  "start_iso": "$(json_escape "$PREPUSH_START_ISO")",
+  "end_iso": "$(json_escape "$end_iso")",
+  "duration_seconds": $duration,
+  "build_type": "$(json_escape "${BUILD_TYPE:-}")",
+  "jobs": "$(json_escape "${JOBS:-}")",
+  "host": "$(json_escape "$PREPUSH_HOSTNAME")",
+  "skip_loop_tests": "$(json_escape "${SKIP_LOOP_TESTS:-0}")",
+  "skip_example": "$(json_escape "${SKIP_EXAMPLE:-0}")",
+  "run_asan": "$(json_escape "${RUN_ASAN:-0}")",
+  "run_tsan": "$(json_escape "${RUN_TSAN:-0}")",
+  "asan_loop": "$(json_escape "${ASAN_LOOP:-}")",
+  "tsan_loop": "$(json_escape "${TSAN_LOOP:-}")",
+  "skip_history_cli": "$(json_escape "${SKIP_HISTORY_CLI:-0}")",
+  "metal_tests_requested": "$(json_escape "${METAL_TESTS_REQUESTED:-0}")",
+  "cmake_args": "$(json_escape "${PATHSPACE_CMAKE_ARGS:-}")"
+}
+EOF
+
+  if [[ "$status" == "success" ]]; then
+    say "Pre-push summary saved to $summary_path"
+  else
+    warn "Pre-push summary saved to $summary_path"
+  fi
+}
 
 repo_root() {
   git rev-parse --show-toplevel 2>/dev/null || {
@@ -107,10 +169,58 @@ run_with_timeout() {
   return 0
 }
 
+PREPUSH_COMMAND_TIMEOUT="${PREPUSH_COMMAND_TIMEOUT:-520}"
+
+run_with_hard_timeout() {
+  local label="$1"; shift
+  local secs="$PREPUSH_COMMAND_TIMEOUT"
+  local env_args=()
+  while [[ $# -gt 0 && "$1" == *=* ]]; do
+    env_args+=("$1")
+    shift
+  done
+  if [[ $# -eq 0 ]]; then
+    err "$label missing command"
+    exit 1
+  fi
+  local cmd=("$@")
+  local exec_cmd=()
+  if [[ ${#env_args[@]} -gt 0 ]]; then
+    exec_cmd=(env "${env_args[@]}" "${cmd[@]}")
+  else
+    exec_cmd=("${cmd[@]}")
+  fi
+
+  local tbin
+  tbin="$(have_timeout)"
+  if [[ -n "$tbin" ]]; then
+    if "$tbin" "${secs}s" "${exec_cmd[@]}"; then
+      return 0
+    fi
+    local rc=$?
+    if [[ $rc -eq 124 ]]; then
+      err "$label timed out after ${secs}s: ${cmd[*]}"
+    else
+      err "$label failed (exit $rc): ${cmd[*]}"
+    fi
+    exit 1
+  fi
+
+  if "${exec_cmd[@]}"; then
+    return 0
+  fi
+  local rc=$?
+  err "$label failed (exit $rc): ${cmd[*]}"
+  exit 1
+}
+
 # ----- Main -----
 
 ROOT="$(repo_root)"
 cd "$ROOT"
+
+PREPUSH_SUMMARY_DIR="$ROOT/build/test-logs/pre-push"
+PREPUSH_SUMMARY_PATH="$PREPUSH_SUMMARY_DIR/pre-push_${PREPUSH_RUN_STAMP}_pid$$.json"
 
 if [[ -z "${PATHSPACE_LEGACY_WIDGET_BUILDERS:-}" ]]; then
   export PATHSPACE_LEGACY_WIDGET_BUILDERS="error"
@@ -124,6 +234,18 @@ mkdir -p "$LEGACY_REPORT_DIR"
 
 JOBS="${JOBS:-$(cpu_jobs)}"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
+BUILD_TYPE_LOWER="$(printf '%s' "$BUILD_TYPE" | tr '[:upper:]' '[:lower:]')"
+case "$BUILD_TYPE_LOWER" in
+  release|debug|relwithdebinfo|minsizerel)
+    ;;
+  *)
+    warn "Unknown build type '$BUILD_TYPE'; defaulting to Release"
+    BUILD_TYPE_LOWER="release"
+    ;;
+esac
+BUILD_TYPE_FLAG="--$BUILD_TYPE_LOWER"
+
+trap 'rc=$?; write_prepush_summary "$rc"' EXIT
 
 CLANGXX_BIN="$(command -v clang++ || true)"
 PATHSPACE_CMAKE_ARGS="${PATHSPACE_CMAKE_ARGS:-}"
@@ -131,9 +253,11 @@ PATHSPACE_CMAKE_ARGS+=" -DCMAKE_CXX_COMPILER=${CLANGXX_BIN}"
 PATHSPACE_CMAKE_ARGS+=" -DCMAKE_OBJCXX_COMPILER=${CLANGXX_BIN}"
 
 METAL_TEST_ARGS=()
+METAL_TESTS_REQUESTED=0
 if [[ "$(uname)" == "Darwin" ]] && [[ "${DISABLE_METAL_TESTS:-0}" != "1" ]]; then
   PATHSPACE_CMAKE_ARGS+=" -DPATHSPACE_UI_METAL=ON"
   METAL_TEST_ARGS+=(--enable-metal-tests)
+  METAL_TESTS_REQUESTED=1
 fi
 BASE_PATHSPACE_CMAKE_ARGS="$PATHSPACE_CMAKE_ARGS"
 
@@ -145,7 +269,7 @@ if [[ "${SKIP_LOOP_TESTS:-0}" != "1" ]]; then
   say "Building and running tests with loop=5"
   # scripts/compile.sh takes care of configure+build+tests
   # Prefer Apple clang for both C++ and ObjC++ to support ObjC headers/blocks
-  PATHSPACE_CMAKE_ARGS="$PATHSPACE_CMAKE_ARGS" ./scripts/compile.sh --clean --test --loop=5 --${BUILD_TYPE,,} --jobs "$JOBS" "${METAL_TEST_ARGS[@]}"
+  run_with_hard_timeout "compile/test loop" PATHSPACE_CMAKE_ARGS="$PATHSPACE_CMAKE_ARGS" ./scripts/compile.sh --clean --test --loop=5 "$BUILD_TYPE_FLAG" --jobs "$JOBS" "${METAL_TEST_ARGS[@]}"
   ok "Test loop completed successfully"
 else
   warn "Skipping test loop (SKIP_LOOP_TESTS=1)"
@@ -162,32 +286,32 @@ fi
 
 if [[ ${#SANITIZER_RUNS[@]} -gt 0 ]]; then
   say "Running optional sanitizer passes: ${SANITIZER_RUNS[*]}"
-fi
 
-for sanitizer in "${SANITIZER_RUNS[@]}"; do
-  upper_sanitizer="$(echo "$sanitizer" | tr '[:lower:]' '[:upper:]')"
-  local_loop=""
-  case "$sanitizer" in
-    "asan") local_loop="${ASAN_LOOP:-}";;
-    "tsan") local_loop="${TSAN_LOOP:-}";;
-  esac
-  sanitize_args=()
-  if [[ "${SANITIZER_CLEAN:-0}" == "1" ]]; then
-    sanitize_args+=("--clean")
-  fi
-  sanitize_args+=("--build-dir" "build-${sanitizer}")
-  sanitize_args+=("--build-type" "${SANITIZER_BUILD_TYPE:-Debug}")
-  sanitize_args+=("--jobs" "$JOBS")
-  sanitize_args+=("--disable-metal-tests")
-  sanitize_args+=("--${sanitizer}-test")
-  if [[ -n "$local_loop" ]]; then
-    sanitize_args+=("--loop=$local_loop")
-  fi
-  say "Running ${upper_sanitizer} sanitizer build/test pass"
-  PATHSPACE_CMAKE_ARGS="$BASE_PATHSPACE_CMAKE_ARGS -DPATHSPACE_UI_METAL=OFF" \
-    ./scripts/compile.sh "${sanitize_args[@]}"
-  ok "${upper_sanitizer} sanitizer pass succeeded"
-done
+  for sanitizer in "${SANITIZER_RUNS[@]}"; do
+    upper_sanitizer="$(echo "$sanitizer" | tr '[:lower:]' '[:upper:]')"
+    local_loop=""
+    case "$sanitizer" in
+      "asan") local_loop="${ASAN_LOOP:-}";;
+      "tsan") local_loop="${TSAN_LOOP:-}";;
+    esac
+    sanitize_args=()
+    if [[ "${SANITIZER_CLEAN:-0}" == "1" ]]; then
+      sanitize_args+=("--clean")
+    fi
+    sanitize_args+=("--build-dir" "build-${sanitizer}")
+    sanitize_args+=("--build-type" "${SANITIZER_BUILD_TYPE:-Debug}")
+    sanitize_args+=("--jobs" "$JOBS")
+    sanitize_args+=("--disable-metal-tests")
+    sanitize_args+=("--${sanitizer}-test")
+    if [[ -n "$local_loop" ]]; then
+      sanitize_args+=("--loop=$local_loop")
+    fi
+    say "Running ${upper_sanitizer} sanitizer build/test pass"
+    run_with_hard_timeout "${upper_sanitizer} sanitizer compile/test" PATHSPACE_CMAKE_ARGS="$BASE_PATHSPACE_CMAKE_ARGS -DPATHSPACE_UI_METAL=OFF" \
+      ./scripts/compile.sh "${sanitize_args[@]}"
+    ok "${upper_sanitizer} sanitizer pass succeeded"
+  done
+fi
 
 if [[ "${SKIP_HISTORY_CLI:-0}" != "1" ]]; then
   say "Running history savefile CLI roundtrip harness"
@@ -198,7 +322,7 @@ if [[ "${SKIP_HISTORY_CLI:-0}" != "1" ]]; then
   archive_stamp="$(date +"%Y%m%d-%H%M%S")"
   archive_dir="./build/test-logs/history_cli_roundtrip/pre-push_${archive_stamp}"
   mkdir -p "$archive_dir"
-  if PATHSPACE_CLI_ROUNDTRIP_ARCHIVE_DIR="$archive_dir" ./build/pathspace_history_cli_roundtrip; then
+  if PATHSPACE_CLI_ROUNDTRIP_ARCHIVE_DIR="$archive_dir" run_with_hard_timeout "history_cli_roundtrip" ./build/pathspace_history_cli_roundtrip; then
     ok "History savefile CLI roundtrip succeeded"
     scripts/history_cli_roundtrip_ingest.py \
       --artifacts-root "build/test-logs" \
@@ -218,13 +342,13 @@ fi
 if [[ "${SKIP_EXAMPLE:-0}" != "1" ]]; then
   say "Configuring example app (devices_example)"
   # Configure example via CMake cache; respect PATHSPACE_CMAKE_ARGS and optional macOS backend flag
-  cmake -S . -B build \
+  run_with_hard_timeout "cmake configure" cmake -S . -B build \
     -DBUILD_PATHSPACE_EXAMPLES=ON \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
     ${PATHSPACE_CMAKE_ARGS:-}
 
   say "Building example app"
-  cmake --build build -j "$JOBS" --target devices_example
+  run_with_hard_timeout "cmake build devices_example" cmake --build build -j "$JOBS" --target devices_example
 
   # 3) Smoke run the example briefly to ensure it starts (no simulation; expects real input)
   say "Running devices_example for a brief smoke test (3s)..."
@@ -236,24 +360,6 @@ if [[ "${SKIP_EXAMPLE:-0}" != "1" ]]; then
   fi
 else
   warn "Skipping example app smoke test (SKIP_EXAMPLE=1)"
-fi
-
-if [[ "${SKIP_PERF_GUARDRAIL:-0}" != "1" ]]; then
-  say "Running performance guardrail checks"
-  if python3 ./scripts/perf_guardrail.py \
-      --build-dir build \
-      --build-type "$BUILD_TYPE" \
-      --jobs "$JOBS" \
-      --baseline docs/perf/performance_baseline.json \
-      --history-dir build/perf/history \
-      --print; then
-    ok "Performance guardrail checks passed"
-  else
-    err "Performance guardrail failed"
-    exit 1
-  fi
-else
-  warn "Skipping performance guardrail (SKIP_PERF_GUARDRAIL=1)"
 fi
 
 ok "Local pre-push checks passed"

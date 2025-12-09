@@ -129,7 +129,7 @@ TEST_CASE("Declarative List mounts child fragments") {
         List::Create(fx.space, fx.parent_view(), "list_widget", std::move(args));
     REQUIRE(list.has_value());
 
-    auto child_root = list->getPath() + "/children/label_child";
+    auto child_root = WidgetsNS::WidgetChildRoot(list->getPath(), "label_child");
     auto child_text = fx.space.read<std::string, std::string>(
         widget_space(child_root, "/state/text"));
     REQUIRE(child_text.has_value());
@@ -172,8 +172,7 @@ TEST_CASE("WidgetDescriptor reproduces button bucket") {
     auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
 
-    auto state = fx.space.read<WidgetsNS::ButtonState, std::string>((*button).getPath()
-                                                                    + "/state");
+    auto state = fx.space.read<WidgetsNS::ButtonState, std::string>(widget_space(*button, "/state"));
     REQUIRE(state.has_value());
     WidgetsNS::ButtonPreviewOptions preview{};
     preview.authoring_root = button->getPath();
@@ -205,9 +204,8 @@ TEST_CASE("Button styles record explicit override intent") {
         auto widget =
             Button::Create(fx.space, fx.parent_view(), "default_button", args);
         REQUIRE(widget.has_value());
-        auto style =
-            fx.space.read<WidgetsNS::ButtonStyle, std::string>(widget->getPath()
-                                                               + "/meta/style");
+        auto style = fx.space.read<WidgetsNS::ButtonStyle, std::string>(
+            widget_space(*widget, "/meta/style"));
         REQUIRE(style.has_value());
         CHECK_EQ(style->overrides, 0);
     }
@@ -219,9 +217,8 @@ TEST_CASE("Button styles record explicit override intent") {
         auto widget =
             Button::Create(fx.space, fx.parent_view(), "custom_button", args);
         REQUIRE(widget.has_value());
-        auto style =
-            fx.space.read<WidgetsNS::ButtonStyle, std::string>(widget->getPath()
-                                                               + "/meta/style");
+        auto style = fx.space.read<WidgetsNS::ButtonStyle, std::string>(
+            widget_space(*widget, "/meta/style"));
         REQUIRE(style.has_value());
         CHECK(HasStyleOverride(style->overrides,
                                WidgetsNS::ButtonStyleOverrideField::BackgroundColor));
@@ -243,9 +240,8 @@ TEST_CASE("Button preserves explicit overrides after theme defaults") {
         Button::Create(fx.space, fx.parent_view(), "theme_button", args);
     REQUIRE(widget.has_value());
 
-    auto stored_style =
-        fx.space.read<WidgetsNS::ButtonStyle, std::string>(widget->getPath()
-                                                           + "/meta/style");
+    auto stored_style = fx.space.read<WidgetsNS::ButtonStyle, std::string>(
+        widget_space(*widget, "/meta/style"));
     REQUIRE(stored_style.has_value());
 
     CHECK(HasStyleOverride(stored_style->overrides,
@@ -283,11 +279,11 @@ TEST_CASE("WidgetDescriptor reproduces slider bucket") {
     auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
 
-    auto state = fx.space.read<WidgetsNS::SliderState, std::string>((*slider).getPath()
-                                                                    + "/state");
+    auto state = fx.space.read<WidgetsNS::SliderState, std::string>(
+        widget_space(*slider, "/state"));
     REQUIRE(state.has_value());
-    auto range = fx.space.read<WidgetsNS::SliderRange, std::string>((*slider).getPath()
-                                                                    + "/meta/range");
+    auto range = fx.space.read<WidgetsNS::SliderRange, std::string>(
+        widget_space(*slider, "/meta/range"));
     REQUIRE(range.has_value());
     WidgetsNS::SliderPreviewOptions preview{};
     preview.authoring_root = slider->getPath();
@@ -318,12 +314,11 @@ TEST_CASE("WidgetDescriptor reproduces list bucket") {
     auto bucket = BuildWidgetBucket(fx.space, *descriptor);
     REQUIRE(bucket.has_value());
 
-    auto state = fx.space.read<WidgetsNS::ListState, std::string>((*list).getPath()
-                                                                  + "/state");
+    auto state = fx.space.read<WidgetsNS::ListState, std::string>(
+        widget_space(*list, "/state"));
     REQUIRE(state.has_value());
-    auto items =
-        fx.space.read<std::vector<WidgetsNS::ListItem>, std::string>((*list).getPath()
-                                                                     + "/meta/items");
+    auto items = fx.space.read<std::vector<WidgetsNS::ListItem>, std::string>(
+        widget_space(*list, "/meta/items"));
     REQUIRE(items.has_value());
     WidgetsNS::ListPreviewOptions preview{};
     preview.authoring_root = list->getPath();
@@ -582,12 +577,12 @@ TEST_CASE("PaintSurfaceRuntime marks GPU state and dirty hints") {
     REQUIRE(handled.has_value());
     CHECK(handled.value());
 
-    auto state_path = std::string(paint->getPath()) + "/render/gpu/state";
+    auto state_path = widget_space(*paint, "/render/gpu/state");
     auto gpu_state = fx.space.read<std::string, std::string>(state_path);
     REQUIRE(gpu_state.has_value());
     CHECK_EQ(*gpu_state, "DirtyPartial");
 
-    auto pending_path = std::string(paint->getPath()) + "/render/buffer/pendingDirty";
+    auto pending_path = widget_space(*paint, "/render/buffer/pendingDirty");
     auto pending = DetailNS::read_optional<std::vector<SP::UI::Runtime::DirtyRectHint>>(fx.space, pending_path);
     REQUIRE(pending.has_value());
     REQUIRE(pending->has_value());
@@ -636,7 +631,8 @@ TEST_CASE("Widgets::Move relocates widget and preserves handlers") {
     REQUIRE(dirty.has_value());
     CHECK(*dirty);
 
-    auto old_children = fx.space.listChildren(SP::ConcretePathStringView{list_a->getPath() + "/children"});
+    auto old_children = fx.space.listChildren(
+        SP::ConcretePathStringView{widget_space(*list_a, "/children")});
     CHECK(std::find(old_children.begin(), old_children.end(), "child_one") == old_children.end());
 }
 

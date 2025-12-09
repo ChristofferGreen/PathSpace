@@ -219,7 +219,7 @@ software readbacks fail.
     `SP::UI::Declarative::HistoryBinding`. Call `InitializeHistoryMetrics`,
     `CreateHistoryBinding`, `RecordHistoryBindingActionResult`,
     `SetHistoryBindingButtonsEnabled`, and `PublishHistoryBindingCard` to keep
-    `/widgets/<id>/metrics/history_binding/*` plus the serialized card in sync.
+    `/widgets/<id>/space/metrics/history_binding/*` plus the serialized card in sync.
   - Paint surfaces store stroke history under `state/history/<stroke>/{meta,points,version}`
     and buffer metrics under `render/buffer/*`. Descriptors wait for a stable
     `version` before caching buckets.

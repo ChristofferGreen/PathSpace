@@ -8,6 +8,7 @@
 
 #include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 #include <pathspace/runtime/IOPump.hpp>
 
 #include <atomic>
@@ -29,6 +30,7 @@ namespace {
 using namespace SP::UI::Runtime;
 using namespace SP::UI::Declarative::Detail;
 namespace WidgetReducers = SP::UI::Declarative::Reducers;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
 using SP::UI::Declarative::ButtonContext;
 using SP::UI::Declarative::HandlerBinding;
 using SP::UI::Declarative::HandlerKind;
@@ -120,6 +122,10 @@ auto enqueue_error(PathSpace& space, std::string message) -> void {
 
 auto list_children(PathSpace& space, std::string const& path) -> std::vector<std::string> {
     return space.listChildren(SP::ConcretePathStringView{path});
+}
+
+auto widget_child_roots(PathSpace& space, std::string const& widget_root) -> std::vector<std::string> {
+    return SP::UI::Runtime::Widgets::WidgetChildRoots(space, widget_root);
 }
 
 auto derive_app_component(std::string const& window_path) -> std::optional<std::string> {
@@ -251,8 +257,7 @@ struct HandlerRoute {
 
 auto handler_binding_path(std::string const& widget_path,
                           std::string_view event) -> std::string {
-    std::string path = widget_path;
-    path.append("/events/");
+    auto path = WidgetSpacePath(widget_path, "/events/");
     path.append(event);
     path.append("/handler");
     return path;
@@ -332,14 +337,11 @@ auto format_event_error(WidgetReducers::WidgetAction const& action,
 }
 
 auto event_inbox_path(std::string const& widget_path) -> std::string {
-    std::string path = widget_path;
-    path.append("/events/inbox/queue");
-    return path;
+    return WidgetSpacePath(widget_path, "/events/inbox/queue");
 }
 
 auto event_specific_path(std::string const& widget_path, std::string_view event) -> std::string {
-    std::string path = widget_path;
-    path.append("/events/");
+    auto path = WidgetSpacePath(widget_path, "/events/");
     path.append(event);
     path.append("/queue");
     return path;
@@ -623,13 +625,9 @@ void pump_widget_tree(PathSpace& space,
                       std::chrono::nanoseconds slow_threshold) {
     pump_widget(space, widget_root, max_actions, stats, widget_metrics, slow_threshold);
 
-    auto children_root = widget_root + "/children";
-    auto children = list_children(space, children_root);
-    for (auto const& child_name : children) {
-        std::string child_path = children_root;
-        child_path.push_back('/');
-        child_path.append(child_name);
-        pump_widget_tree(space, child_path, max_actions, stats, widget_metrics, slow_threshold);
+    auto child_roots = widget_child_roots(space, widget_root);
+    for (auto const& child_root : child_roots) {
+        pump_widget_tree(space, child_root, max_actions, stats, widget_metrics, slow_threshold);
     }
 }
 
@@ -763,8 +761,7 @@ private:
     void write_widget_handler_metric(std::string const& widget_path,
                                      std::string_view name,
                                      std::uint64_t value) {
-        std::string path = widget_path;
-        path.append("/metrics/handlers/");
+        auto path = WidgetSpacePath(widget_path, "/metrics/handlers/");
         path.append(name);
         (void)replace_single<std::uint64_t>(space_, path, value);
     }

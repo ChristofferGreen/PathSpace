@@ -5,6 +5,7 @@
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/layer/io/PathIOKeyboard.hpp>
 #include <pathspace/ui/declarative/StackReadiness.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 
 #include <algorithm>
 #include <array>
@@ -16,6 +17,7 @@ namespace PathSpaceExamples::PaintExampleNew {
 namespace {
 constexpr std::string_view kPointerDevice = "/system/devices/in/pointer/default";
 constexpr std::string_view kKeyboardDevice = "/system/devices/in/text/default";
+
 
 auto ensure_pointer_device(SP::PathSpace& space) -> SP::Expected<void> {
     auto roots = space.listChildren(SP::ConcretePathStringView{"/system/devices/in/pointer"});
@@ -96,8 +98,8 @@ auto MountButtonUI(SP::PathSpace& space,
 
     ButtonUiResult result{};
     result.stack_path = *layout;
-    result.button_path = result.stack_path.getPath();
-    result.button_path.append("/children/button_panel");
+    result.button_path = SP::UI::Runtime::Widgets::WidgetSpacePath(result.stack_path.getPath(),
+                                                                   "/children/button_panel");
     result.layout_width = static_cast<float>(window_width);
     result.layout_height = static_cast<float>(window_height);
 

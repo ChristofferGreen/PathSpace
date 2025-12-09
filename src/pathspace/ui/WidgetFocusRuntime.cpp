@@ -223,10 +223,9 @@ auto collect_focus_order(PathSpace& space,
         record_disabled_skip_for_scope(space, scope);
     }
 
-    auto children_root = widget_root + "/children";
-    auto children = space.listChildren(SP::ConcretePathStringView{children_root});
-    for (auto const& child : children) {
-        auto status = collect_focus_order(space, scope, children_root + "/" + child, order);
+    auto children = SP::UI::Runtime::Widgets::WidgetChildRoots(space, widget_root);
+    for (auto const& child_root : children) {
+        auto status = collect_focus_order(space, scope, child_root, order);
         if (!status) {
             return std::unexpected(status.error());
         }

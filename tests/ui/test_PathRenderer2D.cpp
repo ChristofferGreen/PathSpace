@@ -201,6 +201,15 @@ auto encode_rect_command(RectCommand const& rect,
     bucket.command_kinds.push_back(static_cast<std::uint32_t>(DrawCommandKind::Rect));
 }
 
+auto make_bounds(int min_x, int min_y, int max_x, int max_y) -> PathRenderer2D::DrawableBounds {
+    PathRenderer2D::DrawableBounds bounds{};
+    bounds.min_x = min_x;
+    bounds.min_y = min_y;
+    bounds.max_x = max_x;
+    bounds.max_y = max_y;
+    return bounds;
+}
+
 auto encode_rounded_rect_command(RoundedRectCommand const& rounded,
                                  DrawableBucketSnapshot& bucket) -> void {
     auto offset = bucket.command_payload.size();
@@ -703,7 +712,7 @@ void expect_matches_golden(std::string_view name,
 
 } // namespace
 
-TEST_SUITE("PathRenderer2D") {
+TEST_SUITE("PathRenderer2D_RenderBasics") {
 
 TEST_CASE("render executes rect commands across passes and encodes pixels") {
     ScopedEnv metrics_env{"PATHSPACE_UI_DAMAGE_METRICS", "1"};
@@ -1606,13 +1615,49 @@ TEST_CASE("damage metrics respect dirty rect hints") {
     REQUIRE(hintTiles);
     CHECK(hintTiles->size() == *rects);
 
+    auto tileSizeMetric = fx.space.read<uint64_t>(metricsBase + "/progressiveTileSize");
+    REQUIRE(tileSizeMetric);
+    auto tileSizePx = static_cast<int>(*tileSizeMetric);
+    REQUIRE(tileSizePx > 0);
+
+    auto tiles_for_dimension = [&](int dimension) -> uint64_t {
+        return static_cast<uint64_t>((dimension + tileSizePx - 1) / tileSizePx);
+    };
+    auto clamp_tile_index = [&](int idx, uint64_t tiles_axis) -> int {
+        if (tiles_axis == 0) {
+            return 0;
+        }
+        auto max_idx = static_cast<int>(tiles_axis) - 1;
+        return std::clamp(idx, 0, max_idx);
+    };
+    auto dirty_span_for_axis = [&](float min_coord, float max_coord, int dimension) -> uint64_t {
+        if (max_coord <= min_coord) {
+            return 0;
+        }
+        auto tiles_axis = tiles_for_dimension(dimension);
+        if (tiles_axis == 0) {
+            return 0;
+        }
+        auto min_sample = std::clamp(static_cast<int>(std::floor(min_coord)), 0, dimension - 1);
+        auto max_sample = std::clamp(static_cast<int>(std::ceil(max_coord)) - 1, 0, dimension - 1);
+        auto start_idx = clamp_tile_index(min_sample / tileSizePx, tiles_axis);
+        auto end_idx = clamp_tile_index(max_sample / tileSizePx, tiles_axis);
+        if (end_idx < start_idx) {
+            return 0;
+        }
+        return static_cast<uint64_t>(end_idx - start_idx + 1);
+    };
+
+    auto expectedTilesTotal = tiles_for_dimension(kWidth) * tiles_for_dimension(kHeight);
     auto tilesTotal = fx.space.read<uint64_t>(metricsBase + "/progressiveTilesTotal");
     REQUIRE(tilesTotal);
-    CHECK(*tilesTotal == 64);
+    CHECK(*tilesTotal == expectedTilesTotal);
 
+    auto expectedDirtyTiles = dirty_span_for_axis(hint.min_x, hint.max_x, kWidth)
+                              * dirty_span_for_axis(hint.min_y, hint.max_y, kHeight);
     auto tilesDirty = fx.space.read<uint64_t>(metricsBase + "/progressiveTilesDirty");
     REQUIRE(tilesDirty);
-    CHECK(*tilesDirty == 1);
+    CHECK(*tilesDirty == expectedDirtyTiles);
 
     auto tilesSkipped = fx.space.read<uint64_t>(metricsBase + "/progressiveTilesSkipped");
     REQUIRE(tilesSkipped);
@@ -2321,6 +2366,10 @@ TEST_CASE("clear color change triggers full-surface repaint") {
     CHECK(*updated == tile_count);
 }
 
+} // TEST_SUITE PathRenderer2D_RenderBasics
+
+TEST_SUITE("PathRenderer2D_RenderCommands") {
+
 TEST_CASE("records opaque sort violations when indices are unsorted") {
     RendererFixture fx;
 
@@ -2965,6 +3014,10 @@ TEST_CASE("render executes stroke command draws polyline") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/unsupportedCommands").value() == 0);
 }
 
+} // TEST_SUITE PathRenderer2D_RenderCommands
+
+TEST_SUITE("PathRenderer2D_RenderMetrics") {
+
 TEST_CASE("render tracks culled drawables and executed commands") {
     RendererFixture fx;
 
@@ -3148,6 +3201,10 @@ TEST_CASE("render reports error when target scene binding missing") {
     CHECK(*lastError == "target missing scene binding");
 }
 
+} // TEST_SUITE PathRenderer2D_RenderMetrics
+
+TEST_SUITE("PathRenderer2D_SurfaceRenderOnce") {
+
 TEST_CASE("Surface::RenderOnce drives renderer and stores metrics") {
     RendererFixture fx;
 
@@ -3211,6 +3268,10 @@ TEST_CASE("Surface::RenderOnce drives renderer and stores metrics") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/frameIndex").value() == 2);
 }
 
+} // TEST_SUITE PathRenderer2D_SurfaceRenderOnce
+
+TEST_SUITE("PathRenderer2D_MaterialMetrics") {
+
 TEST_CASE("PathRenderer2D records material descriptors metrics") {
     RendererFixture fx;
 
@@ -3273,6 +3334,10 @@ TEST_CASE("PathRenderer2D records material descriptors metrics") {
     CHECK(descriptor.color_rgba[2] == doctest::Approx(0.75f));
     CHECK(descriptor.color_rgba[3] == doctest::Approx(1.0f));
 }
+
+} // TEST_SUITE PathRenderer2D_MaterialMetrics
+
+TEST_SUITE("PathRenderer2D_FocusPulse") {
 
 TEST_CASE("PathRenderer2D pulses focus highlight color over time") {
     RendererFixture fx;
@@ -3353,6 +3418,10 @@ TEST_CASE("PathRenderer2D pulses focus highlight color over time") {
     CHECK(base_pixel[3] == light_pixel[3]);
     CHECK(base_pixel[3] == dark_pixel[3]);
 }
+
+} // TEST_SUITE PathRenderer2D_FocusPulse
+
+TEST_SUITE("PathRenderer2D_WindowPresent") {
 
 TEST_CASE("Surface::RenderOnce handles repeated loop renders") {
     RendererFixture fx;
@@ -5126,16 +5195,9 @@ TEST_CASE("progressive-only surfaces present via progressive path") {
     CHECK(stats.error.empty());
 }
 
-namespace {
-auto make_bounds(int min_x, int min_y, int max_x, int max_y) -> PathRenderer2D::DrawableBounds {
-    PathRenderer2D::DrawableBounds bounds{};
-    bounds.min_x = min_x;
-    bounds.min_y = min_y;
-    bounds.max_x = max_x;
-    bounds.max_y = max_y;
-    return bounds;
-}
-}
+} // TEST_SUITE PathRenderer2D_WindowPresent
+
+TEST_SUITE("PathRenderer2D_DamageHelpers") {
 
 TEST_CASE("Damage helper tracks fingerprint deltas and tiles") {
     RendererInternal::DamageComputationOptions options{
@@ -5219,4 +5281,4 @@ TEST_CASE("Damage helper applies dirty rect hints to tile grid") {
     }
 }
 
-} // TEST_SUITE
+} // TEST_SUITE PathRenderer2D_DamageHelpers

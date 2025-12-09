@@ -31,7 +31,7 @@ auto write_panel_metadata(PathSpace& space,
     if (auto status = WidgetDetail::write_value(space, panel_root + "/visible", visible); !status) {
         return status;
     }
-    auto target = root + "/children/" + panel_id;
+    auto target = WidgetSpacePath(root, std::string{"/children/"} + panel_id);
     return WidgetDetail::write_value(space, panel_root + "/target", target);
 }
 
@@ -63,16 +63,16 @@ auto read_panel_order(PathSpace& space,
 
 auto sorted_child_specs(PathSpace& space,
                         std::string const& root) -> std::vector<BuilderWidgets::StackChildSpec> {
-    auto children_root = root + "/children";
-    auto names = space.listChildren(SP::ConcretePathStringView{children_root});
+    auto names = BuilderWidgets::WidgetChildNames(space, root);
     std::vector<BuilderWidgets::StackChildSpec> specs;
     specs.reserve(names.size());
     for (auto const& name : names) {
         BuilderWidgets::StackChildSpec spec{};
         spec.id = name;
-        auto child_root = children_root + "/" + name;
-        spec.widget_path = child_root;
-        spec.scene_path = child_root;
+        auto child_root = BuilderWidgets::WidgetChildRoot(root, name);
+        auto canonical_child = BuilderWidgets::WidgetSpaceRoot(child_root);
+        spec.widget_path = canonical_child;
+        spec.scene_path = canonical_child;
         specs.push_back(std::move(spec));
     }
     std::sort(specs.begin(), specs.end(), [&](auto const& lhs, auto const& rhs) {

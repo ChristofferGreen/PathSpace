@@ -115,7 +115,7 @@ Declarative widgets replaced the imperative builders, but each widget still reli
 - Implement `RenderPackage` struct + serializer.
 - Add `SceneLifecycle::WalkWidgetCapsules` and integrate it into renderer targets behind a feature flag (`PATHSPACE_WIDGET_CAPSULES=1`).
 - Port button + label render paths to the walker, keeping legacy render cache writes for parity.
-- Expand perf guardrails (widget_pipeline benchmark) to record per-capsule render time.
+- Expand the widget_pipeline benchmark to record per-capsule render time.
 
 ### Phase 2 - Event Mailboxes (January-February 2026)
 - Define mailbox schemas and update `WidgetEventTrellis` to route into them when the feature flag is enabled.

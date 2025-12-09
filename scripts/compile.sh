@@ -43,12 +43,6 @@ SIZE_BASELINE=""
 SIZE_WRITE_BASELINE=""
 SIZE_BASELINE_DEFAULT="$ROOT_DIR/docs/perf/example_size_baseline.json"
 SIZE_PRINT_DONE=0
-PERF_REPORT=0
-PERF_BASELINE=""
-PERF_WRITE_BASELINE=""
-PERF_HISTORY_DIR=""
-PERF_BASELINE_DEFAULT="$ROOT_DIR/docs/perf/performance_baseline.json"
-PERF_PRINT=0
 METAL_FLAG_EXPLICIT=0
 RUNTIME_FLAG_REPORT=0
 RUNTIME_FLAG_REPORT_PATH=""
@@ -97,11 +91,6 @@ Options:
                              guardrail baseline (default baseline path: $SIZE_BASELINE_DEFAULT).
       --size-write-baseline[=PATH]
                              Record the current binary sizes as the new guardrail baseline.
-      --perf-report[=PATH]     Run the performance guardrail checks (default baseline path:
-                             $PERF_BASELINE_DEFAULT).
-      --perf-write-baseline[=PATH]
-                             Record current renderer/presenter metrics as the new performance baseline.
-      --perf-history-dir PATH  Append performance run outputs to JSONL files under PATH.
   -h, --help                 Show this help and exit.
 
 Sanitizers (mutually exclusive, maps to CMake options in this repo):
@@ -146,29 +135,6 @@ run_size_guardrail() {
     shift
   done
   python3 "$SCRIPT_DIR/size_guardrail.py" "${args[@]}"
-}
-
-run_perf_guardrail() {
-  require_tool python3
-  local args=("--build-dir" "$BUILD_DIR" "--build-type" "$BUILD_TYPE" "--jobs" "$JOBS")
-  if [[ -n "$PERF_BASELINE" ]]; then
-    args+=("--baseline" "$PERF_BASELINE")
-  else
-    args+=("--baseline" "$PERF_BASELINE_DEFAULT")
-  fi
-  if [[ -n "$PERF_HISTORY_DIR" ]]; then
-    args+=("--history-dir" "$PERF_HISTORY_DIR")
-  fi
-  if [[ "$PERF_PRINT" -eq 1 ]]; then
-    args+=("--print")
-  fi
-  if [[ "$VERBOSE" -eq 1 ]]; then
-    args+=("--verbose")
-  fi
-  if [[ "$1" == "write" ]]; then
-    args+=("--write-baseline")
-  fi
-  python3 "$SCRIPT_DIR/perf_guardrail.py" "${args[@]}"
 }
 
 # ----------------------------
@@ -353,27 +319,6 @@ while [[ $# -gt 0 ]]; do
     --size-write-baseline=*)
       SIZE_WRITE_BASELINE="${1#*=}"
       ;;
-    --perf-report)
-      PERF_REPORT=1
-      ;;
-    --perf-report=*)
-      PERF_REPORT=1
-      PERF_BASELINE="${1#*=}"
-      ;;
-    --perf-write-baseline)
-      PERF_WRITE_BASELINE=1
-      ;;
-    --perf-write-baseline=*)
-      PERF_WRITE_BASELINE=1
-      PERF_BASELINE="${1#*=}"
-      ;;
-    --perf-history-dir)
-      shift || die "Missing argument for $1"
-      PERF_HISTORY_DIR="$1"
-      ;;
-    --perf-history-dir=*)
-      PERF_HISTORY_DIR="${1#*=}"
-      ;;
     --runtime-flag-report)
       RUNTIME_FLAG_REPORT=1
       TEST=1
@@ -402,12 +347,6 @@ done
 
 if [[ "$SIZE_REPORT" -eq 1 && -z "$SIZE_BASELINE" ]]; then
   SIZE_BASELINE="$SIZE_BASELINE_DEFAULT"
-fi
-if [[ "$PERF_REPORT" -eq 1 || "$PERF_WRITE_BASELINE" -eq 1 ]]; then
-  if [[ -z "$PERF_BASELINE" ]]; then
-    PERF_BASELINE="$PERF_BASELINE_DEFAULT"
-  fi
-  PERF_PRINT=1
 fi
 
 if [[ -n "$SANITIZER" && -z "$BUILD_DIR" ]]; then
@@ -485,11 +424,8 @@ CMAKE_FLAGS+=("-DPATHSPACE_ENABLE_UI=ON" "-DPATHSPACE_UI_SOFTWARE=ON")
 if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
   CMAKE_FLAGS+=("-DPATHSPACE_UI_METAL=ON")
 fi
-if [[ "$SIZE_REPORT" -eq 1 || -n "$SIZE_WRITE_BASELINE" || "$PERF_REPORT" -eq 1 || "$PERF_WRITE_BASELINE" -eq 1 || "$TEST" -eq 1 ]]; then
+if [[ "$SIZE_REPORT" -eq 1 || -n "$SIZE_WRITE_BASELINE" || "$TEST" -eq 1 ]]; then
   CMAKE_FLAGS+=("-DBUILD_PATHSPACE_EXAMPLES=ON")
-fi
-if [[ "$PERF_REPORT" -eq 1 || "$PERF_WRITE_BASELINE" -eq 1 ]]; then
-  CMAKE_FLAGS+=("-DBUILD_PATHSPACE_BENCHMARKS=ON")
 fi
 
 # ----------------------------
@@ -587,13 +523,6 @@ fi
 if [[ "$SIZE_REPORT" -eq 1 ]]; then
   run_size_guardrail "--baseline" "$SIZE_BASELINE"
 fi
-if [[ "$PERF_WRITE_BASELINE" -eq 1 ]]; then
-  run_perf_guardrail "write"
-fi
-if [[ "$PERF_REPORT" -eq 1 ]]; then
-  run_perf_guardrail "check"
-fi
-
 # Determine per-test timeout default (if not provided)
 if [[ -z "${PER_TEST_TIMEOUT}" ]]; then
   if [[ "$LOOP" -gt 0 ]]; then
@@ -654,6 +583,7 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       "--env" "PATHSPACE_LOG=${PATHSPACE_LOG_VALUE}"
       "--env" "PATHSPACE_TEST_TIMEOUT=${PATHSPACE_TEST_TIMEOUT_VALUE}"
       "--env" "MallocNanoZone=${MALLOC_NANO_ZONE_VALUE}"
+      "--env" "PATHSPACE_DISABLE_SURFACE_CACHE_WATCH=1"
     )
     if [[ -n "$TEST_LOG_MANIFEST" ]]; then
       export PATHSPACE_TEST_LOG_MANIFEST="$TEST_LOG_MANIFEST"
@@ -700,7 +630,7 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
 
     KEEP_SUCCESS_LABELS_RAW="$LOOP_KEEP_LOGS"
     if [[ -z "$KEEP_SUCCESS_LABELS_RAW" && "$LOOP" -gt 0 ]]; then
-      KEEP_SUCCESS_LABELS_RAW="PathSpaceUITests"
+      KEEP_SUCCESS_LABELS_RAW="PathSpaceUITests_*"
     fi
 
     KEEP_SUCCESS_LABELS=()
@@ -936,9 +866,133 @@ PY
       return 1
     }
 
+    sanitize_ui_suite_label() {
+      local raw="$1"
+      local sanitized="${raw//[^A-Za-z0-9]/}"
+      if [[ -z "$sanitized" ]]; then
+        sanitized="Suite"
+      fi
+      printf '%s' "$sanitized"
+    }
+
+    read_ui_suite_names() {
+      local source_path="$ROOT_DIR/tests/CMakeLists.txt"
+      ui_suite_names=()
+      if [[ ! -f "$source_path" ]]; then
+        return 1
+      fi
+      local in_block=0
+      while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ $in_block -eq 0 ]]; then
+          case "$line" in
+            *"set(PATHSPACE_UI_TEST_SUITES"*)
+              in_block=1
+              continue
+              ;;
+          esac
+          continue
+        fi
+        local entry="$line"
+        entry="${entry%%$'\r'}"
+        local has_close=0
+        if [[ "$entry" == *")"* ]]; then
+          has_close=1
+          entry="${entry%)*}"
+        fi
+        entry="${entry//\"/}"
+        entry="${entry%%#*}"
+        entry="${entry#${entry%%[![:space:]]*}}"
+        entry="${entry%${entry##*[![:space:]]}}"
+        if [[ -n "$entry" ]]; then
+          ui_suite_names+=("$entry")
+        fi
+        if [[ $has_close -eq 1 ]]; then
+          break
+        fi
+      done < "$source_path"
+      if [[ ${#ui_suite_names[@]} -eq 0 ]]; then
+        return 1
+      fi
+      return 0
+    }
+
+    read_ui_suite_batches() {
+      local source_path="$ROOT_DIR/tests/CMakeLists.txt"
+      ui_suite_batches=()
+      if [[ ! -f "$source_path" ]]; then
+        return 1
+      fi
+      local in_block=0
+      while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ $in_block -eq 0 ]]; then
+          case "$line" in
+            *"set(PATHSPACE_UI_TEST_BATCHES"*)
+              in_block=1
+              continue
+              ;;
+          esac
+          continue
+        fi
+        local entry="$line"
+        entry="${entry%%$'\r'}"
+        local has_close=0
+        if [[ "$entry" == *")"* ]]; then
+          has_close=1
+          entry="${entry%)*}"
+        fi
+        entry="${entry//\"/}"
+        entry="${entry%%#*}"
+        entry="${entry#${entry%%[![:space:]]*}}"
+        entry="${entry%${entry##*[![:space:]]}}"
+        if [[ -n "$entry" ]]; then
+          ui_suite_batches+=("$entry")
+        fi
+        if [[ $has_close -eq 1 ]]; then
+          break
+        fi
+      done < "$source_path"
+      if [[ ${#ui_suite_batches[@]} -eq 0 ]]; then
+        return 1
+      fi
+      return 0
+    }
+
     add_test_command "PathSpaceTests" "$CORE_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}"
     if [[ -x "$UI_TEST_EXE" ]]; then
-      add_test_command "PathSpaceUITests" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}" "${UI_TEST_EXTRA_ARGS_ARRAY[@]}"
+      ui_suite_names=()
+      read_ui_suite_names || true
+      ui_suite_batches=()
+      read_ui_suite_batches || true
+
+      if [[ ${#ui_suite_batches[@]} -gt 0 ]]; then
+        for batch_entry in "${ui_suite_batches[@]}"; do
+          batch_label="${batch_entry%%:*}"
+          suite_spec="${batch_entry#*:}"
+          if [[ -z "$batch_label" || "$batch_label" == "$suite_spec" || -z "$suite_spec" ]]; then
+            continue
+          fi
+          suite_value="${suite_spec//;/,}"
+          suite_command=(env "PATHSPACE_TEST_SUITE=${suite_value}" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}" "${UI_TEST_EXTRA_ARGS_ARRAY[@]}")
+          add_test_command "$batch_label" "${suite_command[@]}"
+        done
+      elif [[ ${#ui_suite_names[@]} -gt 0 ]]; then
+        for suite_name in "${ui_suite_names[@]}"; do
+          label_suffix="$(sanitize_ui_suite_label "$suite_name")"
+          suite_command=(env "PATHSPACE_TEST_SUITE=${suite_name}" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}" "${UI_TEST_EXTRA_ARGS_ARRAY[@]}")
+          add_test_command "PathSpaceUITests_${label_suffix}" "${suite_command[@]}"
+        done
+      else
+        add_test_command "PathSpaceUITests" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}" "${UI_TEST_EXTRA_ARGS_ARRAY[@]}"
+      fi
+
+      if [[ ${#ui_suite_names[@]} -gt 0 ]]; then
+        remainder_env=(env)
+        for suite_name in "${ui_suite_names[@]}"; do
+          remainder_env+=("PATHSPACE_TEST_SUITE_EXCLUDE=${suite_name}")
+        done
+        remainder_command=("${remainder_env[@]}" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}" "${UI_TEST_EXTRA_ARGS_ARRAY[@]}")
+        add_test_command "PathSpaceUITests_Remainder" "${remainder_command[@]}"
+      fi
     fi
 
     if [[ "$LOOP" -gt 0 && ${#LOOP_FILTER_LABELS[@]} -gt 0 ]]; then

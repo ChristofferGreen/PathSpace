@@ -10,7 +10,7 @@ TEST_CASE("HistoryBinding initializes metrics") {
     auto widget_path = std::string("/widgets/paint");
 
     auto metrics_root = SP::UI::Declarative::HistoryMetricsRoot(widget_path);
-    CHECK(metrics_root == "/widgets/paint/metrics/history_binding");
+    CHECK(metrics_root == "/widgets/paint/space/metrics/history_binding");
 
     SP::UI::Declarative::InitializeHistoryMetrics(space, widget_path);
 

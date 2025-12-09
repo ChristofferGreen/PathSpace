@@ -2,6 +2,7 @@
 
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/path/ConcretePath.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 
 #include <algorithm>
 #include <array>
@@ -82,14 +83,20 @@ auto WaitForStackChildren(SP::PathSpace& space,
                                                           : std::chrono::milliseconds{25};
     auto timeout = options.timeout.count() > 0 ? options.timeout : poll_interval;
     auto deadline = std::chrono::steady_clock::now() + timeout;
-    std::string children_root = stack_root;
-    children_root.append("/children");
+    auto canonical_root = SP::UI::Runtime::Widgets::WidgetSpacePath(stack_root, "/children");
+    auto legacy_root = stack_root;
+    if (!legacy_root.empty() && legacy_root.back() != '/') {
+        legacy_root.push_back('/');
+    }
+    legacy_root.append("children");
 
     std::vector<std::string_view> last_missing;
     last_missing.reserve(required_children.size());
 
     while (std::chrono::steady_clock::now() < deadline) {
-        auto children = space.listChildren(SP::ConcretePathStringView{children_root});
+        auto active_root = canonical_root;
+        auto children = space.listChildren(SP::ConcretePathStringView{active_root});
+        auto using_legacy = false;
         std::vector<std::string_view> missing;
         missing.reserve(required_children.size());
         for (auto child : required_children) {
@@ -98,22 +105,45 @@ auto WaitForStackChildren(SP::PathSpace& space,
                 missing.push_back(child);
             }
         }
+        if (!missing.empty() && !legacy_root.empty()) {
+            auto legacy_children = space.listChildren(SP::ConcretePathStringView{legacy_root});
+            if (!legacy_children.empty()) {
+                children = legacy_children;
+                missing.clear();
+                using_legacy = true;
+                active_root = legacy_root;
+                for (auto child : required_children) {
+                    auto it = std::find(children.begin(), children.end(), child);
+                    if (it == children.end()) {
+                        missing.push_back(child);
+                    }
+                }
+            }
+        }
         if (missing.empty()) {
             log_message(options,
                         verbose,
-                        "stack ready at '" + children_root + "' with "
+                        "stack ready at '" + active_root + "' with "
                             + std::to_string(children.size()) + " children");
             return {};
         }
         if (verbose && missing != last_missing) {
-            log_message(options, verbose, format_missing(children_root, missing));
+            log_message(options, verbose, format_missing(active_root, missing));
             last_missing = missing;
         }
         std::this_thread::sleep_for(poll_interval);
     }
 
     std::vector<std::string_view> missing;
-    auto children = space.listChildren(SP::ConcretePathStringView{children_root});
+    auto active_root = canonical_root;
+    auto children = space.listChildren(SP::ConcretePathStringView{active_root});
+    if (children.empty() && !legacy_root.empty()) {
+        auto legacy_children = space.listChildren(SP::ConcretePathStringView{legacy_root});
+        if (!legacy_children.empty()) {
+            children = std::move(legacy_children);
+            active_root = legacy_root;
+        }
+    }
     missing.reserve(required_children.size());
     for (auto child : required_children) {
         auto it = std::find(children.begin(), children.end(), child);
@@ -121,7 +151,7 @@ auto WaitForStackChildren(SP::PathSpace& space,
             missing.push_back(child);
         }
     }
-    auto message = format_missing(children_root, missing);
+    auto message = format_missing(active_root, missing);
     log_message(options, verbose, message);
     return std::unexpected(SP::Error{SP::Error::Code::Timeout, std::move(message)});
 }

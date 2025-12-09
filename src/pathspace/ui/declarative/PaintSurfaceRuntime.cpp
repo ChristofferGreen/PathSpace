@@ -25,6 +25,7 @@ namespace WidgetDetail = SP::UI::Declarative::Detail;
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
 using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
 using SP::UI::Runtime::Widgets::Bindings::WidgetOpKind;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
 
 constexpr std::string_view kStrokePrefix{"paint_surface/stroke/"};
 constexpr std::size_t kMaxPendingDirty = 32;
@@ -106,7 +107,7 @@ auto extract_widget_address(std::string const& widget_path) -> std::optional<Wid
 
 auto read_layout_size(PathSpace& space, std::string const& widget_path)
     -> SP::Expected<std::optional<LayoutSize>> {
-    auto path = widget_path + "/layout/computed/size";
+    auto path = WidgetSpacePath(widget_path, "/layout/computed/size");
     auto stored = DeclarativeDetail::read_optional<std::array<float, 2>>(space, path);
     if (!stored) {
         return std::unexpected(stored.error());
@@ -186,7 +187,7 @@ auto write_buffer_metrics(PathSpace& space,
     }
 
     bool mutated = false;
-    auto width_path = widget_path + "/render/buffer/metrics/width";
+    auto width_path = WidgetSpacePath(widget_path, "/render/buffer/metrics/width");
     if (metrics->width != pixels.width) {
         if (auto status = DeclarativeDetail::replace_single(space, width_path, pixels.width); !status) {
             return std::unexpected(status.error());
@@ -194,7 +195,7 @@ auto write_buffer_metrics(PathSpace& space,
         mutated = true;
     }
 
-    auto height_path = widget_path + "/render/buffer/metrics/height";
+    auto height_path = WidgetSpacePath(widget_path, "/render/buffer/metrics/height");
     if (metrics->height != pixels.height) {
         if (auto status = DeclarativeDetail::replace_single(space, height_path, pixels.height); !status) {
             return std::unexpected(status.error());
@@ -202,7 +203,7 @@ auto write_buffer_metrics(PathSpace& space,
         mutated = true;
     }
 
-    auto dpi_path = widget_path + "/render/buffer/metrics/dpi";
+    auto dpi_path = WidgetSpacePath(widget_path, "/render/buffer/metrics/dpi");
     if (metrics->dpi != dpi) {
         if (auto status = DeclarativeDetail::replace_single(space, dpi_path, dpi); !status) {
             return std::unexpected(status.error());
@@ -216,7 +217,7 @@ auto write_buffer_metrics(PathSpace& space,
         .max_x = static_cast<float>(pixels.width),
         .max_y = static_cast<float>(pixels.height),
     };
-    auto viewport_path = widget_path + "/render/buffer/viewport";
+    auto viewport_path = WidgetSpacePath(widget_path, "/render/buffer/viewport");
     if (auto status = DeclarativeDetail::replace_single(space, viewport_path, viewport); !status) {
         return std::unexpected(status.error());
     }
@@ -256,31 +257,31 @@ auto ensure_value(PathSpace& space, std::string const& path, T const& value) -> 
 }
 
 auto log_gpu_event(PathSpace& space, std::string const& widget_path, std::string_view message) -> void {
-    auto path = widget_path + "/render/gpu/log/events";
+    auto path = WidgetSpacePath(widget_path, "/render/gpu/log/events");
     (void)space.insert(path, std::string(message));
 }
 
 auto ensure_gpu_defaults(PathSpace& space, std::string const& widget_path) -> SP::Expected<void> {
-    auto state_path = widget_path + "/render/gpu/state";
+    auto state_path = WidgetSpacePath(widget_path, "/render/gpu/state");
     if (auto status = ensure_value(space,
                                    state_path,
                                    std::string(PaintGpuStateToString(PaintGpuState::Idle)));
         !status) {
         return status;
     }
-    auto dirty_path = widget_path + "/render/buffer/pendingDirty";
+    auto dirty_path = WidgetSpacePath(widget_path, "/render/buffer/pendingDirty");
     if (auto status = ensure_value(space, dirty_path, std::vector<DirtyRectHint>{}); !status) {
         return status;
     }
-    auto stats_path = widget_path + "/render/gpu/stats";
+    auto stats_path = WidgetSpacePath(widget_path, "/render/gpu/stats");
     if (auto status = ensure_value(space, stats_path, PaintGpuStats{}); !status) {
         return status;
     }
-    auto fence_start = widget_path + "/render/gpu/fence/start";
+    auto fence_start = WidgetSpacePath(widget_path, "/render/gpu/fence/start");
     if (auto status = ensure_value(space, fence_start, std::uint64_t{0}); !status) {
         return status;
     }
-    auto fence_end = widget_path + "/render/gpu/fence/end";
+    auto fence_end = WidgetSpacePath(widget_path, "/render/gpu/fence/end");
     if (auto status = ensure_value(space, fence_end, std::uint64_t{0}); !status) {
         return status;
     }
@@ -290,14 +291,14 @@ auto ensure_gpu_defaults(PathSpace& space, std::string const& widget_path) -> SP
 auto write_gpu_state(PathSpace& space,
                      std::string const& widget_path,
                      PaintGpuState state) -> void {
-    auto path = widget_path + "/render/gpu/state";
+    auto path = WidgetSpacePath(widget_path, "/render/gpu/state");
     (void)DeclarativeDetail::replace_single(space,
                                         path,
                                         std::string(PaintGpuStateToString(state)));
 }
 
 auto read_gpu_state(PathSpace& space, std::string const& widget_path) -> PaintGpuState {
-    auto path = widget_path + "/render/gpu/state";
+    auto path = WidgetSpacePath(widget_path, "/render/gpu/state");
     auto stored = DeclarativeDetail::read_optional<std::string>(space, path);
     if (!stored || !stored->has_value()) {
         return PaintGpuState::Idle;
@@ -335,7 +336,7 @@ auto append_pending_dirty(PathSpace& space,
     if (hint.max_x <= hint.min_x || hint.max_y <= hint.min_y) {
         return {};
     }
-    auto pending_path = widget_path + "/render/buffer/pendingDirty";
+    auto pending_path = WidgetSpacePath(widget_path, "/render/buffer/pendingDirty");
     auto pending = DeclarativeDetail::read_optional<std::vector<DirtyRectHint>>(space, pending_path);
     if (!pending) {
         return std::unexpected(pending.error());
@@ -354,7 +355,7 @@ auto enqueue_dirty_hint(PathSpace& space,
     if (hint.max_x <= hint.min_x || hint.max_y <= hint.min_y) {
         return {};
     }
-    auto queue_path = widget_path + "/render/gpu/dirtyRects";
+    auto queue_path = WidgetSpacePath(widget_path, "/render/gpu/dirtyRects");
     auto inserted = space.insert(queue_path, hint);
     if (!inserted.errors.empty()) {
         return std::unexpected(inserted.errors.front());
@@ -363,7 +364,7 @@ auto enqueue_dirty_hint(PathSpace& space,
 }
 
 auto gpu_enabled(PathSpace& space, std::string const& widget_path) -> bool {
-    auto path = widget_path + "/render/gpu/enabled";
+    auto path = WidgetSpacePath(widget_path, "/render/gpu/enabled");
     auto value = DeclarativeDetail::read_optional<bool>(space, path);
     if (!value || !value->has_value()) {
         return false;
@@ -372,7 +373,7 @@ auto gpu_enabled(PathSpace& space, std::string const& widget_path) -> bool {
 }
 
 auto increment_revision(PathSpace& space, std::string const& widget_path) -> void {
-    auto path = widget_path + "/render/buffer/revision";
+    auto path = WidgetSpacePath(widget_path, "/render/buffer/revision");
     auto current = DeclarativeDetail::read_optional<std::uint64_t>(space, path);
     if (!current) {
         return;
@@ -404,7 +405,7 @@ auto parse_child_id(std::string const& name) -> std::optional<std::uint64_t> {
 }
 
 auto read_brush_size(PathSpace& space, std::string const& widget_path) -> SP::Expected<float> {
-    auto path = widget_path + "/state/brush/size";
+    auto path = WidgetSpacePath(widget_path, "/state/brush/size");
     auto value = DeclarativeDetail::read_optional<float>(space, path);
     if (!value) {
         return std::unexpected(value.error());
@@ -414,7 +415,7 @@ auto read_brush_size(PathSpace& space, std::string const& widget_path) -> SP::Ex
 
 auto read_brush_color(PathSpace& space, std::string const& widget_path)
     -> SP::Expected<std::array<float, 4>> {
-    auto path = widget_path + "/state/brush/color";
+    auto path = WidgetSpacePath(widget_path, "/state/brush/color");
     auto value = DeclarativeDetail::read_optional<std::array<float, 4>>(space, path);
     if (!value) {
         return std::unexpected(value.error());
@@ -432,24 +433,21 @@ auto clamp_point(PaintBufferMetrics const& metrics, float x, float y) -> PaintSt
 }
 
 auto points_path(std::string const& widget_path, std::uint64_t stroke_id) -> std::string {
-    std::string path = widget_path;
-    path.append("/state/history/");
+    std::string path = WidgetSpacePath(widget_path, "/state/history/");
     path.append(std::to_string(stroke_id));
     path.append("/points");
     return path;
 }
 
 auto points_version_path(std::string const& widget_path, std::uint64_t stroke_id) -> std::string {
-    std::string path = widget_path;
-    path.append("/state/history/");
+    std::string path = WidgetSpacePath(widget_path, "/state/history/");
     path.append(std::to_string(stroke_id));
     path.append("/version");
     return path;
 }
 
 auto meta_path(std::string const& widget_path, std::uint64_t stroke_id) -> std::string {
-    std::string path = widget_path;
-    path.append("/state/history/");
+    std::string path = WidgetSpacePath(widget_path, "/state/history/");
     path.append(std::to_string(stroke_id));
     path.append("/meta");
     return path;
@@ -530,11 +528,11 @@ auto write_stroke(PathSpace& space,
 auto EnsureBufferDefaults(PathSpace& space,
                           std::string const& widget_path,
                           PaintBufferMetrics const& defaults) -> SP::Expected<void> {
-    auto width_path = widget_path + "/render/buffer/metrics/width";
-    auto height_path = widget_path + "/render/buffer/metrics/height";
-    auto dpi_path = widget_path + "/render/buffer/metrics/dpi";
-    auto viewport_path = widget_path + "/render/buffer/viewport";
-    auto revision_path = widget_path + "/render/buffer/revision";
+    auto width_path = WidgetSpacePath(widget_path, "/render/buffer/metrics/width");
+    auto height_path = WidgetSpacePath(widget_path, "/render/buffer/metrics/height");
+    auto dpi_path = WidgetSpacePath(widget_path, "/render/buffer/metrics/dpi");
+    auto viewport_path = WidgetSpacePath(widget_path, "/render/buffer/viewport");
+    auto revision_path = WidgetSpacePath(widget_path, "/render/buffer/revision");
 
     if (auto status = ensure_value(space, width_path, defaults.width); !status) {
         return status;
@@ -576,17 +574,17 @@ auto ReadBufferMetrics(PathSpace& space, std::string const& widget_path)
         return *value;
     };
 
-    if (auto width = read_u32(widget_path + "/render/buffer/metrics/width")) {
+    if (auto width = read_u32(WidgetSpacePath(widget_path, "/render/buffer/metrics/width"))) {
         metrics.width = *width;
     } else {
         return std::unexpected(width.error());
     }
-    if (auto height = read_u32(widget_path + "/render/buffer/metrics/height")) {
+    if (auto height = read_u32(WidgetSpacePath(widget_path, "/render/buffer/metrics/height"))) {
         metrics.height = *height;
     } else {
         return std::unexpected(height.error());
     }
-    auto dpi_value = space.read<float, std::string>(widget_path + "/render/buffer/metrics/dpi");
+    auto dpi_value = space.read<float, std::string>(WidgetSpacePath(widget_path, "/render/buffer/metrics/dpi"));
     if (!dpi_value) {
         return std::unexpected(dpi_value.error());
     }
@@ -706,7 +704,7 @@ auto HandleAction(PathSpace& space, WidgetAction const& action) -> SP::Expected<
 
     if (*updated) {
         (void)DeclarativeDetail::replace_single(space,
-                                            action.widget_path + "/state/history/last_stroke_id",
+                                            WidgetSpacePath(action.widget_path, "/state/history/last_stroke_id"),
                                             *stroke_id);
         auto dirty = WidgetDetail::mark_render_dirty(space, action.widget_path);
         if (!dirty) {
@@ -731,7 +729,7 @@ auto HandleAction(PathSpace& space, WidgetAction const& action) -> SP::Expected<
 auto LoadStrokeRecords(PathSpace& space,
                        std::string const& widget_path)
     -> SP::Expected<std::vector<PaintStrokeRecord>> {
-    auto history_root = widget_path + "/state/history";
+    auto history_root = WidgetSpacePath(widget_path, "/state/history");
     auto view = SP::ConcretePathStringView{history_root};
     auto children = space.listChildren(view);
     std::vector<PaintStrokeRecord> records;

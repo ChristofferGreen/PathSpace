@@ -31,6 +31,23 @@ auto make_invalid_argument_error(std::string message) -> SP::Error {
     return SP::Error{SP::Error::Code::InvalidType, std::move(message)};
 }
 
+auto screenshot_trace_enabled() -> bool {
+    static bool enabled = [] {
+        if (const char* flag = std::getenv("PATHSPACE_SCREENSHOT_TRACE")) {
+            return std::strcmp(flag, "0") != 0;
+        }
+        return false;
+    }();
+    return enabled;
+}
+
+void screenshot_trace(char const* message) {
+    if (!screenshot_trace_enabled()) {
+        return;
+    }
+    std::fprintf(stderr, "CaptureDeclarative: %s\n", message);
+}
+
 auto resolve_view_name(SP::PathSpace& space,
                        SP::UI::WindowPath const& window,
                        std::optional<std::string> const& override_name)

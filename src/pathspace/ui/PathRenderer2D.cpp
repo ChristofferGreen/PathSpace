@@ -116,6 +116,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         return std::unexpected(bucket.error());
     }
 
+
     auto& surface = params.surface;
     auto const& desc = surface.desc();
 
@@ -160,6 +161,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
         (void)set_last_error(space_, params.target_path, message);
         return std::unexpected(make_error(message, SP::Error::Code::InvalidType));
     }
+
 
     auto const pixel_count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
     int const tile_size_px = std::max(1, desc.progressive_tile_size_px);
@@ -350,6 +352,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
             }
         }
     }
+
 
     bool const has_damage = !damage.empty();
     auto const damage_phase_end = std::chrono::steady_clock::now();

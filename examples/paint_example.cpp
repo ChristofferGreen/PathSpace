@@ -19,6 +19,7 @@
 #include <pathspace/ui/declarative/Reducers.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/runtime/RenderSettings.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -60,6 +61,10 @@ namespace PaintScreenshot = SP::Examples::PaintScreenshot;
 using PaintScreenshot::SoftwareImage;
 
 constexpr int kRequiredBaselineManifestRevision = 1;
+
+inline auto widget_space(std::string const& root, std::string_view relative) -> std::string {
+    return SP::UI::Runtime::Widgets::WidgetSpacePath(root, relative);
+}
 
 auto parse_options(int argc, char** argv) -> CommandLineOptions {
     CommandLineOptions opts;
@@ -324,13 +329,13 @@ auto format_brush_state(float size, std::array<float, 4> const& color) -> std::s
 }
 
 auto apply_brush_size(SP::PathSpace& space, std::string const& widget_path, float size) -> SP::Expected<void> {
-    return replace_value(space, widget_path + "/state/brush/size", size);
+    return replace_value(space, widget_space(widget_path, "/state/brush/size"), size);
 }
 
 auto apply_brush_color(SP::PathSpace& space,
                        std::string const& widget_path,
                        std::array<float, 4> const& color) -> SP::Expected<void> {
-    return replace_value(space, widget_path + "/state/brush/color", color);
+    return replace_value(space, widget_space(widget_path, "/state/brush/color"), color);
 }
 
 auto log_expected_error(std::string const& context, SP::Error const& error) -> void;
@@ -790,7 +795,7 @@ auto write_texture_png(SP::UI::Declarative::PaintTexturePayload const& texture,
 auto read_gpu_state(SP::PathSpace& space,
                     std::string const& widget_path)
     -> std::optional<SP::UI::Declarative::PaintGpuState> {
-    auto state_path = widget_path + "/render/gpu/state";
+    auto state_path = widget_space(widget_path, "/render/gpu/state");
     auto stored = space.read<std::string, std::string>(state_path);
     if (!stored) {
         auto const& error = stored.error();
@@ -830,7 +835,7 @@ auto wait_for_paint_buffer_revision(SP::PathSpace& space,
                                     std::string const& widget_path,
                                     std::uint64_t min_revision,
                                     std::chrono::milliseconds timeout) -> bool {
-    auto revision_path = widget_path + "/render/buffer/revision";
+    auto revision_path = widget_space(widget_path, "/render/buffer/revision");
     auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline) {
         auto revision = space.read<std::uint64_t, std::string>(revision_path);
@@ -861,7 +866,7 @@ auto wait_for_paint_capture_ready(SP::PathSpace& space,
         return false;
     }
 
-    auto pending_path = widget_path + "/render/buffer/pendingDirty";
+    auto pending_path = widget_space(widget_path, "/render/buffer/pendingDirty");
     auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline) {
         auto pending = space.read<std::vector<DirtyRectHint>, std::string>(pending_path);
@@ -897,7 +902,7 @@ auto run_gpu_smoke(SP::PathSpace& space,
         return false;
     }
 
-    auto texture_path = widget_path + "/assets/texture";
+    auto texture_path = widget_space(widget_path, "/assets/texture");
     auto texture = space.read<SP::UI::Declarative::PaintTexturePayload, std::string>(texture_path);
     if (!texture) {
         log_expected_error("read GPU texture", texture.error());
@@ -921,7 +926,7 @@ auto run_gpu_smoke(SP::PathSpace& space,
         return false;
     }
 
-    auto stats_path = widget_path + "/render/gpu/stats";
+    auto stats_path = widget_space(widget_path, "/render/gpu/stats");
     auto stats = space.read<SP::UI::Declarative::PaintGpuStats, std::string>(stats_path);
     if (!stats) {
         log_expected_error("read GPU stats", stats.error());
@@ -932,7 +937,7 @@ auto run_gpu_smoke(SP::PathSpace& space,
         return false;
     }
 
-    auto pending_path = widget_path + "/render/buffer/pendingDirty";
+    auto pending_path = widget_space(widget_path, "/render/buffer/pendingDirty");
     auto pending_dirty = space.read<std::vector<DirtyRectHint>, std::string>(pending_path);
     if (!pending_dirty) {
         log_expected_error("read pending dirty hints", pending_dirty.error());
@@ -1675,7 +1680,8 @@ auto RunPaintExample(CommandLineOptions options) -> int {
     bool const paint_gpu_enabled = ui_context->paint_gpu_enabled;
     auto paint_widget = SP::UI::Runtime::WidgetPath{paint_widget_path};
     auto initial_buffer_revision = [&]() -> std::uint64_t {
-        auto revision = space.read<std::uint64_t, std::string>(paint_widget_path + "/render/buffer/revision");
+        auto revision = space.read<std::uint64_t, std::string>(
+            widget_space(paint_widget_path, "/render/buffer/revision"));
         return revision.value_or(0);
     }();
 

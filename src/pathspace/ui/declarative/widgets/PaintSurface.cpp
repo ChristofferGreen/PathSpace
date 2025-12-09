@@ -2,6 +2,7 @@
 
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 
+#include <string>
 #include <utility>
 
 namespace SP::UI::Declarative {
@@ -34,6 +35,13 @@ auto Fragment(Args args) -> WidgetFragment {
                                            if (auto status = WidgetDetail::write_value(ctx.space,
                                                                                 WidgetSpacePath(ctx.root,
                                                                                                 "/render/gpu/enabled"),
+                                                                                args.gpu_enabled);
+                                               !status) {
+                                               return status;
+                                           }
+                                           if (auto status = WidgetDetail::write_value(ctx.space,
+                                                                                std::string(ctx.root)
+                                                                                    + "/render/gpu/enabled",
                                                                                 args.gpu_enabled);
                                                !status) {
                                                return status;

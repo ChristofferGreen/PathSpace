@@ -10,6 +10,7 @@
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/WidgetDetail.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 
 #include <array>
 #include <algorithm>
@@ -23,6 +24,15 @@ using WidgetOpKind = SP::UI::Runtime::Widgets::Bindings::WidgetOpKind;
 using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
 namespace BuilderDetail = SP::UI::Declarative::Detail;
+
+inline auto widget_space(std::string const& root, std::string_view relative) -> std::string {
+    return SP::UI::Runtime::Widgets::WidgetSpacePath(root, relative);
+}
+
+inline auto widget_space(SP::UI::Runtime::WidgetPath const& root, std::string_view relative)
+    -> std::string {
+    return SP::UI::Runtime::Widgets::WidgetSpacePath(root.getPath(), relative);
+}
 
 struct RuntimeGuard {
     explicit RuntimeGuard(SP::PathSpace& s) : space(s) {}
@@ -62,7 +72,7 @@ auto wait_for_gpu_ready(SP::PathSpace& space,
                         std::string const& widget_path,
                         std::chrono::milliseconds timeout) -> bool {
     auto deadline = std::chrono::steady_clock::now() + timeout;
-    auto state_path = widget_path + "/render/gpu/state";
+    auto state_path = widget_space(widget_path, "/render/gpu/state");
     while (std::chrono::steady_clock::now() < deadline) {
         auto state = space.read<std::string, std::string>(state_path);
         if (state && *state == "Ready") {
@@ -174,7 +184,7 @@ TEST_CASE("Paint stroke history increments version for each mutation") {
     REQUIRE(widget);
 
     auto widget_path = widget->getPath();
-    auto version_path = std::string(widget_path) + "/state/history/42/version";
+    auto version_path = widget_space(widget_path, "/state/history/42/version");
     auto read_version = [&]() -> std::uint64_t {
         auto value = space.read<std::uint64_t, std::string>(version_path);
         if (!value) {
@@ -246,20 +256,20 @@ TEST_CASE("Declarative paint surface GPU uploader stages texture payload") {
 
     CHECK(wait_for_gpu_ready(space, widget_path, 3s));
 
-    auto texture_path = widget_path + "/assets/texture";
+    auto texture_path = widget_space(widget_path, "/assets/texture");
     auto texture = space.read<SP::UI::Declarative::PaintTexturePayload, std::string>(texture_path);
     REQUIRE(texture);
     CHECK(texture->width == args.buffer_width);
     CHECK(texture->height == args.buffer_height);
     CHECK_FALSE(texture->pixels.empty());
 
-    auto stats_path = widget_path + "/render/gpu/stats";
+    auto stats_path = widget_space(widget_path, "/render/gpu/stats");
     auto stats = space.read<SP::UI::Declarative::PaintGpuStats, std::string>(stats_path);
     REQUIRE(stats);
     CHECK(stats->uploads_total >= 1);
     CHECK(stats->last_revision == texture->revision);
 
-    auto pending_path = widget_path + "/render/buffer/pendingDirty";
+    auto pending_path = widget_space(widget_path, "/render/buffer/pendingDirty");
     auto pending = space.read<std::vector<DirtyRectHint>, std::string>(pending_path);
     REQUIRE(pending);
     CHECK(pending->empty());
@@ -299,7 +309,7 @@ TEST_CASE("Paint surface layout resizing updates metrics and viewport") {
     REQUIRE(widget);
 
     auto widget_path = widget->getPath();
-    auto layout_path = std::string(widget_path) + "/layout/computed/size";
+    auto layout_path = widget_space(widget_path, "/layout/computed/size");
     auto dpi_path = std::string(scene->path.getPath()) + "/structure/window/"
         + window_options.name + "/metrics/dpi";
 
@@ -330,7 +340,7 @@ TEST_CASE("Paint surface layout resizing updates metrics and viewport") {
     CHECK_EQ(metrics->width, 48);
     CHECK_EQ(metrics->height, 32);
 
-    auto viewport_path = std::string(widget_path) + "/render/buffer/viewport";
+    auto viewport_path = widget_space(widget_path, "/render/buffer/viewport");
     auto viewport = space.read<SP::UI::Declarative::PaintBufferViewport, std::string>(viewport_path);
     REQUIRE(viewport);
     CHECK_EQ(viewport->max_x, doctest::Approx(48.0f));
@@ -372,7 +382,7 @@ TEST_CASE("Paint surface layout resizing updates metrics and viewport") {
     CHECK_EQ(viewport->max_x, doctest::Approx(32.0f));
     CHECK_EQ(viewport->max_y, doctest::Approx(24.0f));
 
-    auto pending = space.read<std::vector<DirtyRectHint>, std::string>(widget_path + "/render/buffer/pendingDirty");
+    auto pending = space.read<std::vector<DirtyRectHint>, std::string>(widget_space(widget_path, "/render/buffer/pendingDirty"));
     REQUIRE(pending);
     auto verify_hint = [&](DirtyRectHint const& hint) {
         CHECK_EQ(hint.min_x, doctest::Approx(0.0f));
@@ -383,13 +393,13 @@ TEST_CASE("Paint surface layout resizing updates metrics and viewport") {
     if (!pending->empty()) {
         verify_hint(pending->back());
     } else {
-        auto dirty_queue = widget_path + "/render/gpu/dirtyRects";
+        auto dirty_queue = widget_space(widget_path, "/render/gpu/dirtyRects");
         auto queued = space.take<DirtyRectHint>(dirty_queue, SP::Out{} & SP::Block{std::chrono::milliseconds{200}});
         REQUIRE(queued);
         verify_hint(*queued);
     }
 
-    auto gpu_state = space.read<std::string, std::string>(widget_path + "/render/gpu/state");
+    auto gpu_state = space.read<std::string, std::string>(widget_space(widget_path, "/render/gpu/state"));
     REQUIRE(gpu_state);
     CHECK_EQ(*gpu_state, "DirtyFull");
 

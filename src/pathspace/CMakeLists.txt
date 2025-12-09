@@ -93,6 +93,7 @@ add_library(PathSpace
     task/TaskStateAtomic.cpp
     task/Future.cpp
     type/SlidingBuffer.cpp
+    type/TypeMetadataBootstrap.cpp
     type/TypeMetadataRegistry.cpp
     log/TaggedLogger.cpp
     PathSpace.cpp

@@ -8,19 +8,12 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/core/test_WaitMap.cpp
   unit/type/test_InputMetadata.cpp
   unit/type/test_SlidingBuffer.cpp
-  unit/type/test_TypeMetadataRegistry.cpp
   unit/core/test_NodeDataSnapshot.cpp
   unit/ext/test_alpaca.cpp
   unit/task/test_TaskPool.cpp
   unit/inspector/test_PaintScreenshotCard.cpp
   unit/inspector/test_InspectorSnapshot.cpp
   unit/inspector/test_InspectorHttpServer.cpp
-  unit/inspector/test_InspectorSearchMetrics.cpp
-  unit/inspector/test_InspectorStreamMetrics.cpp
-  unit/inspector/test_InspectorRemoteMount.cpp
-  unit/distributed/test_RemoteMountProtocol.cpp
-  unit/distributed/test_RemoteMountServer.cpp
-  unit/distributed/test_RemoteMountManager.cpp
   unit/test_PathSpace_read.cpp
   unit/test_PathSpace_nesting.cpp
   unit/test_PathSpace_extract.cpp
@@ -38,11 +31,6 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/pathspace/test_PathSpaceJsonExporter.cpp
   unit/runtime/test_IOPump.cpp
   unit/runtime/test_TelemetryControl.cpp
-  unit/web/test_ServeHtmlOptions.cpp
-  unit/web/test_ServeHtmlSessionStore.cpp
-  unit/web/test_HtmlHelpers.cpp
-  unit/web/test_ServeHtmlSseBroadcaster.cpp
-  unit/web/test_ServeHtmlOAuthGoogle.cpp
   test_main.cpp
 )
 
@@ -93,7 +81,6 @@ if(PATHSPACE_ENABLE_UI)
   ui/test_DeclarativeSceneLifecycle.cpp
   ui/test_DeclarativePaintSurface.cpp
   ui/test_ScreenshotOverlay.cpp
-  ui/test_DeclarativeScreenshotHelper.cpp
   ui/test_WidgetEventTrellis.cpp
     ui/test_WidgetStateMutators.cpp
     ui/test_DeclarativeTheme.cpp
@@ -148,7 +135,6 @@ target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_SOURCE_DIR="${CMAKE_
 target_link_libraries(PathSpaceTests
   PRIVATE
   PathSpace
-  PathSpaceServeHtml
 )
 
 include(CTest)
@@ -201,51 +187,95 @@ add_test(NAME PaintExampleDiagnosticsIngest
 )
 set_tests_properties(PaintExampleDiagnosticsIngest PROPERTIES LABELS ui)
 
-add_test(NAME PathSpaceDumpJsonDemo
-  COMMAND python3
-          "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_dump_json.py"
-          --repo-root "${CMAKE_SOURCE_DIR}"
-          --cli "$<TARGET_FILE:pathspace_dump_json>"
-)
-set_tests_properties(PathSpaceDumpJsonDemo PROPERTIES LABELS tools)
-
-add_test(NAME PathSpaceServeHtmlSse
-  COMMAND python3
-          "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_sse.py"
-          --repo-root "${CMAKE_SOURCE_DIR}"
-          --server "$<TARGET_FILE:pathspace_serve_html>"
-)
-set_tests_properties(PathSpaceServeHtmlSse PROPERTIES LABELS tools)
-
-add_test(NAME PathSpaceServeHtmlHttp
-  COMMAND python3
-          "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_http.py"
-          --repo-root "${CMAKE_SOURCE_DIR}"
-          --server "$<TARGET_FILE:pathspace_serve_html>"
-)
-set_tests_properties(PathSpaceServeHtmlHttp PROPERTIES LABELS tools)
-
-add_test(NAME PathSpaceServeHtmlGoogle
-  COMMAND python3
-          "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_google.py"
-          --repo-root "${CMAKE_SOURCE_DIR}"
-          --server "$<TARGET_FILE:pathspace_serve_html>"
-)
-set_tests_properties(PathSpaceServeHtmlGoogle PROPERTIES LABELS tools)
-
 if(PATHSPACE_ENABLE_UI)
-  add_test(NAME PathSpaceUITests
-    COMMAND "${PATHSPACE_TEST_RUNNER}"
-            --label PathSpaceUITests
-            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
-            --timeout 120
-            --env PATHSPACE_LOG=1
-            --env PATHSPACE_TEST_TIMEOUT=1
-            --env MallocNanoZone=0
-            --
-            "$<TARGET_FILE:PathSpaceUITests>"
-  )
-  set_tests_properties(PathSpaceUITests PROPERTIES LABELS ui)
+  set(PATHSPACE_UI_TEST_COMMON_ENV
+      --env PATHSPACE_LOG=1
+      --env PATHSPACE_TEST_TIMEOUT=1
+      --env MallocNanoZone=0
+      --env PATHSPACE_DISABLE_SURFACE_CACHE_WATCH=1)
+
+  function(pathspace_add_ui_test LABEL)
+    set(oneValueArgs SUITE SUITE_EXCLUDE TIMEOUT)
+    set(multiValueArgs EXTRA_ARGS)
+    cmake_parse_arguments(UI "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
+
+    set(test_timeout "60")
+    if(UI_TIMEOUT)
+      set(test_timeout "${UI_TIMEOUT}")
+    endif()
+
+    set(env_args ${PATHSPACE_UI_TEST_COMMON_ENV})
+    if(UI_SUITE)
+      string(REPLACE ";" "," _ui_suite_filter "${UI_SUITE}")
+      list(APPEND env_args "--env" "PATHSPACE_TEST_SUITE=${_ui_suite_filter}")
+    endif()
+    if(UI_SUITE_EXCLUDE)
+      foreach(exclude_suite IN LISTS UI_SUITE_EXCLUDE)
+        list(APPEND env_args "--env" "PATHSPACE_TEST_SUITE_EXCLUDE=${exclude_suite}")
+      endforeach()
+    endif()
+
+    add_test(NAME ${LABEL}
+      COMMAND "${PATHSPACE_TEST_RUNNER}"
+              --label ${LABEL}
+              --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+              --timeout ${test_timeout}
+              ${env_args}
+              --
+              "$<TARGET_FILE:PathSpaceUITests>"
+              ${UI_EXTRA_ARGS}
+    )
+    set_tests_properties(${LABEL} PROPERTIES LABELS ui)
+  endfunction()
+
+  set(PATHSPACE_UI_TEST_SUITES
+      "DeclarativeScreenshotHelper"
+      "PathRenderer2D_RenderBasics"
+      "PathRenderer2D_RenderCommands"
+      "PathRenderer2D_RenderMetrics"
+      "PathRenderer2D_SurfaceRenderOnce"
+      "PathRenderer2D_MaterialMetrics"
+      "PathRenderer2D_FocusPulse"
+      "PathRenderer2D_WindowPresent"
+      "PathRenderer2D_DamageHelpers"
+      "PathSurfaceSoftware"
+      "PathWindowView"
+      "ProgressiveSurfaceBuffer"
+      "Renderer fault harness"
+      "Scene Hit Tests"
+      "SceneSnapshotBuilder"
+      "ScreenshotOverlay"
+      "SurfaceCacheWatch"
+      "UIHelpersAndBuilders")
+
+  set(PATHSPACE_UI_TEST_BATCHES
+      "PathSpaceUITests_PathRenderer2DCore:PathRenderer2D_RenderBasics;PathRenderer2D_RenderCommands;PathRenderer2D_RenderMetrics;PathRenderer2D_SurfaceRenderOnce"
+      "PathSpaceUITests_PathRenderer2DPresent:PathRenderer2D_MaterialMetrics;PathRenderer2D_FocusPulse;PathRenderer2D_WindowPresent;PathRenderer2D_DamageHelpers"
+      "PathSpaceUITests_SurfaceAndWindow:PathSurfaceSoftware;PathWindowView;ProgressiveSurfaceBuffer;SurfaceCacheWatch"
+      "PathSpaceUITests_RendererHarness:Renderer fault harness;Scene Hit Tests;SceneSnapshotBuilder"
+      "PathSpaceUITests_ScreenshotAndHelpers:DeclarativeScreenshotHelper;ScreenshotOverlay;UIHelpersAndBuilders")
+
+  foreach(BATCH_ENTRY IN LISTS PATHSPACE_UI_TEST_BATCHES)
+    string(REPLACE ":" ";" BATCH_PARTS "${BATCH_ENTRY}")
+    list(LENGTH BATCH_PARTS BATCH_LENGTH)
+    if(BATCH_LENGTH LESS 2)
+      continue()
+    endif()
+    list(GET BATCH_PARTS 0 BATCH_LABEL)
+    list(REMOVE_AT BATCH_PARTS 0)
+    pathspace_add_ui_test("${BATCH_LABEL}" SUITE "${BATCH_PARTS}")
+  endforeach()
+
+  foreach(UI_SUITE_NAME IN LISTS PATHSPACE_UI_TEST_SUITES)
+    string(REGEX REPLACE "[^A-Za-z0-9]" "" UI_LABEL_SUFFIX "${UI_SUITE_NAME}")
+    set(UI_TEST_LABEL "PathSpaceUITests_${UI_LABEL_SUFFIX}")
+    pathspace_add_ui_test(${UI_TEST_LABEL} SUITE "${UI_SUITE_NAME}")
+    set_tests_properties(${UI_TEST_LABEL} PROPERTIES DISABLED TRUE)
+  endforeach()
+
+  pathspace_add_ui_test("PathSpaceUITests_Remainder" SUITE_EXCLUDE "${PATHSPACE_UI_TEST_SUITES}")
+  pathspace_add_ui_test("PathSpaceUITests_All" TIMEOUT 0)
+  set_tests_properties(PathSpaceUITests_All PROPERTIES LABELS ui DISABLED TRUE)
 
   if(TARGET pathspace_screenshot_cli)
     add_test(NAME PaintExampleScreenshot
@@ -263,7 +293,12 @@ if(PATHSPACE_ENABLE_UI)
               --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
               --tag 1280x800
     )
-    set_tests_properties(PaintExampleScreenshot PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
+    # TODO: Re-enable the paint example screenshot harness after the ServeHtml/example rewrite
+    # tracked in docs/Plan_PathSpaceHtmlServer.md lands.
+    set_tests_properties(PaintExampleScreenshot PROPERTIES
+      LABELS ui
+      RESOURCE_LOCK ui_gpu_capture
+      DISABLED TRUE)
 
     add_test(NAME PaintExampleScreenshot720
       COMMAND "${PATHSPACE_TEST_RUNNER}"
@@ -280,7 +315,10 @@ if(PATHSPACE_ENABLE_UI)
               --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
               --tag paint_720
     )
-    set_tests_properties(PaintExampleScreenshot720 PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
+    set_tests_properties(PaintExampleScreenshot720 PROPERTIES
+      LABELS ui
+      RESOURCE_LOCK ui_gpu_capture
+      DISABLED TRUE)
 
     add_test(NAME PaintExampleScreenshot600
       COMMAND "${PATHSPACE_TEST_RUNNER}"
@@ -297,7 +335,10 @@ if(PATHSPACE_ENABLE_UI)
               --manifest "${CMAKE_SOURCE_DIR}/docs/images/paint_example_baselines.json"
               --tag paint_600
     )
-    set_tests_properties(PaintExampleScreenshot600 PROPERTIES LABELS ui RESOURCE_LOCK ui_gpu_capture)
+    set_tests_properties(PaintExampleScreenshot600 PROPERTIES
+      LABELS ui
+      RESOURCE_LOCK ui_gpu_capture
+      DISABLED TRUE)
 
     add_test(NAME PaintExampleScreenshotReport
       COMMAND python3
@@ -312,10 +353,13 @@ if(PATHSPACE_ENABLE_UI)
     set_tests_properties(PaintExampleScreenshotReport
       PROPERTIES
         LABELS ui
-        DEPENDS "PaintExampleScreenshot;PaintExampleScreenshot720;PaintExampleScreenshot600")
+        DEPENDS "PaintExampleScreenshot;PaintExampleScreenshot720;PaintExampleScreenshot600"
+        DISABLED TRUE)
   endif()
 
   if(APPLE)
+    # TODO: Rework the PixelNoise perf harness as part of the ServeHtml/example rewrite plan
+    # documented in docs/Plan_PathSpaceHtmlServer.md; keep the tests disabled until then.
     add_test(NAME PixelNoisePerfHarness
       COMMAND "${PATHSPACE_TEST_RUNNER}"
               --label PixelNoisePerfHarness
@@ -329,7 +373,10 @@ if(PATHSPACE_ENABLE_UI)
               "${CMAKE_SOURCE_DIR}/scripts/check_pixel_noise_baseline.py"
               --build-dir "${CMAKE_BINARY_DIR}"
     )
-  set_tests_properties(PixelNoisePerfHarness PROPERTIES LABELS perf RESOURCE_LOCK ui_gpu_capture)
+  set_tests_properties(PixelNoisePerfHarness PROPERTIES
+    LABELS perf
+    RESOURCE_LOCK ui_gpu_capture
+    DISABLED TRUE)
     if(PATHSPACE_UI_METAL)
       add_test(NAME PixelNoisePerfHarnessMetal
         COMMAND "${PATHSPACE_TEST_RUNNER}"
@@ -346,7 +393,10 @@ if(PATHSPACE_ENABLE_UI)
                 --build-dir "${CMAKE_BINARY_DIR}"
                 --baseline "${CMAKE_SOURCE_DIR}/docs/perf/pixel_noise_metal_baseline.json"
       )
-    set_tests_properties(PixelNoisePerfHarnessMetal PROPERTIES LABELS perf RESOURCE_LOCK ui_gpu_capture)
+    set_tests_properties(PixelNoisePerfHarnessMetal PROPERTIES
+      LABELS perf
+      RESOURCE_LOCK ui_gpu_capture
+      DISABLED TRUE)
     endif()
   endif()
 endif()

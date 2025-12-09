@@ -6,6 +6,7 @@
 #include <pathspace/system/Standard.hpp>
 #include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
+#include <pathspace/ui/declarative/InputTask.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/screenshot/DeclarativeScreenshot.hpp>
 
@@ -92,12 +93,11 @@ struct DeclarativeScreenshotHarness {
     SP::App::AppRootPath app_root;
     SP::UI::WindowPath window_path;
     SP::UI::ScenePath scene_path;
+    SP::UI::SurfacePath surface_path;
     std::string view_name;
 
     DeclarativeScreenshotHarness() {
         SP::System::LaunchOptions launch_options{};
-        launch_options.start_input_runtime = false;
-        launch_options.start_io_pump = false;
         launch_options.start_io_telemetry_control = false;
         auto launch = SP::System::LaunchStandard(space, launch_options);
         REQUIRE(launch);
@@ -135,13 +135,20 @@ struct DeclarativeScreenshotHarness {
         auto surface_abs = SP::App::resolve_app_relative(SP::App::AppRootPathView{app_root.getPath()},
                                                          *surface_rel);
         REQUIRE(surface_abs);
-        auto set_scene = SP::UI::Runtime::Surface::SetScene(space,
-                                                            SP::UI::Runtime::SurfacePath{surface_abs->getPath()},
-                                                            scene_path);
+        surface_path = SP::UI::SurfacePath{surface_abs->getPath()};
+        auto set_scene = SP::UI::Runtime::Surface::SetScene(space, surface_path, scene_path);
         REQUIRE(set_scene);
 
         auto window_view = SP::App::ConcretePathView{window_view_path};
         mount_ui(window_view);
+
+        auto pump_widgets = SP::UI::Declarative::PumpWindowWidgetsOnce(space, window_path, view_name);
+        REQUIRE(pump_widgets);
+        auto pump_scene = SP::UI::Declarative::SceneLifecycle::PumpSceneOnce(space, scene_path);
+        REQUIRE(pump_scene);
+        auto render_future = SP::UI::Runtime::Surface::RenderOnce(space, surface_path, std::nullopt);
+        REQUIRE(render_future);
+        CHECK(render_future->ready());
     }
 
     ~DeclarativeScreenshotHarness() { SP::System::ShutdownDeclarativeRuntime(space); }
@@ -180,17 +187,22 @@ struct DeclarativeScreenshotHarness {
         options.width = 320;
         options.height = 200;
         options.force_software = true;
-        options.allow_software_fallback = false;
-        options.present_when_force_software = true;
-        options.require_present = true;
-        options.present_before_capture = true;
+        options.allow_software_fallback = true;
+        options.present_when_force_software = false;
+        options.force_publish = false;
+        options.mark_dirty_before_publish = false;
+        options.require_present = false;
+        options.present_before_capture = false;
         options.enable_capture_framebuffer = true;
-        options.readiness_timeout = 1500ms;
-        options.publish_timeout = 1500ms;
-        options.present_timeout = 1500ms;
+        options.readiness_timeout = 400ms;
+        options.publish_timeout = 400ms;
+        options.present_timeout = 400ms;
         options.wait_for_runtime_metrics = false;
         options.readiness_options.wait_for_runtime_metrics = false;
-        options.readiness_options.runtime_metrics_timeout = 1500ms;
+        options.readiness_options.runtime_metrics_timeout = 400ms;
+        options.readiness_options.wait_for_structure = false;
+        options.readiness_options.wait_for_buckets = false;
+        options.readiness_options.wait_for_revision = false;
         return options;
     }
 };

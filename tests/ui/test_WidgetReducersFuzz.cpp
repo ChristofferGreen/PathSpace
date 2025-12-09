@@ -611,30 +611,34 @@ TEST_CASE("Widget reducers fuzz harness maintains invariants") {
     auto list = Declarative::List::Create(fx.space, parent, "primary_list", list_args);
     REQUIRE(list);
 
-    auto button_root = std::string(button->getPath());
-    auto toggle_root = std::string(toggle->getPath());
-    auto slider_root = std::string(slider->getPath());
-    auto list_root = std::string(list->getPath());
+    auto button_root = WidgetsNS::WidgetSpacePath(button->getPath(), "");
+    auto toggle_root = WidgetsNS::WidgetSpacePath(toggle->getPath(), "");
+    auto slider_root = WidgetsNS::WidgetSpacePath(slider->getPath(), "");
+    auto list_root = WidgetsNS::WidgetSpacePath(list->getPath(), "");
 
-    auto button_state = fx.space.read<WidgetsNS::ButtonState, std::string>(button_root + "/state");
+    auto button_state_path = WidgetsNS::WidgetSpacePath(button->getPath(), "/state");
+    auto button_state = fx.space.read<WidgetsNS::ButtonState, std::string>(button_state_path);
     REQUIRE(button_state);
-    auto toggle_state = fx.space.read<WidgetsNS::ToggleState, std::string>(toggle_root + "/state");
+    auto toggle_state_path = WidgetsNS::WidgetSpacePath(toggle->getPath(), "/state");
+    auto toggle_state = fx.space.read<WidgetsNS::ToggleState, std::string>(toggle_state_path);
     REQUIRE(toggle_state);
-    auto slider_state = fx.space.read<WidgetsNS::SliderState, std::string>(slider_root + "/state");
+    auto slider_state_path = WidgetsNS::WidgetSpacePath(slider->getPath(), "/state");
+    auto slider_state = fx.space.read<WidgetsNS::SliderState, std::string>(slider_state_path);
     REQUIRE(slider_state);
     WidgetsNS::SliderRange slider_range{
         .minimum = slider_args.minimum,
         .maximum = slider_args.maximum,
         .step = slider_args.step,
     };
-    auto list_state = fx.space.read<WidgetsNS::ListState, std::string>(list_root + "/state");
+    auto list_state_path = WidgetsNS::WidgetSpacePath(list->getPath(), "/state");
+    auto list_state = fx.space.read<WidgetsNS::ListState, std::string>(list_state_path);
     REQUIRE(list_state);
 
     ButtonContext button_ctx{
         .space = &fx.space,
         .widget = *button,
         .root_path = button_root,
-        .state_path = button_root + "/state",
+        .state_path = button_state_path,
         .state = *button_state,
         .bounds = Bounds{256.0f, 128.0f},
         .queues = make_widget_queues(*button),
@@ -644,7 +648,7 @@ TEST_CASE("Widget reducers fuzz harness maintains invariants") {
         .space = &fx.space,
         .widget = *toggle,
         .root_path = toggle_root,
-        .state_path = toggle_root + "/state",
+        .state_path = toggle_state_path,
         .state = *toggle_state,
         .bounds = Bounds{192.0f, 96.0f},
         .queues = make_widget_queues(*toggle),
@@ -654,7 +658,7 @@ TEST_CASE("Widget reducers fuzz harness maintains invariants") {
         .space = &fx.space,
         .widget = *slider,
         .root_path = slider_root,
-        .state_path = slider_root + "/state",
+        .state_path = slider_state_path,
         .state = *slider_state,
         .range = slider_range,
         .bounds = Bounds{320.0f, 96.0f},
@@ -667,7 +671,7 @@ TEST_CASE("Widget reducers fuzz harness maintains invariants") {
         .space = &fx.space,
         .widget = *list,
         .root_path = list_root,
-        .state_path = list_root + "/state",
+        .state_path = list_state_path,
         .state = *list_state,
         .items = list_args.items,
         .bounds = Bounds{list_args.style.width, list_height},

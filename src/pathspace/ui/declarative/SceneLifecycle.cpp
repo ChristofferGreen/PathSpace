@@ -12,6 +12,7 @@
 #include <pathspace/ui/declarative/widgets/Common.hpp>
 
 #include <pathspace/ui/runtime/UIRuntime.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 
 #include <pathspace/path/ConcretePath.hpp>
 
@@ -44,6 +45,7 @@ namespace {
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
 namespace BuilderRenderer = SP::UI::Runtime::Renderer;
 using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
 namespace Telemetry = SP::UI::Declarative::Telemetry;
 constexpr std::string_view kPublishAuthor = "declarative-runtime";
 
@@ -103,10 +105,9 @@ void mark_widget_tree_dirty(PathSpace& space, std::string const& widget_root) {
                    + " message=" + error.message.value_or("unknown"),
                "SceneLifecycle");
     }
-    auto children_root = widget_root + "/children";
-    auto children = space.listChildren(SP::ConcretePathStringView{children_root});
-    for (auto const& child_name : children) {
-        mark_widget_tree_dirty(space, children_root + "/" + child_name);
+    auto children = SP::UI::Runtime::Widgets::WidgetChildRoots(space, widget_root);
+    for (auto const& child_root : children) {
+        mark_widget_tree_dirty(space, child_root);
     }
 }
 
@@ -640,13 +641,14 @@ private:
             cleanup_widget(widget_root);
             return;
         }
-        (void)DeclarativeDetail::replace_single<bool>(space_, widget_root + "/render/dirty", true);
-        auto event_path = widget_root + "/render/events/dirty";
+        (void)DeclarativeDetail::replace_single<bool>(space_,
+                                                      WidgetSpacePath(widget_root, "/render/dirty"),
+                                                      true);
+        auto event_path = WidgetSpacePath(widget_root, "/render/events/dirty");
         (void)space_.insert(event_path, widget_root);
-        auto children_root = widget_root + "/children";
-        auto children = space_.listChildren(SP::ConcretePathStringView{children_root});
-        for (auto const& child_name : children) {
-            enqueue_widget_subtree(children_root + "/" + child_name);
+        auto children = SP::UI::Runtime::Widgets::WidgetChildRoots(space_, widget_root);
+        for (auto const& child_root : children) {
+            enqueue_widget_subtree(child_root);
         }
     }
 
@@ -662,14 +664,13 @@ private:
     }
 
     void scan_widget_recursive(std::string const& widget_root) {
-        auto dirty = space_.read<bool, std::string>(widget_root + "/render/dirty");
+        auto dirty = space_.read<bool, std::string>(WidgetSpacePath(widget_root, "/render/dirty"));
         if (dirty && *dirty) {
             process_event(widget_root);
         }
-        auto children_root = widget_root + "/children";
-        auto children = space_.listChildren(SP::ConcretePathStringView{children_root});
-        for (auto const& child_name : children) {
-            scan_widget_recursive(children_root + "/" + child_name);
+        auto children = SP::UI::Runtime::Widgets::WidgetChildRoots(space_, widget_root);
+        for (auto const& child_root : children) {
+            scan_widget_recursive(child_root);
         }
     }
 
@@ -679,12 +680,11 @@ private:
             return;
         }
 
-        bool newly_registered = register_source(widget_root + "/render/events/dirty");
+        bool newly_registered = register_source(WidgetSpacePath(widget_root, "/render/events/dirty"));
 
-        auto children_root = widget_root + "/children";
-        auto children = space_.listChildren(SP::ConcretePathStringView{children_root});
-        for (auto const& child_name : children) {
-            register_widget_subtree(children_root + "/" + child_name);
+        auto children = SP::UI::Runtime::Widgets::WidgetChildRoots(space_, widget_root);
+        for (auto const& child_root : children) {
+            register_widget_subtree(child_root);
         }
 
         if (newly_registered) {
@@ -728,18 +728,18 @@ private:
     void process_event(std::string const& widget_path) {
         auto dirty_start = std::chrono::steady_clock::now();
         SP::UI::Runtime::WidgetPath widget{widget_path};
-        auto dirty_version = space_.read<std::uint64_t, std::string>(widget_path + "/render/dirty_version");
+        auto dirty_version = space_.read<std::uint64_t, std::string>(WidgetSpacePath(widget_path, "/render/dirty_version"));
         std::uint64_t observed_version = dirty_version.value_or(0);
         bool cleared = false;
         auto clear_dirty = [&]() {
             if (cleared) {
                 return;
             }
-            auto current_version = space_.read<std::uint64_t, std::string>(widget_path + "/render/dirty_version");
+            auto current_version = space_.read<std::uint64_t, std::string>(WidgetSpacePath(widget_path, "/render/dirty_version"));
             if (current_version && *current_version != observed_version) {
                 return;
             }
-            (void)DeclarativeDetail::replace_single<bool>(space_, widget_path + "/render/dirty", false);
+            (void)DeclarativeDetail::replace_single<bool>(space_, WidgetSpacePath(widget_path, "/render/dirty"), false);
             cleared = true;
         };
         auto schema_start = std::chrono::steady_clock::now();
@@ -974,7 +974,7 @@ private:
         if (!has_renderer_target_) {
             return;
         }
-        auto pending_path = widget_path + "/render/buffer/pendingDirty";
+        auto pending_path = WidgetSpacePath(widget_path, "/render/buffer/pendingDirty");
         auto pending = DeclarativeDetail::read_optional<std::vector<DirtyRectHint>>(space_, pending_path);
         if (!pending || !pending->has_value()) {
             return;
@@ -1064,16 +1064,15 @@ private:
     }
 
     void cleanup_widget_subtree(std::string const& widget_root) {
-        deregister_source(widget_root + "/render/events/dirty");
-        auto children_root = widget_root + "/children";
-        auto children = space_.listChildren(SP::ConcretePathStringView{children_root});
-        for (auto const& child : children) {
-            cleanup_widget_subtree(children_root + "/" + child);
+        deregister_source(WidgetSpacePath(widget_root, "/render/events/dirty"));
+        auto children = SP::UI::Runtime::Widgets::WidgetChildRoots(space_, widget_root);
+        for (auto const& child_root : children) {
+            cleanup_widget_subtree(child_root);
         }
     }
 
     [[nodiscard]] auto is_widget_removed(std::string const& widget_root) -> bool {
-        auto removed = space_.read<bool, std::string>(widget_root + "/state/removed");
+        auto removed = space_.read<bool, std::string>(WidgetSpacePath(widget_root, "/state/removed"));
         if (!removed) {
             auto code = removed.error().code;
             if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {

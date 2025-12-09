@@ -1,8 +1,10 @@
 #include <pathspace/ui/PathWindowView.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <exception>
+#include <thread>
 #include <vector>
 
 #if defined(__APPLE__)
@@ -61,13 +63,22 @@ auto PathWindowView::present(PathSurfaceSoftware& surface,
                 auto const tile_bytes = static_cast<std::size_t>(dims.width)
                                         * static_cast<std::size_t>(dims.height) * kBytesPerPixel;
                 tile_storage.resize(tile_bytes);
-                auto attempt_copy = [&](bool /*second_attempt*/) {
-                    return progressive.copy_tile(tile_index, tile_storage);
+                auto attempt_copy = [&](int max_retries) {
+                    for (int retry = 0; retry <= max_retries; ++retry) {
+                        auto copy = progressive.copy_tile(tile_index, tile_storage);
+                        if (copy) {
+                            return copy;
+                        }
+                        if (retry < max_retries) {
+                            std::this_thread::sleep_for(std::chrono::microseconds{10});
+                        }
+                    }
+                    return std::optional<TileCopyResult>{};
                 };
-                auto tile_copy = attempt_copy(false);
+                auto tile_copy = attempt_copy(0);
                 if (!tile_copy) {
                     ++stats.progressive_skip_seq_odd;
-                    tile_copy = attempt_copy(true);
+                    tile_copy = attempt_copy(4);
                     if (tile_copy) {
                         ++stats.progressive_recopy_after_seq_change;
                     }

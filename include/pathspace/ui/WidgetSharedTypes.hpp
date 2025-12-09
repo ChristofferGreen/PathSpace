@@ -143,6 +143,18 @@ using EnableStringLike = std::enable_if_t<!kIsWidgetPathLike<Root>
     return base;
 }
 
+[[nodiscard]] inline auto WidgetChildrenLegacyRoot(std::string_view widget_root) -> std::string {
+    std::string base{widget_root};
+    if (base.empty()) {
+        base = "/";
+    }
+    if (base.back() != '/') {
+        base.push_back('/');
+    }
+    base.append("children");
+    return base;
+}
+
 } // namespace detail
 
 template <typename Root, detail::EnableStringLike<Root> = 0>
@@ -173,6 +185,48 @@ template <typename Root, detail::EnableStringLike<Root> = 0>
 [[nodiscard]] inline auto WidgetSpacePath(ConcretePathView widget, std::string_view relative)
     -> std::string {
     return detail::BuildWidgetSpacePath(widget.getPath(), relative);
+}
+
+[[nodiscard]] inline auto WidgetChildrenPath(std::string_view widget_root) -> std::string {
+    return detail::WidgetChildrenLegacyRoot(widget_root);
+}
+
+[[nodiscard]] inline auto WidgetChildRoot(std::string_view widget_root, std::string_view child_name)
+    -> std::string {
+    auto base = detail::WidgetChildrenLegacyRoot(widget_root);
+    if (base.back() != '/') {
+        base.push_back('/');
+    }
+    base.append(child_name.begin(), child_name.end());
+    return base;
+}
+
+[[nodiscard]] inline auto WidgetChildNames(PathSpace& space,
+                                           std::string const& widget_root) -> std::vector<std::string> {
+    auto canonical_root = WidgetSpacePath(widget_root, "/children");
+    auto names = space.listChildren(SP::ConcretePathStringView{canonical_root});
+    if (!names.empty()) {
+        return names;
+    }
+    auto legacy_root = detail::WidgetChildrenLegacyRoot(widget_root);
+    return space.listChildren(SP::ConcretePathStringView{legacy_root});
+}
+
+[[nodiscard]] inline auto WidgetChildRoots(PathSpace& space,
+                                           std::string const& widget_root) -> std::vector<std::string> {
+    auto names = WidgetChildNames(space, widget_root);
+    std::vector<std::string> roots;
+    roots.reserve(names.size());
+    auto prefix = detail::WidgetChildrenLegacyRoot(widget_root);
+    if (prefix.back() != '/') {
+        prefix.push_back('/');
+    }
+    for (auto const& name : names) {
+        auto child = prefix;
+        child.append(name);
+        roots.push_back(std::move(child));
+    }
+    return roots;
 }
 
 namespace Reducers {

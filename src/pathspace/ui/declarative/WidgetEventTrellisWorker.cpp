@@ -4,6 +4,7 @@
 #include "widgets/Common.hpp"
 
 #include <pathspace/app/AppPaths.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 
 #include <chrono>
 
@@ -11,6 +12,7 @@ namespace SP::UI::Declarative {
 
 namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
 using SP::UI::ScenePath;
 
 WidgetEventTrellisWorker::WidgetEventTrellisWorker(PathSpace& space,
@@ -305,7 +307,7 @@ void WidgetEventTrellisWorker::emit_widget_op(WindowBinding const& binding,
         op.sequence = DeclarativeDetail::g_widget_op_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
         op.timestamp_ns = DeclarativeDetail::to_epoch_ns(std::chrono::system_clock::now());
 
-        auto queue_path = target.widget_path + "/ops/inbox/queue";
+        auto queue_path = WidgetSpacePath(target.widget_path, "/ops/inbox/queue");
         auto inserted = space_.insert(queue_path, op);
         if (!inserted.errors.empty()) {
             enqueue_error(space_, "WidgetEventTrellis failed to write WidgetOp for "

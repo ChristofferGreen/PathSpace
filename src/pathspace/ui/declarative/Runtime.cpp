@@ -26,6 +26,7 @@
 #include <cctype>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -303,6 +304,46 @@ void ensure_device_push_config(SP::PathSpace& space,
     space.insert(device_base + "/config/push/rate_limit_hz", static_cast<std::uint32_t>(480));
     auto subscribers_path = device_base + "/config/push/subscribers/" + subscriber;
     space.insert(subscribers_path, true);
+}
+
+auto ensure_subspace(SP::PathSpace& space, std::string const& path) -> SP::Expected<void> {
+    auto inserted = space.insert(path, std::make_unique<SP::PathSpace>());
+    if (!inserted.errors.empty()) {
+        auto cleared = space.take<std::unique_ptr<SP::PathSpace>>(path);
+        if (!cleared) {
+            auto const& error = cleared.error();
+            if (error.code != SP::Error::Code::NoSuchPath
+                && error.code != SP::Error::Code::NoObjectFound) {
+                return std::unexpected(error);
+            }
+        }
+        inserted = space.insert(path, std::make_unique<SP::PathSpace>());
+        if (!inserted.errors.empty()) {
+            return std::unexpected(inserted.errors.front());
+        }
+    }
+    return {};
+}
+
+auto ensure_window_event_roots(SP::PathSpace& space, std::string const& token) -> SP::Expected<void> {
+    std::string base = "/system/widgets/runtime/events/";
+    base.append(token);
+    auto ensure = [&](std::string const& path) -> SP::Expected<void> {
+        return ensure_subspace(space, path);
+    };
+    if (auto status = ensure(base); !status) {
+        return status;
+    }
+    if (auto status = ensure(base + "/pointer"); !status) {
+        return status;
+    }
+    if (auto status = ensure(base + "/button"); !status) {
+        return status;
+    }
+    if (auto status = ensure(base + "/text"); !status) {
+        return status;
+    }
+    return {};
 }
 
 void subscribe_window_devices(SP::PathSpace& space,
@@ -1296,6 +1337,10 @@ auto Create(PathSpace& space,
                                         runtime_base + "/window",
                                         window->getPath());
         !status) {
+        return std::unexpected(status.error());
+    }
+
+    if (auto status = ensure_window_event_roots(space, runtime_token); !status) {
         return std::unexpected(status.error());
     }
 

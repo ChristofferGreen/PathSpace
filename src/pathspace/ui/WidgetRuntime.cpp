@@ -245,6 +245,17 @@ auto ResolveHitTarget(Scene::HitTestResult const& hit) -> std::optional<HitTarge
         return std::nullopt;
     }
 
+    constexpr std::string_view kWidgetSpaceSuffix = "/space";
+    if (widget_root.size() > kWidgetSpaceSuffix.size()) {
+        auto suffix_pos = widget_root.size() - kWidgetSpaceSuffix.size();
+        if (widget_root.compare(suffix_pos, kWidgetSpaceSuffix.size(), kWidgetSpaceSuffix) == 0) {
+            widget_root.erase(suffix_pos);
+        }
+    }
+    if (widget_root.empty()) {
+        return std::nullopt;
+    }
+
     std::string component;
     auto component_pos = marker + kWidgetAuthoringMarker.size();
     if (component_pos < authoring.size()) {

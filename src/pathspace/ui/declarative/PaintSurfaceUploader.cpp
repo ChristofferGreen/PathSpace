@@ -30,6 +30,8 @@ namespace {
 
 namespace Detail = SP::UI::Declarative::Detail;
 using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
+using SP::UI::Runtime::Widgets::WidgetSpaceRoot;
 
 constexpr std::string_view kAppsRoot = "/system/applications";
 
@@ -51,7 +53,7 @@ auto now_ns() -> std::uint64_t {
 }
 
 auto read_gpu_state(PathSpace& space, std::string const& widget_path) -> PaintGpuState {
-    auto state = Detail::read_optional<std::string>(space, widget_path + "/render/gpu/state");
+    auto state = Detail::read_optional<std::string>(space, WidgetSpacePath(widget_path, "/render/gpu/state"));
     if (!state || !state->has_value()) {
         return PaintGpuState::Idle;
     }
@@ -62,12 +64,12 @@ auto set_gpu_state(PathSpace& space,
                    std::string const& widget_path,
                    PaintGpuState state) -> void {
     (void)Detail::replace_single(space,
-                                        widget_path + "/render/gpu/state",
+                                        WidgetSpacePath(widget_path, "/render/gpu/state"),
                                         std::string(PaintGpuStateToString(state)));
 }
 
 auto gpu_enabled(PathSpace& space, std::string const& widget_path) -> bool {
-    auto enabled = Detail::read_optional<bool>(space, widget_path + "/render/gpu/enabled");
+    auto enabled = Detail::read_optional<bool>(space, WidgetSpacePath(widget_path, "/render/gpu/enabled"));
     if (!enabled || !enabled->has_value()) {
         return false;
     }
@@ -198,7 +200,7 @@ private:
     void upload_widget(std::string const& widget_path, PaintGpuState state) {
         set_gpu_state(space_, widget_path, PaintGpuState::Uploading);
         auto start_ns = now_ns();
-        (void)Detail::replace_single(space_, widget_path + "/render/gpu/fence/start", start_ns);
+        (void)Detail::replace_single(space_, WidgetSpacePath(widget_path, "/render/gpu/fence/start"), start_ns);
 
         auto metrics = PaintRuntime::ReadBufferMetrics(space_, widget_path);
         if (!metrics) {
@@ -210,7 +212,7 @@ private:
             fail_widget(widget_path, strokes.error().message.value_or("failed to load strokes"));
             return;
         }
-        auto revision = Detail::read_optional<std::uint64_t>(space_, widget_path + "/render/buffer/revision");
+        auto revision = Detail::read_optional<std::uint64_t>(space_, WidgetSpacePath(widget_path, "/render/buffer/revision"));
         std::uint64_t current_revision = 0;
         if (revision && revision->has_value()) {
             current_revision = **revision;
@@ -219,18 +221,18 @@ private:
         auto rasterized = rasterize_texture(*metrics, *strokes);
         rasterized.payload.revision = current_revision;
 
-        auto texture_path = widget_path + "/assets/texture";
+        auto texture_path = WidgetSpacePath(widget_path, "/assets/texture");
         auto stored = Detail::replace_single(space_, texture_path, rasterized.payload);
         if (!stored) {
             fail_widget(widget_path, stored.error().message.value_or("failed to write texture payload"));
             return;
         }
 
-        (void)Detail::replace_single(space_, widget_path + "/render/buffer/pendingDirty", std::vector<DirtyRectHint>{});
+        (void)Detail::replace_single(space_, WidgetSpacePath(widget_path, "/render/buffer/pendingDirty"), std::vector<DirtyRectHint>{});
         drain_dirty_queue(widget_path);
 
         auto end_ns = now_ns();
-        (void)Detail::replace_single(space_, widget_path + "/render/gpu/fence/end", end_ns);
+        (void)Detail::replace_single(space_, WidgetSpacePath(widget_path, "/render/gpu/fence/end"), end_ns);
 
         update_widget_stats(widget_path, state, rasterized.bytes, end_ns - start_ns, current_revision);
         set_gpu_state(space_, widget_path, PaintGpuState::Ready);
@@ -248,7 +250,7 @@ private:
                              std::uint64_t upload_bytes,
                              std::uint64_t duration_ns,
                              std::uint64_t revision) {
-        auto stats_path = widget_path + "/render/gpu/stats";
+        auto stats_path = WidgetSpacePath(widget_path, "/render/gpu/stats");
         auto stats_value = Detail::read_optional<PaintGpuStats>(space_, stats_path);
         PaintGpuStats stats = stats_value && stats_value->has_value() ? **stats_value : PaintGpuStats{};
         stats.uploads_total += 1;
@@ -310,7 +312,7 @@ private:
     }
 
     void drain_dirty_queue(std::string const& widget_path) {
-        auto queue_path = widget_path + "/render/gpu/dirtyRects";
+        auto queue_path = WidgetSpacePath(widget_path, "/render/gpu/dirtyRects");
         while (true) {
             auto rect = space_.take<DirtyRectHint>(queue_path, SP::Out{} & SP::Block{0ms});
             if (!rect) {
@@ -348,12 +350,13 @@ private:
         auto entries = space_.listChildren(SP::ConcretePathStringView{root});
         for (auto const& name : entries) {
             auto widget_root = root + "/" + name;
-            auto descriptor = Detail::read_optional<RenderDescriptor>(space_, widget_root + "/render/synthesize");
+            auto descriptor = Detail::read_optional<RenderDescriptor>(space_,
+                                                                      WidgetSpacePath(widget_root, "/render/synthesize"));
             if (descriptor && descriptor->has_value()
                 && descriptor->value().kind == WidgetKind::PaintSurface) {
                 widgets.push_back(widget_root);
             }
-            collect_widget_subtree(widget_root + "/children", widgets);
+            collect_widget_subtree(SP::UI::Runtime::Widgets::WidgetChildrenPath(widget_root), widgets);
         }
     }
 

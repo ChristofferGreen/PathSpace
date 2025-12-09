@@ -2,6 +2,8 @@
 
 namespace SP {
 
+void RegisterBuiltinTypeMetadata(TypeMetadataRegistry& registry);
+
 auto TypeMetadataRegistry::make_view(TypeMetadataRegistry::Entry const* entry)
     -> std::optional<TypeMetadataView> {
     if (entry == nullptr) {
@@ -12,6 +14,7 @@ auto TypeMetadataRegistry::make_view(TypeMetadataRegistry::Entry const* entry)
 
 TypeMetadataRegistry& TypeMetadataRegistry::instance() {
     static TypeMetadataRegistry registry;
+    RegisterBuiltinTypeMetadata(registry);
     return registry;
 }
 

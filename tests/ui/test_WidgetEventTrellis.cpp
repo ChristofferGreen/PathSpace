@@ -8,10 +8,13 @@
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/WidgetEventTrellis.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
+#include <pathspace/ui/declarative/widgets/Common.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 
 #include "DeclarativeTestUtils.hpp"
 
 #include <chrono>
+#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -22,6 +25,27 @@ namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 using WidgetOp = SP::UI::Runtime::Widgets::Bindings::WidgetOp;
 using WidgetAction = SP::UI::Declarative::Reducers::WidgetAction;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
+
+inline auto widget_space(std::string const& root, std::string_view relative) -> std::string {
+    return SP::UI::Runtime::Widgets::WidgetSpacePath(root, relative);
+}
+
+inline void ensure_widget_space(PathSpace& space, std::string const& widget_root) {
+    auto root_insert = space.insert(widget_root, std::make_unique<PathSpace>());
+    if (!root_insert.errors.empty()) {
+        auto cleared = space.take<std::unique_ptr<PathSpace>>(widget_root);
+        if (!cleared) {
+            auto const code = cleared.error().code;
+            bool allowed = (code == SP::Error::Code::NoSuchPath)
+                || (code == SP::Error::Code::NoObjectFound);
+            REQUIRE(allowed);
+        }
+        root_insert = space.insert(widget_root, std::make_unique<PathSpace>());
+        REQUIRE(root_insert.errors.empty());
+    }
+    auto reset = SP::UI::Declarative::Detail::reset_widget_space(space, widget_root);
+    REQUIRE(reset.has_value());
+}
 
 struct RuntimeGuard {
     explicit RuntimeGuard(SP::PathSpace& s) : space(s) {}
@@ -49,7 +73,13 @@ TEST_CASE("WidgetEventTrellis routes pointer and button events to WidgetOps") {
     const std::string widget_path = window_path + "/widgets/test_button";
     const std::string pointer_queue = "/system/widgets/runtime/events/" + token + "/pointer/queue";
     const std::string button_queue = "/system/widgets/runtime/events/" + token + "/button/queue";
-    const std::string widget_ops_queue = widget_path + "/ops/inbox/queue";
+    const std::string widget_ops_queue = widget_space(widget_path, "/ops/inbox/queue");
+    ensure_widget_space(space, widget_path);
+
+    BuilderWidgets::ButtonState button_state{};
+    (void)space.insert(widget_space(widget_path, "/state"), button_state);
+    (void)space.insert(widget_space(widget_path, "/render/dirty"), false);
+    (void)space.insert(widget_space(widget_path, "/meta/kind"), std::string{"button"});
 
     SP::UI::Declarative::WidgetEventTrellisOptions options;
     options.refresh_interval = 1ms;
@@ -61,7 +91,7 @@ TEST_CASE("WidgetEventTrellis routes pointer and button events to WidgetOps") {
                       float scene_y) -> SP::Expected<SP::UI::Runtime::Scene::HitTestResult> {
             SP::UI::Runtime::Scene::HitTestResult result{};
             result.hit = true;
-            result.target.authoring_node_id = widget_path + "/authoring/button/background";
+            result.target.authoring_node_id = widget_space(widget_path, "/authoring/button/background");
             result.position.scene_x = scene_x;
             result.position.scene_y = scene_y;
             return result;
@@ -141,12 +171,13 @@ TEST_CASE("WidgetEventTrellis handles keyboard button activation") {
 
     const std::string widget_path = window_path + "/widgets/test_button";
     const std::string button_queue = "/system/widgets/runtime/events/" + token + "/button/queue";
-    const std::string widget_ops_queue = widget_path + "/ops/inbox/queue";
+    const std::string widget_ops_queue = widget_space(widget_path, "/ops/inbox/queue");
+    ensure_widget_space(space, widget_path);
 
     BuilderWidgets::ButtonState state{};
-    (void)space.insert(widget_path + "/state", state);
-    (void)space.insert(widget_path + "/render/dirty", false);
-    (void)space.insert(widget_path + "/meta/kind", std::string{"button"});
+    (void)space.insert(widget_space(widget_path, "/state"), state);
+    (void)space.insert(widget_space(widget_path, "/render/dirty"), false);
+    (void)space.insert(widget_space(widget_path, "/meta/kind"), std::string{"button"});
 
     SP::UI::Declarative::WidgetEventTrellisOptions options;
     options.refresh_interval = 1ms;
@@ -220,19 +251,20 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
         std::string slider_path = window_path + "/widgets/test_slider";
         (void)space.insert(scene_path + "/structure/window/slider/focus/current", slider_path);
         (void)space.insert(app_root + "/widgets/focus/current", slider_path);
+        ensure_widget_space(space, slider_path);
 
         BuilderWidgets::SliderState slider_state{};
         slider_state.value = 0.5f;
-        (void)space.insert(slider_path + "/state", slider_state);
+        (void)space.insert(widget_space(slider_path, "/state"), slider_state);
         BuilderWidgets::SliderStyle slider_style{};
-        (void)space.insert(slider_path + "/meta/style", slider_style);
+        (void)space.insert(widget_space(slider_path, "/meta/style"), slider_style);
         BuilderWidgets::SliderRange slider_range{};
         slider_range.minimum = 0.0f;
         slider_range.maximum = 1.0f;
         slider_range.step = 0.1f;
-        (void)space.insert(slider_path + "/meta/range", slider_range);
-        (void)space.insert(slider_path + "/meta/kind", std::string{"slider"});
-        (void)space.insert(slider_path + "/render/dirty", false);
+        (void)space.insert(widget_space(slider_path, "/meta/range"), slider_range);
+        (void)space.insert(widget_space(slider_path, "/meta/kind"), std::string{"slider"});
+        (void)space.insert(widget_space(slider_path, "/render/dirty"), false);
 
         SP::UI::Declarative::WidgetEventTrellisOptions options;
         options.refresh_interval = 1ms;
@@ -250,7 +282,7 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
         std::string button_queue = "/system/widgets/runtime/events/" + token + "/button/queue";
         (void)space.insert(button_queue, right);
 
-        std::string widget_ops_queue = slider_path + "/ops/inbox/queue";
+        std::string widget_ops_queue = widget_space(slider_path, "/ops/inbox/queue");
         auto update = space.take<WidgetOp, std::string>(
             widget_ops_queue,
             SP::Out{} & SP::Block{200ms});
@@ -262,7 +294,7 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
         REQUIRE(commit);
         CHECK(commit->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::SliderCommit);
 
-        auto new_state = space.read<BuilderWidgets::SliderState, std::string>(slider_path + "/state");
+        auto new_state = space.read<BuilderWidgets::SliderState, std::string>(widget_space(slider_path, "/state"));
         REQUIRE(new_state);
         CHECK(doctest::Approx(new_state->value) == 0.6f);
 
@@ -280,19 +312,20 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
         std::string list_path = window_path + "/widgets/test_list";
         (void)space.insert(scene_path + "/structure/window/list/focus/current", list_path);
         (void)space.insert(app_root + "/widgets/focus/current", list_path);
+        ensure_widget_space(space, list_path);
 
         BuilderWidgets::ListState list_state{};
-        (void)space.insert(list_path + "/state", list_state);
+        (void)space.insert(widget_space(list_path, "/state"), list_state);
         BuilderWidgets::ListStyle list_style{};
         list_style.width = 200.0f;
         list_style.item_height = 24.0f;
-        (void)space.insert(list_path + "/meta/style", list_style);
+        (void)space.insert(widget_space(list_path, "/meta/style"), list_style);
         std::vector<BuilderWidgets::ListItem> items{{"first", "First", true},
                                                     {"second", "Second", true},
                                                     {"third", "Third", true}};
-        (void)space.insert(list_path + "/meta/items", items);
-        (void)space.insert(list_path + "/meta/kind", std::string{"list"});
-        (void)space.insert(list_path + "/render/dirty", false);
+        (void)space.insert(widget_space(list_path, "/meta/items"), items);
+        (void)space.insert(widget_space(list_path, "/meta/kind"), std::string{"list"});
+        (void)space.insert(widget_space(list_path, "/render/dirty"), false);
 
         SP::UI::Declarative::WidgetEventTrellisOptions options;
         options.refresh_interval = 1ms;
@@ -314,7 +347,7 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
 
         send_key(0x7D); // down arrow
 
-        std::string widget_ops_queue = list_path + "/ops/inbox/queue";
+        std::string widget_ops_queue = widget_space(list_path, "/ops/inbox/queue");
         auto hover = space.take<WidgetOp, std::string>(
             widget_ops_queue,
             SP::Out{} & SP::Block{200ms});
@@ -334,7 +367,7 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
         REQUIRE(activate);
         CHECK(activate->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::ListActivate);
 
-        auto new_state = space.read<BuilderWidgets::ListState, std::string>(list_path + "/state");
+        auto new_state = space.read<BuilderWidgets::ListState, std::string>(widget_space(list_path, "/state"));
         REQUIRE(new_state);
         CHECK(new_state->selected_index == 1);
 
@@ -352,17 +385,18 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
         std::string tree_path = window_path + "/widgets/test_tree";
         (void)space.insert(scene_path + "/structure/window/tree/focus/current", tree_path);
         (void)space.insert(app_root + "/widgets/focus/current", tree_path);
+        ensure_widget_space(space, tree_path);
 
         BuilderWidgets::TreeState tree_state{};
         tree_state.selected_id = "root";
-        (void)space.insert(tree_path + "/state", tree_state);
+        (void)space.insert(widget_space(tree_path, "/state"), tree_state);
         BuilderWidgets::TreeStyle tree_style{};
-        (void)space.insert(tree_path + "/meta/style", tree_style);
+        (void)space.insert(widget_space(tree_path, "/meta/style"), tree_style);
         std::vector<BuilderWidgets::TreeNode> nodes{{"root", "", "Root", true, true, true},
                                                     {"child", "root", "Child", true, true, true}};
-        (void)space.insert(tree_path + "/meta/nodes", nodes);
-        (void)space.insert(tree_path + "/meta/kind", std::string{"tree"});
-        (void)space.insert(tree_path + "/render/dirty", false);
+        (void)space.insert(widget_space(tree_path, "/meta/nodes"), nodes);
+        (void)space.insert(widget_space(tree_path, "/meta/kind"), std::string{"tree"});
+        (void)space.insert(widget_space(tree_path, "/render/dirty"), false);
 
         SP::UI::Declarative::WidgetEventTrellisOptions options;
         options.refresh_interval = 1ms;
@@ -385,7 +419,7 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
         // Expand root
         send_key(0x7C); // right arrow
         auto toggle = space.take<WidgetOp, std::string>(
-            tree_path + "/ops/inbox/queue",
+            widget_space(tree_path, "/ops/inbox/queue"),
             SP::Out{} & SP::Block{200ms});
         REQUIRE(toggle);
         CHECK(toggle->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::TreeToggle);
@@ -393,17 +427,17 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
         // Move to child
         send_key(0x7C);
         auto hover = space.take<WidgetOp, std::string>(
-            tree_path + "/ops/inbox/queue",
+            widget_space(tree_path, "/ops/inbox/queue"),
             SP::Out{} & SP::Block{200ms});
         REQUIRE(hover);
         CHECK(hover->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::TreeHover);
         auto select = space.take<WidgetOp, std::string>(
-            tree_path + "/ops/inbox/queue",
+            widget_space(tree_path, "/ops/inbox/queue"),
             SP::Out{} & SP::Block{200ms});
         REQUIRE(select);
         CHECK(select->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::TreeSelect);
 
-        auto updated_state = space.read<BuilderWidgets::TreeState, std::string>(tree_path + "/state");
+        auto updated_state = space.read<BuilderWidgets::TreeState, std::string>(widget_space(tree_path, "/state"));
         REQUIRE(updated_state);
         CHECK(updated_state->selected_id == "child");
 
@@ -421,17 +455,18 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
         std::string input_path = window_path + "/widgets/test_input";
         (void)space.insert(scene_path + "/structure/window/text/focus/current", input_path);
         (void)space.insert(app_root + "/widgets/focus/current", input_path);
+        ensure_widget_space(space, input_path);
 
         BuilderWidgets::TextFieldState text_state{};
         text_state.text = "Hello";
         text_state.cursor = 5;
         text_state.selection_start = 5;
         text_state.selection_end = 5;
-        (void)space.insert(input_path + "/state", text_state);
+        (void)space.insert(widget_space(input_path, "/state"), text_state);
         BuilderWidgets::TextFieldStyle text_style{};
-        (void)space.insert(input_path + "/meta/style", text_style);
-        (void)space.insert(input_path + "/meta/kind", std::string{"input_field"});
-        (void)space.insert(input_path + "/render/dirty", false);
+        (void)space.insert(widget_space(input_path, "/meta/style"), text_style);
+        (void)space.insert(widget_space(input_path, "/meta/kind"), std::string{"input_field"});
+        (void)space.insert(widget_space(input_path, "/render/dirty"), false);
 
         SP::UI::Declarative::WidgetEventTrellisOptions options;
         options.refresh_interval = 1ms;
@@ -452,7 +487,7 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
         };
 
         send_key(0x33); // delete backward
-        std::string widget_ops_queue = input_path + "/ops/inbox/queue";
+        std::string widget_ops_queue = widget_space(input_path, "/ops/inbox/queue");
         auto delete_op = space.take<WidgetOp, std::string>(
             widget_ops_queue,
             SP::Out{} & SP::Block{200ms});
@@ -473,7 +508,7 @@ TEST_CASE("WidgetEventTrellis handles keyboard navigation for declarative widget
         REQUIRE(submit);
         CHECK(submit->kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::TextSubmit);
 
-        auto new_state = space.read<BuilderWidgets::TextFieldState, std::string>(input_path + "/state");
+        auto new_state = space.read<BuilderWidgets::TextFieldState, std::string>(widget_space(input_path, "/state"));
         REQUIRE(new_state);
         CHECK(new_state->text == "Hell");
 
@@ -525,7 +560,7 @@ TEST_CASE("WidgetEventTrellis fuzzes declarative paint stroke ops") {
 
     auto pointer_queue = "/system/widgets/runtime/events/" + token + "/pointer/queue";
     auto button_queue = "/system/widgets/runtime/events/" + token + "/button/queue";
-    auto widget_ops_queue = widget_path + "/ops/inbox/queue";
+    auto widget_ops_queue = widget_space(widget_path, "/ops/inbox/queue");
 
     SP::UI::Declarative::WidgetEventTrellisOptions options;
     options.refresh_interval = 1ms;
@@ -537,7 +572,7 @@ TEST_CASE("WidgetEventTrellis fuzzes declarative paint stroke ops") {
                       float scene_y) -> SP::Expected<SP::UI::Runtime::Scene::HitTestResult> {
             SP::UI::Runtime::Scene::HitTestResult result{};
             result.hit = true;
-            result.target.authoring_node_id = widget_path + "/authoring/paint_surface/canvas";
+            result.target.authoring_node_id = widget_space(widget_path, "/authoring/paint_surface/canvas");
             result.position.scene_x = scene_x;
             result.position.scene_y = scene_y;
             result.position.local_x = scene_x;

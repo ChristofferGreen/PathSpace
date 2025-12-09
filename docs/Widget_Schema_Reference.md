@@ -2,6 +2,7 @@
 
 > **Update (November 15, 2025):** First publication of the declarative widget schema reference.
 > Source of truth: `include/pathspace/ui/declarative/Schema.hpp` and `Descriptor.hpp`.
+> **Update (December 7, 2025):** Widget metadata, state, render, event, ops, layout, and metrics nodes now live exclusively under `<widget>/space`. Use `SP::UI::Runtime::Widgets::WidgetSpacePath(...)` (or `WidgetSpaceRoot`) whenever reading or writing the `state/*`, `meta/*`, `render/*`, `events/*`, `ops/*`, `layout/*`, or `metrics/*` leaves listed below so tests and runtime code always hit the canonical namespace.
 
 This appendix summarizes the canonical nodes, handlers, and runtime-managed leaves that declarative widgets rely on. Use it alongside `docs/AI_PATHS.md` when authoring widgets, debugging schema issues, or reviewing plan milestones.
 
@@ -14,7 +15,7 @@ This appendix summarizes the canonical nodes, handlers, and runtime-managed leav
 | **Req** | `req` (required), `opt` (optional), or `rt` (runtime-managed). |
 | **Notes** | Human-readable description plus cross-references to runtimes or diagnostics. |
 
-Unless noted otherwise, all paths are application-relative and live under `/system/applications/<app>/…`.
+Unless noted otherwise, all paths are application-relative and live under `/system/applications/<app>/…`. Widget-level rows (Button, Toggle, PaintSurface, etc.) are also relative to the canonical widget space root: call `WidgetSpacePath(widget_root, "/state/text")` (or the abbreviated `widget_space(...)` helper used in the UITests) to prepend `<widget>/space` before appending the relative component listed in the tables.
 
 ## Relationship to `docs/AI_PATHS.md`
 
@@ -108,7 +109,7 @@ These nodes exist under every declarative widget root (`widgets/<widget-id>/…`
 | `events/<event>/queue` | queue | opt | Optional filtered queue (press/toggle/change/etc.) for tooling that only needs a single event family. |
 | `metrics/handlers/{invoked_total,failures_total,missing_total}` | value | rt | Per-widget handler telemetry recorded by the input runtime. |
 | `metrics/focus/{acquired_total,lost_total}` | value | rt | Counters tracking how often the widget gains or loses focus; useful for spotting flapping focus targets. |
-| `metrics/history_binding/*` | value | opt/rt | Present when `HistoryBinding` wraps the widget; records readiness, button enablement, undo/redo counters, and the serialized telemetry card. |
+| `space/metrics/history_binding/*` | value | opt/rt | Present when `HistoryBinding` wraps the widget; records readiness, button enablement, undo/redo counters, and the serialized telemetry card. |
 | `render/synthesize` | value | req | `RenderDescriptor` describing the widget kind. |
 | `render/bucket` | value | rt | Cached `DrawableBucketSnapshot` rebuilt when `render/dirty` flips. |
 | `render/dirty` | flag | rt | Raised by helpers whenever state/style changes. |
@@ -133,6 +134,8 @@ All widgets also inherit the global queues documented elsewhere (e.g., `widgets/
 4. Renderer targets get notified via the normal dirty hint queue; presenters read `scene/runtime/focus/*`, `structure/window/<window>/focus/current`, and `renderers/<rid>/targets/<name>/output/*` to stay in sync. Focus updates also flip `widgets/<id>/focus/current` (boolean) and `structure/window/<window>/focus/current` (path string) so accessibility and inputs share the same data.
 
 ## Widget-specific nodes
+
+> **Widget space verification (December 7, 2025):** `tests/ui/test_DeclarativeTheme.cpp` and `tests/ui/test_DeclarativeWidgets.cpp` now mutate `meta/*`, `state/*`, `render/*`, and `events/*` via the shared `widget_space(...)` helpers that wrap `WidgetSpacePath`. Follow the same pattern in new tests and helpers so descriptor/theme coverage always exercises the `/space/...` schema the runtime writes.
 
 ### Button
 

@@ -6,6 +6,7 @@
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 
 #include <pathspace/path/ConcretePath.hpp>
 
@@ -13,12 +14,24 @@
 
 #include <chrono>
 #include <string>
+#include <string_view>
 #include <thread>
 
 using namespace SP;
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
 
 namespace {
+
+namespace WidgetsNS = SP::UI::Runtime::Widgets;
+
+inline auto widget_space(std::string const& root, std::string_view relative) -> std::string {
+    return WidgetsNS::WidgetSpacePath(root, relative);
+}
+
+inline auto widget_space(SP::UI::Runtime::WidgetPath const& widget,
+                        std::string_view relative) -> std::string {
+    return WidgetsNS::WidgetSpacePath(widget.getPath(), relative);
+}
 
 struct RuntimeGuard {
     explicit RuntimeGuard(SP::PathSpace& s) : space(s) {}
@@ -66,7 +79,7 @@ TEST_CASE("Scene lifecycle exposes dirty event queues") {
                                                       {});
     REQUIRE(widget);
 
-    auto dirty_queue = std::string(widget->getPath()) + "/render/events/dirty";
+    auto dirty_queue = widget_space(*widget, "/render/events/dirty");
     auto initial_event = space.take<std::string>(dirty_queue);
     REQUIRE(initial_event);
     CHECK(*initial_event == widget->getPath());
@@ -271,7 +284,7 @@ TEST_CASE("Focus and theme changes invalidate declarative widgets") {
                                                       {});
     REQUIRE(button);
 
-    auto dirty_queue = std::string(button->getPath()) + "/render/events/dirty";
+    auto dirty_queue = widget_space(*button, "/render/events/dirty");
     (void)space.take<std::string>(dirty_queue, SP::Out{} & SP::Block{std::chrono::milliseconds{500}});
 
     auto focus_config = SP::UI::Runtime::Widgets::Focus::MakeConfig(SP::App::AppRootPathView{app_root->getPath()});

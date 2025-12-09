@@ -12,6 +12,7 @@
 namespace SP::UI::Declarative::Detail {
 
 namespace BuilderWidgets = SP::UI::Runtime::Widgets;
+using SP::UI::Runtime::Widgets::WidgetSpacePath;
 
 namespace {
 
@@ -20,7 +21,7 @@ auto mutate_widget_state(PathSpace& space,
                          std::string const& widget_path,
                          std::string_view state_name,
                          MutateFn&& mutate) -> bool {
-    auto state_path = widget_path + "/state";
+    auto state_path = WidgetSpacePath(widget_path, "/state");
     State updated{};
     auto stored = space.read<State, std::string>(state_path);
     if (!stored) {

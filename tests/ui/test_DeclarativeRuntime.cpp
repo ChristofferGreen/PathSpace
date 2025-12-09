@@ -4,6 +4,7 @@
 #include <pathspace/io/IoEvents.hpp>
 #include <pathspace/runtime/IOPump.hpp>
 #include <pathspace/ui/runtime/UIRuntime.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 #include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
 #include <pathspace/ui/declarative/Reducers.hpp>
@@ -165,8 +166,9 @@ TEST_CASE("Declarative input task drains widget ops") {
     REQUIRE(readiness);
 
     auto widget_root = std::string(button->getPath());
-    auto queue_path = widget_root + "/ops/inbox/queue";
-    auto actions_path = widget_root + "/ops/actions/inbox/queue";
+    auto queue_path = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root, "/ops/inbox/queue");
+    auto actions_path = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root,
+                                                                 "/ops/actions/inbox/queue");
 
 
     auto window_token = SP::Runtime::MakeRuntimeWindowToken(window->path.getPath());
@@ -269,9 +271,9 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     REQUIRE(readiness);
 
     auto widget_path = std::string(button->getPath());
-    auto queue_path = widget_path + "/ops/inbox/queue";
-    auto events_inbox = widget_path + "/events/inbox/queue";
-    auto press_events = widget_path + "/events/press/queue";
+    auto queue_path = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/ops/inbox/queue");
+    auto events_inbox = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/events/inbox/queue");
+    auto press_events = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/events/press/queue");
 
 
     auto window_token = SP::Runtime::MakeRuntimeWindowToken(window->path.getPath());
@@ -337,7 +339,8 @@ TEST_CASE("Declarative input task invokes registered handlers") {
 
 }
 
-TEST_CASE("paint_example_new-style button reacts to pointer press via widget runtime") {
+TEST_CASE("paint_example_new-style button reacts to pointer press via widget runtime"
+          * doctest::test_suite("DeclarativeRuntimePointer")) {
     using namespace std::chrono_literals;
     PathSpace space;
 
@@ -459,7 +462,6 @@ TEST_CASE("paint_example_new-style button reacts to pointer press via widget run
     auto button_path = layout->getPath() + "/children/button_panel";
     *target_widget = button_path;
     *target_authoring = button_path + "/authoring/button/background";
-
 
     auto token = SP::Runtime::MakeRuntimeWindowToken(window->path.getPath());
     auto events_root = std::string("/system/widgets/runtime/events/");

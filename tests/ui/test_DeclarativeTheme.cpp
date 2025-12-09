@@ -751,12 +751,16 @@ TEST_CASE("TextArea descriptor inherits theme colors by default") {
     auto widget_root = std::string(fx.parent_view().getPath()) + "/widgets/text_area_theme";
     auto widget = SP::UI::Runtime::WidgetPath{widget_root};
 
-    REQUIRE(DetailNS::replace_single(fx.space, widget_root + "/meta/kind", std::string{"text_area"})
-                .has_value());
-    REQUIRE(DetailNS::replace_single(fx.space, widget_root + "/state/text", std::string{"Multiline"})
+    REQUIRE(DetailNS::replace_single(fx.space,
+                                     widget_space(widget_root, "/meta/kind"),
+                                     std::string{"text_area"})
                 .has_value());
     REQUIRE(DetailNS::replace_single(fx.space,
-                                     widget_root + "/state/placeholder",
+                                     widget_space(widget_root, "/state/text"),
+                                     std::string{"Multiline"})
+                .has_value());
+    REQUIRE(DetailNS::replace_single(fx.space,
+                                     widget_space(widget_root, "/state/placeholder"),
                                      std::string{"Placeholder"})
                 .has_value());
 
@@ -779,10 +783,12 @@ TEST_CASE("TextArea descriptor preserves explicit overrides") {
     auto widget_root = std::string(fx.parent_view().getPath()) + "/widgets/text_area_override";
     auto widget = SP::UI::Runtime::WidgetPath{widget_root};
 
-    REQUIRE(DetailNS::replace_single(fx.space, widget_root + "/meta/kind", std::string{"text_area"})
+    REQUIRE(DetailNS::replace_single(fx.space,
+                                     widget_space(widget_root, "/meta/kind"),
+                                     std::string{"text_area"})
                 .has_value());
     REQUIRE(DetailNS::replace_single(fx.space,
-                                     widget_root + "/state/text",
+                                     widget_space(widget_root, "/state/text"),
                                      std::string{"Overrides matter"})
                 .has_value());
 
@@ -790,7 +796,10 @@ TEST_CASE("TextArea descriptor preserves explicit overrides") {
     custom.background_color = {0.15f, 0.35f, 0.55f, 1.0f};
     custom.text_color = {0.92f, 0.85f, 0.12f, 1.0f};
     BuilderWidgets::UpdateOverrides(custom);
-    REQUIRE(DetailNS::replace_single(fx.space, widget_root + "/meta/style", custom).has_value());
+    REQUIRE(DetailNS::replace_single(fx.space,
+                                     widget_space(widget_root, "/meta/style"),
+                                     custom)
+                .has_value());
 
     auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, widget);
     REQUIRE(descriptor.has_value());
@@ -813,10 +822,12 @@ TEST_CASE("TextArea descriptor preserves layout overrides while layering theme c
     auto widget_root = std::string(fx.parent_view().getPath()) + "/widgets/text_area_layout";
     auto widget = SP::UI::Runtime::WidgetPath{widget_root};
 
-    REQUIRE(DetailNS::replace_single(fx.space, widget_root + "/meta/kind", std::string{"text_area"})
+    REQUIRE(DetailNS::replace_single(fx.space,
+                                     widget_space(widget_root, "/meta/kind"),
+                                     std::string{"text_area"})
                 .has_value());
     REQUIRE(DetailNS::replace_single(fx.space,
-                                     widget_root + "/state/text",
+                                     widget_space(widget_root, "/state/text"),
                                      std::string{"Layout data"})
                 .has_value());
 
@@ -829,7 +840,10 @@ TEST_CASE("TextArea descriptor preserves layout overrides while layering theme c
     custom.line_spacing = 8.0f;
     custom.wrap_lines = false;
     BuilderWidgets::UpdateOverrides(custom);
-    REQUIRE(DetailNS::replace_single(fx.space, widget_root + "/meta/style", custom).has_value());
+    REQUIRE(DetailNS::replace_single(fx.space,
+                                     widget_space(widget_root, "/meta/style"),
+                                     custom)
+                .has_value());
 
     auto descriptor = Declarative::LoadWidgetDescriptor(fx.space, widget);
     REQUIRE(descriptor.has_value());

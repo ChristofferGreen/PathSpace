@@ -1789,6 +1789,8 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
         constexpr auto THINK_MAX_MS                  = 3;
         constexpr auto EAT_MAX_MS                    = 2;
         constexpr auto BACKOFF_MAX_MS                = 4;
+        constexpr int  FORCED_STARVATION_FORK        = 0;
+        constexpr auto FORCED_STARVATION_WINDOW      = 40ms;
 
         struct PhilosopherStats {
             std::atomic<int> meals_eaten{0};
@@ -1857,6 +1859,16 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
             REQUIRE(pspace.insert(std::format("/fork/{}", i), 1).nbrValuesInserted == 1);
         }
 
+        // Temporarily remove one fork so starvation counters observe at least one timeout.
+        const std::string forced_fork_path = std::format("/fork/{}", FORCED_STARVATION_FORK);
+        auto              forced_fork_token = pspace.take<int>(forced_fork_path, Block{});
+        REQUIRE(forced_fork_token.has_value());
+
+        std::thread forced_fork_returner([&, forced_fork_path, fork_token = forced_fork_token.value()]() mutable {
+            std::this_thread::sleep_for(FORCED_STARVATION_WINDOW);
+            pspace.insert(forced_fork_path, fork_token);
+        });
+
         std::vector<std::thread> philosophers;
         philosophers.reserve(NUM_PHILOSOPHERS);
         for (int i = 0; i < NUM_PHILOSOPHERS; ++i) {
@@ -1878,6 +1890,10 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
             if (t.joinable()) {
                 t.join();
             }
+        }
+
+        if (forced_fork_returner.joinable()) {
+            forced_fork_returner.join();
         }
 
         CHECK(allFinished());

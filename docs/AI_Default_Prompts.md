@@ -14,6 +14,5 @@ Coding preference: avoid C++ exceptions entirely. When representing failures, us
    c. If Current_Plan_Doc is complete, verify references (use rg), append _Finished to its name, move it into docs/finished/, and update any docs linking to it.
    d. Write down anything you learn that is of interest in ./docs/Memory.md.
    e. Provide a final recap: code changes, test evidence, doc updates, next recommended task.
-   f. Make a commit without running tests
 5. No need to ask if the plan looks ok—just do it.
 ```

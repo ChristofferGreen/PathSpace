@@ -96,6 +96,19 @@ auto join_paths(std::string const& root, std::string const& tail) -> std::string
     return joined;
 }
 
+auto path_within(std::string const& root, std::string const& absolute) -> bool {
+    if (root.empty() || root == "/") {
+        return true;
+    }
+    if (absolute.size() < root.size()) {
+        return false;
+    }
+    if (absolute.compare(0, root.size(), root) != 0) {
+        return false;
+    }
+    return absolute.size() == root.size() || absolute[root.size()] == '/';
+}
+
 auto substitute_alias_tokens(std::string pattern, std::string const& alias) -> std::string {
     constexpr std::string_view kAliasToken{"{alias}"};
     std::size_t                position = 0;
@@ -227,6 +240,9 @@ Expected<ValuePayload> RemoteMountManager::materializeExecutionPayload(InputData
     if (type == typeid(double)) {
         return EncodeExecutionValue<double>(data);
     }
+    if (type == typeid(std::string)) {
+        return EncodeExecutionValue<std::string>(data);
+    }
 
     if (auto encoder = RemoteExecutionEncoderRegistry::instance().find(std::type_index(type));
         encoder.has_value()) {
@@ -308,26 +324,52 @@ public:
     void shutdown() override { state_ = nullptr; }
 
 private:
-    [[nodiscard]] static auto relativePath(Iterator iterator) -> std::string {
-        if (iterator.isAtEnd()) {
-            return std::string{"/"};
-        }
-        std::string result;
-        while (true) {
-            auto component = iterator.currentComponent();
-            if (!component.empty()) {
-                result.push_back('/');
-                result.append(component);
+    [[nodiscard]] auto relativePath(Iterator iterator) const -> std::string {
+        auto absolute = [&]() {
+            if (iterator.isAtEnd()) {
+                return std::string{"/"};
             }
-            if (iterator.isAtFinalComponent()) {
-                break;
+            std::string path;
+            while (true) {
+                auto component = iterator.currentComponent();
+                if (!component.empty()) {
+                    path.push_back('/');
+                    path.append(component);
+                }
+                if (iterator.isAtFinalComponent()) {
+                    break;
+                }
+                iterator = iterator.next();
             }
-            iterator = iterator.next();
+            if (path.empty()) {
+                path = "/";
+            }
+            return path;
+        }();
+
+        if (state_ == nullptr || state_->mount_path.empty() || state_->mount_path == "/") {
+            return absolute;
         }
-        if (result.empty()) {
-            result = "/";
+
+        auto const& mount_prefix = state_->mount_path;
+        if (absolute.size() < mount_prefix.size()
+            || absolute.compare(0, mount_prefix.size(), mount_prefix) != 0) {
+            return absolute;
         }
-        return result;
+
+        bool on_boundary = absolute.size() == mount_prefix.size()
+                           || absolute[mount_prefix.size()] == '/';
+        if (!on_boundary) {
+            return absolute;
+        }
+
+        auto remainder = absolute.substr(mount_prefix.size());
+        if (remainder.empty()) {
+            remainder = "/";
+        } else if (remainder.front() != '/') {
+            remainder.insert(remainder.begin(), '/');
+        }
+        return remainder;
     }
 
     RemoteMountManager* manager_{nullptr};
@@ -941,20 +983,7 @@ std::optional<Error> RemoteMountManager::performRead(MountState&      state,
         return error;
     }
 
-    auto raw = decode_base64(reply->value->data);
-    if (!raw.has_value()) {
-        recordError(state, raw.error(), false);
-        return raw.error();
-    }
-
-    auto snapshot_bytes = std::span<const std::uint8_t>(raw->data(), raw->size());
-    auto snapshot = NodeData::deserializeSnapshot(std::as_bytes(snapshot_bytes));
-    if (!snapshot.has_value()) {
-        auto error = make_error(Error::Code::InvalidType, "Failed to decode remote value");
-        recordError(state, error, false);
-        return error;
-    }
-    if (auto error = snapshot->deserialize(obj, metadata); error.has_value()) {
+    if (auto error = applyValuePayload(*reply->value, metadata, obj); error.has_value()) {
         recordError(state, *error, false);
         return error;
     }
@@ -1193,19 +1222,7 @@ std::optional<Error> RemoteMountManager::performWait(MountState&      state,
         recordError(state, error, false);
         return error;
     }
-    auto raw = decode_base64(remote_note.value->data);
-    if (!raw.has_value()) {
-        recordError(state, raw.error(), false);
-        return raw.error();
-    }
-    auto snapshot = NodeData::deserializeSnapshot(
-        std::as_bytes(std::span<const std::uint8_t>(raw->data(), raw->size())));
-    if (!snapshot.has_value()) {
-        auto error = make_error(Error::Code::InvalidType, "Failed to decode remote value");
-        recordError(state, error, false);
-        return error;
-    }
-    if (auto error = snapshot->deserialize(obj, metadata); error.has_value()) {
+    if (auto error = applyValuePayload(*remote_note.value, metadata, obj); error.has_value()) {
         recordError(state, *error, false);
         return error;
     }
@@ -1248,7 +1265,13 @@ void RemoteMountManager::configureMirrors(MountState& state) {
         diagnostics.max_nodes     = VisitOptions::kDefaultMaxChildren;
         diagnostics.interval      = std::chrono::milliseconds{750};
         diagnostics.enabled       = true;
-        configured.push_back(std::move(diagnostics));
+        auto substituted = substitute_alias_tokens(diagnostics.remote_root, state.options.alias);
+        if (path_within(state.normalized_export_root, substituted)) {
+            configured.push_back(std::move(diagnostics));
+        } else {
+            sp_log("RemoteMountManager skipping diagnostics mirror outside export root",
+                   "RemoteMountManager");
+        }
     }
 
     if (!has_mirror(RemoteMountClientOptions::MirrorTarget::MetricsSpace,
@@ -1266,7 +1289,13 @@ void RemoteMountManager::configureMirrors(MountState& state) {
         metrics.max_nodes     = 512;
         metrics.interval      = std::chrono::milliseconds{1000};
         metrics.enabled       = true;
-        configured.push_back(std::move(metrics));
+        auto substituted = substitute_alias_tokens(metrics.remote_root, state.options.alias);
+        if (path_within(state.normalized_export_root, substituted)) {
+            configured.push_back(std::move(metrics));
+        } else {
+            sp_log("RemoteMountManager skipping metrics mirror outside export root",
+                   "RemoteMountManager");
+        }
     }
 
     auto try_add_assignment = [&](RemoteMountClientOptions::MirrorPathOptions const& mirror) {

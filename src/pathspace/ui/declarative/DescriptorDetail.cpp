@@ -50,9 +50,14 @@ auto ReadOptionalValue(PathSpace& space, std::string const& path) -> SP::Expecte
 }
 
 auto parse_stroke_id(std::string const& id) -> std::optional<std::uint64_t> {
+    std::string_view view{id};
+    auto slash = view.find_last_of('/');
+    if (slash != std::string_view::npos) {
+        view.remove_prefix(slash + 1);
+    }
     std::uint64_t value = 0;
-    auto result = std::from_chars(id.data(), id.data() + id.size(), value);
-    if (result.ec != std::errc{} || result.ptr != id.data() + id.size()) {
+    auto result = std::from_chars(view.data(), view.data() + view.size(), value);
+    if (result.ec != std::errc{} || result.ptr != view.data() + view.size()) {
         return std::nullopt;
     }
     return value;
@@ -60,18 +65,30 @@ auto parse_stroke_id(std::string const& id) -> std::optional<std::uint64_t> {
 
 auto ReadThemeOverride(PathSpace& space, std::string const& base)
     -> SP::Expected<std::optional<std::string>> {
-    auto theme_path = base + "/style/theme";
-    auto value = ReadOptionalValue<std::string>(space, theme_path);
-    if (!value) {
-        return value;
-    }
-    if (value->has_value()) {
-        auto trimmed = value->value();
-        if (!trimmed.empty()) {
+    auto read_theme = [&](std::string const& path) -> SP::Expected<std::optional<std::string>> {
+        auto value = ReadOptionalValue<std::string>(space, path);
+        if (!value) {
             return value;
         }
+        if (value->has_value()) {
+            auto trimmed = value->value();
+            if (!trimmed.empty()) {
+                return value;
+            }
+        }
+        return std::optional<std::string>{};
+    };
+
+    auto canonical_path = SP::UI::Runtime::Widgets::WidgetSpacePath(base, "/style/theme");
+    auto canonical = read_theme(canonical_path);
+    if (!canonical) {
+        return canonical;
     }
-    return std::optional<std::string>{};
+    if (canonical->has_value()) {
+        return canonical;
+    }
+
+    return read_theme(base + "/style/theme");
 }
 
 auto ApplyThemeToButtonStyle(BuilderWidgets::ButtonStyle style,
@@ -472,19 +489,20 @@ auto ReadStackDescriptor(PathSpace& space, std::string const& root)
     for (auto const& panel_name : panels) {
         PanelRecord record{};
         record.panel.id = panel_name;
-        auto panel_root = SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/") + panel_name;
-        auto order_value = space.read<std::uint32_t, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/order"));
+        auto panel_root = SP::UI::Runtime::Widgets::WidgetSpacePath(
+            root, std::string{"/panels/"} + panel_name);
+        auto order_value = space.read<std::uint32_t, std::string>(panel_root + "/order");
         if (order_value) {
             record.order = *order_value;
         }
-        auto target_path = ReadOptionalValue<std::string>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/target"));
+        auto target_path = ReadOptionalValue<std::string>(space, panel_root + "/target");
         if (!target_path) {
             return std::unexpected(target_path.error());
         }
         if (target_path->has_value()) {
             record.panel.target = **target_path;
         }
-        auto visible = ReadOptionalValue<bool>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/visible"));
+        auto visible = ReadOptionalValue<bool>(space, panel_root + "/visible");
         if (!visible) {
             return std::unexpected(visible.error());
         }
@@ -493,15 +511,18 @@ auto ReadStackDescriptor(PathSpace& space, std::string const& root)
     }
 
     if (ordered.empty()) {
-        auto children_root = SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/children");
-        auto children = space.listChildren(SP::ConcretePathStringView{children_root});
+        auto children = SP::UI::Runtime::Widgets::WidgetChildNames(space, root);
         for (auto const& panel_name : children) {
             StackPanelDescriptor panel{};
             panel.id = panel_name;
-            auto target_path = ReadOptionalValue<std::string>(space,
-                                                             SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/") + panel_name + "/target");
+            auto panel_root = SP::UI::Runtime::Widgets::WidgetSpacePath(
+                root, std::string{"/panels/"} + panel_name);
+            auto target_path = ReadOptionalValue<std::string>(space, panel_root + "/target");
             if (target_path && target_path->has_value()) {
                 panel.target = **target_path;
+            } else {
+                auto child_root = SP::UI::Runtime::Widgets::WidgetChildRoot(root, panel_name);
+                panel.target = SP::UI::Runtime::Widgets::WidgetSpaceRoot(child_root);
             }
             panel.visible = panel_name == descriptor.active_panel;
             ordered.push_back(PanelRecord{std::move(panel), static_cast<std::uint32_t>(ordered.size())});
@@ -839,8 +860,9 @@ auto ReadPaintSurfaceDescriptor(PathSpace& space, std::string const& root)
         if (!parsed) {
             continue;
         }
-        auto stroke_root = SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/") + id;
-        auto meta = ReadRequired<PaintStrokeMeta>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta"));
+        auto stroke_root = strokes_root;
+        stroke_root.append("/").append(id);
+        auto meta = ReadRequired<PaintStrokeMeta>(space, stroke_root + "/meta");
         if (!meta) {
             return std::unexpected(meta.error());
         }

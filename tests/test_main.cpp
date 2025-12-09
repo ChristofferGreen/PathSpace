@@ -2,9 +2,50 @@
 #include "third_party/doctest.h"
 #include "log/TaggedLogger.hpp"
 
+#include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <string_view>
+#include <vector>
+
+namespace {
+
+std::vector<std::string> split_suite_filters(const char* raw) {
+    std::vector<std::string> filters;
+    if (!raw || *raw == '\0') {
+        return filters;
+    }
+    std::string current;
+    auto flush_current = [&]() {
+        if (current.empty()) {
+            return;
+        }
+        size_t start = 0;
+        size_t end = current.size();
+        while (start < end && std::isspace(static_cast<unsigned char>(current[start]))) {
+            ++start;
+        }
+        while (end > start && std::isspace(static_cast<unsigned char>(current[end - 1]))) {
+            --end;
+        }
+        if (start < end) {
+            filters.emplace_back(current.substr(start, end - start));
+        }
+        current.clear();
+    };
+    for (const char* p = raw; *p != '\0'; ++p) {
+        if (*p == ',' || *p == ';') {
+            flush_current();
+        } else {
+            current.push_back(*p);
+        }
+    }
+    flush_current();
+    return filters;
+}
+
+}  // namespace
 
 struct ShowTestStart : public doctest::IReporter {
     ShowTestStart(const doctest::ContextOptions& /* in */) {
@@ -55,6 +96,34 @@ int main(int argc, char** argv) {
 
     // Apply command line arguments
     context.applyCommandLine(argc, argv);
+
+    if (const char* include_case = std::getenv("PATHSPACE_TEST_CASE")) {
+        if (*include_case != '\0') {
+            context.addFilter("test-case", include_case);
+        }
+    }
+    if (const char* exclude_case = std::getenv("PATHSPACE_TEST_CASE_EXCLUDE")) {
+        if (*exclude_case != '\0') {
+            context.addFilter("test-case-exclude", exclude_case);
+        }
+    }
+    if (const char* include_suite = std::getenv("PATHSPACE_TEST_SUITE")) {
+        if (*include_suite != '\0') {
+            std::vector<std::string> suite_filters = split_suite_filters(include_suite);
+            if (suite_filters.empty()) {
+                context.addFilter("test-suite", include_suite);
+            } else {
+                for (const std::string& filter : suite_filters) {
+                    context.addFilter("test-suite", filter.c_str());
+                }
+            }
+        }
+    }
+    if (const char* exclude_suite = std::getenv("PATHSPACE_TEST_SUITE_EXCLUDE")) {
+        if (*exclude_suite != '\0') {
+            context.addFilter("test-suite-exclude", exclude_suite);
+        }
+    }
 
 #ifdef SP_LOG_DEBUG
     // Initialize thread name for logging

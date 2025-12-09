@@ -88,7 +88,7 @@ Ship the resource-backed font pipeline described in `docs/finished/Plan_SceneGra
 - Extend logging/test harnesses to capture font diagnostics during the 5× loop.
 
 **Phase 5 – Rollout & Hardening (ongoing)**
-- Run perf guardrail + renderer loop to establish baseline deltas (expect initial regression due to shaping; track metrics).
+- Run the renderer and widget_pipeline benchmarks to establish baseline deltas (expect initial regression due to shaping; track metrics).
 - Provide rollback flag (`PATHSPACE_UI_FONT_MANAGER_ENABLED`) allowing fallback to bitmap glyphs until confidence is high.
 - Update docs (`AI_Debugging_Playbook.md`, `Widget_Contribution_Quickstart.md`, `Plan_SceneGraph_Renderer_Finished.md`) with new troubleshooting steps.
 

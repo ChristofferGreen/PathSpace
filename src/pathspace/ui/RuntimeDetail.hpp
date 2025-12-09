@@ -12,6 +12,7 @@
 #include "DrawableUtils.hpp"
 
 #include "core/Out.hpp"
+#include "core/PathSpaceContext.hpp"
 #include "path/UnvalidatedPath.hpp"
 #include "task/IFutureAny.hpp"
 
@@ -32,6 +33,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
@@ -102,52 +104,177 @@ inline auto metal_surfaces_cache_mutex() -> std::mutex& {
 }
 #endif
 
-struct SurfaceCacheWatchHandle;
-
-inline auto surface_cache_watch_registry()
-    -> std::unordered_map<std::string, std::weak_ptr<SurfaceCacheWatchHandle>>& {
-    static std::unordered_map<std::string, std::weak_ptr<SurfaceCacheWatchHandle>> registry;
-    return registry;
-}
+struct SurfaceCacheWatchEntry {
+    std::string                               target_key;
+    std::string                               watch_path;
+    std::weak_ptr<SP::PathSpaceContext>       context;
+    PathSpace*                                space = nullptr;
+    std::thread                               worker;
+    std::atomic<bool>                         stop{false};
+    std::atomic<bool>                         finished{false};
+};
 
 inline auto surface_cache_watch_mutex() -> std::mutex& {
     static std::mutex mutex;
     return mutex;
 }
 
-inline void evict_surface_cache_entry(std::string const& key);
+inline auto surface_cache_watch_entries()
+    -> std::unordered_map<std::string, std::unique_ptr<SurfaceCacheWatchEntry>>& {
+    static std::unordered_map<std::string, std::unique_ptr<SurfaceCacheWatchEntry>> entries;
+    return entries;
+}
 
-struct SurfaceCacheWatchHandle {
-    explicit SurfaceCacheWatchHandle(std::string target)
-        : target_key(std::move(target)) {}
-
-    ~SurfaceCacheWatchHandle() {
-        evict_surface_cache_entry(target_key);
+inline auto collect_finished_surface_cache_watches_locked()
+    -> std::vector<std::unique_ptr<SurfaceCacheWatchEntry>> {
+    std::vector<std::unique_ptr<SurfaceCacheWatchEntry>> finished;
+    auto&                                               entries = surface_cache_watch_entries();
+    for (auto it = entries.begin(); it != entries.end();) {
+        if (it->second && it->second->finished.load(std::memory_order_acquire)) {
+            finished.push_back(std::move(it->second));
+            it = entries.erase(it);
+        } else {
+            ++it;
+        }
     }
+    return finished;
+}
 
-    std::string target_key;
-};
+inline void stop_and_join_surface_cache_watch(std::unique_ptr<SurfaceCacheWatchEntry> entry) {
+    if (!entry) {
+        return;
+    }
+    entry->stop.store(true, std::memory_order_release);
+    if (auto ctx = entry->context.lock()) {
+        ctx->notify(entry->watch_path);
+    }
+    if (entry->worker.joinable()) {
+        entry->worker.join();
+    }
+}
+
+inline void shutdown_surface_cache_watches();
+
+inline void register_surface_cache_watch_shutdown_hook() {
+    static std::once_flag once;
+    std::call_once(once, []() {
+        std::atexit([]() {
+            shutdown_surface_cache_watches();
+        });
+    });
+}
+
+inline void prune_surface_cache_watches() {
+    std::vector<std::unique_ptr<SurfaceCacheWatchEntry>> finished;
+    {
+        std::lock_guard<std::mutex> guard(surface_cache_watch_mutex());
+        finished = collect_finished_surface_cache_watches_locked();
+    }
+    for (auto& entry : finished) {
+        stop_and_join_surface_cache_watch(std::move(entry));
+    }
+}
+
+inline void shutdown_surface_cache_watches() {
+    std::vector<std::unique_ptr<SurfaceCacheWatchEntry>> pending;
+    {
+        std::lock_guard<std::mutex> guard(surface_cache_watch_mutex());
+        auto&                       entries = surface_cache_watch_entries();
+        for (auto& [_, entry] : entries) {
+            pending.push_back(std::move(entry));
+        }
+        entries.clear();
+    }
+    for (auto& entry : pending) {
+        stop_and_join_surface_cache_watch(std::move(entry));
+    }
+}
 
 inline void evict_surface_cache_entry(std::string const& key) {
     {
-        auto& mutex = surfaces_cache_mutex();
-        std::lock_guard<std::mutex> lock{mutex};
+        std::lock_guard<std::mutex> lock(surfaces_cache_mutex());
         surfaces_cache().erase(key);
     }
 #if PATHSPACE_UI_METAL
     {
-        auto& mutex = metal_surfaces_cache_mutex();
-        std::lock_guard<std::mutex> lock{mutex};
+        std::lock_guard<std::mutex> lock(metal_surfaces_cache_mutex());
         metal_surfaces_cache().erase(key);
     }
 #endif
+}
 
-    auto& watch_mutex = surface_cache_watch_mutex();
-    std::lock_guard<std::mutex> watch_lock{watch_mutex};
-    auto& registry = surface_cache_watch_registry();
-    auto it = registry.find(key);
-    if (it != registry.end() && it->second.expired()) {
-        registry.erase(it);
+inline auto surface_cache_watch_marker_missing(PathSpace& space,
+                                                std::string const& watch_path) -> bool {
+    auto marker = read_optional<bool>(space, watch_path);
+    if (!marker) {
+        return false;
+    }
+    return !marker->has_value();
+}
+
+inline void run_surface_cache_watch(SurfaceCacheWatchEntry* entry) {
+    auto const& watch_path = entry->watch_path;
+    while (!entry->stop.load(std::memory_order_acquire)) {
+        auto ctx = entry->context.lock();
+        if (!ctx || ctx->isShuttingDown()) {
+            break;
+        }
+
+        if (surface_cache_watch_marker_missing(*entry->space, watch_path)) {
+            evict_surface_cache_entry(entry->target_key);
+            break;
+        }
+
+        auto guard    = ctx->wait(watch_path);
+        auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(1);
+        guard.wait_until(deadline, [&]() {
+            return entry->stop.load(std::memory_order_acquire)
+                   || ctx->isShuttingDown()
+                   || surface_cache_watch_marker_missing(*entry->space, watch_path);
+        });
+    }
+    entry->finished.store(true, std::memory_order_release);
+}
+
+inline void activate_surface_cache_watch(PathSpace& space,
+                                  std::string const& target_key) {
+    auto context = space.sharedContext();
+    if (!context) {
+        return;
+    }
+
+    register_surface_cache_watch_shutdown_hook();
+
+    std::vector<std::unique_ptr<SurfaceCacheWatchEntry>> finished;
+    std::unique_ptr<SurfaceCacheWatchEntry>               replaced;
+
+    {
+        std::lock_guard<std::mutex> guard(surface_cache_watch_mutex());
+        auto&                       entries = surface_cache_watch_entries();
+        finished = collect_finished_surface_cache_watches_locked();
+        auto it = entries.find(target_key);
+        if (it != entries.end()) {
+            if (!it->second->finished.load(std::memory_order_acquire)) {
+                return;
+            }
+            replaced = std::move(it->second);
+            entries.erase(it);
+        }
+
+        auto entry = std::make_unique<SurfaceCacheWatchEntry>();
+        entry->target_key = target_key;
+        entry->watch_path = target_key + std::string{"/diagnostics/cacheWatch"};
+        entry->context    = context;
+        entry->space      = &space;
+        entry->worker     = std::thread(run_surface_cache_watch, entry.get());
+        entries.emplace(target_key, std::move(entry));
+    }
+
+    for (auto& entry : finished) {
+        stop_and_join_surface_cache_watch(std::move(entry));
+    }
+    if (replaced) {
+        stop_and_join_surface_cache_watch(std::move(replaced));
     }
 }
 
@@ -509,38 +636,23 @@ inline auto replace_single(PathSpace& space,
 
 inline auto ensure_surface_cache_watch(PathSpace& space,
                                 std::string const& target_key) -> SP::Expected<void> {
-    std::shared_ptr<SurfaceCacheWatchHandle> token;
-    {
-        auto& mutex = surface_cache_watch_mutex();
-        std::lock_guard<std::mutex> lock{mutex};
-        auto& registry = surface_cache_watch_registry();
-        auto it = registry.find(target_key);
-        if (it != registry.end()) {
-            if (!it->second.expired()) {
-                return {};
-            }
-            registry.erase(it);
+    if (auto* disable = std::getenv("PATHSPACE_DISABLE_SURFACE_CACHE_WATCH")) {
+        if (*disable != '\0' && std::strcmp(disable, "0") != 0) {
+            return {};
         }
-        token = std::make_shared<SurfaceCacheWatchHandle>(target_key);
-        registry.emplace(target_key, token);
     }
-
+    prune_surface_cache_watches();
     auto watch_path = target_key + std::string{"/diagnostics/cacheWatch"};
-    auto inserted = space.insert(watch_path, token);
-    if (!inserted.errors.empty()) {
-        auto error = inserted.errors.front();
-        auto& mutex = surface_cache_watch_mutex();
-        std::lock_guard<std::mutex> lock{mutex};
-        auto& registry = surface_cache_watch_registry();
-        auto it = registry.find(target_key);
-        if (it != registry.end()) {
-            auto alive = it->second.lock();
-            if (!alive || alive.get() == token.get()) {
-                registry.erase(it);
-            }
-        }
-        return std::unexpected(error);
+    auto marker     = read_optional<bool>(space, watch_path);
+    if (!marker) {
+        return std::unexpected(marker.error());
     }
+    if (!marker->has_value()) {
+        if (auto status = replace_single<bool>(space, watch_path, true); !status) {
+            return status;
+        }
+    }
+    activate_surface_cache_watch(space, target_key);
     return {};
 }
 
