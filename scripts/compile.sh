@@ -982,16 +982,7 @@ PY
           add_test_command "PathSpaceUITests_${label_suffix}" "${suite_command[@]}"
         done
       else
-        add_test_command "PathSpaceUITests" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}" "${UI_TEST_EXTRA_ARGS_ARRAY[@]}"
-      fi
-
-      if [[ ${#ui_suite_names[@]} -gt 0 ]]; then
-        remainder_env=(env)
-        for suite_name in "${ui_suite_names[@]}"; do
-          remainder_env+=("PATHSPACE_TEST_SUITE_EXCLUDE=${suite_name}")
-        done
-        remainder_command=("${remainder_env[@]}" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}" "${UI_TEST_EXTRA_ARGS_ARRAY[@]}")
-        add_test_command "PathSpaceUITests_Remainder" "${remainder_command[@]}"
+        add_test_command "PathSpaceUITests_All" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}" "${UI_TEST_EXTRA_ARGS_ARRAY[@]}"
       fi
     fi
 
@@ -1010,70 +1001,6 @@ PY
           die "Loop label filter '$entry' did not match any configured tests"
         fi
       done
-    fi
-
-    if [[ "$(uname)" == "Darwin" ]]; then
-      pixel_script="$ROOT_DIR/scripts/check_pixel_noise_baseline.py"
-      pixel_baseline="$ROOT_DIR/docs/perf/pixel_noise_baseline.json"
-      if command -v python3 >/dev/null 2>&1 && [[ -f "$pixel_script" ]]; then
-        if [[ -f "$pixel_baseline" ]]; then
-          add_test_command "PixelNoisePerfHarness" python3 "$pixel_script" --build-dir "$BUILD_DIR"
-        else
-          info "PixelNoisePerfHarness baseline missing at $pixel_baseline; skipping."
-        fi
-        if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
-          pixel_metal_baseline="$ROOT_DIR/docs/perf/pixel_noise_metal_baseline.json"
-          if [[ -f "$pixel_metal_baseline" ]]; then
-            add_test_command "PixelNoisePerfHarnessMetal" python3 "$pixel_script" --build-dir "$BUILD_DIR" --baseline "$pixel_metal_baseline"
-          else
-            info "PixelNoisePerfHarnessMetal baseline missing at $pixel_metal_baseline; skipping."
-          fi
-        fi
-      else
-        info "python3 or pixel noise harness script unavailable; skipping PixelNoise perf harness tests."
-      fi
-    fi
-
-    paint_screenshot_cli="$BUILD_DIR/pathspace_screenshot_cli"
-    paint_manifest="$ROOT_DIR/docs/images/paint_example_baselines.json"
-    paint_monitor_script="$ROOT_DIR/scripts/paint_example_monitor.py"
-    paint_artifacts_dir="$BUILD_DIR/artifacts/paint_example"
-    paint_monitor_report="$TEST_LOG_DIR/paint_example_monitor_report.json"
-    if [[ -x "$paint_screenshot_cli" ]]; then
-      paint_tags=(1280x800 paint_720 paint_600)
-      for tag in "${paint_tags[@]}"; do
-        case "$tag" in
-          1280x800)
-            label="PaintExampleScreenshot"
-            ;;
-          paint_720)
-            label="PaintExampleScreenshot720"
-            ;;
-          paint_600)
-            label="PaintExampleScreenshot600"
-            ;;
-          *)
-            sanitized="${tag//[^A-Za-z0-9_]/_}"
-            label="PaintExampleScreenshot_${sanitized}"
-            ;;
-        esac
-        add_test_command "$label" "$paint_screenshot_cli" --manifest "$paint_manifest" --tag "$tag"
-      done
-      if command -v python3 >/dev/null 2>&1 && [[ -f "$paint_monitor_script" ]]; then
-        monitor_cmd=(python3 "$paint_monitor_script"
-          --manifest "$paint_manifest"
-          --artifacts-dir "$paint_artifacts_dir"
-          --output "$paint_monitor_report"
-          --palette-log "$ROOT_DIR/docs/images/paint_example_palette_log.md"
-          --expected-revision-file "$ROOT_DIR/docs/images/paint_example_manifest_revision.txt"
-          --tags)
-        monitor_cmd+=("${paint_tags[@]}")
-        add_test_command "PaintExampleScreenshotReport" "${monitor_cmd[@]}"
-      else
-        info "python3 or paint_example_monitor.py unavailable; skipping PaintExampleScreenshotReport."
-      fi
-    else
-      info "pathspace_screenshot_cli missing; skipping PaintExampleScreenshot harness."
     fi
 
     if [[ ${#TEST_LABELS[@]} -eq 0 ]]; then

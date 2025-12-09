@@ -248,7 +248,7 @@ software readbacks fail.
 - **Layout-driven resizing** — write `layout/computed/size = {width,height}` (layout units) whenever a paint surface’s layout changes, then call `PaintRuntime::ApplyLayoutSize`. The helper resolves the owning scene (`/structure/window/<window>/metrics/dpi`), converts layout units to pixels, rewrites `render/buffer/metrics/{width,height,dpi}` plus `render/buffer/viewport`, increments the buffer revision, and enqueues a full-surface dirty hint so SceneLifecycle and the GPU uploader pick up the new bounds. `tests/ui/test_DeclarativePaintSurface.cpp` (“Paint surface layout resizing updates metrics and viewport”) keeps this flow covered, ensuring grow/shrink cycles preserve stroke history and leave the widget in `render/gpu/state = DirtyFull` when GPU staging is enabled.
 - **Uploader lifecycle** — `SP::System::LaunchStandard` starts the uploader unless `LaunchOptions::start_paint_gpu_uploader` is `false`. The worker enumerates GPU-enabled paint widgets under `/system/applications/*/{windows,widgets}` each poll, drains dirty rect queues, replays stroke history via `PaintRuntime::LoadStrokeRecords`, writes the serialized `PaintTexturePayload` to `assets/texture`, and clears pending hints. Upload timings land in `widgets/<id>/render/gpu/stats` while global metrics/logs live at `/system/widgets/runtime/paint_gpu/{metrics,log/errors/queue}`.
 - **Presenter coordination** — SceneLifecycle forwards `render/buffer/pendingDirty` hints into the active renderer target, so even when GPU uploads lag the CPU buckets stay in sync. Presenters bind `assets/texture` whenever `render/gpu/state == Ready`; otherwise they continue sampling the CPU buffer.
-- **Diagnostics & tests** — `tests/ui/test_DeclarativePaintSurface.cpp` exercises the uploader end-to-end (waiting for `render/gpu/state` to reach `Ready`, verifying staged pixels and stats). `examples/paint_example --gpu-smoke[=png]` plus the `PaintExampleScreenshot` CTest target keep the staged texture in parity with the paint scene and fail fast if uploads fall back to the software rasterizer. Check `/system/widgets/runtime/paint_gpu/log/errors/queue` when uploads stall, and watch `widgets/<id>/render/gpu/stats.failures_total` or the global `*_metrics/failures_total` counter inside the compile-loop logs.
+- **Diagnostics & tests** — `tests/ui/test_DeclarativePaintSurface.cpp` exercises the uploader end-to-end (waiting for `render/gpu/state` to reach `Ready`, verifying staged pixels and stats). `examples/paint_example --gpu-smoke[=png]` plus the standalone `pathspace_screenshot_cli` keep the staged texture in parity with the paint scene; run the CLI manually (with the desired manifest/tag) when you need to diff captures or revalidate baselines. Check `/system/widgets/runtime/paint_gpu/log/errors/queue` when uploads stall, and watch `widgets/<id>/render/gpu/stats.failures_total` or the global `*_metrics/failures_total` counter inside the compile-loop logs.
 
 ## 5. Example Workflow
 1. Bootstrap via the helper in `examples/declarative_example_shared.hpp`:
@@ -306,13 +306,13 @@ software readbacks fail.
   - `ctest --test-dir build -R PathSpaceUITests --output-on-failure`
   - `ctest --test-dir build -R Declarative --output-on-failure` (widgets,
     lifecycle, paint surface, theme tests).
-  - `PaintExampleScreenshot*` + `PixelNoisePerfHarness*` tests require the
-    `ui_gpu_capture` resource lock; run them serially when reproducing locally.
-    When Metal capture flakes on headless hosts, set
-    `PATHSPACE_SCREENSHOT_FORCE_SOFTWARE=1` (or run `pathspace_screenshot_cli
-    --force-software`) to force the deterministic software fallback. Without
-    the guard, the harness now fails explicitly if it had to fall back so loop
-    jobs notice missing hardware captures.
+  - The screenshot CLI (`pathspace_screenshot_cli`) and `scripts/paint_example_monitor.py`
+    remain available for manual paint-example validation even though the old
+    CTest wrappers were removed. When Metal capture flakes on headless hosts,
+    set `PATHSPACE_SCREENSHOT_FORCE_SOFTWARE=1` (or run the CLI with
+    `--force-software`) to force the deterministic software fallback; without
+    the guard, the helper still exits non-zero if it had to fall back so you
+    notice missing hardware captures.
 - **Examples**: use the helper CLI wrappers (`examples/widgets_example`,
   `examples/paint_example`, `examples/declarative_hello_example`,
   `examples/devices_example --paint-controls-demo`) only after running the
