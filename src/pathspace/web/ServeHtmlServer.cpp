@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <cmath>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -73,11 +74,13 @@ std::string make_ui_metrics_publish_path(std::string const& apps_root) {
     return path;
 }
 
-auto build_ui_diagnostics_json(PathSpace& space) -> std::optional<nlohmann::json> {
+auto build_ui_diagnostics_json(PathSpace& space,
+                               std::function<void(std::string_view)> const& log_error)
+    -> std::optional<nlohmann::json> {
     auto summaries = UI::Runtime::Diagnostics::CollectTargetDiagnostics(space);
     if (!summaries) {
-        std::cerr << "[serve_html] Failed to read UI diagnostics: "
-                  << SP::describeError(summaries.error()) << "\n";
+        log_error(std::string{"[serve_html] Failed to read UI diagnostics: "}
+                  + SP::describeError(summaries.error()));
         return std::nullopt;
     }
 
@@ -94,7 +97,39 @@ void ResetServeHtmlStopFlag() {
     g_should_stop.store(false);
 }
 
-int RunServeHtmlServer(ServeHtmlSpace& space, ServeHtmlOptions const& options) {
+int RunServeHtmlServerWithStopFlag(ServeHtmlSpace&                     space,
+                                   ServeHtmlOptions const&            options,
+                                   std::atomic<bool>&                 should_stop,
+                                   ServeHtmlLogHooks const&           log_hooks,
+                                   std::function<void(SP::Expected<void>)> on_listen) {
+    auto log_info = [&](std::string_view message) {
+        if (log_hooks.info) {
+            log_hooks.info(message);
+            return;
+        }
+        std::cout << message << '\n';
+    };
+
+    auto log_error = [&](std::string_view message) {
+        if (log_hooks.error) {
+            log_hooks.error(message);
+            return;
+        }
+        std::cerr << message << '\n';
+    };
+
+    std::atomic<bool> listen_reported{false};
+    auto report_listen_status = [&](SP::Expected<void> status) {
+        if (!on_listen) {
+            return;
+        }
+        bool expected = false;
+        if (!listen_reported.compare_exchange_strong(expected, true)) {
+            return;
+        }
+        on_listen(std::move(status));
+    };
+
     if (options.seed_demo) {
         Demo::SeedDemoApplication(space, options);
     }
@@ -107,9 +142,10 @@ int RunServeHtmlServer(ServeHtmlSpace& space, ServeHtmlOptions const& options) {
             interval = std::chrono::milliseconds(200);
         }
         ServeHtmlOptions demo_options = options;
-        demo_refresh_thread = std::thread([&space, demo_options, interval, &demo_refresh_stop]() mutable {
-            Demo::RunDemoRefresh(space, demo_options, interval, demo_refresh_stop, g_should_stop);
-        });
+        demo_refresh_thread = std::thread(
+            [&space, demo_options, interval, &demo_refresh_stop, &should_stop]() mutable {
+                Demo::RunDemoRefresh(space, demo_options, interval, demo_refresh_stop, should_stop);
+            });
     }
 
     SessionConfig session_config{
@@ -119,7 +155,9 @@ int RunServeHtmlServer(ServeHtmlSpace& space, ServeHtmlOptions const& options) {
     };
     auto session_store_ptr = make_session_store(space, options, session_config);
     if (!session_store_ptr) {
-        std::cerr << "[serve_html] failed to initialize session store\n";
+        log_error("[serve_html] failed to initialize session store");
+        report_listen_status(std::unexpected(
+            SP::Error{SP::Error::Code::InvalidError, "failed to initialize session store"}));
         return EXIT_FAILURE;
     }
     SessionStore& session_store = *session_store_ptr;
@@ -153,35 +191,37 @@ int RunServeHtmlServer(ServeHtmlSpace& space, ServeHtmlOptions const& options) {
                                               metrics_publish_path,
                                               ui_metrics_publish_path,
                                               &metrics,
-                                              &metrics_publish_stop]() {
+                                              &metrics_publish_stop,
+                                              &log_error,
+                                              &should_stop]() {
             while (!metrics_publish_stop.load(std::memory_order_acquire)
-                   && !g_should_stop.load(std::memory_order_acquire)) {
+                   && !should_stop.load(std::memory_order_acquire)) {
                 if (!metrics_publish_path.empty()) {
                     auto snapshot   = metrics.capture_snapshot();
                     auto serialized = metrics.snapshot_json(snapshot).dump();
                     auto status = replace_single_value(space, metrics_publish_path, serialized);
                     if (!status) {
-                        std::cerr << "[serve_html] Failed to publish metrics at "
-                                  << metrics_publish_path << ": "
-                                  << SP::describeError(status.error()) << "\n";
+                        log_error(std::string{"[serve_html] Failed to publish metrics at "}
+                                  + metrics_publish_path + ": "
+                                  + SP::describeError(status.error()));
                     }
                 }
 
                 if (!ui_metrics_publish_path.empty()) {
-                    if (auto ui_json = build_ui_diagnostics_json(space)) {
+                    if (auto ui_json = build_ui_diagnostics_json(space, log_error)) {
                         auto status = replace_single_value(space,
                                                            ui_metrics_publish_path,
                                                            ui_json->dump());
                         if (!status) {
-                            std::cerr << "[serve_html] Failed to publish UI diagnostics at "
-                                      << ui_metrics_publish_path << ": "
-                                      << SP::describeError(status.error()) << "\n";
+                            log_error(std::string{"[serve_html] Failed to publish UI diagnostics at "}
+                                      + ui_metrics_publish_path + ": "
+                                      + SP::describeError(status.error()));
                         }
                     }
                 }
 
                 for (int i = 0; i < 10 && !metrics_publish_stop.load(std::memory_order_acquire)
-                                     && !g_should_stop.load(std::memory_order_acquire);
+                                     && !should_stop.load(std::memory_order_acquire);
                      ++i) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 }
@@ -236,7 +276,7 @@ int RunServeHtmlServer(ServeHtmlSpace& space, ServeHtmlOptions const& options) {
             return;
         }
 
-        auto payload = build_ui_diagnostics_json(space);
+        auto payload = build_ui_diagnostics_json(space, log_error);
         if (!payload) {
             respond_server_error(res, "failed to build UI diagnostics snapshot");
             return;
@@ -249,28 +289,46 @@ int RunServeHtmlServer(ServeHtmlSpace& space, ServeHtmlOptions const& options) {
     auto html_controller = HtmlController::Create(http_context);
     html_controller->register_routes(server);
 
-    auto sse_broadcaster = SseBroadcaster::Create(http_context, g_should_stop);
+    auto sse_broadcaster = SseBroadcaster::Create(http_context, should_stop);
     sse_broadcaster->register_routes(server);
 
     std::atomic<bool> listen_failed{false};
     std::thread server_thread([&]() {
         if (!server.listen(options.host.c_str(), options.port)) {
-            if (!g_should_stop.load()) {
-                std::cerr << "[serve_html] Failed to bind " << options.host << ":" << options.port << "\n";
+            if (!should_stop.load()) {
                 listen_failed.store(true);
-                g_should_stop.store(true);
+                should_stop.store(true);
+                log_error(std::string{"[serve_html] Failed to bind "} + options.host + ":"
+                          + std::to_string(options.port));
             }
         }
     });
 
-    std::cout << "[serve_html] Listening on http://" << options.host << ":" << options.port << "\n";
+    log_info(std::string{"[serve_html] Listening on http://"} + options.host + ":"
+             + std::to_string(options.port));
     if (options.seed_demo) {
-        std::cout << "[serve_html] Try http://" << options.host << ":" << options.port << "/apps/"
-                  << Demo::kDemoApp << "/" << Demo::kDemoView << std::endl;
+        std::string demo_message = std::string{"[serve_html] Try http://"} + options.host + ":"
+                                   + std::to_string(options.port) + "/apps/"
+                                   + std::string{Demo::kDemoApp} + "/" + std::string{Demo::kDemoView};
+        log_info(demo_message);
     }
 
-    while (!g_should_stop.load() && !listen_failed.load()) {
+    while (!should_stop.load(std::memory_order_acquire) && !listen_failed.load(std::memory_order_acquire)) {
+        if (!listen_reported.load(std::memory_order_acquire) && server.is_running()) {
+            report_listen_status({});
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    if (!listen_reported.load(std::memory_order_acquire)) {
+        if (listen_failed.load(std::memory_order_acquire)) {
+            report_listen_status(std::unexpected(SP::Error{
+                SP::Error::Code::InvalidError,
+                "failed to bind ServeHtml listener"}));
+        } else if (should_stop.load(std::memory_order_acquire)) {
+            report_listen_status(std::unexpected(SP::Error{SP::Error::Code::InvalidError,
+                                                           "ServeHtml stop requested"}));
+        }
     }
 
     demo_refresh_stop.store(true, std::memory_order_release);
@@ -289,6 +347,10 @@ int RunServeHtmlServer(ServeHtmlSpace& space, ServeHtmlOptions const& options) {
     }
 
     return listen_failed.load() ? EXIT_FAILURE : EXIT_SUCCESS;
+}
+
+int RunServeHtmlServer(ServeHtmlSpace& space, ServeHtmlOptions const& options) {
+    return RunServeHtmlServerWithStopFlag(space, options, g_should_stop, {}, {});
 }
 
 } // namespace SP::ServeHtml

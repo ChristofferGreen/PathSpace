@@ -85,7 +85,7 @@ Declarative widgets replaced the imperative builders, but each widget still reli
 - Future mailbox topics (`layout/request_resize`) can inform a parent box that a child prefers a new weight or min size; the capsule reducer applies the request and republishes an updated render package without touching global reducers.
 
 ### 4.7 HTML Server Compatibility
-- The capsule runtime must continue to mirror outputs required by the HTML adapter plans (`docs/finished/Plan_ServeHtml_Modularization_Finished.md`, `Plan_PathSpaceHtmlServer.md`). Each `WidgetSurface` publishes an HTML-friendly descriptor (dimensions, premultiplied pixels, optional vector commands) under the same `renderers/<rid>/targets/html/*` namespaces the server already streams.
+- The capsule runtime must continue to mirror outputs required by the HTML adapter plans (`docs/finished/Plan_ServeHtml_Modularization_Finished.md`, `docs/finished/Plan_PathSpaceHtmlServer_Finished.md`). Each `WidgetSurface` publishes an HTML-friendly descriptor (dimensions, premultiplied pixels, optional vector commands) under the same `renderers/<rid>/targets/html/*` namespaces the server already streams.
 - Each capsule emits two representations:
   1. A bitmap `WidgetSurface` for native compositors.
   2. A lightweight HTML payload (`capsule/html/{dom,css,svg}`) only for widgets that map cleanly onto native HTML controls (buttons, labels, lists, sliders, toggles, inputs). Rich surfaces (paint canvas, bespoke viewers) never expose an HTML fragment—they stick to the bitmap/canvas path so we do not reinvent complex rendering in the browser. ServeHtml can therefore choose per widget: use the semantic HTML snippet when the widget is part of the “HTML-capable” set, or fall back to the rendered bitmap otherwise.

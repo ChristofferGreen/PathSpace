@@ -306,7 +306,7 @@ Use this section as the canonical reference when someone asks “how do we run t
 - Open TODOs captured in later phases: CDN-backed asset replication, config-driven renderer mapping, and broader integration tests (see Next Actions below).
 
 ## Dual Delivery Demo
-- `examples/paint_example` and `examples/widgets_example` now expose `--serve-html` (plus `--serve-html-{host,port,view,target,user,password}` and `--serve-html-allow-unauthenticated`) to run the native window and browser in parallel.
+- `examples/paint_example` and `examples/widgets_example` now expose `--serve-html` (plus `--serve-html-{host,port,view,target,user,password}` and `--serve-html-allow-unauthenticated`) to run the native window and browser in parallel. *(Update: December 11, 2025 — these flags were superseded by the `--html-server` PathSpaceHtmlServer helper; details remain here for historical reference.)*
 - The flag mounts an HTML renderer target (`--serve-html-target`) next to the native view, mirrors every present via `Window::Present(..., view="--serve-html-view")`, and spawns an embedded `pathspace_serve_html` thread bound to the current `PathSpace` context.
 - Default credentials (`demo` / `demo`) are seeded under `/system/auth/users/demo/password_bcrypt`; users can pass custom bcrypt pairs and the helpers re-hash them before starting the server.
 - Usage:

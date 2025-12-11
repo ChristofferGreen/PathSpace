@@ -585,6 +585,21 @@ With the shared test runner and this playbook, every failure leaves behind actio
 > metrics) instead of sprinkling logs through `ServeHtmlServer.cpp`—each file is
 > scoped to a single responsibility after the split.
 
+### 9.0 Embedded HTML server (apps/examples)
+- Prefer the in-process helper when you already have a running `PathSpace`: build a
+  `ServeHtml::PathSpaceHtmlServer<Space>` with `serve_html.host/port` (port `0` → random) and an
+  `HtmlMirrorBootstrap` that points at your app root/window/scene. Call `start()` after the UI is
+  ready and `stop()` before tearing down `PathSpace`.
+- Log the resolved listen address via `server.options().serve_html` so curl/playwright repros can
+  target the embedded instance. The helper seeds demo credentials when `seed_demo_credentials=true`
+  and mirrors targets automatically when `attach_default_targets=true`.
+- Example toggles: `./build/paint_example --html-server` or `./build/widgets_example --html-server`
+  build the helper with HtmlMirror bootstrap + demo creds, reject headless/screenshot/export/GPU
+  smoke modes, and print `http://<host>:<port>/apps/<app>/<view>` on startup.
+- The same curl recipes from §9.1 work against the embedded server because it reuses the ServeHtml
+  module map (`/apps`, `/assets`, `/api/ops`, `/metrics`, SSE). Keep the stop flag hooked up so
+  shutdown joins the thread instead of leaving the listener alive.
+
 ### 9.1 Quick smoke setup
 - Build as usual (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j`) and launch the prototype server:
 
@@ -631,6 +646,7 @@ With the shared test runner and this playbook, every failure leaves behind actio
 - `GET /session` and `POST /logout` help confirm cookie lifetimes before involving the UI; both endpoints serialize the session state defined in `docs/web_server.toml`.
 - Metrics scrape: reuse the authenticated cookie jar to hit `/metrics` and confirm the Prometheus view is alive. You should see counters such as `pathspace_serve_html_requests_total{route="apps"}` and the latency histogram buckets. For dashboards without Prometheus, read the structured JSON snapshot under `<apps_root>/io/metrics/web_server/serve_html/live` (the collector rewrites it every ~2 s).
 - UI renderer diagnostics now publish alongside the server metrics: hit `GET /diagnostics/ui` on the HTML server (session + rate-limit checks still apply) to retrieve the same summary produced by `scripts/ui_capture_logs.py`, or read the mirrored JSON at `<apps_root>/io/metrics/web_server/serve_html/ui_targets`. Inspector dashboards can fetch the same data via `GET /inspector/metrics/ui_targets`.
+- Regression guards: `ctest --test-dir build -R PathSpaceServeHtml(Http|Sse|Google)` exercises the standalone binary; `ctest --test-dir build -R PathSpaceHtmlServerEmbed` runs the embedded helper smoke via `pathspace_html_server_embed`.
 - When a subsystem misbehaves, instrument its module directly—`serve_html/auth/*`
   for credential/session churn, `serve_html/routing/*` for middleware or
   controller bugs, `serve_html/streaming/SseBroadcaster.*` for SSE stalls, and

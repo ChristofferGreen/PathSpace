@@ -143,7 +143,8 @@ TEST_CASE("TextField clipboard and paste flows") {
 
     dispatch(Bindings::WidgetOpKind::TextClipboardCopy, read_field_state(space, paths));
 
-    auto clipboard = space.read<std::string, std::string>(std::string(paths.root.getPath()) + "/ops/clipboard/last_text");
+    auto clipboard = space.read<std::string, std::string>(
+        Widgets::WidgetSpacePath(paths.root.getPath(), "/ops/clipboard/last_text"));
     REQUIRE(clipboard);
     CHECK(*clipboard == "ell");
 

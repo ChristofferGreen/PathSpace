@@ -82,8 +82,45 @@ Tip: Enable sanitizers when debugging concurrency/path issues, and pair `ENABLE_
 Scripts:
 - ./scripts/compile.sh
 - ./scripts/update_compile_commands.sh (keeps compile_commands.json in repo root)
-- ./build/pathspace_serve_html [--seed-demo] (serves `/apps/<app>/<view>` plus `/assets/<app>/<relative>` for HTML adapter targets; see docs/serve_html/README.md for the module map and docs/finished/Plan_WebServer_Adapter_Finished.md for deployment details.)
-- ./build/paint_example --serve-html / ./build/widgets_example --serve-html (attach HTML mirror targets, seed demo credentials, and launch an embedded `pathspace_serve_html` thread so you can open `http://127.0.0.1:8080/apps/<app>/<view>` in a browser while the native window is running. Use the ServeHtml module guide when extending these flows.)
+- ./build/pathspace_serve_html [--seed-demo] (standalone ServeHtml binary for ops/CI; see docs/serve_html/README.md for the module map and docs/finished/Plan_WebServer_Adapter_Finished.md for deployment details.)
+- ./build/paint_example --html-server / ./build/widgets_example --html-server (builds the embeddable `PathSpaceHtmlServer` with HtmlMirror bootstrap + demo credentials, auto-assigns a port when `port=0`, and serves `/apps/<app>/<view>` alongside the native window. The flag is mutually exclusive with headless/screenshot/export/GPU smoke modes and prints the served URL.)
+
+## Embeddable HTML server
+
+`PathSpaceHtmlServer<Space>` embeds ServeHtml directly inside an app so you can mirror a native
+window to `/apps/<app>/<view>` without spawning the standalone binary. Minimal wiring:
+
+```cpp
+#include <pathspace/web/PathSpaceHtmlServer.hpp>
+
+ServeHtml::HtmlMirrorBootstrap mirror{
+    .app_root = app_root,        // SP::App::AppRootPath
+    .window   = window_path,     // SP::UI::Runtime::WindowPath
+    .scene    = scene_path,      // SP::UI::Runtime::ScenePath
+    .mirror_config = {.renderer_name = "html",
+                      .target_name   = "paint_web",
+                      .view_name     = "web"},
+    .present_on_start = true,
+};
+
+auto html_server = ServeHtml::PathSpaceHtmlServer<ServeHtml::ServeHtmlSpace>::Builder{space}
+    .serve_html_options({.host = "127.0.0.1", .port = 0}) // port=0 → random
+    .html_mirror(mirror)
+    .seed_demo_credentials(true)
+    .attach_default_targets(true)
+    .build();
+
+auto started = html_server.start();
+if (!started) {
+    // handle describeError(started.error())
+}
+// ... run your app ...
+html_server.stop(); // joins before PathSpace teardown
+```
+
+- Use `html_server.options().serve_html.port` to log the chosen port when `port=0`.
+- The paint/widgets examples already run this helper via `--html-server`; reuse their CLI flags to
+  smoke-test mirror output alongside the native window.
 
 ## HTML bundle export
 

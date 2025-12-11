@@ -50,7 +50,7 @@ auto write_widget_footprint(PathSpace& space,
     if (normalized.max_x <= normalized.min_x || normalized.max_y <= normalized.min_y) {
         return {};
     }
-    auto path = std::string(root.getPath()) + "/meta/footprint";
+    auto path = WidgetSpacePath(root, "/meta/footprint");
     if (auto status = replace_single<DirtyRectHint>(space, path, normalized); !status) {
         return std::unexpected(status.error());
     }
@@ -58,7 +58,7 @@ auto write_widget_footprint(PathSpace& space,
 }
 
 auto compute_ops_queue(WidgetPath const& root) -> ConcretePath {
-    return ConcretePath{std::string(root.getPath()) + "/ops/inbox/queue"};
+    return ConcretePath{WidgetSpacePath(root, "/ops/inbox/queue")};
 }
 
 auto build_options(AppRootPathView appRoot,
@@ -605,9 +605,7 @@ auto selection_text(State const& state) -> std::string {
 }
 
 auto clipboard_text_path(WidgetPath const& root) -> std::string {
-    std::string path = std::string(root.getPath());
-    path.append("/ops/clipboard/last_text");
-    return path;
+    return WidgetSpacePath(root, "/ops/clipboard/last_text");
 }
 
 auto write_clipboard_text(PathSpace& space,
@@ -650,37 +648,37 @@ inline auto set_flag(bool& field, bool value) -> bool {
 
 auto read_button_style(PathSpace& space,
                        ButtonPaths const& paths) -> SP::Expected<Widgets::ButtonStyle> {
-    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto stylePath = WidgetSpacePath(paths.root, "/meta/style");
     return space.read<Widgets::ButtonStyle, std::string>(stylePath);
 }
 
 auto read_toggle_style(PathSpace& space,
                        TogglePaths const& paths) -> SP::Expected<Widgets::ToggleStyle> {
-    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto stylePath = WidgetSpacePath(paths.root, "/meta/style");
     return space.read<Widgets::ToggleStyle, std::string>(stylePath);
 }
 
 auto read_slider_style(PathSpace& space,
                        SliderPaths const& paths) -> SP::Expected<Widgets::SliderStyle> {
-    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto stylePath = WidgetSpacePath(paths.root, "/meta/style");
     return space.read<Widgets::SliderStyle, std::string>(stylePath);
 }
 
 auto read_list_style(PathSpace& space,
                      ListPaths const& paths) -> SP::Expected<Widgets::ListStyle> {
-    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto stylePath = WidgetSpacePath(paths.root, "/meta/style");
     return space.read<Widgets::ListStyle, std::string>(stylePath);
 }
 
 auto read_list_items(PathSpace& space,
                      ListPaths const& paths) -> SP::Expected<std::vector<Widgets::ListItem>> {
-    auto itemsPath = std::string(paths.root.getPath()) + "/meta/items";
+    auto itemsPath = WidgetSpacePath(paths.root, "/meta/items");
     return space.read<std::vector<Widgets::ListItem>, std::string>(itemsPath);
 }
 
 auto read_tree_style(PathSpace& space,
                      TreePaths const& paths) -> SP::Expected<Widgets::TreeStyle> {
-    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto stylePath = WidgetSpacePath(paths.root, "/meta/style");
     return space.read<Widgets::TreeStyle, std::string>(stylePath);
 }
 
@@ -691,13 +689,13 @@ auto read_tree_nodes(PathSpace& space,
 
 auto read_text_field_style(PathSpace& space,
                            TextFieldPaths const& paths) -> SP::Expected<Widgets::TextFieldStyle> {
-    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto stylePath = WidgetSpacePath(paths.root, "/meta/style");
     return space.read<Widgets::TextFieldStyle, std::string>(stylePath);
 }
 
 auto read_text_area_style(PathSpace& space,
                           TextAreaPaths const& paths) -> SP::Expected<Widgets::TextAreaStyle> {
-    auto stylePath = std::string(paths.root.getPath()) + "/meta/style";
+    auto stylePath = WidgetSpacePath(paths.root, "/meta/style");
     return space.read<Widgets::TextAreaStyle, std::string>(stylePath);
 }
 
@@ -1563,6 +1561,8 @@ auto DispatchTextField(PathSpace& space,
                 pasted = *stored;
             }
             insert_text(desired, pasted, false);
+            collapse_selection(desired, static_cast<std::uint32_t>(desired.text.size()));
+            clear_composition(desired);
         }
         break;
     }
@@ -1762,6 +1762,8 @@ auto DispatchTextArea(PathSpace& space,
                 pasted = *stored;
             }
             insert_text(desired, pasted, true);
+            collapse_selection(desired, static_cast<std::uint32_t>(desired.text.size()));
+            clear_composition(desired);
         }
         break;
     }

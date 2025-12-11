@@ -758,7 +758,10 @@ auto fnv_mix_integral(std::uint64_t hash, T value) -> std::uint64_t {
     for (std::size_t i = 0; i < sizeof(Unsigned); ++i) {
         hash = fnv_mix(hash, static_cast<std::uint8_t>(v & 0xFFu));
         if (i + 1 < sizeof(Unsigned)) {
-            v >>= 8;
+            // Shift in a wider lane to avoid UB/warnings when Unsigned is a byte.
+            auto wide = static_cast<std::uint64_t>(v);
+            wide >>= 8;
+            v = static_cast<Unsigned>(wide);
         }
     }
     return hash;

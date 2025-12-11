@@ -838,60 +838,59 @@ auto ReadTargetMetrics(PathSpace const& space,
 
     if (!font_cache_from_target) {
         auto app_root = derive_app_root_for(targetPath);
-        if (!app_root) {
-            return std::unexpected(app_root.error());
-        }
-        auto font_metrics_path = std::string(app_root->getPath()) + "/diagnostics/metrics/fonts";
-        bool font_cache_from_app = false;
-        if (auto status = read_font_cache_metric(font_metrics_path + "/registeredFonts",
-                                                 metrics.font_registered_fonts,
-                                                 font_cache_from_app); !status) {
-            return std::unexpected(status.error());
-        }
-        if (auto status = read_font_cache_metric(font_metrics_path + "/cacheHits",
-                                                 metrics.font_cache_hits,
-                                                 font_cache_from_app); !status) {
-            return std::unexpected(status.error());
-        }
-        if (auto status = read_font_cache_metric(font_metrics_path + "/cacheMisses",
-                                                 metrics.font_cache_misses,
-                                                 font_cache_from_app); !status) {
-            return std::unexpected(status.error());
-        }
-        if (auto status = read_font_cache_metric(font_metrics_path + "/cacheEvictions",
-                                                 metrics.font_cache_evictions,
-                                                 font_cache_from_app); !status) {
-            return std::unexpected(status.error());
-        }
-        if (auto status = read_font_cache_metric(font_metrics_path + "/cacheSize",
-                                                 metrics.font_cache_size,
-                                                 font_cache_from_app); !status) {
-            return std::unexpected(status.error());
-        }
-        if (auto status = read_font_cache_metric(font_metrics_path + "/cacheCapacity",
-                                                 metrics.font_cache_capacity,
-                                                 font_cache_from_app); !status) {
-            return std::unexpected(status.error());
-        }
-        if (auto status = read_font_cache_metric(font_metrics_path + "/cacheHardCapacity",
-                                                 metrics.font_cache_hard_capacity,
-                                                 font_cache_from_app); !status) {
-            return std::unexpected(status.error());
-        }
-        if (auto status = read_font_cache_metric(font_metrics_path + "/atlasSoftBytes",
-                                                 metrics.font_atlas_soft_bytes,
-                                                 font_cache_from_app); !status) {
-            return std::unexpected(status.error());
-        }
-        if (auto status = read_font_cache_metric(font_metrics_path + "/atlasHardBytes",
-                                                 metrics.font_atlas_hard_bytes,
-                                                 font_cache_from_app); !status) {
-            return std::unexpected(status.error());
-        }
-        if (auto status = read_font_cache_metric(font_metrics_path + "/shapedRunApproxBytes",
-                                                 metrics.font_shaped_run_approx_bytes,
-                                                 font_cache_from_app); !status) {
-            return std::unexpected(status.error());
+        if (app_root) {
+            auto font_metrics_path = std::string(app_root->getPath()) + "/diagnostics/metrics/fonts";
+            bool font_cache_from_app = false;
+            if (auto status = read_font_cache_metric(font_metrics_path + "/registeredFonts",
+                                                     metrics.font_registered_fonts,
+                                                     font_cache_from_app); !status) {
+                return std::unexpected(status.error());
+            }
+            if (auto status = read_font_cache_metric(font_metrics_path + "/cacheHits",
+                                                     metrics.font_cache_hits,
+                                                     font_cache_from_app); !status) {
+                return std::unexpected(status.error());
+            }
+            if (auto status = read_font_cache_metric(font_metrics_path + "/cacheMisses",
+                                                     metrics.font_cache_misses,
+                                                     font_cache_from_app); !status) {
+                return std::unexpected(status.error());
+            }
+            if (auto status = read_font_cache_metric(font_metrics_path + "/cacheEvictions",
+                                                     metrics.font_cache_evictions,
+                                                     font_cache_from_app); !status) {
+                return std::unexpected(status.error());
+            }
+            if (auto status = read_font_cache_metric(font_metrics_path + "/cacheSize",
+                                                     metrics.font_cache_size,
+                                                     font_cache_from_app); !status) {
+                return std::unexpected(status.error());
+            }
+            if (auto status = read_font_cache_metric(font_metrics_path + "/cacheCapacity",
+                                                     metrics.font_cache_capacity,
+                                                     font_cache_from_app); !status) {
+                return std::unexpected(status.error());
+            }
+            if (auto status = read_font_cache_metric(font_metrics_path + "/cacheHardCapacity",
+                                                     metrics.font_cache_hard_capacity,
+                                                     font_cache_from_app); !status) {
+                return std::unexpected(status.error());
+            }
+            if (auto status = read_font_cache_metric(font_metrics_path + "/atlasSoftBytes",
+                                                     metrics.font_atlas_soft_bytes,
+                                                     font_cache_from_app); !status) {
+                return std::unexpected(status.error());
+            }
+            if (auto status = read_font_cache_metric(font_metrics_path + "/atlasHardBytes",
+                                                     metrics.font_atlas_hard_bytes,
+                                                     font_cache_from_app); !status) {
+                return std::unexpected(status.error());
+            }
+            if (auto status = read_font_cache_metric(font_metrics_path + "/shapedRunApproxBytes",
+                                                     metrics.font_shaped_run_approx_bytes,
+                                                     font_cache_from_app); !status) {
+                return std::unexpected(status.error());
+            }
         }
     }
 

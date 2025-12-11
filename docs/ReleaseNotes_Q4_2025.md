@@ -9,7 +9,7 @@
 
 ## Paint Example Screenshot & PixelNoise Harness Pause (December 8, 2025)
 
-- `PaintExampleScreenshot`, `PaintExampleScreenshot720`, `PaintExampleScreenshot600`, and `PaintExampleScreenshotReport` have been removed from `tests/CMakeLists.txt` and the loop harness entirely. The ServeHtml/example rewrite tracked in `docs/Plan_PathSpaceHtmlServer.md` will provide a replacement workflow; until then, the screenshot CLI (`pathspace_screenshot_cli`) remains available for manual runs without registering CTest targets.
+- `PaintExampleScreenshot`, `PaintExampleScreenshot720`, `PaintExampleScreenshot600`, and `PaintExampleScreenshotReport` have been removed from `tests/CMakeLists.txt` and the loop harness entirely. The ServeHtml/example rewrite tracked in `docs/finished/Plan_PathSpaceHtmlServer_Finished.md` will provide a replacement workflow; until then, the screenshot CLI (`pathspace_screenshot_cli`) remains available for manual runs without registering CTest targets.
 - `PixelNoisePerfHarness` and `PixelNoisePerfHarnessMetal` have been removed entirely from CTest and the loop harness. The pixel-noise example plus `scripts/check_pixel_noise_baseline.py` remain available for manual captures, and the ServeHtml/example rewrite will introduce the next-gen automated perf gate.
 
 ## PathSpaceUITests Recovery Complete (December 9, 2025)

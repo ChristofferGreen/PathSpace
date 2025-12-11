@@ -11,7 +11,7 @@
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
 #include <pathspace/ui/declarative/SceneReadiness.hpp>
 #include <pathspace/path/ConcretePath.hpp>
-#include <pathspace/web/ServeHtmlServer.hpp>
+#include <pathspace/web/HtmlMirror.hpp>
 
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/layer/io/PathIOKeyboard.hpp>
@@ -591,18 +591,6 @@ inline auto sanitize_asset_path(std::string_view logical_path) -> std::filesyste
     return sanitized;
 }
 
-inline auto make_app_relative_path(std::string_view absolute,
-                                   std::string_view app_root) -> std::string {
-    if (absolute.size() < app_root.size() || absolute.compare(0, app_root.size(), app_root) != 0) {
-        return std::string{absolute};
-    }
-    auto remainder = absolute.substr(app_root.size());
-    if (!remainder.empty() && remainder.front() == '/') {
-        remainder.remove_prefix(1);
-    }
-    return std::string{remainder};
-}
-
 inline auto ExportHtmlBundle(SP::PathSpace& space,
                              SP::App::AppRootPath const& app_root,
                              SP::UI::WindowPath const& window_path,
@@ -634,7 +622,7 @@ inline auto ExportHtmlBundle(SP::PathSpace& space,
         return std::unexpected(renderer_path.error());
     }
 
-    auto scene_relative = make_app_relative_path(scene_path.getPath(), app_root.getPath());
+    auto scene_relative = SP::ServeHtml::MakeAppRelativePath(scene_path.getPath(), app_root.getPath());
     if (scene_relative.empty()) {
         return std::unexpected(make_html_export_error("scene path could not be resolved relative to app root"));
     }
@@ -751,97 +739,9 @@ inline auto ExportHtmlBundle(SP::PathSpace& space,
     return result;
 }
 
-struct HtmlMirrorConfig {
-    std::string renderer_name{"html"};
-    std::string target_name{"web"};
-    std::string view_name{"web"};
-};
-
-struct HtmlMirrorContext {
-    SP::App::AppRootPath app_root;
-    SP::UI::WindowPath   window;
-    std::string          view_name;
-};
-
-inline auto SetupHtmlMirror(SP::PathSpace& space,
-                            SP::App::AppRootPath const& app_root,
-                            SP::UI::WindowPath const& window_path,
-                            SP::UI::ScenePath const& scene_path,
-                            HtmlMirrorConfig const& config)
-    -> SP::Expected<HtmlMirrorContext> {
-    auto app_root_view = SP::App::AppRootPathView{app_root.getPath()};
-
-    SP::UI::Runtime::RendererParams renderer_params{
-        .name = config.renderer_name,
-        .kind = SP::UI::Runtime::RendererKind::Software2D,
-        .description = "HTML mirror renderer",
-    };
-    auto renderer_path = SP::UI::Runtime::Renderer::Create(space, app_root_view, renderer_params);
-    if (!renderer_path) {
-        return std::unexpected(renderer_path.error());
-    }
-
-    auto scene_relative = make_app_relative_path(scene_path.getPath(), app_root.getPath());
-    if (scene_relative.empty()) {
-        return std::unexpected(make_html_export_error("scene path not relative to app root"));
-    }
-
-    SP::UI::Runtime::HtmlTargetParams target_params{};
-    target_params.name = config.target_name;
-    target_params.scene = std::move(scene_relative);
-
-    auto html_target = SP::UI::Runtime::Renderer::CreateHtmlTarget(space,
-                                                                   app_root_view,
-                                                                   *renderer_path,
-                                                                   target_params);
-    if (!html_target) {
-        return std::unexpected(html_target.error());
-    }
-
-    auto attach_status = SP::UI::Runtime::Window::AttachHtmlTarget(space,
-                                                                   window_path,
-                                                                   config.view_name,
-                                                                   *html_target);
-    if (!attach_status) {
-        return std::unexpected(attach_status.error());
-    }
-
-    return HtmlMirrorContext{
-        .app_root = app_root,
-        .window = window_path,
-        .view_name = config.view_name,
-    };
-}
-
-inline auto PresentHtmlMirror(SP::PathSpace& space,
-                              HtmlMirrorContext const& context) -> SP::Expected<void> {
-    auto present = SP::UI::Runtime::Window::Present(space, context.window, context.view_name);
-    if (!present) {
-        return std::unexpected(present.error());
-    }
-    return {};
-}
-
-struct ServeHtmlServerHandle {
-    std::thread thread;
-};
-
-inline auto StartServeHtmlServer(SP::ServeHtml::ServeHtmlSpace& space,
-                                 SP::ServeHtml::ServeHtmlOptions options)
-    -> ServeHtmlServerHandle {
-    ServeHtmlServerHandle handle{};
-    SP::ServeHtml::ResetServeHtmlStopFlag();
-    handle.thread = std::thread([&space, options]() mutable {
-        (void)SP::ServeHtml::RunServeHtmlServer(space, options);
-    });
-    return handle;
-}
-
-inline void StopServeHtmlServer(ServeHtmlServerHandle& handle) {
-    SP::ServeHtml::RequestServeHtmlStop();
-    if (handle.thread.joinable()) {
-        handle.thread.join();
-    }
-}
+using SP::ServeHtml::HtmlMirrorConfig;
+using SP::ServeHtml::HtmlMirrorContext;
+using SP::ServeHtml::PresentHtmlMirror;
+using SP::ServeHtml::SetupHtmlMirror;
 
 } // namespace PathSpaceExamples

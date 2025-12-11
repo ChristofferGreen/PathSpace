@@ -14,6 +14,13 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/inspector/test_PaintScreenshotCard.cpp
   unit/inspector/test_InspectorSnapshot.cpp
   unit/inspector/test_InspectorHttpServer.cpp
+  unit/web/test_HtmlHelpers.cpp
+  unit/web/test_ServeHtmlOAuthGoogle.cpp
+  unit/web/test_ServeHtmlOptions.cpp
+  unit/web/test_ServeHtmlSessionStore.cpp
+  unit/web/test_ServeHtmlSseBroadcaster.cpp
+  unit/web/test_HtmlMirror.cpp
+  unit/web/test_PathSpaceHtmlServer.cpp
   unit/test_PathSpace_read.cpp
   unit/test_PathSpace_nesting.cpp
   unit/test_PathSpace_extract.cpp
@@ -139,6 +146,7 @@ target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_SOURCE_DIR="${CMAKE_
 target_link_libraries(PathSpaceTests
   PRIVATE
   PathSpace
+  PathSpaceServeHtml
 )
 
 include(CTest)
@@ -183,6 +191,66 @@ add_test(NAME HistoryTelemetryDashboard
           --repo-root "${CMAKE_SOURCE_DIR}"
 )
 set_tests_properties(HistoryTelemetryDashboard PROPERTIES LABELS history)
+
+add_test(NAME PathSpaceServeHtmlHttp
+  COMMAND "${PATHSPACE_TEST_RUNNER}"
+          --label PathSpaceServeHtmlHttp
+          --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+          --timeout 120
+          --env PATHSPACE_LOG=1
+          --env PATHSPACE_TEST_TIMEOUT=1
+          --env MallocNanoZone=0
+          --
+          python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_http.py"
+                  --repo-root "${CMAKE_SOURCE_DIR}"
+                  --server "$<TARGET_FILE:pathspace_serve_html>"
+)
+set_tests_properties(PathSpaceServeHtmlHttp PROPERTIES LABELS serve_html)
+
+add_test(NAME PathSpaceServeHtmlSse
+  COMMAND "${PATHSPACE_TEST_RUNNER}"
+          --label PathSpaceServeHtmlSse
+          --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+          --timeout 120
+          --env PATHSPACE_LOG=1
+          --env PATHSPACE_TEST_TIMEOUT=1
+          --env MallocNanoZone=0
+          --
+          python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_sse.py"
+                  --repo-root "${CMAKE_SOURCE_DIR}"
+                  --server "$<TARGET_FILE:pathspace_serve_html>"
+)
+set_tests_properties(PathSpaceServeHtmlSse PROPERTIES LABELS serve_html)
+
+add_test(NAME PathSpaceServeHtmlGoogle
+  COMMAND "${PATHSPACE_TEST_RUNNER}"
+          --label PathSpaceServeHtmlGoogle
+          --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+          --timeout 150
+          --env PATHSPACE_LOG=1
+          --env PATHSPACE_TEST_TIMEOUT=1
+          --env MallocNanoZone=0
+          --
+          python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_google.py"
+                  --repo-root "${CMAKE_SOURCE_DIR}"
+                  --server "$<TARGET_FILE:pathspace_serve_html>"
+)
+set_tests_properties(PathSpaceServeHtmlGoogle PROPERTIES LABELS serve_html)
+
+add_test(NAME PathSpaceHtmlServerEmbed
+  COMMAND "${PATHSPACE_TEST_RUNNER}"
+          --label PathSpaceHtmlServerEmbed
+          --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+          --timeout 90
+          --env PATHSPACE_LOG=1
+          --env PATHSPACE_TEST_TIMEOUT=1
+          --env MallocNanoZone=0
+          --
+          python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_html_server_embed_smoke.py"
+                  --repo-root "${CMAKE_SOURCE_DIR}"
+                  --server "$<TARGET_FILE:pathspace_html_server_embed>"
+)
+set_tests_properties(PathSpaceHtmlServerEmbed PROPERTIES LABELS serve_html)
 
 if(PATHSPACE_ENABLE_UI)
   set(PATHSPACE_UI_TEST_COMMON_ENV
@@ -233,3 +301,6 @@ if(PATHSPACE_ENABLE_UI)
     # PixelNoise perf harness removed until the ServeHtml/example rewrite reinstates it.
   endif()
 endif()
+
+add_executable(pathspace_html_server_embed tools/pathspace_html_server_embed.cpp)
+target_link_libraries(pathspace_html_server_embed PRIVATE PathSpaceServeHtml)

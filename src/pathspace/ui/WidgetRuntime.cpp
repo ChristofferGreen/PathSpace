@@ -7,12 +7,22 @@
 
 #include <cstdio>
 #include <cstring>
+#include <pathspace/path/ConcretePath.hpp>
 
 namespace SP::UI::Runtime::Widgets {
 
 using namespace Detail;
 
 namespace {
+
+auto scene_path_valid(ScenePath const& scene) -> bool {
+    auto const& path = scene.getPath();
+    if (path.empty()) {
+        return false;
+    }
+    ConcretePathStringView view{path};
+    return view.canonicalized().has_value();
+}
 
 auto sanitize_tree_style(TreeStyle style) -> TreeStyle {
     style.width = std::max(style.width, 96.0f);
@@ -742,6 +752,10 @@ auto UpdateButtonState(PathSpace& space,
         return std::unexpected(status.error());
     }
 
+    if (!scene_path_valid(paths.scene)) {
+        return true;
+    }
+
     auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(paths.root.getPath(), "/meta/style");
     auto styleValue = space.read<Widgets::ButtonStyle, std::string>(stylePath);
     if (!styleValue) {
@@ -821,6 +835,10 @@ auto UpdateToggleState(PathSpace& space,
         return std::unexpected(status.error());
     }
 
+    if (!scene_path_valid(paths.scene)) {
+        return true;
+    }
+
     auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(paths.root.getPath(), "/meta/style");
     auto styleValue = space.read<Widgets::ToggleStyle, std::string>(stylePath);
     if (!styleValue) {
@@ -886,6 +904,10 @@ auto UpdateSliderState(PathSpace& space,
     }
     if (auto status = replace_single<Widgets::SliderState>(space, statePath, sanitized); !status) {
         return std::unexpected(status.error());
+    }
+
+    if (!scene_path_valid(paths.scene)) {
+        return true;
     }
 
     auto stylePath = SP::UI::Runtime::Widgets::WidgetSpacePath(paths.root.getPath(), "/meta/style");

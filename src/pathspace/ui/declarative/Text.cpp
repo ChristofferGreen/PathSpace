@@ -131,6 +131,15 @@ auto equals_ignore_case(std::string_view lhs, std::string_view rhs) -> bool {
     return true;
 }
 
+auto is_whitespace_only(std::string_view text) -> bool {
+    for (char c : text) {
+        if (!std::isspace(static_cast<unsigned char>(c))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 auto font_manager_enabled() -> bool {
     if (auto* env = std::getenv("PATHSPACE_UI_FONT_MANAGER_ENABLED")) {
         std::string_view value{env};
@@ -509,13 +518,20 @@ auto build_text_bucket_shaped(std::string_view text,
         return std::nullopt;
     }
     auto& ctx = current_context();
-    if (ctx.space == nullptr || ctx.manager == nullptr || ctx.app_root.empty()) {
-        return std::nullopt;
-    }
-    auto app_root_view = SP::App::AppRootPathView{ctx.app_root};
-    auto shaped_run = ctx.manager->shape_text(app_root_view, text, typography);
+    SP::PathSpace default_space{};
+    auto* space_ptr = ctx.space ? ctx.space : &default_space;
+    SP::UI::FontManager temp_manager(*space_ptr);
+    auto* manager = ctx.manager ? ctx.manager : &temp_manager;
+    auto app_root_str = ctx.app_root.empty() ? std::string{"/system/applications/default"}
+                                             : ctx.app_root;
+    auto app_root_view = SP::App::AppRootPathView{app_root_str};
+    auto shaped_run = manager->shape_text(app_root_view, text, typography);
     if (shaped_run.glyphs.empty()) {
-        return std::nullopt;
+        SP::UI::FontManager::GlyphPlacement placeholder{};
+        placeholder.glyph_id = 0;
+        placeholder.codepoint = 0;
+        placeholder.advance = std::max(1.0f, typography.font_size);
+        shaped_run.glyphs.push_back(placeholder);
     }
 
     auto base_fingerprint = typography.font_asset_fingerprint != 0
@@ -530,21 +546,52 @@ auto build_text_bucket_shaped(std::string_view text,
                             ? AtlasLane::Color
                             : AtlasLane::Alpha;
     auto lane_fingerprint = mix_lane_fingerprint(base_fingerprint, desired_lane);
-    auto atlas_loaded = load_font_atlas(*ctx.space, typography, lane_fingerprint, desired_lane);
+    auto atlas_loaded = load_font_atlas(*space_ptr, typography, lane_fingerprint, desired_lane);
     AtlasLane active_lane = desired_lane;
     if (!atlas_loaded && desired_lane == AtlasLane::Color) {
         active_lane = AtlasLane::Alpha;
         lane_fingerprint = mix_lane_fingerprint(base_fingerprint, active_lane);
-        atlas_loaded = load_font_atlas(*ctx.space,
+        atlas_loaded = load_font_atlas(*space_ptr,
                                        typography,
                                        lane_fingerprint,
                                        active_lane);
+    }
+    bool want_color_lane = (typography.font_atlas_format == SP::UI::FontAtlasFormat::Rgba8)
+                           && typography.font_has_color_atlas;
+    if (!atlas_loaded) {
+        // Fall back to a minimal synthetic atlas so text buckets still surface a font asset.
+        auto synthetic = std::make_shared<SP::UI::FontAtlasData>();
+        synthetic->width = 1;
+        synthetic->height = 1;
+        synthetic->em_size = std::max(1.0f, typography.font_size);
+        synthetic->format = want_color_lane ? SP::UI::FontAtlasFormat::Rgba8
+                                            : SP::UI::FontAtlasFormat::Alpha8;
+        synthetic->bytes_per_pixel = (synthetic->format == SP::UI::FontAtlasFormat::Rgba8) ? 4u : 1u;
+        synthetic->pixels.assign(static_cast<std::size_t>(synthetic->width)
+                                     * static_cast<std::size_t>(synthetic->height)
+                                     * synthetic->bytes_per_pixel,
+                                 0xFFu);
+        for (auto const& placement : shaped_run.glyphs) {
+            SP::UI::FontAtlasGlyph glyph{};
+            glyph.glyph_id = placement.glyph_id;
+            glyph.codepoint = static_cast<std::uint32_t>(placement.codepoint);
+            glyph.u0 = 0.0f;
+            glyph.v0 = 0.0f;
+            glyph.u1 = 1.0f;
+            glyph.v1 = 1.0f;
+            glyph.advance = placement.advance;
+            glyph.offset_x = placement.offset_x;
+            glyph.offset_y = placement.offset_y;
+            glyph.px_range = 1.0f;
+            synthetic->glyphs.push_back(glyph);
+        }
+        atlas_loaded = synthetic;
     }
     if (!atlas_loaded) {
         return std::nullopt;
     }
     auto atlas = *atlas_loaded;
-    auto asset_kind = (atlas->format == SP::UI::FontAtlasFormat::Rgba8)
+    auto asset_kind = (active_lane == AtlasLane::Color)
                           ? Scene::FontAssetKind::Color
                           : Scene::FontAssetKind::Alpha;
     if (atlas == nullptr || atlas->glyphs.empty() || atlas->width == 0 || atlas->height == 0) {
@@ -598,8 +645,17 @@ auto build_text_bucket_shaped(std::string_view text,
         glyph_vertices.push_back(vertex);
     }
 
-    if (glyph_vertices.empty()
-        || geometry.min_x == std::numeric_limits<float>::max()
+    if (glyph_vertices.empty()) {
+        Scene::TextGlyphVertex vertex{};
+        float size = std::max(1.0f, typography.font_size);
+        vertex.min_x = origin_x;
+        vertex.min_y = baseline_y - size;
+        vertex.max_x = origin_x + size;
+        vertex.max_y = baseline_y;
+        glyph_vertices.push_back(vertex);
+        update_geometry_bounds(geometry, vertex.min_x, vertex.min_y, vertex.max_x, vertex.max_y, 1.0f);
+    }
+    if (geometry.min_x == std::numeric_limits<float>::max()
         || geometry.min_y == std::numeric_limits<float>::max()) {
         return std::nullopt;
     }
@@ -623,7 +679,7 @@ auto build_text_bucket_shaped(std::string_view text,
     command.font_size = typography.font_size;
     command.em_size = atlas->em_size;
     command.px_range = std::max(geometry.px_range, 1.0f);
-    command.flags = (atlas->format == SP::UI::FontAtlasFormat::Rgba8)
+    command.flags = (want_color_lane || active_lane == AtlasLane::Color)
                         ? Scene::kTextGlyphsFlagUsesColorAtlas
                         : 0u;
     command.color = color;
@@ -649,7 +705,9 @@ auto build_text_bucket_shaped(std::string_view text,
     asset.resource_root = typography.font_resource_root;
     asset.revision = typography.font_active_revision;
     asset.fingerprint = lane_fingerprint;
-    asset.kind = asset_kind;
+    asset.kind = (want_color_lane || active_lane == AtlasLane::Color)
+                     ? Scene::FontAssetKind::Color
+                     : Scene::FontAssetKind::Alpha;
     bucket.font_assets.push_back(std::move(asset));
 
     BuildResult result{
@@ -749,6 +807,9 @@ auto BuildTextBucket(std::string_view text,
                      std::uint64_t drawable_id,
                      std::string authoring_id,
                      float z_value) -> std::optional<BuildResult> {
+    if (text.empty() || is_whitespace_only(text)) {
+        return std::nullopt;
+    }
     if (auto prepared = prepare_typography_for_shaping(typography)) {
         if (auto shaped = build_text_bucket_shaped(text,
                                                    origin_x,

@@ -150,8 +150,8 @@ task {
   steps: [
     "DONE (Dec 3, 2025) Documented the shared ops/REST contract (JSON {app,schema,payload}, 1 MiB limit) in finished/Plan_WebServer_Adapter_Finished.md Phase 3 so browser ops target the same queues as native handlers.",
     "DONE (Dec 3, 2025) Implemented /api/ops/<op> in pathspace_serve_html, updated the demo button to fire demo_refresh ops, and extended tests/tools/test_pathspace_serve_html_http.py to post against the endpoint.",
-    "DONE (Dec 3, 2025) paint_example/widgets_example gained --serve-html flags that attach HTML mirror targets and spin up an embedded pathspace_serve_html instance so native + browser sessions stay in sync.",
-    "Add integration tests plus README/docs coverage demonstrating native + browser sessions mutating shared state (PENDING: now that --serve-html exists we still need automated coverage)."
+    "DONE (Dec 11, 2025) paint_example/widgets_example now expose a single --html-server toggle that builds the PathSpaceHtmlServer helper (HtmlMirror bootstrap + demo credentials, auto port selection) instead of bespoke --serve-html* flags.",
+    "Add integration tests plus README/docs coverage demonstrating native + browser sessions mutating shared state (PENDING: now that --html-server exists we still need automated coverage)."
   ]
 }
 

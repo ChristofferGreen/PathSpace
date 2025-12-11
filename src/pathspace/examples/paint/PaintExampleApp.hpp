@@ -23,15 +23,12 @@ struct CommandLineOptions {
     bool gpu_smoke = false;
     std::optional<std::filesystem::path> gpu_texture_path;
     SP::UI::Screenshot::BaselineMetadata baseline_metadata;
-    bool serve_html = false;
-    int serve_html_port = 8080;
-    std::string serve_html_host{"127.0.0.1"};
-    std::string serve_html_view{"web"};
-    std::string serve_html_target{"paint_web"};
-    std::string serve_html_user{"demo"};
-    std::string serve_html_password{"demo"};
-    bool serve_html_allow_unauthenticated = false;
-};
+    bool html_server = false;
+    int html_server_port = 0;
+    std::string html_server_host{"127.0.0.1"};
+    std::string html_view{"web"};
+    std::string html_target{"paint_web"};
+}; 
 
 auto RunPaintExample(CommandLineOptions options) -> int;
 auto ParsePaintExampleCommandLine(int argc, char** argv) -> CommandLineOptions;

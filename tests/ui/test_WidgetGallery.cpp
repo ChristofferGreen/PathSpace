@@ -21,6 +21,12 @@
 
 namespace {
 
+struct RuntimeGuard {
+    explicit RuntimeGuard(SP::PathSpace& s) : space(s) {}
+    ~RuntimeGuard() { SP::System::ShutdownDeclarativeRuntime(space); }
+    SP::PathSpace& space;
+};
+
 auto format_revision(std::uint64_t revision) -> std::string {
     char buffer[17];
     std::snprintf(buffer, sizeof(buffer), "%016llu", static_cast<unsigned long long>(revision));
@@ -62,6 +68,7 @@ TEST_CASE("widgets theme load registers fonts") {
 
 TEST_CASE("widget gallery snapshot persists font assets") {
     SP::PathSpace space;
+    RuntimeGuard guard{space};
     REQUIRE(SP::System::LaunchStandard(space));
 
     auto app = SP::App::Create(space, "widget_gallery_font_snapshot");

@@ -332,6 +332,10 @@ TEST_CASE("TextBuilder emits color atlas when preferred format is rgba8") {
     typography.font_weight = params.weight;
     typography.font_size = 24.0f;
     typography.line_height = 24.0f;
+    typography.font_resource_root = registered->root.getPath();
+    typography.font_active_revision = params.initial_revision;
+    typography.font_atlas_format = SP::UI::FontAtlasFormat::Rgba8;
+    typography.font_has_color_atlas = true;
 
     std::array<float, 4> color{1.0f, 1.0f, 1.0f, 1.0f};
 
@@ -347,8 +351,12 @@ TEST_CASE("TextBuilder emits color atlas when preferred format is rgba8") {
     REQUIRE(result.has_value());
     REQUIRE_FALSE(result->bucket.font_assets.empty());
     auto const& asset = result->bucket.font_assets.front();
+    INFO("asset.kind raw=" << static_cast<int>(asset.kind));
     CHECK(asset.kind == SP::UI::Scene::FontAssetKind::Color);
     REQUIRE_FALSE(result->bucket.command_payload.empty());
+    REQUIRE_FALSE(result->bucket.command_kinds.empty());
+    CHECK(static_cast<SP::UI::Scene::DrawCommandKind>(result->bucket.command_kinds.front())
+          == SP::UI::Scene::DrawCommandKind::TextGlyphs);
     SP::UI::Scene::TextGlyphsCommand glyphs{};
     std::memcpy(&glyphs,
                 result->bucket.command_payload.data(),

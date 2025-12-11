@@ -227,7 +227,13 @@ if [[ -z "${PATHSPACE_TEST_ARTIFACT_DIR:-}" ]]; then
 fi
 mkdir -p "$PATHSPACE_TEST_ARTIFACT_DIR"
 FONT_ATLAS_ARTIFACT="$PATHSPACE_TEST_ARTIFACT_DIR/widget_gallery_font_assets.bin"
-rm -f "$FONT_ATLAS_ARTIFACT"
+# When skipping the main test loop, leave any provided artifact in place (or
+# seed an empty placeholder) so the later guard does not fail unnecessarily.
+if [[ "${SKIP_LOOP_TESTS:-0}" == "1" ]]; then
+  : >"$FONT_ATLAS_ARTIFACT"
+else
+  rm -f "$FONT_ATLAS_ARTIFACT"
+fi
 
 if [[ -z "${PATHSPACE_LEGACY_WIDGET_BUILDERS:-}" ]]; then
   export PATHSPACE_LEGACY_WIDGET_BUILDERS="error"
@@ -320,14 +326,18 @@ if [[ ${#SANITIZER_RUNS[@]} -gt 0 ]]; then
   done
 fi
 
-if [[ ! -f "$FONT_ATLAS_ARTIFACT" ]]; then
-  err "Missing font atlas artifact from widget gallery UITest: $FONT_ATLAS_ARTIFACT"
-  err "Ensure PathSpaceUITests produced widget_gallery_font_assets.bin (persistence regression guard)."
-  exit 1
+if [[ "${SKIP_LOOP_TESTS:-0}" != "1" ]]; then
+  if [[ ! -f "$FONT_ATLAS_ARTIFACT" ]]; then
+    err "Missing font atlas artifact from widget gallery UITest: $FONT_ATLAS_ARTIFACT"
+    err "Ensure PathSpaceUITests produced widget_gallery_font_assets.bin (persistence regression guard)."
+    exit 1
+  fi
+  ok "Captured font atlas artifact at $FONT_ATLAS_ARTIFACT"
+else
+  warn "Skipping font atlas artifact guard (SKIP_LOOP_TESTS=1)"
 fi
-ok "Captured font atlas artifact at $FONT_ATLAS_ARTIFACT"
 
-if [[ "${SKIP_HISTORY_CLI:-0}" != "1" ]]; then
+if [[ "${SKIP_LOOP_TESTS:-0}" != "1" && "${SKIP_HISTORY_CLI:-0}" != "1" ]]; then
   say "Running history savefile CLI roundtrip harness"
   if [[ ! -x ./build/pathspace_history_cli_roundtrip ]]; then
     err "Missing ./build/pathspace_history_cli_roundtrip (build step did not produce harness)"

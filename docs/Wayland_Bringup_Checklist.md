@@ -48,7 +48,7 @@ This document scopes the work required to run the PathSpace UI stack on Linux/Wa
 ## Testing & CI
 - Smoke locally with a headless compositor:
   - Start `weston --backend=headless --socket=wayland-test --idle-time=0`.
-  - Export `WAYLAND_DISPLAY=wayland-test` and run `./build/widgets_example --exit-after-render 60 --serve-html` to exercise present + HTML export without a visible window.
+  - Export `WAYLAND_DISPLAY=wayland-test` and run `./build/widgets_example --exit-after-render 60 --html-server` to exercise present + HTML export without a visible window.
 - Add a CI job that installs Wayland deps, starts the headless compositor, configures with `-DPATHSPACE_UI_WAYLAND=ON -DPATHSPACE_UI_METAL=OFF`, builds, and runs `ctest --test-dir build --output-on-failure -j --repeat-until-fail 5 --timeout 20`.
 - Capture artifacts: framebuffer dumps from `tests/ui/test_PathRenderer2D.cpp` and any Wayland-specific goldens once present.
 

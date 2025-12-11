@@ -9,42 +9,41 @@ Provide a single index of active planning documents, ordered by current priority
 
 ## Priority Ordering
 
+> **Update (December 11, 2025):** `Plan_PathSpaceHtmlServer.md` is complete and archived at `docs/finished/Plan_PathSpaceHtmlServer_Finished.md`; embed-first ServeHtml is now the default path with CI coverage for standalone and embedded helpers.
 > **Update (December 10, 2025):** `Plan_SceneGraph` (formerly `docs/Plan_SceneGraph.md`) is complete and archived at `docs/finished/Plan_SceneGraph_Finished.md`. Use it for the finalized scene graph/diagnostics rollout record; it no longer appears in the active list below.
 > **Update (December 6, 2025):** `Plan_Distributed_PathSpace.md` is complete and archived at `docs/finished/Plan_Distributed_PathSpace_Finished.md`. Use it as the distributed mount contract reference while the list below tracks active plans.
 > **Update (December 4, 2025):** `Plan_SceneGraph_Renderer` is complete and archived at `docs/finished/Plan_SceneGraph_Renderer_Finished.md`. Use it as the renderer/presenter contract reference while the plans below track active or ongoing work.
 
-1. **Plan_PathSpaceHtmlServer.md**  
-   Active: embeds ServeHtml directly inside apps via `PathSpaceHtmlServer<Space>`, aligns examples/tests with the helper, and unifies HTML telemetry so ServeHtml mirrors native windows without bespoke CLI flags.
-
-2. **Plan_WidgetComposableRuntime.md**  
+1. **Plan_WidgetComposableRuntime.md**  
    Active: capsule-based widget runtime (per-widget surfaces, mailboxes, HTML-compatible fragments) that consumes the renderer contracts. Lands right after the ServeHtml helper solidifies so declarative widgets can target both native and embedded contexts.
 
-3. **Plan_PathSpaceWindowManager.md**  
+2. **Plan_PathSpaceWindowManager.md**  
    Queued: NextStep-inspired window chrome/dock controller building atop the stabilized renderer/runtime stack; depends on the composable runtime landing first.
 
-4. **Plan_PathSpaceTerminal.md**  
+3. **Plan_PathSpaceTerminal.md**  
    Queued: Carta Linea-aware terminal/launcher that captures command outputs as PathSpaces; green-lit once the window manager primitives exist so terminal panes can host arbitrary viewers.
 
-5. **Plan_Surface_Ray_Cache.md** (deferred)  
+4. **Plan_Surface_Ray_Cache.md** (deferred)  
    GPU-path backlog; revisit when ray-query acceleration re-enters scope after the current HTML/runtime deliveries.
 
-6. **Plan_CartaLinea.md** (paused)  
+5. **Plan_CartaLinea.md** (paused)  
    Cross-app deck/timeline/filesystem concept; stays paused until renderer + ServeHtml milestones finish and window manager UX is validated.
 
-7. **Plan_PrimeScript.md**  
+6. **Plan_PrimeScript.md**  
    Unified scripting/shading language roadmap spanning host C++, GPU backends, and the embedded VM; follow the language spec and syntax draft in `docs/PrimeScript_SyntaxSpec.md` when prototyping.
 
 
 ## Recommended Implementation Focus (Q4 2025)
-1. **Plan_PathSpaceHtmlServer.md** — keep embedding ServeHtml into apps/examples, make the helper the default ServeHtml entry point, and finish the diagnostics/loop coverage that pairs with the HTML adapter work.
-2. **Plan_WidgetComposableRuntime.md** — land the capsule/runtime split so widgets render consistently across native, embedded ServeHtml, and future HTML-only contexts.
-3. **Plan_PathSpaceWindowManager.md** — begin chrome/dock design once the composable runtime stabilizes, enabling multi-window UX for apps that lean on the new renderer stack.
-4. **Plan_PathSpaceTerminal.md** — unblock terminal/launcher prototypes after the window manager foundation exists; keep Carta Linea integration requirements in scope during design.
-5. **Plan_SceneGraph_Finished.md** — archived; use for renderer/diagnostics history, goldens, and wrap-up notes.
+1. **Plan_WidgetComposableRuntime.md** — land the capsule/runtime split so widgets render consistently across native, embedded ServeHtml, and future HTML-only contexts.
+2. **Plan_PathSpaceWindowManager.md** — begin chrome/dock design once the composable runtime stabilizes, enabling multi-window UX for apps that lean on the new renderer stack.
+3. **Plan_PathSpaceTerminal.md** — unblock terminal/launcher prototypes after the window manager foundation exists; keep Carta Linea integration requirements in scope during design.
+4. **Plan_SceneGraph_Finished.md** — archived; use for renderer/diagnostics history, goldens, and wrap-up notes.
+5. **Plan_PathSpaceHtmlServer_Finished.md** — archived; reference for ServeHtml embedding, CI coverage, and example migrations.
 
 Deferred / paused tracks: **Plan_Surface_Ray_Cache.md** (GPU path) and **Plan_CartaLinea.md** (experience) stay out of the active rotation until the ServeHtml/runtime/window manager sequence is done.
 
 ## Status Snapshot — December 1, 2025
+- (December 11, 2025) Plan_PathSpaceHtmlServer completed and archived at `docs/finished/Plan_PathSpaceHtmlServer_Finished.md`: PathSpaceHtmlServer helper + builder ship with example migrations (`--html-server`), docs refreshed, and CI runs ServeHtml HTTP/SSE/Google integration plus embedded smoke (`PathSpaceHtmlServerEmbed`).
 - ✅ (December 6, 2025) `docs/Plan_Distributed_PathSpace.md` graduated to `docs/finished/Plan_Distributed_PathSpace_Finished.md`, capturing the full distributed mount implementation (phases 0–2, diagnostics, TLS, throttling) so remote web/server work references a stable contract.
 - ✅ (December 5, 2025) RemoteMountServer Phase 0 export landed (`src/pathspace/distributed/RemoteMountServer.{hpp,cpp}` + `tests/unit/distributed/test_RemoteMountServer.cpp`): server-side exports now validate aliases, stream wait notifications, publish `/inspector/metrics/remotes/<alias>/server/*`, and log `/diagnostics/web/inspector/acl/<alias>/events/*` entries so the client + diagnostics backlog can build on a working transport.
 - ✅ (December 5, 2025) RemoteMountManager Phase 0 client landed (`src/pathspace/distributed/RemoteMountManager.{hpp,cpp}` + `tests/unit/distributed/test_RemoteMountManager.cpp`): mounts now appear under `/remote/<alias>`, blocking reads bridge onto remote wait subscriptions, and client metrics/heartbeat health flow through `/inspector/metrics/remotes/<alias>/client/*` for ServeHtml + inspector consumers.
@@ -70,7 +69,7 @@ Deferred / paused tracks: **Plan_Surface_Ray_Cache.md** (GPU path) and **Plan_Ca
 - ✅ (December 3, 2025) `docs/finished/Plan_WebServer_Adapter_Finished.md` Phase 4 kickoff landed: the server now supports `--session-store {memory|pathspace}` (persisting sessions under `/system/web/sessions` when PathSpace-backed) and the plan captures HTTPS termination guidance (NGINX/Caddy TLS snippets + health checks) so production deployments can safely front the adapter with real certificates.
 - ✅ (December 3, 2025) `docs/finished/Plan_WebServer_Adapter_Finished.md` Phase 4 scaling notes landed: the new "Scaling & Multi-Server Deployments" section plus `docs/web_server.toml` `[scaling.multi_instance]` guidance document how multiple `pathspace_serve_html` instances share sessions, assets, and PathSpace roots behind a load balancer.
 - ✅ (December 3, 2025) `docs/finished/Plan_WebServer_Adapter_Finished.md` Phase 4 rate limiting milestone landed: `pathspace_serve_html` now enforces configurable per-IP/per-session token buckets (`--rate-limit-{ip,session}-{per-minute,burst}`), emits `429` JSON payloads when throttled, and appends structured entries to `<app_root>/io/log/security/request_rejections`; the HTTP regression runs with a low-burst config to keep the middleware validated.
-- ✅ (December 3, 2025) `docs/finished/Plan_WebServer_Adapter_Finished.md` Next Action 10 shipped: `paint_example --serve-html` and `widgets_example --serve-html` attach HTML mirror views, seed bcrypt credentials, and launch an embedded `pathspace_serve_html` thread so contributors can interact with the native window and live browser view simultaneously.
+- ✅ (December 11, 2025) PathSpaceHtmlServer Phase 3 landed: `paint_example`/`widgets_example` now expose a single `--html-server` toggle that builds the embeddable helper (HtmlMirror bootstrap + demo credential seeding, auto-assigned port) instead of bespoke `--serve-html*` flags and manual threads.
 - ✅ (December 3, 2025) `docs/finished/Plan_WebServer_Adapter_Finished.md` Next Action 7 cleared: `SceneLifecycle::InvalidateThemes` now sync-dirties app + window widgets when `ThemeConfig::SetActive` switches themes, eliminating the `PathSpaceUITests` Loop 4 focus/theme flake and keeping the workflow commit loop green.
 - ✅ (December 1, 2025) `Plan_PathSpace_Inspector_Finished.md` Phase 1 is underway: the bundled SPA now exposes SSE-driven search + watchlist panes with manual refresh fallback, aligning `/inspector/stream` with the live UI and capturing the remaining TODOs (rate limiting, diagnostics, backlog entries) directly in the plan.
 - ✅ (December 1, 2025) `Plan_PathSpace_Inspector_Finished.md` backpressure work landed: `InspectorHttpServer` enforces per-client SSE budgets, `/inspector/metrics/stream` + `/inspector/metrics/stream/*` publish queue/dropped/resent/disconnect counters, and the SPA’s stream-health card visualizes them so dashboards no longer have to scrape logs.
