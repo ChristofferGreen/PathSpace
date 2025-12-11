@@ -37,6 +37,7 @@ using RenderSettings = SP::UI::Runtime::RenderSettings;
 using SurfaceDesc = SP::UI::Runtime::SurfaceDesc;
 using RendererKind = SP::UI::Runtime::RendererKind;
 using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
+using SP::PathSpaceBase;
 
 struct SurfaceRenderContext {
     SP::ConcretePathString target_path;
@@ -79,7 +80,7 @@ inline auto ensure_identifier(std::string_view value,
 }
 
 template <typename T>
-inline auto drain_queue(PathSpace& space, std::string const& path) -> SP::Expected<void> {
+inline auto drain_queue(PathSpaceBase& space, std::string const& path) -> SP::Expected<void> {
     while (true) {
         auto taken = space.take<T>(path);
         if (taken) {
@@ -96,7 +97,7 @@ inline auto drain_queue(PathSpace& space, std::string const& path) -> SP::Expect
 }
 
 template <typename T>
-inline auto replace_single(PathSpace& space,
+inline auto replace_single(PathSpaceBase& space,
                            std::string const& path,
                            T const& value) -> SP::Expected<void> {
     if (auto cleared = drain_queue<T>(space, path); !cleared) {
@@ -110,7 +111,7 @@ inline auto replace_single(PathSpace& space,
 }
 
 template <typename T>
-inline auto read_optional(PathSpace const& space,
+inline auto read_optional(PathSpaceBase const& space,
                           std::string const& path) -> SP::Expected<std::optional<T>> {
     auto value = space.read<T, std::string>(path);
     if (value) {

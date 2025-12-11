@@ -1,5 +1,6 @@
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 
+#include "PathSpaceBase.hpp"
 #include "widgets/Common.hpp"
 
 #include <pathspace/app/AppPaths.hpp>
@@ -31,15 +32,15 @@ constexpr std::string_view kStrokePrefix{"paint_surface/stroke/"};
 constexpr std::size_t kMaxPendingDirty = 32;
 constexpr int kMaxStrokeReadAttempts = 5;
 
-auto enqueue_dirty_hint(PathSpace& space,
+auto enqueue_dirty_hint(PathSpaceBase& space,
                         std::string const& widget_path,
                         DirtyRectHint const& hint) -> SP::Expected<void>;
-auto gpu_enabled(PathSpace& space, std::string const& widget_path) -> bool;
-auto increment_revision(PathSpace& space, std::string const& widget_path) -> void;
-auto write_gpu_state(PathSpace& space,
+auto gpu_enabled(PathSpaceBase& space, std::string const& widget_path) -> bool;
+auto increment_revision(PathSpaceBase& space, std::string const& widget_path) -> void;
+auto write_gpu_state(PathSpaceBase& space,
                      std::string const& widget_path,
                      PaintGpuState state) -> void;
-auto log_gpu_event(PathSpace& space,
+auto log_gpu_event(PathSpaceBase& space,
                    std::string const& widget_path,
                    std::string_view message) -> void;
 
@@ -105,7 +106,7 @@ auto extract_widget_address(std::string const& widget_path) -> std::optional<Wid
     return address;
 }
 
-auto read_layout_size(PathSpace& space, std::string const& widget_path)
+auto read_layout_size(PathSpaceBase& space, std::string const& widget_path)
     -> SP::Expected<std::optional<LayoutSize>> {
     auto path = WidgetSpacePath(widget_path, "/layout/computed/size");
     auto stored = DeclarativeDetail::read_optional<std::array<float, 2>>(space, path);
@@ -120,7 +121,7 @@ auto read_layout_size(PathSpace& space, std::string const& widget_path)
     return size;
 }
 
-auto read_window_dpi(PathSpace& space, WidgetAddress const& address) -> SP::Expected<float> {
+auto read_window_dpi(PathSpaceBase& space, WidgetAddress const& address) -> SP::Expected<float> {
     auto scene_leaf = address.window_path + "/views/" + address.view_name + "/scene";
     auto scene_relative = DeclarativeDetail::read_optional<std::string>(space, scene_leaf);
     if (!scene_relative) {
@@ -177,7 +178,7 @@ auto make_full_dirty_hint(LayoutPixels const& pixels) -> DirtyRectHint {
     return hint;
 }
 
-auto write_buffer_metrics(PathSpace& space,
+auto write_buffer_metrics(PathSpaceBase& space,
                           std::string const& widget_path,
                           LayoutPixels const& pixels,
                           float dpi) -> SP::Expected<bool> {
@@ -245,7 +246,7 @@ auto write_buffer_metrics(PathSpace& space,
 }
 
 template <typename T>
-auto ensure_value(PathSpace& space, std::string const& path, T const& value) -> SP::Expected<void> {
+auto ensure_value(PathSpaceBase& space, std::string const& path, T const& value) -> SP::Expected<void> {
     auto existing = DeclarativeDetail::read_optional<T>(space, path);
     if (!existing) {
         return std::unexpected(existing.error());
@@ -256,12 +257,12 @@ auto ensure_value(PathSpace& space, std::string const& path, T const& value) -> 
     return DeclarativeDetail::replace_single(space, path, value);
 }
 
-auto log_gpu_event(PathSpace& space, std::string const& widget_path, std::string_view message) -> void {
+auto log_gpu_event(PathSpaceBase& space, std::string const& widget_path, std::string_view message) -> void {
     auto path = WidgetSpacePath(widget_path, "/render/gpu/log/events");
     (void)space.insert(path, std::string(message));
 }
 
-auto ensure_gpu_defaults(PathSpace& space, std::string const& widget_path) -> SP::Expected<void> {
+auto ensure_gpu_defaults(PathSpaceBase& space, std::string const& widget_path) -> SP::Expected<void> {
     auto state_path = WidgetSpacePath(widget_path, "/render/gpu/state");
     if (auto status = ensure_value(space,
                                    state_path,
@@ -288,7 +289,7 @@ auto ensure_gpu_defaults(PathSpace& space, std::string const& widget_path) -> SP
     return {};
 }
 
-auto write_gpu_state(PathSpace& space,
+auto write_gpu_state(PathSpaceBase& space,
                      std::string const& widget_path,
                      PaintGpuState state) -> void {
     auto path = WidgetSpacePath(widget_path, "/render/gpu/state");
@@ -297,7 +298,7 @@ auto write_gpu_state(PathSpace& space,
                                         std::string(PaintGpuStateToString(state)));
 }
 
-auto read_gpu_state(PathSpace& space, std::string const& widget_path) -> PaintGpuState {
+auto read_gpu_state(PathSpaceBase& space, std::string const& widget_path) -> PaintGpuState {
     auto path = WidgetSpacePath(widget_path, "/render/gpu/state");
     auto stored = DeclarativeDetail::read_optional<std::string>(space, path);
     if (!stored || !stored->has_value()) {
@@ -330,7 +331,7 @@ auto make_dirty_hint(PaintStrokePoint const& point,
     return hint;
 }
 
-auto append_pending_dirty(PathSpace& space,
+auto append_pending_dirty(PathSpaceBase& space,
                           std::string const& widget_path,
                           DirtyRectHint const& hint) -> SP::Expected<void> {
     if (hint.max_x <= hint.min_x || hint.max_y <= hint.min_y) {
@@ -349,7 +350,7 @@ auto append_pending_dirty(PathSpace& space,
     return DeclarativeDetail::replace_single(space, pending_path, values);
 }
 
-auto enqueue_dirty_hint(PathSpace& space,
+auto enqueue_dirty_hint(PathSpaceBase& space,
                         std::string const& widget_path,
                         DirtyRectHint const& hint) -> SP::Expected<void> {
     if (hint.max_x <= hint.min_x || hint.max_y <= hint.min_y) {
@@ -363,7 +364,7 @@ auto enqueue_dirty_hint(PathSpace& space,
     return append_pending_dirty(space, widget_path, hint);
 }
 
-auto gpu_enabled(PathSpace& space, std::string const& widget_path) -> bool {
+auto gpu_enabled(PathSpaceBase& space, std::string const& widget_path) -> bool {
     auto path = WidgetSpacePath(widget_path, "/render/gpu/enabled");
     auto value = DeclarativeDetail::read_optional<bool>(space, path);
     if (!value || !value->has_value()) {
@@ -372,7 +373,7 @@ auto gpu_enabled(PathSpace& space, std::string const& widget_path) -> bool {
     return **value;
 }
 
-auto increment_revision(PathSpace& space, std::string const& widget_path) -> void {
+auto increment_revision(PathSpaceBase& space, std::string const& widget_path) -> void {
     auto path = WidgetSpacePath(widget_path, "/render/buffer/revision");
     auto current = DeclarativeDetail::read_optional<std::uint64_t>(space, path);
     if (!current) {
@@ -404,7 +405,7 @@ auto parse_child_id(std::string const& name) -> std::optional<std::uint64_t> {
     return value;
 }
 
-auto read_brush_size(PathSpace& space, std::string const& widget_path) -> SP::Expected<float> {
+auto read_brush_size(PathSpaceBase& space, std::string const& widget_path) -> SP::Expected<float> {
     auto path = WidgetSpacePath(widget_path, "/state/brush/size");
     auto value = DeclarativeDetail::read_optional<float>(space, path);
     if (!value) {
@@ -413,7 +414,7 @@ auto read_brush_size(PathSpace& space, std::string const& widget_path) -> SP::Ex
     return value->value_or(6.0f);
 }
 
-auto read_brush_color(PathSpace& space, std::string const& widget_path)
+auto read_brush_color(PathSpaceBase& space, std::string const& widget_path)
     -> SP::Expected<std::array<float, 4>> {
     auto path = WidgetSpacePath(widget_path, "/state/brush/color");
     auto value = DeclarativeDetail::read_optional<std::array<float, 4>>(space, path);
@@ -453,7 +454,7 @@ auto meta_path(std::string const& widget_path, std::uint64_t stroke_id) -> std::
     return path;
 }
 
-auto read_points(PathSpace& space, std::string const& widget_path, std::uint64_t stroke_id)
+auto read_points(PathSpaceBase& space, std::string const& widget_path, std::uint64_t stroke_id)
     -> SP::Expected<std::vector<PaintStrokePoint>> {
     auto points_leaf = points_path(widget_path, stroke_id);
     auto version_leaf = points_version_path(widget_path, stroke_id);
@@ -480,7 +481,7 @@ auto read_points(PathSpace& space, std::string const& widget_path, std::uint64_t
                                                      SP::Error::Code::Timeout));
 }
 
-auto read_points_version(PathSpace& space, std::string const& widget_path, std::uint64_t stroke_id)
+auto read_points_version(PathSpaceBase& space, std::string const& widget_path, std::uint64_t stroke_id)
     -> SP::Expected<std::uint64_t> {
     auto path = points_version_path(widget_path, stroke_id);
     auto value = DeclarativeDetail::read_optional<std::uint64_t>(space, path);
@@ -490,7 +491,7 @@ auto read_points_version(PathSpace& space, std::string const& widget_path, std::
     return value->value_or(std::uint64_t{0});
 }
 
-auto read_meta(PathSpace& space, std::string const& widget_path, std::uint64_t stroke_id)
+auto read_meta(PathSpaceBase& space, std::string const& widget_path, std::uint64_t stroke_id)
     -> SP::Expected<std::optional<PaintStrokeMeta>> {
     auto path = meta_path(widget_path, stroke_id);
     auto value = DeclarativeDetail::read_optional<PaintStrokeMeta>(space, path);
@@ -500,7 +501,7 @@ auto read_meta(PathSpace& space, std::string const& widget_path, std::uint64_t s
     return *value;
 }
 
-auto write_stroke(PathSpace& space,
+auto write_stroke(PathSpaceBase& space,
                   std::string const& widget_path,
                   std::uint64_t stroke_id,
                   PaintStrokeMeta const& meta,
@@ -525,7 +526,7 @@ auto write_stroke(PathSpace& space,
 
 } // namespace
 
-auto EnsureBufferDefaults(PathSpace& space,
+auto EnsureBufferDefaults(PathSpaceBase& space,
                           std::string const& widget_path,
                           PaintBufferMetrics const& defaults) -> SP::Expected<void> {
     auto width_path = WidgetSpacePath(widget_path, "/render/buffer/metrics/width");
@@ -558,7 +559,7 @@ auto EnsureBufferDefaults(PathSpace& space,
     return ensure_gpu_defaults(space, widget_path);
 }
 
-auto ReadBufferMetrics(PathSpace& space, std::string const& widget_path)
+auto ReadBufferMetrics(PathSpaceBase& space, std::string const& widget_path)
     -> SP::Expected<PaintBufferMetrics> {
     PaintBufferMetrics defaults{};
     if (auto status = EnsureBufferDefaults(space, widget_path, defaults); !status) {
@@ -592,14 +593,14 @@ auto ReadBufferMetrics(PathSpace& space, std::string const& widget_path)
     return metrics;
 }
 
-auto ReadStrokePointsConsistent(PathSpace& space,
+auto ReadStrokePointsConsistent(PathSpaceBase& space,
                                 std::string const& widget_path,
                                 std::uint64_t stroke_id)
     -> SP::Expected<std::vector<PaintStrokePoint>> {
     return read_points(space, widget_path, stroke_id);
 }
 
-auto append_point(PathSpace& space,
+auto append_point(PathSpaceBase& space,
                   std::string const& widget_path,
                   std::uint64_t stroke_id,
                   PaintStrokeMeta meta,
@@ -625,7 +626,7 @@ auto append_point(PathSpace& space,
     return true;
 }
 
-auto HandleAction(PathSpace& space, WidgetAction const& action) -> SP::Expected<bool> {
+auto HandleAction(PathSpaceBase& space, WidgetAction const& action) -> SP::Expected<bool> {
     switch (action.kind) {
     case WidgetOpKind::PaintStrokeBegin:
     case WidgetOpKind::PaintStrokeUpdate:
@@ -726,7 +727,7 @@ auto HandleAction(PathSpace& space, WidgetAction const& action) -> SP::Expected<
     return *updated;
 }
 
-auto LoadStrokeRecords(PathSpace& space,
+auto LoadStrokeRecords(PathSpaceBase& space,
                        std::string const& widget_path)
     -> SP::Expected<std::vector<PaintStrokeRecord>> {
     auto history_root = WidgetSpacePath(widget_path, "/state/history");
@@ -762,7 +763,7 @@ auto LoadStrokeRecords(PathSpace& space,
     return records;
 }
 
-auto ApplyLayoutSize(PathSpace& space, std::string const& widget_path) -> SP::Expected<bool> {
+auto ApplyLayoutSize(PathSpaceBase& space, std::string const& widget_path) -> SP::Expected<bool> {
     auto layout = read_layout_size(space, widget_path);
     if (!layout) {
         return std::unexpected(layout.error());

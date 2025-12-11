@@ -29,6 +29,7 @@ constexpr std::array<std::pair<RouteMetric, char const*>, static_cast<std::size_
         {RouteMetric::ApiOps, "api_ops"},
         {RouteMetric::Events, "events"},
         {RouteMetric::Metrics, "metrics"},
+        {RouteMetric::Diagnostics, "diagnostics_ui"},
     }};
 
 constexpr std::size_t kRouteCount = static_cast<std::size_t>(RouteMetric::Count);

@@ -83,13 +83,16 @@ namespace SP::History::UndoJournal {
 auto serializeEntry(JournalEntry const& entry) -> Expected<std::vector<std::byte>> {
     if (entry.path.size() > std::numeric_limits<std::uint32_t>::max())
         return std::unexpected(makeError("Journal entry path exceeds encodable length"));
+    if (entry.tag.size() > std::numeric_limits<std::uint32_t>::max())
+        return std::unexpected(makeError("Journal entry tag exceeds encodable length"));
     if (entry.value.bytes.size() > std::numeric_limits<std::uint32_t>::max())
         return std::unexpected(makeError("Journal entry value payload exceeds encodable length"));
     if (entry.inverseValue.bytes.size() > std::numeric_limits<std::uint32_t>::max())
         return std::unexpected(makeError("Journal entry inverse payload exceeds encodable length"));
 
     std::vector<std::byte> buffer;
-    buffer.reserve(64 + entry.path.size() + entry.value.bytes.size() + entry.inverseValue.bytes.size());
+    buffer.reserve(64 + entry.path.size() + entry.tag.size() + entry.value.bytes.size()
+                   + entry.inverseValue.bytes.size());
 
     appendScalar<std::uint32_t>(buffer, kJournalMagic);
     appendScalar<std::uint16_t>(buffer, kJournalVersion);
@@ -112,6 +115,12 @@ auto serializeEntry(JournalEntry const& entry) -> Expected<std::vector<std::byte
     appendPayload(buffer, entry.value);
     appendPayload(buffer, entry.inverseValue);
 
+    appendScalar<std::uint32_t>(buffer, static_cast<std::uint32_t>(entry.tag.size()));
+    if (!entry.tag.empty()) {
+        auto const* bytes = reinterpret_cast<std::byte const*>(entry.tag.data());
+        buffer.insert(buffer.end(), bytes, bytes + entry.tag.size());
+    }
+
     return buffer;
 }
 
@@ -126,7 +135,7 @@ auto deserializeEntry(std::span<const std::byte> bytes) -> Expected<JournalEntry
     if (!version.has_value()) {
         return std::unexpected(Error{Error::Code::MalformedInput, "Journal entry missing version"});
     }
-    if (*version != kJournalVersion) {
+    if (*version < 1 || *version > kJournalVersion) {
         return std::unexpected(Error{Error::Code::MalformedInput, "Unsupported journal entry version"});
     }
 
@@ -174,6 +183,23 @@ auto deserializeEntry(std::span<const std::byte> bytes) -> Expected<JournalEntry
     if (!inversePayload)
         return std::unexpected(inversePayload.error());
     entry.inverseValue = std::move(inversePayload.value());
+
+    if (*version >= 2) {
+        auto tagLength = readScalar<std::uint32_t>(data);
+        if (!tagLength.has_value()) {
+            return std::unexpected(Error{Error::Code::MalformedInput, "Journal entry truncated (tag length)"});
+        }
+        auto length = static_cast<std::size_t>(*tagLength);
+        if (data.size() < length) {
+            return std::unexpected(Error{Error::Code::MalformedInput, "Journal entry truncated (tag bytes)"});
+        }
+        if (length > 0) {
+            entry.tag.assign(reinterpret_cast<char const*>(data.data()), length);
+            data = data.subspan(length);
+        } else {
+            entry.tag.clear();
+        }
+    }
 
     return entry;
 }

@@ -60,7 +60,7 @@
 - Verify integration with `PaintSurface`: stroke history stored under `widgets/<id>/state/history` benefits from automatic snapshots; undo/redo updates `WidgetOp` streams and marks `render/dirty`.
 
 ## Open Questions
-Open questions for follow-on work now live in `docs/Plan_SceneGraph.md` (see the migrated history integration tasks section).
+Open questions for follow-on work were tracked in `docs/Plan_SceneGraph.md` (now archived) and live in `docs/finished/Plan_SceneGraph_Finished.md` (see the migrated history integration tasks section).
 
 ## Status — November 7, 2025
 - ✅ `history::CowSubtreePrototype` models copy-on-write subtrees with node/payload sharing, provides memory + delta instrumentation, and is validated by unit tests (`apply clones modified branch only`) exercising node reuse and stack accounting.
@@ -73,7 +73,7 @@ Open questions for follow-on work now live in `docs/Plan_SceneGraph.md` (see the
 - ✅ (November 8, 2025) Added `PathSpace::listChildren()` / `PathSpace::listChildren(ConcretePathView)` to enumerate child component names (including nested `PathSpace` mounts) without decoding payloads; coverage lives in `tests/unit/test_PathSpace_listChildren.cpp`.
 
 ## Next Steps
-Active and outstanding work items from this historical plan have been migrated to `docs/Plan_SceneGraph.md`; refer there for the current backlog.
+Active and outstanding work items from this historical plan were migrated to `docs/Plan_SceneGraph.md` (now archived) and now live in `docs/finished/Plan_SceneGraph_Finished.md`; refer there for the archived backlog.
 
 
 addendum:

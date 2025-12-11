@@ -165,6 +165,8 @@ struct WindowState {
     int desired_height = 360;
     std::string desired_title = "PathSpace Window";
     PSLocalWindowDelegate* window_delegate = nil;
+    std::atomic<bool> live_resize_active{false};
+    std::atomic<bool> pending_present_after_resize{false};
 };
 
 auto window_state() -> WindowState& {
@@ -273,6 +275,40 @@ void update_presenter_config(WindowState& state) {
     });
 }
 
+void schedule_metal_present(WindowState& state);
+
+void clear_presenter_surfaces(WindowState& state) {
+    std::lock_guard<std::mutex> lock(state.framebuffer_mutex);
+    for (auto* surface : state.iosurface_pool) {
+        if (surface) {
+            CFRelease(surface);
+        }
+    }
+    state.iosurface_pool.clear();
+    state.iosurface_pool_index = 0;
+    if (state.presented_iosurface) {
+        CFRelease(state.presented_iosurface);
+        state.presented_iosurface = nullptr;
+    }
+    state.iosurface_width = 0;
+    state.iosurface_height = 0;
+}
+
+void begin_resize_block(WindowState& state) {
+    state.live_resize_active.store(true, std::memory_order_release);
+    state.pending_present_after_resize.store(true, std::memory_order_release);
+    state.metal_present_scheduled.store(false);
+    clear_presenter_surfaces(state);
+}
+
+void end_resize_block(WindowState& state) {
+    state.live_resize_active.store(false, std::memory_order_release);
+    update_presenter_config(state);
+    if (state.pending_present_after_resize.exchange(false, std::memory_order_acq_rel)) {
+        schedule_metal_present(state);
+    }
+}
+
 void schedule_metal_present(WindowState& state) {
     if (!state.metal_available || !state.metal_layer || !state.metal_queue) {
         if (state.window) {
@@ -282,12 +318,18 @@ void schedule_metal_present(WindowState& state) {
         }
         return;
     }
+    if (state.live_resize_active.load(std::memory_order_acquire)) {
+        state.pending_present_after_resize.store(true, std::memory_order_release);
+        state.metal_present_scheduled.store(false);
+        return;
+    }
     bool expected = false;
     if (!state.metal_present_scheduled.compare_exchange_strong(expected, true)) {
         return;
     }
     dispatch_async(dispatch_get_main_queue(), ^{
         WindowState& st = window_state();
+        st.pending_present_after_resize.store(false, std::memory_order_release);
         st.metal_present_scheduled.store(false);
         @autoreleasepool {
             CAMetalLayer* layer = st.metal_layer;
@@ -685,9 +727,40 @@ void schedule_metal_present(WindowState& state) {
 @end
 
 @implementation PSLocalWindowDelegate
+- (void)windowWillStartLiveResize:(NSNotification *)notification {
+    (void)notification;
+    begin_resize_block(window_state());
+}
+
+- (void)windowDidEndLiveResize:(NSNotification *)notification {
+    (void)notification;
+    end_resize_block(window_state());
+}
+
+- (void)windowWillEnterFullScreen:(NSNotification *)notification {
+    (void)notification;
+    begin_resize_block(window_state());
+}
+
+- (void)windowDidEnterFullScreen:(NSNotification *)notification {
+    (void)notification;
+    end_resize_block(window_state());
+}
+
+- (void)windowWillExitFullScreen:(NSNotification *)notification {
+    (void)notification;
+    begin_resize_block(window_state());
+}
+
+- (void)windowDidExitFullScreen:(NSNotification *)notification {
+    (void)notification;
+    end_resize_block(window_state());
+}
+
 - (void)windowWillClose:(NSNotification *)notification {
     (void)notification;
     WindowState& state = window_state();
+    clear_presenter_surfaces(state);
     state.metal_available = false;
     state.metal_layer = nil;
     state.metal_queue = nil;

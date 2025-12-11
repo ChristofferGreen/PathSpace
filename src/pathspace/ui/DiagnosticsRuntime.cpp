@@ -1,14 +1,323 @@
 #include "RuntimeDetail.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <optional>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 namespace SP::UI::Runtime::Diagnostics {
 
 using namespace Detail;
 
 namespace {
+
+constexpr auto severity_to_string(PathSpaceError::Severity severity) -> std::string_view {
+    switch (severity) {
+    case PathSpaceError::Severity::Info:
+        return "info";
+    case PathSpaceError::Severity::Warning:
+        return "warning";
+    case PathSpaceError::Severity::Recoverable:
+        return "recoverable";
+    case PathSpaceError::Severity::Fatal:
+        return "fatal";
+    }
+    return "unknown";
+}
+
+constexpr auto severity_rank(PathSpaceError::Severity severity) -> int {
+    return static_cast<int>(severity);
+}
+
+auto classify_severity_from_code(int code) -> PathSpaceError::Severity {
+    if (code < 0) {
+        return PathSpaceError::Severity::Recoverable;
+    }
+    auto mapped = static_cast<SP::Error::Code>(code);
+    switch (mapped) {
+    case SP::Error::Code::InvalidError:
+        return PathSpaceError::Severity::Fatal;
+    case SP::Error::Code::UnknownError:
+    case SP::Error::Code::SerializationFunctionMissing:
+    case SP::Error::Code::UnserializableType:
+    case SP::Error::Code::CapacityExceeded:
+        return PathSpaceError::Severity::Recoverable;
+    case SP::Error::Code::NoSuchPath:
+    case SP::Error::Code::NoObjectFound:
+    case SP::Error::Code::NotFound:
+        return PathSpaceError::Severity::Info;
+    case SP::Error::Code::InvalidPath:
+    case SP::Error::Code::InvalidPathSubcomponent:
+    case SP::Error::Code::InvalidType:
+    case SP::Error::Code::InvalidPermissions:
+    case SP::Error::Code::MalformedInput:
+    case SP::Error::Code::TypeMismatch:
+    case SP::Error::Code::NotSupported:
+        return PathSpaceError::Severity::Warning;
+    case SP::Error::Code::Timeout:
+        return PathSpaceError::Severity::Recoverable;
+    }
+    return PathSpaceError::Severity::Recoverable;
+}
+
+auto severity_from_code_or_default(PathSpaceError const& error) -> PathSpaceError::Severity {
+    auto classified = classify_severity_from_code(error.code);
+    if (severity_rank(error.severity) > severity_rank(classified)) {
+        return error.severity;
+    }
+    return classified;
+}
+
+auto string_to_severity(std::string_view text) -> PathSpaceError::Severity {
+    if (text == "warning") {
+        return PathSpaceError::Severity::Warning;
+    }
+    if (text == "recoverable") {
+        return PathSpaceError::Severity::Recoverable;
+    }
+    if (text == "fatal") {
+        return PathSpaceError::Severity::Fatal;
+    }
+    return PathSpaceError::Severity::Info;
+}
+
+auto now_timestamp_ns() -> std::uint64_t {
+    auto now = std::chrono::steady_clock::now().time_since_epoch();
+    return static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
+}
+
+auto error_stats_base(ConcretePathView targetPath) -> std::string {
+    return std::string(targetPath.getPath()) + "/diagnostics/errors/stats";
+}
+
+auto counter_path(std::string const& base, std::string_view leaf) -> std::string {
+    std::string path = base;
+    path.append(leaf);
+    return path;
+}
+
+auto read_counter(PathSpace const& space,
+                  std::string const& path) -> SP::Expected<std::uint64_t> {
+    auto value = read_value<std::uint64_t>(space, path);
+    if (value) {
+        return *value;
+    }
+    auto const& error = value.error();
+    if (error.code == SP::Error::Code::NoObjectFound
+        || error.code == SP::Error::Code::NoSuchPath) {
+        return std::uint64_t{0};
+    }
+    return std::unexpected(error);
+}
+
+auto write_counter(PathSpace& space,
+                   std::string const& path,
+                   std::uint64_t value) -> SP::Expected<void> {
+    return replace_single<std::uint64_t>(space, path, value);
+}
+
+auto increment_counter(PathSpace& space,
+                       std::string const& path) -> SP::Expected<void> {
+    auto current = read_counter(space, path);
+    if (!current) {
+        return std::unexpected(current.error());
+    }
+    return write_counter(space, path, *current + 1);
+}
+
+auto read_string_or(PathSpace const& space,
+                    std::string const& path,
+                    std::string_view fallback) -> SP::Expected<std::string> {
+    auto value = read_value<std::string>(space, path);
+    if (value) {
+        return *value;
+    }
+    auto const& error = value.error();
+    if (error.code == SP::Error::Code::NoObjectFound
+        || error.code == SP::Error::Code::NoSuchPath) {
+        return std::string(fallback);
+    }
+    return std::unexpected(error);
+}
+
+auto error_stats_mutex() -> std::mutex& {
+    static std::mutex mutex;
+    return mutex;
+}
+
+auto error_stats_enabled() -> bool {
+    static std::optional<bool> cached;
+    if (!cached.has_value()) {
+        if (auto* env = std::getenv("PATHSPACE_UI_ERROR_STATS")) {
+            std::fprintf(stderr, "PATHSPACE_UI_ERROR_STATS=%s\n", env);
+            cached = !(std::strcmp(env, "0") == 0 || std::strcmp(env, "false") == 0
+                       || std::strcmp(env, "off") == 0);
+        } else {
+            cached = true;
+        }
+    }
+    return *cached;
+}
+
+auto load_error_stats(PathSpace const& space,
+                      ConcretePathView targetPath) -> SP::Expected<ErrorStats> {
+    if (!error_stats_enabled()) {
+        return ErrorStats{};
+    }
+    auto base = error_stats_base(targetPath);
+    ErrorStats stats{};
+
+    auto total = read_counter(space, counter_path(base, "/total"));
+    if (!total) {
+        return std::unexpected(total.error());
+    }
+    stats.total = *total;
+
+    auto cleared = read_counter(space, counter_path(base, "/cleared"));
+    if (!cleared) {
+        return std::unexpected(cleared.error());
+    }
+    stats.cleared = *cleared;
+
+    auto info = read_counter(space, counter_path(base, "/info"));
+    if (!info) {
+        return std::unexpected(info.error());
+    }
+    stats.info = *info;
+
+    auto warning = read_counter(space, counter_path(base, "/warning"));
+    if (!warning) {
+        return std::unexpected(warning.error());
+    }
+    stats.warning = *warning;
+
+    auto recoverable = read_counter(space, counter_path(base, "/recoverable"));
+    if (!recoverable) {
+        return std::unexpected(recoverable.error());
+    }
+    stats.recoverable = *recoverable;
+
+    auto fatal = read_counter(space, counter_path(base, "/fatal"));
+    if (!fatal) {
+        return std::unexpected(fatal.error());
+    }
+    stats.fatal = *fatal;
+
+    auto last_code = read_counter(space, counter_path(base, "/last/code"));
+    if (!last_code) {
+        return std::unexpected(last_code.error());
+    }
+    stats.last_code = *last_code;
+
+    auto last_revision = read_counter(space, counter_path(base, "/last/revision"));
+    if (!last_revision) {
+        return std::unexpected(last_revision.error());
+    }
+    stats.last_revision = *last_revision;
+
+    auto last_timestamp = read_counter(space, counter_path(base, "/last/timestamp_ns"));
+    if (!last_timestamp) {
+        return std::unexpected(last_timestamp.error());
+    }
+    stats.last_timestamp_ns = *last_timestamp;
+
+    auto last_severity = read_string_or(space, counter_path(base, "/last/severity"), "info");
+    if (!last_severity) {
+        return std::unexpected(last_severity.error());
+    }
+    stats.last_severity = string_to_severity(*last_severity);
+
+    return stats;
+}
+
+auto update_error_stats(PathSpace& space,
+                        ConcretePathView targetPath,
+                        std::optional<PathSpaceError> const& error) -> SP::Expected<void> {
+    if (!error_stats_enabled()) {
+        return {};
+    }
+    std::lock_guard<std::mutex> guard(error_stats_mutex());
+    auto base = error_stats_base(targetPath);
+
+    auto total_path = counter_path(base, "/total");
+    auto cleared_path = counter_path(base, "/cleared");
+    auto info_path = counter_path(base, "/info");
+    auto warning_path = counter_path(base, "/warning");
+    auto recoverable_path = counter_path(base, "/recoverable");
+    auto fatal_path = counter_path(base, "/fatal");
+    auto last_code_path = counter_path(base, "/last/code");
+    auto last_revision_path = counter_path(base, "/last/revision");
+    auto last_timestamp_path = counter_path(base, "/last/timestamp_ns");
+    auto last_severity_path = counter_path(base, "/last/severity");
+
+    if (error) {
+        if (auto status = increment_counter(space, total_path); !status) {
+            return status;
+        }
+        switch (error->severity) {
+        case PathSpaceError::Severity::Info:
+            if (auto status = increment_counter(space, info_path); !status) {
+                return status;
+            }
+            break;
+        case PathSpaceError::Severity::Warning:
+            if (auto status = increment_counter(space, warning_path); !status) {
+                return status;
+            }
+            break;
+        case PathSpaceError::Severity::Recoverable:
+            if (auto status = increment_counter(space, recoverable_path); !status) {
+                return status;
+            }
+            break;
+        case PathSpaceError::Severity::Fatal:
+            if (auto status = increment_counter(space, fatal_path); !status) {
+                return status;
+            }
+            break;
+        }
+
+        if (auto status = write_counter(space, last_code_path, static_cast<std::uint64_t>(error->code)); !status) {
+            return status;
+        }
+        if (auto status = write_counter(space, last_revision_path, error->revision); !status) {
+            return status;
+        }
+        if (auto status = write_counter(space, last_timestamp_path, error->timestamp_ns); !status) {
+            return status;
+        }
+        if (auto status = replace_single<std::string>(space,
+                                                      last_severity_path,
+                                                      std::string(severity_to_string(error->severity))); !status) {
+            return status;
+        }
+    } else {
+        if (auto status = increment_counter(space, cleared_path); !status) {
+            return status;
+        }
+        if (auto status = write_counter(space, last_code_path, 0); !status) {
+            return status;
+        }
+        if (auto status = write_counter(space, last_revision_path, 0); !status) {
+            return status;
+        }
+        if (auto status = write_counter(space, last_timestamp_path, now_timestamp_ns()); !status) {
+            return status;
+        }
+        if (auto status = replace_single<std::string>(space,
+                                                      last_severity_path,
+                                                      std::string(severity_to_string(PathSpaceError::Severity::Info))); !status) {
+            return status;
+        }
+    }
+
+    return {};
+}
 
 auto contention_metrics_enabled() -> bool {
     static std::optional<bool> cached;
@@ -23,14 +332,12 @@ auto contention_metrics_enabled() -> bool {
     return *cached;
 }
 
-auto write_contention_metrics(PathSpace& space,
-                              ConcretePathView targetPath,
-                              PathWindowPresentStats const& stats) -> SP::Expected<void> {
+auto write_contention_metrics_to_base(PathSpace& space,
+                                      std::string const& base,
+                                      PathWindowPresentStats const& stats) -> SP::Expected<void> {
     if (!contention_metrics_enabled()) {
         return {};
     }
-
-    auto base = std::string(targetPath.getPath()) + "/output/v1/diagnostics/metrics";
 
     if (auto status = replace_single<double>(space,
                                              base + "/encodeWorkerStallMsTotal",
@@ -59,6 +366,18 @@ auto write_contention_metrics(PathSpace& space,
     }
 
     return {};
+}
+
+auto write_contention_metrics(PathSpace& space,
+                              ConcretePathView targetPath,
+                              PathWindowPresentStats const& stats) -> SP::Expected<void> {
+    auto compat_base = std::string(targetPath.getPath()) + "/output/v1/diagnostics/metrics";
+    if (auto status = write_contention_metrics_to_base(space, compat_base, stats); !status) {
+        return status;
+    }
+
+    auto diagnostics_base = std::string(targetPath.getPath()) + "/diagnostics/metrics/contention";
+    return write_contention_metrics_to_base(space, diagnostics_base, stats);
 }
 
 } // namespace
@@ -411,6 +730,229 @@ auto ReadTargetMetrics(PathSpace const& space,
         }
     }
 
+    if (auto value = read_value<uint64_t>(space, base + "/fontActiveCount"); value) {
+        metrics.font_active_count = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/fontAtlasCpuBytes"); value) {
+        metrics.font_atlas_cpu_bytes = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/fontAtlasGpuBytes"); value) {
+        metrics.font_atlas_gpu_bytes = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, base + "/fontAtlasResourceCount"); value) {
+        metrics.font_atlas_resource_count = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto fonts = read_optional<std::vector<SP::UI::Scene::FontAssetReference>>(space, base + "/fontActiveAssets"); !fonts) {
+        return std::unexpected(fonts.error());
+    } else if (fonts->has_value()) {
+        metrics.font_assets = std::move(**fonts);
+        if (metrics.font_active_count == 0) {
+            metrics.font_active_count = static_cast<uint64_t>(metrics.font_assets.size());
+        }
+        if (metrics.font_atlas_resource_count == 0) {
+            metrics.font_atlas_resource_count = static_cast<uint64_t>(metrics.font_assets.size());
+        }
+    }
+
+    auto read_font_cache_metric = [&](std::string const& path,
+                                      uint64_t& dest,
+                                      bool& touched) -> SP::Expected<void> {
+        auto value = read_value<uint64_t>(space, path);
+        if (value) {
+            dest = *value;
+            touched = true;
+        } else if (value.error().code != SP::Error::Code::NoObjectFound
+                   && value.error().code != SP::Error::Code::NoSuchPath) {
+            return std::unexpected(value.error());
+        }
+        return {};
+    };
+
+    bool font_cache_from_target = false;
+    if (auto status = read_font_cache_metric(base + "/fontRegisteredFonts",
+                                             metrics.font_registered_fonts,
+                                             font_cache_from_target); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = read_font_cache_metric(base + "/fontCacheHits",
+                                             metrics.font_cache_hits,
+                                             font_cache_from_target); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = read_font_cache_metric(base + "/fontCacheMisses",
+                                             metrics.font_cache_misses,
+                                             font_cache_from_target); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = read_font_cache_metric(base + "/fontCacheEvictions",
+                                             metrics.font_cache_evictions,
+                                             font_cache_from_target); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = read_font_cache_metric(base + "/fontCacheSize",
+                                             metrics.font_cache_size,
+                                             font_cache_from_target); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = read_font_cache_metric(base + "/fontCacheCapacity",
+                                             metrics.font_cache_capacity,
+                                             font_cache_from_target); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = read_font_cache_metric(base + "/fontCacheHardCapacity",
+                                             metrics.font_cache_hard_capacity,
+                                             font_cache_from_target); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = read_font_cache_metric(base + "/fontAtlasSoftBytes",
+                                             metrics.font_atlas_soft_bytes,
+                                             font_cache_from_target); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = read_font_cache_metric(base + "/fontAtlasHardBytes",
+                                             metrics.font_atlas_hard_bytes,
+                                             font_cache_from_target); !status) {
+        return std::unexpected(status.error());
+    }
+    if (auto status = read_font_cache_metric(base + "/fontShapedRunApproxBytes",
+                                             metrics.font_shaped_run_approx_bytes,
+                                             font_cache_from_target); !status) {
+        return std::unexpected(status.error());
+    }
+
+    if (!font_cache_from_target) {
+        auto app_root = derive_app_root_for(targetPath);
+        if (!app_root) {
+            return std::unexpected(app_root.error());
+        }
+        auto font_metrics_path = std::string(app_root->getPath()) + "/diagnostics/metrics/fonts";
+        bool font_cache_from_app = false;
+        if (auto status = read_font_cache_metric(font_metrics_path + "/registeredFonts",
+                                                 metrics.font_registered_fonts,
+                                                 font_cache_from_app); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = read_font_cache_metric(font_metrics_path + "/cacheHits",
+                                                 metrics.font_cache_hits,
+                                                 font_cache_from_app); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = read_font_cache_metric(font_metrics_path + "/cacheMisses",
+                                                 metrics.font_cache_misses,
+                                                 font_cache_from_app); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = read_font_cache_metric(font_metrics_path + "/cacheEvictions",
+                                                 metrics.font_cache_evictions,
+                                                 font_cache_from_app); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = read_font_cache_metric(font_metrics_path + "/cacheSize",
+                                                 metrics.font_cache_size,
+                                                 font_cache_from_app); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = read_font_cache_metric(font_metrics_path + "/cacheCapacity",
+                                                 metrics.font_cache_capacity,
+                                                 font_cache_from_app); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = read_font_cache_metric(font_metrics_path + "/cacheHardCapacity",
+                                                 metrics.font_cache_hard_capacity,
+                                                 font_cache_from_app); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = read_font_cache_metric(font_metrics_path + "/atlasSoftBytes",
+                                                 metrics.font_atlas_soft_bytes,
+                                                 font_cache_from_app); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = read_font_cache_metric(font_metrics_path + "/atlasHardBytes",
+                                                 metrics.font_atlas_hard_bytes,
+                                                 font_cache_from_app); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = read_font_cache_metric(font_metrics_path + "/shapedRunApproxBytes",
+                                                 metrics.font_shaped_run_approx_bytes,
+                                                 font_cache_from_app); !status) {
+            return std::unexpected(status.error());
+        }
+    }
+
+    auto htmlBase = std::string(targetPath.getPath()) + "/output/v1/html";
+
+    if (auto value = read_value<uint64_t>(space, htmlBase + "/domNodeCount"); value) {
+        metrics.html_dom_node_count = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, htmlBase + "/commandCount"); value) {
+        metrics.html_command_count = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, htmlBase + "/assetCount"); value) {
+        metrics.html_asset_count = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<uint64_t>(space, htmlBase + "/options/maxDomNodes"); value) {
+        metrics.html_max_dom_nodes = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, htmlBase + "/options/preferDom"); value) {
+        metrics.html_prefer_dom = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, htmlBase + "/options/allowCanvasFallback"); value) {
+        metrics.html_allow_canvas_fallback = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<bool>(space, htmlBase + "/usedCanvasFallback"); value) {
+        metrics.html_used_canvas_fallback = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
+    if (auto value = read_value<std::string>(space, htmlBase + "/mode"); value) {
+        metrics.html_mode = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+
     auto residencyBase = std::string(targetPath.getPath()) + "/diagnostics/metrics/residency";
 
     if (auto value = read_value<uint64_t>(space, residencyBase + "/cpuBytes"); value) {
@@ -540,9 +1082,8 @@ auto ReadTargetMetrics(PathSpace const& space,
     metrics.last_error_detail.clear();
 
     auto diagPath = std::string(targetPath.getPath()) + "/diagnostics/errors/live";
-    if (auto errorValue = read_optional<PathSpaceError>(space, diagPath); !errorValue) {
-        return std::unexpected(errorValue.error());
-    } else if (errorValue->has_value() && !(*errorValue)->message.empty()) {
+    auto errorValue = read_optional<PathSpaceError>(space, diagPath);
+    if (errorValue && errorValue->has_value() && !(*errorValue)->message.empty()) {
         metrics.last_error = (*errorValue)->message;
         metrics.last_error_code = (*errorValue)->code;
         metrics.last_error_revision = (*errorValue)->revision;
@@ -550,13 +1091,58 @@ auto ReadTargetMetrics(PathSpace const& space,
         metrics.last_error_timestamp_ns = (*errorValue)->timestamp_ns;
         metrics.last_error_detail = (*errorValue)->detail;
     } else {
+        if (!errorValue && errorValue.error().code != SP::Error::Code::NoObjectFound
+            && errorValue.error().code != SP::Error::Code::NoSuchPath) {
+            // fall back to the compatibility fields when the live payload is unreadable
+        }
         if (auto value = read_value<std::string>(space, base + "/lastError"); value) {
             metrics.last_error = *value;
         } else if (value.error().code != SP::Error::Code::NoObjectFound
                    && value.error().code != SP::Error::Code::NoSuchPath) {
             return std::unexpected(value.error());
         }
+        if (auto value = read_value<int>(space, base + "/lastErrorCode"); value) {
+            metrics.last_error_code = *value;
+        } else if (value.error().code != SP::Error::Code::NoObjectFound
+                   && value.error().code != SP::Error::Code::NoSuchPath) {
+            return std::unexpected(value.error());
+        }
+        if (auto value = read_value<std::string>(space, base + "/lastErrorSeverity"); value) {
+            metrics.last_error_severity = string_to_severity(*value);
+        } else if (value.error().code != SP::Error::Code::NoObjectFound
+                   && value.error().code != SP::Error::Code::NoSuchPath) {
+            return std::unexpected(value.error());
+        }
+        if (auto value = read_value<std::uint64_t>(space, base + "/lastErrorRevision"); value) {
+            metrics.last_error_revision = *value;
+        } else if (value.error().code != SP::Error::Code::NoObjectFound
+                   && value.error().code != SP::Error::Code::NoSuchPath) {
+            return std::unexpected(value.error());
+        }
+        if (auto value = read_value<std::uint64_t>(space, base + "/lastErrorTimestampNs"); value) {
+            metrics.last_error_timestamp_ns = *value;
+        } else if (value.error().code != SP::Error::Code::NoObjectFound
+                   && value.error().code != SP::Error::Code::NoSuchPath) {
+            return std::unexpected(value.error());
+        }
+        if (auto value = read_value<std::string>(space, base + "/lastErrorDetail"); value) {
+            metrics.last_error_detail = *value;
+        } else if (value.error().code != SP::Error::Code::NoObjectFound
+                   && value.error().code != SP::Error::Code::NoSuchPath) {
+            return std::unexpected(value.error());
+        }
     }
+
+    auto stats = ReadTargetErrorStats(space, targetPath);
+    if (!stats) {
+        return std::unexpected(stats.error());
+    }
+    metrics.error_total = stats->total;
+    metrics.error_cleared = stats->cleared;
+    metrics.error_info = stats->info;
+    metrics.error_warning = stats->warning;
+    metrics.error_recoverable = stats->recoverable;
+    metrics.error_fatal = stats->fatal;
 
     return metrics;
 }
@@ -568,8 +1154,33 @@ auto ClearTargetError(PathSpace& space,
     if (auto status = replace_single<PathSpaceError>(space, livePath, cleared); !status) {
         return status;
     }
-    auto lastErrorPath = std::string(targetPath.getPath()) + "/output/v1/common/lastError";
-    return replace_single<std::string>(space, lastErrorPath, std::string{});
+    auto lastErrorBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    if (auto status = replace_single<std::string>(space, lastErrorBase + "/lastError", std::string{});
+        !status) {
+        return status;
+    }
+    if (auto status = replace_single<int>(space, lastErrorBase + "/lastErrorCode", 0); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::string>(space,
+                                                  lastErrorBase + "/lastErrorSeverity",
+                                                  std::string{severity_to_string(PathSpaceError::Severity::Info)});
+        !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::uint64_t>(space, lastErrorBase + "/lastErrorRevision", 0); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::uint64_t>(space,
+                                                    lastErrorBase + "/lastErrorTimestampNs",
+                                                    now_timestamp_ns()); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::string>(space, lastErrorBase + "/lastErrorDetail", std::string{});
+        !status) {
+        return status;
+    }
+    return update_error_stats(space, targetPath, std::nullopt);
 }
 
 auto WriteTargetError(PathSpace& space,
@@ -584,23 +1195,52 @@ auto WriteTargetError(PathSpace& space,
         stored.path = std::string(targetPath.getPath());
     }
     if (stored.timestamp_ns == 0) {
-        auto now = std::chrono::steady_clock::now().time_since_epoch();
-        stored.timestamp_ns = static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
+        stored.timestamp_ns = now_timestamp_ns();
     }
+    stored.severity = severity_from_code_or_default(stored);
 
     auto livePath = std::string(targetPath.getPath()) + "/diagnostics/errors/live";
     if (auto status = replace_single<PathSpaceError>(space, livePath, stored); !status) {
         return status;
     }
-    auto lastErrorPath = std::string(targetPath.getPath()) + "/output/v1/common/lastError";
-    return replace_single<std::string>(space, lastErrorPath, stored.message);
+    auto lastErrorBase = std::string(targetPath.getPath()) + "/output/v1/common";
+    if (auto status = replace_single<std::string>(space, lastErrorBase + "/lastError", stored.message); !status) {
+        return status;
+    }
+    if (auto status = replace_single<int>(space, lastErrorBase + "/lastErrorCode", stored.code); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::string>(space,
+                                                  lastErrorBase + "/lastErrorSeverity",
+                                                  std::string{severity_to_string(stored.severity)});
+        !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::uint64_t>(space, lastErrorBase + "/lastErrorRevision", stored.revision);
+        !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::uint64_t>(space,
+                                                    lastErrorBase + "/lastErrorTimestampNs",
+                                                    stored.timestamp_ns); !status) {
+        return status;
+    }
+    if (auto status = replace_single<std::string>(space, lastErrorBase + "/lastErrorDetail", stored.detail);
+        !status) {
+        return status;
+    }
+    return update_error_stats(space, targetPath, stored);
 }
 
 auto ReadTargetError(PathSpace const& space,
                      ConcretePathView targetPath) -> SP::Expected<std::optional<PathSpaceError>> {
     auto livePath = std::string(targetPath.getPath()) + "/diagnostics/errors/live";
     return read_optional<PathSpaceError>(space, livePath);
+}
+
+auto ReadTargetErrorStats(PathSpace const& space,
+                          ConcretePathView targetPath) -> SP::Expected<ErrorStats> {
+    return load_error_stats(space, targetPath);
 }
 
 auto ReadSoftwareFramebuffer(PathSpace const& space,
@@ -801,6 +1441,10 @@ auto WritePresentMetrics(PathSpace& space,
     if (auto status = write_present_metrics_to_base(space, base, stats, policy); !status) {
         return status;
     }
+    auto diagnostics_base = std::string(targetPath.getPath()) + "/diagnostics/metrics/present";
+    if (auto status = write_present_metrics_to_base(space, diagnostics_base, stats, policy); !status) {
+        return status;
+    }
     if (auto status = write_contention_metrics(space, targetPath, stats); !status) {
         return status;
     }
@@ -960,6 +1604,128 @@ auto WriteResidencyMetrics(PathSpace& space,
     }
 
     return {};
+}
+
+namespace {
+
+struct TargetBase {
+    std::string path;
+    std::string renderer;
+    std::string target;
+};
+
+auto parse_target_base(std::string const& path) -> std::optional<TargetBase> {
+    if (path.empty()) {
+        return std::nullopt;
+    }
+
+    std::vector<std::string_view> parts;
+    std::size_t                   start = 0;
+    while (start < path.size()) {
+        auto next = path.find('/', start);
+        if (next == std::string::npos) {
+            next = path.size();
+        }
+        auto token = std::string_view{path.data() + start, next - start};
+        if (!token.empty()) {
+            parts.push_back(token);
+        }
+        start = next + 1;
+    }
+
+    auto renderer_it = std::find(parts.begin(), parts.end(), "renderers");
+    if (renderer_it == parts.end() || std::next(renderer_it) == parts.end()) {
+        return std::nullopt;
+    }
+
+    auto targets_it = std::find(renderer_it, parts.end(), "targets");
+    if (targets_it == parts.end() || std::next(targets_it) == parts.end()) {
+        return std::nullopt;
+    }
+
+    std::string base;
+    base.reserve(path.size());
+    base.push_back('/');
+    for (auto it = parts.begin(); it != std::next(targets_it, 2); ++it) {
+        if (it != parts.begin()) {
+            base.push_back('/');
+        }
+        base.append(it->data(), it->size());
+    }
+
+    TargetBase parsed;
+    parsed.path     = std::move(base);
+    parsed.renderer = std::string{*std::next(renderer_it)};
+    parsed.target   = std::string{*std::next(targets_it)};
+    return parsed;
+}
+
+} // namespace
+
+auto CollectTargetDiagnostics(PathSpace& space,
+                              std::string_view renderers_root)
+    -> SP::Expected<std::vector<TargetDiagnosticsSummary>> {
+    std::string root = renderers_root.empty() ? std::string{"/renderers"}
+                                              : std::string{renderers_root};
+
+    VisitOptions options;
+    options.root = std::move(root);
+    options.maxDepth = 6;
+    options.includeValues = false;
+
+    std::vector<TargetBase> targets;
+    std::unordered_set<std::string> seen_paths;
+
+    auto status = space.visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            if (auto parsed = parse_target_base(entry.path)) {
+                if (seen_paths.insert(parsed->path).second) {
+                    targets.push_back(std::move(*parsed));
+                }
+            }
+            return VisitControl::Continue;
+        },
+        options);
+    if (!status) {
+        return std::unexpected(status.error());
+    }
+
+    std::sort(targets.begin(), targets.end(), [](TargetBase const& lhs, TargetBase const& rhs) {
+        return lhs.path < rhs.path;
+    });
+
+    std::vector<TargetDiagnosticsSummary> summaries;
+    summaries.reserve(targets.size());
+
+    for (auto const& target : targets) {
+        ConcretePathString target_path{target.path};
+
+        auto metrics = ReadTargetMetrics(space, ConcretePathView{target_path.getPath()});
+        if (!metrics) {
+            return std::unexpected(metrics.error());
+        }
+
+        auto error_stats = ReadTargetErrorStats(space, ConcretePathView{target_path.getPath()});
+        if (!error_stats) {
+            return std::unexpected(error_stats.error());
+        }
+
+        auto live_error = ReadTargetError(space, ConcretePathView{target_path.getPath()});
+        if (!live_error) {
+            return std::unexpected(live_error.error());
+        }
+
+        TargetDiagnosticsSummary summary{};
+        summary.path       = target.path;
+        summary.renderer   = target.renderer;
+        summary.target     = target.target;
+        summary.metrics    = std::move(*metrics);
+        summary.error_stats = *error_stats;
+        summary.live_error = std::move(*live_error);
+        summaries.push_back(std::move(summary));
+    }
+
+    return summaries;
 }
 
 } // namespace SP::UI::Runtime::Diagnostics

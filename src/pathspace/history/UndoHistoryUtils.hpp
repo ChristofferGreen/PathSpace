@@ -54,10 +54,31 @@ inline constexpr std::string_view HistoryStatsRedoBytes           = "_history/st
 inline constexpr std::string_view HistoryStatsLiveBytes           = "_history/stats/liveBytes";
 inline constexpr std::string_view HistoryStatsBytesRetained       = "_history/stats/bytesRetained";
 inline constexpr std::string_view HistoryStatsManualGcEnabled     = "_history/stats/manualGcEnabled";
+inline constexpr std::string_view HistoryStatsLimits              = "_history/stats/limits";
+inline constexpr std::string_view HistoryStatsLimitsMaxEntries    = "_history/stats/limits/maxEntries";
+inline constexpr std::string_view HistoryStatsLimitsMaxBytesRetained =
+    "_history/stats/limits/maxBytesRetained";
+inline constexpr std::string_view HistoryStatsLimitsKeepLatestForMs =
+    "_history/stats/limits/keepLatestForMs";
+inline constexpr std::string_view HistoryStatsLimitsRamCacheEntries =
+    "_history/stats/limits/ramCacheEntries";
+inline constexpr std::string_view HistoryStatsLimitsMaxDiskBytes =
+    "_history/stats/limits/maxDiskBytes";
+inline constexpr std::string_view HistoryStatsLimitsPersistHistory =
+    "_history/stats/limits/persistHistory";
+inline constexpr std::string_view HistoryStatsLimitsRestoreFromPersistence =
+    "_history/stats/limits/restoreFromPersistence";
 inline constexpr std::string_view HistoryStatsTrimOperationCount  = "_history/stats/trimOperationCount";
 inline constexpr std::string_view HistoryStatsTrimmedEntries      = "_history/stats/trimmedEntries";
 inline constexpr std::string_view HistoryStatsTrimmedBytes        = "_history/stats/trimmedBytes";
 inline constexpr std::string_view HistoryStatsLastTrimTimestamp   = "_history/stats/lastTrimTimestampMs";
+inline constexpr std::string_view HistoryStatsCompactionPrefix    = "_history/stats/compaction";
+inline constexpr std::string_view HistoryStatsCompactionRuns      = "_history/stats/compaction/runs";
+inline constexpr std::string_view HistoryStatsCompactionEntries   =
+    "_history/stats/compaction/entries";
+inline constexpr std::string_view HistoryStatsCompactionBytes     = "_history/stats/compaction/bytes";
+inline constexpr std::string_view HistoryStatsCompactionLastTimestamp =
+    "_history/stats/compaction/lastTimestampMs";
 inline constexpr std::string_view HistoryHeadGeneration           = "_history/head/generation";
 
 inline constexpr std::string_view HistoryLastOperationPrefix      = "_history/lastOperation";
@@ -72,16 +93,34 @@ inline constexpr std::string_view HistoryLastOperationRedoAfter   = "_history/la
 inline constexpr std::string_view HistoryLastOperationBytesBefore = "_history/lastOperation/bytesBefore";
 inline constexpr std::string_view HistoryLastOperationBytesAfter  = "_history/lastOperation/bytesAfter";
 inline constexpr std::string_view HistoryLastOperationMessage     = "_history/lastOperation/message";
+inline constexpr std::string_view HistoryLastOperationTag         = "_history/lastOperation/tag";
 
 inline constexpr std::string_view HistoryUnsupported              = "_history/unsupported";
 inline constexpr std::string_view HistoryUnsupportedTotalCount    = "_history/unsupported/totalCount";
 inline constexpr std::string_view HistoryUnsupportedRecentCount   = "_history/unsupported/recentCount";
 inline constexpr std::string_view HistoryUnsupportedRecentPrefix  = "_history/unsupported/recent/";
 
+inline constexpr std::string_view HistoryDiagnosticsRoot        = "diagnostics/history";
+inline constexpr std::string_view HistoryDiagnosticsCompatRoot  = "output/v1/diagnostics/history";
+inline constexpr std::string_view HistoryDiagnosticsHeadSequence = "head/sequence";
+inline constexpr std::string_view HistoryDiagnosticsEntriesPrefix = "entries/";
+inline constexpr std::string_view HistoryDiagnosticsEntryPath     = "path";
+inline constexpr std::string_view HistoryDiagnosticsEntryTag      = "tag";
+inline constexpr std::string_view HistoryDiagnosticsEntryOperation = "operation";
+inline constexpr std::string_view HistoryDiagnosticsEntryTimestamp = "timestampMs";
+inline constexpr std::string_view HistoryDiagnosticsEntryMonotonic = "monotonicNs";
+inline constexpr std::string_view HistoryDiagnosticsEntrySequence  = "sequence";
+inline constexpr std::string_view HistoryDiagnosticsEntryBarrier   = "barrier";
+inline constexpr std::string_view HistoryDiagnosticsEntryValueBytes = "valueBytes";
+inline constexpr std::string_view HistoryDiagnosticsEntryInverseBytes = "inverseBytes";
+inline constexpr std::string_view HistoryDiagnosticsEntryHasValue   = "hasValue";
+inline constexpr std::string_view HistoryDiagnosticsEntryHasInverse = "hasInverse";
+
 inline constexpr std::string_view CommandUndo              = "_history/undo";
 inline constexpr std::string_view CommandRedo              = "_history/redo";
 inline constexpr std::string_view CommandGarbageCollect    = "_history/garbage_collect";
 inline constexpr std::string_view CommandSetManualGc       = "_history/set_manual_garbage_collect";
+inline constexpr std::string_view CommandSetTag            = "_history/set_tag";
 } // namespace Paths
 
 } // namespace SP::History::UndoUtils

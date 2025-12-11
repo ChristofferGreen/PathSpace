@@ -175,6 +175,9 @@ static auto present_metal_texture(PathSurfaceMetal* metal_surface,
                 error_message = "CAMetalLayer unavailable";
                 return;
             }
+            if (state.device) {
+                layer.device = state.device;
+            }
             id<MTLCommandQueue> queue = state.command_queue;
             if (!queue) {
                 error_message = "Metal command queue unavailable";
@@ -209,7 +212,21 @@ static auto present_metal_texture(PathSurfaceMetal* metal_surface,
                 error_message = "failed to create Metal blit encoder";
                 return;
             }
-            MTLSize size = MTLSizeMake(width_px, height_px, 1);
+            auto const source_width = [source width];
+            auto const source_height = [source height];
+            auto const drawable_width = drawable.texture.width;
+            auto const drawable_height = drawable.texture.height;
+            auto copy_width = std::min(std::min(drawable_width, source_width),
+                                       static_cast<NSUInteger>(width_px));
+            auto copy_height = std::min(std::min(drawable_height, source_height),
+                                        static_cast<NSUInteger>(height_px));
+            if (copy_width == 0 || copy_height == 0) {
+                error_message = "Metal drawable has zero size";
+                return;
+            }
+            layer.drawableSize = CGSizeMake(static_cast<CGFloat>(copy_width),
+                                            static_cast<CGFloat>(copy_height));
+            MTLSize size = MTLSizeMake(copy_width, copy_height, 1);
             [blit copyFromTexture:source
                        sourceSlice:0
                         sourceLevel:0

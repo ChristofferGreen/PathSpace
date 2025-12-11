@@ -7,6 +7,7 @@
 #include <array>
 #include <deque>
 #include <atomic>
+#include <cstdint>
 #include <filesystem>
 #include <mutex>
 #include <optional>
@@ -71,6 +72,45 @@ TEST_CASE("undo/redo round trip") {
     auto lastOpType = space->read<std::string>("/doc/_history/lastOperation/type");
     REQUIRE(lastOpType.has_value());
     CHECK(*lastOpType == std::string{"redo"});
+}
+
+TEST_CASE("history diagnostics mirror stats and entries") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space->insert("/doc/title", std::string{"alpha"}).errors.empty());
+
+    auto diagUndoCount = space->read<std::size_t>("/diagnostics/history/_doc/stats/undoCount");
+    REQUIRE(diagUndoCount.has_value());
+    CHECK(*diagUndoCount == 1);
+
+    auto compatUndoCount = space->read<std::size_t>("/output/v1/diagnostics/history/_doc/stats/undoCount");
+    REQUIRE(compatUndoCount.has_value());
+    CHECK(*compatUndoCount == 1);
+
+    auto headSequence = space->read<std::uint64_t>("/diagnostics/history/_doc/head/sequence");
+    REQUIRE(headSequence.has_value());
+    CHECK(*headSequence == 0);
+
+    auto entryOperation = space->read<std::string>("/diagnostics/history/_doc/entries/0/operation");
+    REQUIRE(entryOperation.has_value());
+    CHECK(*entryOperation == std::string{"insert"});
+
+    auto entryPath = space->read<std::string>("/diagnostics/history/_doc/entries/0/path");
+    REQUIRE(entryPath.has_value());
+    CHECK(*entryPath == std::string{"/doc/title"});
+
+    auto entryHasValue = space->read<bool>("/diagnostics/history/_doc/entries/0/hasValue");
+    REQUIRE(entryHasValue.has_value());
+    CHECK(*entryHasValue);
+
+    auto entryValueBytes = space->read<std::size_t>("/diagnostics/history/_doc/entries/0/valueBytes");
+    REQUIRE(entryValueBytes.has_value());
+    CHECK(*entryValueBytes > 0);
 }
 
 TEST_CASE("journal undo/redo round trip") {
@@ -138,6 +178,29 @@ TEST_CASE("journal history control commands perform undo and redo") {
     auto restored = space->read<std::string>("/doc/title");
     REQUIRE(restored.has_value());
     CHECK(*restored == std::string{"alpha"});
+}
+
+TEST_CASE("history tag command annotates last operation and journal steps") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto tagSet = space->insert("/doc/_history/set_tag", std::string{"paint_stroke"});
+    CHECK(tagSet.errors.empty());
+
+    REQUIRE(space->insert("/doc/value", 7).errors.empty());
+
+    auto tagValue = space->read<std::string>("/doc/_history/lastOperation/tag");
+    REQUIRE(tagValue.has_value());
+    CHECK(*tagValue == std::string{"paint_stroke"});
+
+    REQUIRE(space->undo(ConcretePathStringView{"/doc"}).has_value());
+    auto tagAfterUndo = space->read<std::string>("/doc/_history/lastOperation/tag");
+    REQUIRE(tagAfterUndo.has_value());
+    CHECK(*tagAfterUndo == std::string{"paint_stroke"});
 }
 
 TEST_CASE("journal multi-step undo redo sequence restores states in order") {
@@ -524,6 +587,108 @@ TEST_CASE("history telemetry paths expose stats") {
     auto lastOpType = space->read<std::string>("/doc/_history/lastOperation/type");
     REQUIRE(lastOpType.has_value());
     CHECK(*lastOpType == std::string{"commit"});
+}
+
+TEST_CASE("history telemetry exposes retention limits and persistence flags") {
+    auto tempRoot = std::filesystem::temp_directory_path() / "history_limits_schema";
+    std::error_code ec;
+    std::filesystem::remove_all(tempRoot, ec);
+
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.maxEntries            = 256;
+    opts.maxBytesRetained      = 8192;
+    opts.keepLatestFor         = std::chrono::milliseconds{1500};
+    opts.ramCacheEntries       = 32;
+    opts.maxDiskBytes          = 65536;
+    opts.persistHistory        = true;
+    opts.restoreFromPersistence = false;
+    opts.persistenceRoot       = tempRoot.string();
+    opts.persistenceNamespace  = "limits_schema";
+    opts.useMutationJournal    = true;
+
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+    REQUIRE(space->insert("/doc/value", 7).errors.empty());
+
+    auto stats = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(stats.has_value());
+    CHECK(stats->limits.maxEntries == opts.maxEntries);
+    CHECK(stats->limits.maxBytesRetained == opts.maxBytesRetained);
+    CHECK(stats->limits.keepLatestForMs == static_cast<std::uint64_t>(opts.keepLatestFor.count()));
+    CHECK(stats->limits.ramCacheEntries == opts.ramCacheEntries);
+    CHECK(stats->limits.maxDiskBytes == opts.maxDiskBytes);
+    CHECK(stats->limits.persistHistory);
+    CHECK_FALSE(stats->limits.restoreFromPersistence);
+
+    auto maxEntriesPath = space->read<std::size_t>("/doc/_history/stats/limits/maxEntries");
+    REQUIRE(maxEntriesPath.has_value());
+    CHECK(*maxEntriesPath == opts.maxEntries);
+
+    auto maxBytesPath =
+        space->read<std::size_t>("/doc/_history/stats/limits/maxBytesRetained");
+    REQUIRE(maxBytesPath.has_value());
+    CHECK(*maxBytesPath == opts.maxBytesRetained);
+
+    auto keepLatestPath =
+        space->read<std::uint64_t>("/doc/_history/stats/limits/keepLatestForMs");
+    REQUIRE(keepLatestPath.has_value());
+    CHECK(*keepLatestPath == stats->limits.keepLatestForMs);
+
+    auto ramCachePath =
+        space->read<std::size_t>("/doc/_history/stats/limits/ramCacheEntries");
+    REQUIRE(ramCachePath.has_value());
+    CHECK(*ramCachePath == opts.ramCacheEntries);
+
+    auto maxDiskPath = space->read<std::size_t>("/doc/_history/stats/limits/maxDiskBytes");
+    REQUIRE(maxDiskPath.has_value());
+    CHECK(*maxDiskPath == opts.maxDiskBytes);
+
+    auto persistFlag = space->read<bool>("/doc/_history/stats/limits/persistHistory");
+    REQUIRE(persistFlag.has_value());
+    CHECK(*persistFlag);
+
+    auto restoreFlag =
+        space->read<bool>("/doc/_history/stats/limits/restoreFromPersistence");
+    REQUIRE(restoreFlag.has_value());
+    CHECK_FALSE(*restoreFlag);
+
+    std::filesystem::remove_all(tempRoot, ec);
+}
+
+TEST_CASE("history telemetry compaction alias mirrors trim metrics") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.maxEntries = 1;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space->insert("/doc/value", std::string{"alpha"}).errors.empty());
+    REQUIRE(space->insert("/doc/value", std::string{"beta"}).errors.empty());
+    REQUIRE(space->insert("/doc/value", std::string{"charlie"}).errors.empty());
+
+    auto stats = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(stats.has_value());
+    CHECK(stats->trim.operationCount >= 1);
+
+    auto compactionRuns = space->read<std::size_t>("/doc/_history/stats/compaction/runs");
+    REQUIRE(compactionRuns.has_value());
+    CHECK(*compactionRuns == stats->trim.operationCount);
+
+    auto compactionEntries = space->read<std::size_t>("/doc/_history/stats/compaction/entries");
+    REQUIRE(compactionEntries.has_value());
+    CHECK(*compactionEntries == stats->trim.entries);
+
+    auto compactionBytes = space->read<std::size_t>("/doc/_history/stats/compaction/bytes");
+    REQUIRE(compactionBytes.has_value());
+    CHECK(*compactionBytes == stats->trim.bytes);
+
+    auto compactionTimestamp =
+        space->read<std::uint64_t>("/doc/_history/stats/compaction/lastTimestampMs");
+    REQUIRE(compactionTimestamp.has_value());
+    CHECK(*compactionTimestamp == stats->trim.lastTimestampMs);
 }
 
 TEST_CASE("journal telemetry matches snapshot telemetry outputs") {

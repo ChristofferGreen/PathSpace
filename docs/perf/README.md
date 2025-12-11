@@ -50,3 +50,35 @@ matches the current baselines:
 The `--write-frame` flag enables framebuffer capture automatically and writes
 an RGBA PNG using the current surface size. Commit refreshed images alongside
 baseline JSON updates so perf regressions include both metrics and visuals.
+
+# Renderer FPS Traces
+
+Enable benchmark targets during configure (`-DBUILD_PATHSPACE_BENCHMARKS=ON`)
+and capture PathRenderer2D traces for the standard canvases:
+
+```bash
+./scripts/capture_renderer_fps_traces.py --pretty
+```
+
+The script writes `docs/perf/renderer_fps_traces.json`. Latest capture
+(2025-12-10, post-FontManager shaping) recorded:
+
+- 1280x720: full repaint ~103 FPS, incremental ~1423 FPS.
+- 3840x2160: full repaint ~13.6 FPS, incremental ~712 FPS.
+
+Use these baselines to flag regressions after shaping or renderer changes.
+
+# Widget Pipeline Benchmark
+
+Build with `-DBUILD_PATHSPACE_BENCHMARKS=ON` and run the declarative pipeline
+benchmark to track widget mutation and bucket synthesis costs:
+
+```bash
+./build/benchmarks/widget_pipeline_benchmark \
+  --write-json docs/perf/widget_pipeline_benchmark.json --verbose
+```
+
+The JSON records declarative throughput and paint GPU upload timing. Latest
+capture (2025-12-10) measured bucketAvgMs ~0.118 ms, bucketBytesPerIter
+~11.7 KB, dirtyWidgetsPerSec ~6.8k, and paintGpuLastUploadNs ~3.6 ms. Keep the
+file under `docs/perf/` so future runs can diff against this baseline.

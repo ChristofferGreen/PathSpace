@@ -14,6 +14,7 @@ namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
 using SP::UI::Runtime::Widgets::WidgetSpacePath;
 using SP::UI::Runtime::Widgets::WidgetSpaceRoot;
+using SP::PathSpaceBase;
 
 using DeclarativeDetail::make_error;
 
@@ -258,7 +259,7 @@ inline auto prepare_style_for_serialization(BuilderWidgets::TextAreaStyle const&
 }
 
 template <typename T>
-inline auto write_value(PathSpace& space,
+inline auto write_value(PathSpaceBase& space,
                         std::string const& path,
                         T const& value) -> SP::Expected<void> {
     if (auto status = DeclarativeDetail::replace_single<T>(space, path, value); !status) {
@@ -291,7 +292,7 @@ auto initialize_render(PathSpace& space,
                        std::string const& root,
                        WidgetKind kind) -> SP::Expected<void>;
 
-auto mark_render_dirty(PathSpace& space,
+auto mark_render_dirty(PathSpaceBase& space,
                        std::string const& root) -> SP::Expected<void>;
 
 auto reset_widget_space(PathSpace& space,

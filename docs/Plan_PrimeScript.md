@@ -1,10 +1,23 @@
-# Handoff Notice
-
-> **Handoff note (October 19, 2025):** PrimeScript remains exploratory. Treat this document as a living research memo until the language graduates onto the active roadmap.
-
-# PrimeScript Plan (Concept)
+# PrimeScript Plan
 
 PrimeScript is built around a simple philosophy: program meaning emerges from two primitives—**definitions** (potential) and **executions** (actual). Rather than bolting on dozens of bespoke constructs, we give both forms the same syntactic envelope and let compile-time transforms massage the surface into a canonical core. From that small nucleus we can target C++, GLSL, or the PrimeScript VM, wire into PathSpace, and even feed future visual editors, all without sacrificing deterministic semantics.
+
+### Source-processing pipeline
+1. **Include resolver:** first pass walks the raw text and expands every `include<...>` inline (C-style) so the compiler always works on a single flattened source stream.
+2. **Textual metafunction filters:** the flattened stream flows through ordered token/text filters that execute `[transform ...]` rules declared to operate pre-AST (operator sugar, project-specific macros, etc.).
+3. **AST builder:** once textual transforms finish, the parser builds the canonical AST.
+4. **Template & semantic resolver:** monomorphise templates, resolve namespaces, and apply semantic transforms (borrow checks, effects) so the tree is fully typed.
+5. **IR lowering:** emit the shared SSA-style IR only after templates/semantics are resolved, ensuring every backend consumes an identical canonical form.
+
+Each filter stage halts on error (reporting diagnostics immediately) and exposes a `--dump-stage=<name>` switch so tooling/tests can capture the textual/tree output produced just before the failure.
+
+## Phase 0 — Scope & Acceptance Gates (must precede implementation)
+- **Charter:** capture exactly which language primitives, transforms, and effect rules belong in PrimeScript v0, and list anything explicitly deferred to later phases.
+- **Success criteria:** define measurable gates (parser coverage, IR validation, backend round-trips, sample programs) so reviewers can tell when v0 is complete.
+- **Ownership map:** assign leads for parser, IR/type system, first backend, and test infrastructure, plus security/runtime reviewers.
+- **Integration plan:** describe how the compiler/test suite slots into the build (targets, CI loops, feature flags, artifact publishing).
+- **Risk log:** record open questions (borrow checker, capability taxonomy, GPU backend constraints) and mitigation/rollback strategies.
+- **Exit:** only after this phase is reviewed/approved do parser/IR/backend implementations begin; the conformance suite derives from the frozen charter instead of chasing a moving target.
 
 ## Goals
 - Single authoring language spanning gameplay/domain scripting, UI logic, automation, and rendering shaders.
@@ -14,6 +27,7 @@ PrimeScript is built around a simple philosophy: program meaning emerges from tw
 ## Proposed Architecture
 - **Front-end parser:** C/TypeScript-inspired surface syntax with explicit types, deterministic control flow, and borrow-checked resource usage.
 - **Transform pipeline:** ordered `[transform]` functions rewrite the forthcoming AST (or raw tokens) before semantic analysis. The default chain desugars infix operators, control-flow, assignment, etc.; projects can override via `--transform-list` flags.
+- **Transform pipeline:** ordered `[transform]` functions rewrite the forthcoming AST (or raw tokens) before semantic analysis. The compiler can auto-inject transforms per definition/execution (e.g., attach `operator_infix_default` to every function) with optional path filters (`/math/*`, recurse or not) so common rewrites don’t have to be annotated manually. The default chain desugars infix operators, control-flow, assignment, etc.; projects can override via `--transform-list` flags.
 - **Intermediate representation:** strongly-typed SSA-style IR shared by every backend (C++, GLSL, VM, future LLVM). Normalisation happens once; backends never see syntactic sugar.
 - **Backends:**
   - **C++ emitter** – generates host code or LLVM IR for native binaries/JITs.
@@ -22,6 +36,7 @@ PrimeScript is built around a simple philosophy: program meaning emerges from tw
 - **Tooling:** CLI compiler `primescriptc` plus build/test helpers. The definition/execution split maps cleanly to future node-based editors; full IDE/LSP integration is deferred until the compiler stabilises.
 
 ## Language Design Highlights
+- **Identifiers:** `[A-Za-z_][A-Za-z0-9_]*` plus the slash-prefixed form `/segment/segment/...` for fully-qualified paths. Unicode may arrive later, but v0 constrains identifiers to ASCII for predictable tooling and hashing. `mut`, `return`, `include`, `namespace`, `true`, `false`, and `null` are reserved keywords; any other identifier (including slash paths) can serve as a transform, path segment, parameter, or binding.
 - **Uniform envelope:** every construct uses `[transform-list] identifier<template-list>(parameter-list) {body-list}`. Lists recursively reuse whitespace-separated tokens.
   - `[...]` enumerates metafunction transforms applied in order (see “Built-in transforms”).
   - `<...>` supplies compile-time types/templates—primarily for transforms or when inference must be overridden.
@@ -30,7 +45,7 @@ PrimeScript is built around a simple philosophy: program meaning emerges from tw
 - **Definitions vs executions:** definitions include a body (`{…}`) and optional transforms; executions are call-style (`execute_task<…>(args)`) with no body. The compiler decides whether to emit callable artifacts or schedule work based on that presence.
 - **Return annotation:** definitions declare return types via transforms (e.g., `[return<float>] blend<…>(…) { … }`). Executions return values explicitly (`return(value)`); the desugared form is always canonical.
 - **Effects:** functions are pure by default. Authors opt into side effects with attributes such as `[effects(global_write, io_stdout)]`. Standard library routines permit stdout/stderr logging; backends reject unsupported effects (e.g., GPU code requesting filesystem access).
-- **Namespaces & includes:** identifiers follow `namespace::symbol`. `include<"/std/io", version="1.2.0">` searches the include path for a zipped archive or plain directory whose layout mirrors `/version/first_namespace/second_namespace/...`. Versions live in the leading segment (e.g., `1.2/std/io/*.prime` or `1/std/io/*.prime`). If the version attribute provides one or two numbers (`1` or `1.2`), the newest matching archive is selected; three-part versions (`1.2.0`) require an exact match. Each `.prime` source file is inline-expanded exactly once and registered under `std::io::`; duplicate includes are ignored. Folders prefixed with `_` remain private.
+- **Paths & includes:** every definition/execution lives at a canonical path (`/ui/widgets/log_button_press`). Authors can spell the path inline or rely on `namespace foo { ... }` blocks to prepend `/foo` automatically; includes simply splice text, so they inherit whatever path context is active. `include<"/std/io", version="1.2.0">` searches the include path for a zipped archive or plain directory whose layout mirrors `/version/first_namespace/second_namespace/...`. The angle-bracket list may contain multiple quoted string paths—`include<"/std/io", "./local/io/helpers", version="1.2.0">`—and the resolver applies the same version selector to each path; mismatched archives raise an error before expansion. Versions live in the leading segment (e.g., `1.2/std/io/*.prime` or `1/std/io/*.prime`). If the version attribute provides one or two numbers (`1` or `1.2`), the newest matching archive is selected; three-part versions (`1.2.0`) require an exact match. Each `.prime` source file is inline-expanded exactly once and registered under its namespace/path (e.g., `/std/io`); duplicate includes are ignored. Folders prefixed with `_` remain private.
 - **Transform-driven control flow:** control structures desugar into prefix calls (`if(cond, then_block{…}, else_block{…})`). Infix operators (`a + b`) become canonical calls (`plus(a, b)`), ensuring IR/backends see a small, predictable surface.
 - **Mutability:** bindings are immutable by default. Opt into mutation by placing `mut` inside the stack-value execution or helper (`[Integer mut] exposure(42)`, `[mut] Create()`). Transforms enforce that only mutable bindings can serve as `assign` or pointer-write targets.
 
@@ -53,6 +68,11 @@ namespace demo {
 }
 ```
 Statements are separated by newlines; semicolons never appear in PrimeScript source.
+
+### Slash paths & textual operator filters
+- Slash-prefixed identifiers (`/pkg/module/thing`) are valid anywhere the uniform envelope expects a name; `namespace foo { ... }` is shorthand for prepending `/foo` to enclosed names, and namespaces may be reopened freely.
+- Textual metafunction filters run before the AST exists. Operator filters (e.g., divide) scan the raw character stream: when a `/` is sandwiched between non-whitespace characters they rewrite the surrounding text (`/foo / /bar` → `divide(/foo, /bar)`), but when `/` begins a path segment (start of line or immediately after whitespace/delimiters) the filter leaves it untouched (`/foo/bar/lol()` stays intact).
+- Because includes expand first, slash paths survive every filter untouched until the AST builder consumes them, and IR lowering never needs to reason about infix syntax.
 
 ### Struct & type categories (draft)
 - **Struct tag as transform:** `[struct ...]` in the envelope is purely declarative. It records a layout manifest (field names, types, offsets) and validates the body, but the underlying syntax remains a standard definition. Un-tagged definitions may still be instantiated as structs; they simply skip the extra validation/metadata until another transform (e.g. `[stack]`) demands it.

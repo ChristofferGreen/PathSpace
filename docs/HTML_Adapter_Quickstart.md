@@ -40,6 +40,7 @@
    - Command stream and DOM/CSS live under `renderers/<rid>/targets/<tid>/output/v1/html/{commands,dom,css}`.
    - Mode metadata: `output/v1/html/{mode,usedCanvasFallback,commandCount,domNodeCount}`.
    - Residency/metrics mirror into `renderers/<rid>/targets/<tid>/diagnostics/metrics` and `windows/<win>/diagnostics/metrics/live/views/<view>/present`.
+   - Font assets publish to `output/v1/html/assets/fonts/<fingerprint>.woff2`. The adapter derives those fingerprints from `DrawableBucketSnapshot::font_assets`, emits `@font-face` rules referencing `assets/fonts/<fingerprint>.woff2`, and `pathspace_serve_html` serves them via `/assets/<app>/fonts/<fingerprint>.woff2`.
 
 ## 3. Common Failure Signatures & Fixes
 - **`Usage: node verify_html_canvas.js <html-canvas-dump>`** — The harness could not locate `html_canvas_dump`. Rebuild the tree (`cmake --build build -j`) and ensure you pass the binary path (CTest does this automatically).
@@ -58,7 +59,7 @@
   This wrapper will also trigger `HtmlCanvasVerify` and `HtmlAssetInspect` when Node is available.
 - When HTML outputs change intentionally, update:
   1. `docs/finished/Plan_SceneGraph_Renderer_Finished.md` (fidelity, HSAT schema, mode semantics).
-  2. `docs/Plan_SceneGraph.md` (status snapshot + follow-ups).
+  2. `docs/finished/Plan_SceneGraph_Finished.md` (status snapshot + follow-ups).
   3. This quickstart with new commands, environment variables, or failure signatures.
 - Capture notable regressions in `docs/AI_Todo.task` with acceptance criteria so the next cycle can prioritize the fix.
 

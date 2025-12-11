@@ -62,13 +62,15 @@ jobs:
 
   metal-macos:
     runs-on: macos-latest
+    env:
+      PKG_CONFIG_PATH: "/opt/homebrew/opt/icu4c/lib/pkgconfig:/opt/homebrew/lib/pkgconfig:/opt/homebrew/share/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:${PKG_CONFIG_PATH}"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          brew install cmake ninja || true
+          brew install cmake ninja pkg-config harfbuzz icu4c || true
 
       - name: Build & Test (metal presenter)
         env:
@@ -79,13 +81,15 @@ jobs:
   loop-stability:
     needs: build
     runs-on: macos-latest
+    env:
+      PKG_CONFIG_PATH: "/opt/homebrew/opt/icu4c/lib/pkgconfig:/opt/homebrew/lib/pkgconfig:/opt/homebrew/share/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:${PKG_CONFIG_PATH}"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          brew install cmake ninja || true
+          brew install cmake ninja pkg-config harfbuzz icu4c || true
 
       - name: Run loop-stability harness
         env:

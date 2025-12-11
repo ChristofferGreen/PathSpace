@@ -82,12 +82,16 @@ if(PATHSPACE_ENABLE_UI)
   ui/test_DeclarativePaintSurface.cpp
   ui/test_ScreenshotOverlay.cpp
   ui/test_WidgetEventTrellis.cpp
-    ui/test_WidgetStateMutators.cpp
-    ui/test_DeclarativeTheme.cpp
+  ui/test_WidgetStateMutators.cpp
+  ui/test_DeclarativeTheme.cpp
   ui/test_PathWindowView.cpp
+  ui/test_WidgetBindingsText.cpp
   ui/test_PaintExampleNew.cpp
   ui/test_BackendAdapters.cpp
   ui/test_DeclarativeRuntime.cpp
+  ui/test_DiagnosticsRuntime.cpp
+  ui/test_WidgetGallery.cpp
+  ui/test_SurfaceDescValidation.cpp
   test_main.cpp
 )
   if(APPLE AND PATHSPACE_UI_METAL)
@@ -185,7 +189,8 @@ if(PATHSPACE_ENABLE_UI)
       --env PATHSPACE_LOG=1
       --env PATHSPACE_TEST_TIMEOUT=1
       --env MallocNanoZone=0
-      --env PATHSPACE_DISABLE_SURFACE_CACHE_WATCH=1)
+      --env PATHSPACE_DISABLE_SURFACE_CACHE_WATCH=1
+      --env PATHSPACE_CAPTURE_FONT_DIAGNOSTICS=1)
 
   function(pathspace_add_ui_test LABEL)
     set(oneValueArgs SUITE SUITE_EXCLUDE TIMEOUT)

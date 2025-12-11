@@ -33,6 +33,7 @@ enum class RouteMetric : std::size_t {
     ApiOps,
     Events,
     Metrics,
+    Diagnostics,
     Count,
 };
 

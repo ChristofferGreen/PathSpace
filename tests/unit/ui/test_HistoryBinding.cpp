@@ -31,9 +31,12 @@ TEST_CASE("HistoryBinding updates telemetry for actions") {
     SP::UI::Declarative::HistoryBindingOptions options{
         .history_root = widget_path,
     };
-    auto binding_result = SP::UI::Declarative::CreateHistoryBinding(space, options);
-    REQUIRE(binding_result);
-    auto binding = *binding_result;
+    std::shared_ptr<SP::UI::Declarative::HistoryBinding> binding;
+    {
+        auto binding_result = SP::UI::Declarative::CreateHistoryBinding(space, options);
+        REQUIRE(binding_result);
+        binding = *binding_result;
+    }
 
     SP::UI::Declarative::SetHistoryBindingButtonsEnabled(space, *binding, true);
     auto metrics_root = binding->metrics_root;
@@ -53,6 +56,32 @@ TEST_CASE("HistoryBinding updates telemetry for actions") {
     CHECK(error_info.context == "UndoableSpace::undo");
     CHECK_FALSE(error_info.message.empty());
     CHECK_FALSE(error_info.code.empty());
+}
+
+TEST_CASE("HistoryBinding lookup exposes registered bindings and cleans up expired entries") {
+    SP::PathSpace space;
+    auto widget_path = std::string("/widgets/paint_lookup");
+
+    SP::UI::Declarative::InitializeHistoryMetrics(space, widget_path);
+    SP::UI::Declarative::HistoryBindingOptions options{
+        .history_root = widget_path,
+    };
+    std::shared_ptr<SP::UI::Declarative::HistoryBinding> binding;
+    {
+        auto binding_result = SP::UI::Declarative::CreateHistoryBinding(space, options);
+        REQUIRE(binding_result);
+        binding = *binding_result;
+    }
+
+    auto lookup = SP::UI::Declarative::LookupHistoryBinding(widget_path);
+    REQUIRE(lookup);
+    CHECK(lookup->root == widget_path);
+
+    // Drop all strong references and confirm lookup no longer returns a binding.
+    lookup.reset();
+    binding.reset();
+    auto expired_lookup = SP::UI::Declarative::LookupHistoryBinding(widget_path);
+    CHECK_FALSE(expired_lookup);
 }
 
 #endif // PATHSPACE_ENABLE_UI

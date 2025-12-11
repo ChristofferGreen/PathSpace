@@ -1,15 +1,19 @@
 #include <pathspace/ui/declarative/Text.hpp>
+#include <pathspace/core/Error.hpp>
 #include <pathspace/ui/WidgetSharedTypes.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/FontAtlasCache.hpp>
 #include <pathspace/ui/FontManager.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <cstdlib>
 #include <limits>
 #include <mutex>
 #include <optional>
@@ -32,6 +36,30 @@ namespace Scene = SP::UI::Scene;
 
 constexpr std::uint64_t kFNVOffset = 1469598103934665603ull;
 constexpr std::uint64_t kFNVPrime = 1099511628211ull;
+constexpr std::string_view kDefaultFontFamily = "PathSpaceSans";
+constexpr std::string_view kDefaultFontStyle = "Regular";
+
+enum class AtlasLane {
+    Alpha,
+    Color,
+};
+
+constexpr std::uint64_t kColorLaneFingerprintSalt = 0x9BD8A7F3AA55D1ull;
+
+auto lane_to_kind(AtlasLane lane) -> Scene::FontAssetKind {
+    return (lane == AtlasLane::Color) ? Scene::FontAssetKind::Color : Scene::FontAssetKind::Alpha;
+}
+
+auto mix_lane_fingerprint(std::uint64_t base, AtlasLane lane) -> std::uint64_t {
+    auto mixed = base;
+    if (lane == AtlasLane::Color) {
+        mixed ^= kColorLaneFingerprintSalt;
+    }
+    if (mixed == 0) {
+        mixed = kFNVPrime;
+    }
+    return mixed;
+}
 
 struct ShapingContextData {
     SP::PathSpace* space = nullptr;
@@ -87,6 +115,49 @@ auto compute_font_fingerprint(Widgets::TypographyStyle const& typography) -> std
         hash = kFNVPrime;
     }
     return hash;
+}
+
+auto equals_ignore_case(std::string_view lhs, std::string_view rhs) -> bool {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < lhs.size(); ++i) {
+        auto left = static_cast<unsigned char>(lhs[i]);
+        auto right = static_cast<unsigned char>(rhs[i]);
+        if (std::tolower(left) != std::tolower(right)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+auto font_manager_enabled() -> bool {
+    if (auto* env = std::getenv("PATHSPACE_UI_FONT_MANAGER_ENABLED")) {
+        std::string_view value{env};
+        if (equals_ignore_case(value, "0") || equals_ignore_case(value, "false")
+            || equals_ignore_case(value, "off") || equals_ignore_case(value, "no")) {
+            return false;
+        }
+    }
+    return true;
+}
+
+auto canonical_font_family(std::string_view family) -> std::string {
+    if (family.empty()) {
+        return std::string(kDefaultFontFamily);
+    }
+    return std::string(family);
+}
+
+auto canonical_font_style(std::string_view style) -> std::string {
+    if (style.empty() || equals_ignore_case(style, "normal")
+        || equals_ignore_case(style, kDefaultFontStyle)) {
+        return std::string(kDefaultFontStyle);
+    }
+    if (equals_ignore_case(style, "italic")) {
+        return std::string("Italic");
+    }
+    return std::string(style);
 }
 
 auto font_manager_registry()
@@ -344,31 +415,86 @@ auto build_fallback_bucket(std::string_view text,
     return result;
 }
 
-auto shaped_context_available(Widgets::TypographyStyle const& typography) -> bool {
-    auto const& ctx = current_context();
-    if (ctx.space == nullptr || ctx.manager == nullptr) {
-        return false;
-    }
-    if (ctx.app_root.empty()) {
-        return false;
-    }
-    if (typography.font_resource_root.empty() || typography.font_active_revision == 0) {
-        return false;
-    }
-    return true;
-}
-
 auto load_font_atlas(SP::PathSpace& space,
                      Widgets::TypographyStyle const& typography,
-                     std::uint64_t fingerprint)
+                     std::uint64_t fingerprint,
+                     AtlasLane lane)
     -> std::optional<std::shared_ptr<SP::UI::FontAtlasData const>> {
-    auto atlas_path = typography.font_resource_root + "/builds/"
-                    + format_revision(typography.font_active_revision) + "/atlas.bin";
+    auto atlas_base = typography.font_resource_root + "/builds/"
+                    + format_revision(typography.font_active_revision);
+    auto suffix = (lane == AtlasLane::Color) ? "/atlas_color.bin" : "/atlas.bin";
+    auto atlas_path = atlas_base + suffix;
     auto atlas = atlas_cache().load(space, atlas_path, fingerprint);
     if (!atlas) {
         return std::nullopt;
     }
     return *atlas;
+}
+
+auto prepare_typography_for_shaping(Widgets::TypographyStyle const& typography)
+    -> std::optional<Widgets::TypographyStyle> {
+    if (!font_manager_enabled()) {
+        return std::nullopt;
+    }
+    auto const& ctx = current_context();
+    if (ctx.space == nullptr || ctx.manager == nullptr || ctx.app_root.empty()) {
+        return std::nullopt;
+    }
+
+    Widgets::TypographyStyle prepared = typography;
+    prepared.font_family = canonical_font_family(prepared.font_family);
+    prepared.font_style = canonical_font_style(prepared.font_style);
+
+    bool needs_resolution = prepared.font_resource_root.empty() || prepared.font_active_revision == 0;
+    auto app_root_view = SP::App::AppRootPathView{ctx.app_root};
+
+    if (needs_resolution) {
+        auto try_resolve = [&](std::string_view family,
+                               std::string_view style)
+            -> std::optional<SP::UI::FontManager::ResolvedFont> {
+            auto resolved = ctx.manager->resolve_font(app_root_view, family, style);
+            if (resolved) {
+                return resolved.value();
+            }
+            return std::nullopt;
+        };
+
+        auto requested_family = prepared.font_family;
+        auto requested_style = prepared.font_style;
+
+        std::optional<SP::UI::FontManager::ResolvedFont> resolved = try_resolve(requested_family,
+                                                                                requested_style);
+        if (!resolved && !equals_ignore_case(requested_style, kDefaultFontStyle)) {
+            resolved = try_resolve(requested_family, kDefaultFontStyle);
+        }
+        if (!resolved && !equals_ignore_case(requested_family, kDefaultFontFamily)) {
+            resolved = try_resolve(kDefaultFontFamily, requested_style);
+        }
+        if (!resolved && !equals_ignore_case(requested_family, kDefaultFontFamily)
+            && !equals_ignore_case(requested_style, kDefaultFontStyle)) {
+            resolved = try_resolve(kDefaultFontFamily, kDefaultFontStyle);
+        }
+        if (!resolved) {
+            return std::nullopt;
+        }
+
+        prepared.font_family = resolved->family;
+        prepared.font_style = resolved->style;
+        prepared.font_weight = resolved->weight;
+        prepared.font_resource_root = resolved->paths.root.getPath();
+        prepared.font_active_revision = resolved->active_revision;
+        prepared.fallback_families = resolved->fallback_chain;
+        prepared.font_atlas_format = resolved->preferred_format;
+        prepared.font_has_color_atlas = resolved->has_color_atlas;
+    }
+
+    if (prepared.font_resource_root.empty() || prepared.font_active_revision == 0) {
+        return std::nullopt;
+    }
+    if (prepared.fallback_families.empty()) {
+        prepared.fallback_families.emplace_back("system-ui");
+    }
+    return prepared;
 }
 
 auto build_text_bucket_shaped(std::string_view text,
@@ -379,29 +505,48 @@ auto build_text_bucket_shaped(std::string_view text,
                               std::uint64_t drawable_id,
                               std::string authoring_id,
                               float z_value) -> std::optional<BuildResult> {
-    if (!shaped_context_available(typography) || text.empty()) {
+    if (text.empty()) {
         return std::nullopt;
     }
-
     auto& ctx = current_context();
+    if (ctx.space == nullptr || ctx.manager == nullptr || ctx.app_root.empty()) {
+        return std::nullopt;
+    }
     auto app_root_view = SP::App::AppRootPathView{ctx.app_root};
     auto shaped_run = ctx.manager->shape_text(app_root_view, text, typography);
     if (shaped_run.glyphs.empty()) {
         return std::nullopt;
     }
 
-    auto fingerprint = typography.font_asset_fingerprint != 0
-                           ? typography.font_asset_fingerprint
-                           : compute_font_fingerprint(typography);
-    if (fingerprint == 0) {
-        fingerprint = drawable_id;
+    auto base_fingerprint = typography.font_asset_fingerprint != 0
+                                ? typography.font_asset_fingerprint
+                                : compute_font_fingerprint(typography);
+    if (base_fingerprint == 0) {
+        base_fingerprint = drawable_id;
     }
 
-    auto atlas_loaded = load_font_atlas(*ctx.space, typography, fingerprint);
+    auto desired_lane = (typography.font_atlas_format == SP::UI::FontAtlasFormat::Rgba8
+                         && typography.font_has_color_atlas)
+                            ? AtlasLane::Color
+                            : AtlasLane::Alpha;
+    auto lane_fingerprint = mix_lane_fingerprint(base_fingerprint, desired_lane);
+    auto atlas_loaded = load_font_atlas(*ctx.space, typography, lane_fingerprint, desired_lane);
+    AtlasLane active_lane = desired_lane;
+    if (!atlas_loaded && desired_lane == AtlasLane::Color) {
+        active_lane = AtlasLane::Alpha;
+        lane_fingerprint = mix_lane_fingerprint(base_fingerprint, active_lane);
+        atlas_loaded = load_font_atlas(*ctx.space,
+                                       typography,
+                                       lane_fingerprint,
+                                       active_lane);
+    }
     if (!atlas_loaded) {
         return std::nullopt;
     }
     auto atlas = *atlas_loaded;
+    auto asset_kind = (atlas->format == SP::UI::FontAtlasFormat::Rgba8)
+                          ? Scene::FontAssetKind::Color
+                          : Scene::FontAssetKind::Alpha;
     if (atlas == nullptr || atlas->glyphs.empty() || atlas->width == 0 || atlas->height == 0) {
         return std::nullopt;
     }
@@ -474,7 +619,7 @@ auto build_text_bucket_shaped(std::string_view text,
     command.max_y = geometry.max_y;
     command.glyph_offset = static_cast<std::uint32_t>(0u);
     command.glyph_count = static_cast<std::uint32_t>(glyph_vertices.size());
-    command.atlas_fingerprint = fingerprint;
+    command.atlas_fingerprint = lane_fingerprint;
     command.font_size = typography.font_size;
     command.em_size = atlas->em_size;
     command.px_range = std::max(geometry.px_range, 1.0f);
@@ -497,13 +642,14 @@ auto build_text_bucket_shaped(std::string_view text,
         std::move(authoring_id),
         0,
         0});
-    bucket.drawable_fingerprints.push_back(fingerprint);
+    bucket.drawable_fingerprints.push_back(lane_fingerprint);
 
     Scene::FontAssetReference asset{};
     asset.drawable_id = drawable_id;
     asset.resource_root = typography.font_resource_root;
     asset.revision = typography.font_active_revision;
-    asset.fingerprint = fingerprint;
+    asset.fingerprint = lane_fingerprint;
+    asset.kind = asset_kind;
     bucket.font_assets.push_back(std::move(asset));
 
     BuildResult result{
@@ -518,7 +664,7 @@ auto build_text_bucket_shaped(std::string_view text,
     result.direction = typography.direction;
     result.font_resource_root = typography.font_resource_root;
     result.font_revision = typography.font_active_revision;
-    result.font_asset_fingerprint = fingerprint;
+    result.font_asset_fingerprint = lane_fingerprint;
     result.font_features = typography.font_features;
     result.fallback_families = typography.fallback_families;
     return result;
@@ -526,10 +672,13 @@ auto build_text_bucket_shaped(std::string_view text,
 
 auto measure_text_width_shaped(std::string_view text,
                                Widgets::TypographyStyle const& typography) -> std::optional<float> {
-    if (!shaped_context_available(typography) || text.empty()) {
+    if (text.empty()) {
         return std::nullopt;
     }
     auto const& ctx = current_context();
+    if (ctx.space == nullptr || ctx.manager == nullptr || ctx.app_root.empty()) {
+        return std::nullopt;
+    }
     auto run = ctx.manager->shape_text(SP::App::AppRootPathView{ctx.app_root}, text, typography);
     return run.total_advance;
 }
@@ -541,6 +690,18 @@ ScopedShapingContext::ScopedShapingContext(SP::PathSpace& space, SP::App::AppRoo
     if (path_view.empty()) {
         return;
     }
+
+    if (!font_manager_enabled()) {
+        return;
+    }
+
+    if (auto status = SP::UI::Runtime::Resources::Fonts::EnsureBuiltInPack(space, appRoot); !status) {
+        auto description = SP::describeError(status.error());
+        std::fprintf(stderr,
+                     "PathSpace ScopedShapingContext: failed to ensure built-in fonts: %s\n",
+                     description.c_str());
+    }
+
     auto& manager = ensure_font_manager(space);
 
     auto& ctx = current_context();
@@ -572,8 +733,10 @@ ScopedShapingContext::~ScopedShapingContext() {
 
 auto MeasureTextWidth(std::string_view text,
                       Widgets::TypographyStyle const& typography) -> float {
-    if (auto shaped_width = measure_text_width_shaped(text, typography)) {
-        return *shaped_width;
+    if (auto prepared = prepare_typography_for_shaping(typography)) {
+        if (auto shaped_width = measure_text_width_shaped(text, *prepared)) {
+            return *shaped_width;
+        }
     }
     return build_fallback_width(text, typography);
 }
@@ -586,15 +749,25 @@ auto BuildTextBucket(std::string_view text,
                      std::uint64_t drawable_id,
                      std::string authoring_id,
                      float z_value) -> std::optional<BuildResult> {
-    if (auto shaped = build_text_bucket_shaped(text,
-                                               origin_x,
-                                               baseline_y,
-                                               typography,
-                                               color,
-                                               drawable_id,
-                                               authoring_id,
-                                               z_value)) {
-        return shaped;
+    if (auto prepared = prepare_typography_for_shaping(typography)) {
+        if (auto shaped = build_text_bucket_shaped(text,
+                                                   origin_x,
+                                                   baseline_y,
+                                                   *prepared,
+                                                   color,
+                                                   drawable_id,
+                                                   authoring_id,
+                                                   z_value)) {
+            return shaped;
+        }
+        return build_fallback_bucket(text,
+                                     origin_x,
+                                     baseline_y,
+                                     *prepared,
+                                     color,
+                                     drawable_id,
+                                     std::move(authoring_id),
+                                     z_value);
     }
     return build_fallback_bucket(text,
                                  origin_x,

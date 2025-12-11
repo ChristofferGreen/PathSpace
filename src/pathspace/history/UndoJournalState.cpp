@@ -100,6 +100,7 @@ auto JournalState::entryBytes(JournalEntry const& entry) -> std::size_t {
                         + sizeof(entry.sequence)
                         + sizeof(entry.barrier);
     bytes += entry.path.size();
+    bytes += sizeof(std::uint32_t) + entry.tag.size();
     bytes += entry.value.bytes.size();
     bytes += entry.inverseValue.bytes.size();
     return bytes;

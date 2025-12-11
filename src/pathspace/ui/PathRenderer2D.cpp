@@ -32,6 +32,9 @@
 #include <mutex>
 #include <exception>
 #include <cctype>
+#include <filesystem>
+#include <fstream>
+#include <chrono>
 
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
@@ -54,6 +57,137 @@ using PathRenderer2DInternal::copy_progressive_tiles;
 using PathRenderer2DInternal::compute_damage;
 using namespace PathRenderer2DDetail;
 
+namespace {
+
+auto font_diagnostics_file() -> std::optional<std::filesystem::path> {
+    static bool initialized = false;
+    static std::optional<std::filesystem::path> cached_path;
+    if (initialized) {
+        return cached_path;
+    }
+    initialized = true;
+
+    auto const* capture_env = std::getenv("PATHSPACE_CAPTURE_FONT_DIAGNOSTICS");
+    if (capture_env == nullptr || capture_env[0] == '\0'
+        || (capture_env[0] == '0' && capture_env[1] == '\0')) {
+        return std::nullopt;
+    }
+
+    auto const* artifact_root = std::getenv("PATHSPACE_TEST_ARTIFACT_DIR");
+    if (artifact_root == nullptr || artifact_root[0] == '\0') {
+        return std::nullopt;
+    }
+
+    std::filesystem::path dir{artifact_root};
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec) {
+        return std::nullopt;
+    }
+
+    cached_path = dir / "font_diagnostics.jsonl";
+    return cached_path;
+}
+
+auto json_escape(std::string_view value) -> std::string {
+    std::string escaped;
+    escaped.reserve(value.size() + 8);
+    for (char ch : value) {
+        switch (ch) {
+        case '"':
+            escaped.append("\\\"");
+            break;
+        case '\\':
+            escaped.append("\\\\");
+            break;
+        default:
+            escaped.push_back(ch);
+            break;
+        }
+    }
+    return escaped;
+}
+
+auto fingerprint_hex(std::uint64_t fingerprint) -> std::string {
+    std::ostringstream oss;
+    oss << std::hex << std::uppercase << std::setw(16) << std::setfill('0') << fingerprint;
+    return oss.str();
+}
+
+struct FontDiagnosticsRecord {
+    std::string target_path;
+    std::uint64_t frame_index = 0;
+    std::uint64_t revision = 0;
+    std::uint64_t timestamp_ns = 0;
+    std::uint64_t font_active_count = 0;
+    std::uint64_t font_atlas_cpu_bytes = 0;
+    std::uint64_t font_atlas_gpu_bytes = 0;
+    std::uint64_t font_atlas_resource_count = 0;
+    std::uint64_t font_registered_fonts = 0;
+    std::uint64_t font_cache_hits = 0;
+    std::uint64_t font_cache_misses = 0;
+    std::uint64_t font_cache_evictions = 0;
+    std::uint64_t font_cache_size = 0;
+    std::uint64_t font_cache_capacity = 0;
+    std::uint64_t font_cache_hard_capacity = 0;
+    std::uint64_t font_atlas_soft_bytes = 0;
+    std::uint64_t font_atlas_hard_bytes = 0;
+    std::uint64_t font_shaped_run_approx_bytes = 0;
+    std::vector<Scene::FontAssetReference> active_assets;
+};
+
+void write_font_diagnostics(FontDiagnosticsRecord const& record) {
+    auto path_opt = font_diagnostics_file();
+    if (!path_opt) {
+        return;
+    }
+
+    static std::mutex file_mutex;
+    std::lock_guard<std::mutex> guard{file_mutex};
+
+    std::ofstream out(*path_opt, std::ios::app);
+    if (!out.good()) {
+        return;
+    }
+
+    out << '{'
+        << "\"target\":\"" << json_escape(record.target_path) << "\",";
+    out << "\"frame_index\":" << record.frame_index << ',';
+    out << "\"revision\":" << record.revision << ',';
+    out << "\"timestamp_ns\":" << record.timestamp_ns << ',';
+    out << "\"font_active_count\":" << record.font_active_count << ',';
+    out << "\"font_atlas_cpu_bytes\":" << record.font_atlas_cpu_bytes << ',';
+    out << "\"font_atlas_gpu_bytes\":" << record.font_atlas_gpu_bytes << ',';
+    out << "\"font_atlas_resource_count\":" << record.font_atlas_resource_count << ',';
+    out << "\"font_registered_fonts\":" << record.font_registered_fonts << ',';
+    out << "\"font_cache_hits\":" << record.font_cache_hits << ',';
+    out << "\"font_cache_misses\":" << record.font_cache_misses << ',';
+    out << "\"font_cache_evictions\":" << record.font_cache_evictions << ',';
+    out << "\"font_cache_size\":" << record.font_cache_size << ',';
+    out << "\"font_cache_capacity\":" << record.font_cache_capacity << ',';
+    out << "\"font_cache_hard_capacity\":" << record.font_cache_hard_capacity << ',';
+    out << "\"font_atlas_soft_bytes\":" << record.font_atlas_soft_bytes << ',';
+    out << "\"font_atlas_hard_bytes\":" << record.font_atlas_hard_bytes << ',';
+    out << "\"font_shaped_run_approx_bytes\":" << record.font_shaped_run_approx_bytes << ',';
+    out << "\"font_assets\":[";
+    bool first = true;
+    for (auto const& asset : record.active_assets) {
+        if (!first) {
+            out << ',';
+        }
+        first = false;
+        out << '{'
+            << "\"fingerprint\":\"" << fingerprint_hex(asset.fingerprint) << "\",";
+        out << "\"resource_root\":\"" << json_escape(asset.resource_root) << "\",";
+        out << "\"revision\":" << asset.revision << ',';
+        out << "\"drawable_id\":" << asset.drawable_id
+            << "}";
+    }
+    out << "]}"
+        << '\n';
+}
+
+} // namespace
 
 PathRenderer2D::PathRenderer2D(PathSpace& space)
     : space_(space) {}
@@ -194,6 +328,8 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     phmap::flat_hash_map<std::uint64_t, MaterialResourceResidency> resource_residency;
     phmap::flat_hash_map<std::uint64_t, std::shared_ptr<FontAtlasData const>> font_atlases;
     phmap::flat_hash_set<std::uint64_t> processed_font_assets;
+    std::vector<Scene::FontAssetReference> active_font_assets;
+    active_font_assets.reserve(bucket->font_assets.size());
     if (!bucket->font_assets.empty()) {
         for (auto const& asset : bucket->font_assets) {
             if (asset.resource_root.empty()) {
@@ -202,7 +338,12 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
             if (!processed_font_assets.insert(asset.fingerprint).second) {
                 continue;
             }
-            auto atlas_path = asset.resource_root + "/builds/" + format_revision(asset.revision) + "/atlas.bin";
+            active_font_assets.push_back(asset);
+            auto atlas_suffix = (asset.kind == Scene::FontAssetKind::Color)
+                                    ? std::string{"/atlas_color.bin"}
+                                    : std::string{"/atlas.bin"};
+            auto atlas_path = asset.resource_root + "/builds/" + format_revision(asset.revision)
+                            + atlas_suffix;
             auto atlas = font_atlas_cache_.load(space_, atlas_path, asset.fingerprint);
             if (!atlas) {
                 auto const& error = atlas.error();
@@ -224,6 +365,8 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
             residency.width = data.width;
             residency.height = data.height;
             residency.uses_font_atlas = true;
+            residency.uses_image = residency.uses_image
+                                   || (asset.kind == Scene::FontAssetKind::Color);
         }
     }
 
@@ -1218,8 +1361,16 @@ auto const encode_srgb = needs_srgb_encode(desc);
                   return lhs.fingerprint < rhs.fingerprint;
               });
     std::uint64_t total_texture_gpu_bytes = 0;
+    std::uint64_t font_atlas_cpu_bytes = 0;
+    std::uint64_t font_atlas_gpu_bytes = 0;
+    std::uint64_t font_atlas_resource_count = 0;
     for (auto const& info : resource_list) {
         total_texture_gpu_bytes += info.gpu_bytes;
+        if (info.uses_font_atlas) {
+            ++font_atlas_resource_count;
+            font_atlas_cpu_bytes += info.cpu_bytes;
+            font_atlas_gpu_bytes += info.gpu_bytes;
+        }
     }
     std::uint64_t total_gpu_bytes = total_texture_gpu_bytes;
     bool render_error_recorded = false;
@@ -1282,76 +1433,174 @@ auto const encode_srgb = needs_srgb_encode(desc);
 #endif
 
     auto metricsBase = std::string(params.target_path.getPath()) + "/output/v1/common";
-    if (auto status = replace_single<std::uint64_t>(space_, metricsBase + "/frameIndex", params.settings.time.frame_index); !status) {
-        (void)set_last_error(space_, params.target_path, "failed to store frame index");
-        return std::unexpected(status.error());
+    auto diagnosticsBase = std::string(params.target_path.getPath()) + "/diagnostics/metrics/render";
+    std::uint64_t font_registered_fonts = 0;
+    std::uint64_t font_cache_hits = 0;
+    std::uint64_t font_cache_misses = 0;
+    std::uint64_t font_cache_evictions = 0;
+    std::uint64_t font_cache_size = 0;
+    std::uint64_t font_cache_capacity = 0;
+    std::uint64_t font_cache_hard_capacity = 0;
+    std::uint64_t font_atlas_soft_bytes_reported = 0;
+    std::uint64_t font_atlas_hard_bytes_reported = 0;
+    std::uint64_t font_shaped_run_approx_bytes = 0;
+    if (auto app_root = SP::App::derive_app_root(SP::App::ConcretePathView{params.target_path.getPath()})) {
+        auto font_metrics_path = std::string(app_root->getPath()) + "/diagnostics/metrics/fonts";
+        auto read_font_metric = [&](char const* suffix, std::uint64_t& dest) {
+            auto value = space_.read<std::uint64_t, std::string>(font_metrics_path + suffix);
+            if (value) {
+                dest = *value;
+            } else {
+                auto const code = value.error().code;
+                if (code != SP::Error::Code::NoSuchPath && code != SP::Error::Code::NoObjectFound) {
+                    (void)code; // ignore non-fatal read errors for diagnostics
+                }
+            }
+        };
+        read_font_metric("/registeredFonts", font_registered_fonts);
+        read_font_metric("/cacheHits", font_cache_hits);
+        read_font_metric("/cacheMisses", font_cache_misses);
+        read_font_metric("/cacheEvictions", font_cache_evictions);
+        read_font_metric("/cacheSize", font_cache_size);
+        read_font_metric("/cacheCapacity", font_cache_capacity);
+        read_font_metric("/cacheHardCapacity", font_cache_hard_capacity);
+        read_font_metric("/atlasSoftBytes", font_atlas_soft_bytes_reported);
+        read_font_metric("/atlasHardBytes", font_atlas_hard_bytes_reported);
+        read_font_metric("/shapedRunApproxBytes", font_shaped_run_approx_bytes);
     }
-    if (auto status = replace_single<std::uint64_t>(space_, metricsBase + "/revision", sceneRevision->revision); !status) {
-        (void)set_last_error(space_, params.target_path, "failed to store revision");
-        return std::unexpected(status.error());
-    }
-    if (auto status = replace_single<double>(space_, metricsBase + "/renderMs", render_ms); !status) {
-        (void)set_last_error(space_, params.target_path, "failed to store render duration");
-        return std::unexpected(status.error());
-    }
-    if (auto status = replace_single<std::string>(space_, metricsBase + "/lastError", std::string{}); !status) {
-        return std::unexpected(status.error());
-    }
-    (void)replace_single<double>(space_, metricsBase + "/damageMs", damage_ms);
-    (void)replace_single<double>(space_, metricsBase + "/encodeMs", encode_ms);
-    (void)replace_single<double>(space_, metricsBase + "/progressiveCopyMs", progressive_copy_ms);
-    (void)replace_single<double>(space_, metricsBase + "/publishMs", publish_ms);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/drawableCount", static_cast<std::uint64_t>(drawable_count));
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/opaqueDrawables", drawn_opaque);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/alphaDrawables", drawn_alpha);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/culledDrawables", culled_drawables);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/commandCount", static_cast<std::uint64_t>(bucket->command_kinds.size()));
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/commandsExecuted", executed_commands);
-
-    if (!render_error_recorded) {
-        if (auto status = set_last_error(space_, params.target_path, "", sceneRevision->revision, Runtime::Diagnostics::PathSpaceError::Severity::Info); !status) {
+    auto write_metrics_to_base = [&](std::string const& base, bool clear_target_error) -> SP::Expected<void> {
+        if (auto status = replace_single<std::uint64_t>(space_, base + "/frameIndex", params.settings.time.frame_index); !status) {
+            if (clear_target_error) {
+                (void)set_last_error(space_, params.target_path, "failed to store frame index");
+            }
             return std::unexpected(status.error());
         }
+        if (auto status = replace_single<std::uint64_t>(space_, base + "/revision", sceneRevision->revision); !status) {
+            if (clear_target_error) {
+                (void)set_last_error(space_, params.target_path, "failed to store revision");
+            }
+            return std::unexpected(status.error());
+        }
+        if (auto status = replace_single<double>(space_, base + "/renderMs", render_ms); !status) {
+            if (clear_target_error) {
+                (void)set_last_error(space_, params.target_path, "failed to store render duration");
+            }
+            return std::unexpected(status.error());
+        }
+        if (auto status = replace_single<std::string>(space_, base + "/lastError", std::string{}); !status) {
+            return std::unexpected(status.error());
+        }
+        (void)replace_single<double>(space_, base + "/damageMs", damage_ms);
+        (void)replace_single<double>(space_, base + "/encodeMs", encode_ms);
+        (void)replace_single<double>(space_, base + "/progressiveCopyMs", progressive_copy_ms);
+        (void)replace_single<double>(space_, base + "/publishMs", publish_ms);
+        (void)replace_single<std::uint64_t>(space_, base + "/drawableCount", static_cast<std::uint64_t>(drawable_count));
+        (void)replace_single<std::uint64_t>(space_, base + "/opaqueDrawables", drawn_opaque);
+        (void)replace_single<std::uint64_t>(space_, base + "/alphaDrawables", drawn_alpha);
+        (void)replace_single<std::uint64_t>(space_, base + "/culledDrawables", culled_drawables);
+        (void)replace_single<std::uint64_t>(space_, base + "/commandCount", static_cast<std::uint64_t>(bucket->command_kinds.size()));
+        (void)replace_single<std::uint64_t>(space_, base + "/commandsExecuted", executed_commands);
+
+        if (clear_target_error && !render_error_recorded) {
+            if (auto status = set_last_error(space_,
+                                             params.target_path,
+                                             "",
+                                             sceneRevision->revision,
+                                             Runtime::Diagnostics::PathSpaceError::Severity::Info); !status) {
+                return std::unexpected(status.error());
+            }
+        }
+        (void)replace_single<std::uint64_t>(space_, base + "/unsupportedCommands", unsupported_commands);
+        (void)replace_single<std::uint64_t>(space_, base + "/opaqueSortViolations", opaque_sort_violations);
+        (void)replace_single<std::uint64_t>(space_, base + "/alphaSortViolations", alpha_sort_violations);
+        (void)replace_single<double>(space_, base + "/approxOpaquePixels", approx_area_opaque);
+        (void)replace_single<double>(space_, base + "/approxAlphaPixels", approx_area_alpha);
+        (void)replace_single<double>(space_, base + "/approxDrawablePixels", approx_area_total);
+        (void)replace_single<double>(space_, base + "/approxOverdrawFactor", approx_overdraw_factor);
+        (void)replace_single<std::uint64_t>(space_, base + "/progressiveTilesUpdated", progressive_tiles_updated);
+        (void)replace_single<std::uint64_t>(space_, base + "/progressiveBytesCopied", progressive_bytes_copied);
+        (void)replace_single<std::uint64_t>(space_, base + "/progressiveTileSize", static_cast<std::uint64_t>(progressive_tile_size_px));
+        (void)replace_single<std::uint64_t>(space_, base + "/progressiveWorkersUsed", static_cast<std::uint64_t>(progressive_workers_used));
+        (void)replace_single<std::uint64_t>(space_, base + "/progressiveJobs", static_cast<std::uint64_t>(progressive_jobs));
+        (void)replace_single<std::uint64_t>(space_, base + "/encodeWorkersUsed", static_cast<std::uint64_t>(encode_workers_used));
+        (void)replace_single<std::uint64_t>(space_, base + "/encodeJobs", static_cast<std::uint64_t>(encode_jobs_used));
+        (void)replace_single<std::uint64_t>(space_, base + "/materialCount",
+                                            static_cast<std::uint64_t>(material_list.size()));
+        (void)replace_single(space_, base + "/materialDescriptors", material_list);
+        (void)replace_single<std::uint64_t>(space_, base + "/materialResourceCount",
+                                            static_cast<std::uint64_t>(resource_list.size()));
+        (void)replace_single(space_, base + "/materialResources", resource_list);
+        (void)replace_single<std::uint64_t>(space_, base + "/textCommandCount", text_command_count);
+        (void)replace_single<std::uint64_t>(space_, base + "/textFallbackCount", text_fallback_count);
+        (void)replace_single<std::string>(space_,
+                                          base + "/textPipeline",
+                                          (text_pipeline_mode == TextPipeline::Shaped) ? std::string{"Shaped"}
+                                                                                      : std::string{"GlyphQuads"});
+        (void)replace_single<bool>(space_, base + "/textFallbackAllowed", text_fallback_allowed);
+        (void)replace_single<std::uint64_t>(space_,
+                                            base + "/fontActiveCount",
+                                            static_cast<std::uint64_t>(active_font_assets.size()));
+        (void)replace_single(space_, base + "/fontActiveAssets", active_font_assets);
+        (void)replace_single<std::uint64_t>(space_, base + "/fontAtlasCpuBytes", font_atlas_cpu_bytes);
+        (void)replace_single<std::uint64_t>(space_, base + "/fontAtlasGpuBytes", font_atlas_gpu_bytes);
+        (void)replace_single<std::uint64_t>(space_, base + "/fontAtlasResourceCount", font_atlas_resource_count);
+        (void)replace_single<std::uint64_t>(space_, base + "/fontRegisteredFonts", font_registered_fonts);
+        (void)replace_single<std::uint64_t>(space_, base + "/fontCacheHits", font_cache_hits);
+        (void)replace_single<std::uint64_t>(space_, base + "/fontCacheMisses", font_cache_misses);
+        (void)replace_single<std::uint64_t>(space_, base + "/fontCacheEvictions", font_cache_evictions);
+        (void)replace_single<std::uint64_t>(space_, base + "/fontCacheSize", font_cache_size);
+        (void)replace_single<std::uint64_t>(space_, base + "/fontCacheCapacity", font_cache_capacity);
+        (void)replace_single<std::uint64_t>(space_, base + "/fontCacheHardCapacity", font_cache_hard_capacity);
+        (void)replace_single<std::uint64_t>(space_, base + "/fontAtlasSoftBytes", font_atlas_soft_bytes_reported);
+        (void)replace_single<std::uint64_t>(space_, base + "/fontAtlasHardBytes", font_atlas_hard_bytes_reported);
+        (void)replace_single<std::uint64_t>(space_, base + "/fontShapedRunApproxBytes", font_shaped_run_approx_bytes);
+        (void)replace_single(space_, base + "/damageTiles", damage_tile_hints);
+        if (collect_damage_metrics) {
+            (void)replace_single<std::uint64_t>(space_, base + "/damageRectangles", damage_rect_count);
+            (void)replace_single<double>(space_, base + "/damageCoverageRatio", damage_coverage_ratio);
+            (void)replace_single<std::uint64_t>(space_, base + "/fingerprintMatchesExact", fingerprint_matches_exact);
+            (void)replace_single<std::uint64_t>(space_, base + "/fingerprintMatchesRemap", fingerprint_matches_remap);
+            (void)replace_single<std::uint64_t>(space_, base + "/fingerprintChanges", fingerprint_changed);
+            (void)replace_single<std::uint64_t>(space_, base + "/fingerprintNew", fingerprint_new);
+            (void)replace_single<std::uint64_t>(space_, base + "/fingerprintRemoved", fingerprint_removed);
+            (void)replace_single<std::uint64_t>(space_, base + "/progressiveTilesDirty", progressive_tiles_dirty);
+            (void)replace_single<std::uint64_t>(space_, base + "/progressiveTilesTotal", progressive_tiles_total);
+            (void)replace_single<std::uint64_t>(space_, base + "/progressiveTilesSkipped", progressive_tiles_skipped);
+        }
+        return {};
+    };
+
+    if (auto status = write_metrics_to_base(metricsBase, true); !status) {
+        return std::unexpected(status.error());
     }
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/unsupportedCommands", unsupported_commands);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/opaqueSortViolations", opaque_sort_violations);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/alphaSortViolations", alpha_sort_violations);
-    (void)replace_single<double>(space_, metricsBase + "/approxOpaquePixels", approx_area_opaque);
-    (void)replace_single<double>(space_, metricsBase + "/approxAlphaPixels", approx_area_alpha);
-    (void)replace_single<double>(space_, metricsBase + "/approxDrawablePixels", approx_area_total);
-    (void)replace_single<double>(space_, metricsBase + "/approxOverdrawFactor", approx_overdraw_factor);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesUpdated", progressive_tiles_updated);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveBytesCopied", progressive_bytes_copied);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTileSize", static_cast<std::uint64_t>(progressive_tile_size_px));
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveWorkersUsed", static_cast<std::uint64_t>(progressive_workers_used));
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveJobs", static_cast<std::uint64_t>(progressive_jobs));
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/encodeWorkersUsed", static_cast<std::uint64_t>(encode_workers_used));
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/encodeJobs", static_cast<std::uint64_t>(encode_jobs_used));
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/materialCount",
-                                        static_cast<std::uint64_t>(material_list.size()));
-    (void)replace_single(space_, metricsBase + "/materialDescriptors", material_list);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/materialResourceCount",
-                                        static_cast<std::uint64_t>(resource_list.size()));
-    (void)replace_single(space_, metricsBase + "/materialResources", resource_list);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/textCommandCount", text_command_count);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/textFallbackCount", text_fallback_count);
-    (void)replace_single<std::string>(space_,
-                                      metricsBase + "/textPipeline",
-                                      (text_pipeline_mode == TextPipeline::Shaped) ? std::string{"Shaped"}
-                                                                                    : std::string{"GlyphQuads"});
-    (void)replace_single<bool>(space_, metricsBase + "/textFallbackAllowed", text_fallback_allowed);
-    (void)replace_single(space_, metricsBase + "/damageTiles", damage_tile_hints);
-    if (collect_damage_metrics) {
-        (void)replace_single<std::uint64_t>(space_, metricsBase + "/damageRectangles", damage_rect_count);
-        (void)replace_single<double>(space_, metricsBase + "/damageCoverageRatio", damage_coverage_ratio);
-        (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintMatchesExact", fingerprint_matches_exact);
-        (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintMatchesRemap", fingerprint_matches_remap);
-        (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintChanges", fingerprint_changed);
-        (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintNew", fingerprint_new);
-        (void)replace_single<std::uint64_t>(space_, metricsBase + "/fingerprintRemoved", fingerprint_removed);
-        (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesDirty", progressive_tiles_dirty);
-        (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesTotal", progressive_tiles_total);
-        (void)replace_single<std::uint64_t>(space_, metricsBase + "/progressiveTilesSkipped", progressive_tiles_skipped);
+    if (auto status = write_metrics_to_base(diagnosticsBase, false); !status) {
+        return std::unexpected(status.error());
+    }
+
+    if (font_diagnostics_file()) {
+        FontDiagnosticsRecord font_diag{};
+        font_diag.target_path = params.target_path.getPath();
+        font_diag.frame_index = params.settings.time.frame_index;
+        font_diag.revision = sceneRevision->revision;
+        font_diag.font_active_count = static_cast<std::uint64_t>(active_font_assets.size());
+        font_diag.font_atlas_cpu_bytes = font_atlas_cpu_bytes;
+        font_diag.font_atlas_gpu_bytes = font_atlas_gpu_bytes;
+        font_diag.font_atlas_resource_count = font_atlas_resource_count;
+        font_diag.font_registered_fonts = font_registered_fonts;
+        font_diag.font_cache_hits = font_cache_hits;
+        font_diag.font_cache_misses = font_cache_misses;
+        font_diag.font_cache_evictions = font_cache_evictions;
+        font_diag.font_cache_size = font_cache_size;
+        font_diag.font_cache_capacity = font_cache_capacity;
+        font_diag.font_cache_hard_capacity = font_cache_hard_capacity;
+        font_diag.font_atlas_soft_bytes = font_atlas_soft_bytes_reported;
+        font_diag.font_atlas_hard_bytes = font_atlas_hard_bytes_reported;
+        font_diag.font_shaped_run_approx_bytes = font_shaped_run_approx_bytes;
+        font_diag.active_assets = active_font_assets;
+        auto const now = std::chrono::system_clock::now().time_since_epoch();
+        font_diag.timestamp_ns = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
+        write_font_diagnostics(font_diag);
     }
 
     state.drawable_states = std::move(current_states);

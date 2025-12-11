@@ -126,6 +126,7 @@ The widget gallery (`examples/widgets_example.cpp`) exercises this full stack, a
 - **Focus not updating:** Inspect `/widgets/focus/current` and confirm the path contains the focused widget name. Focus helpers gate auto-render on successful writes; a missing value usually means the widget `meta/kind` field was left unset.
 - **Snapshot drift:** Widget scenes store per-state snapshots in `scenes/widgets/<id>/states/*`. If renders look stale, ensure builders republished the state scene and bumped `current_revision`. UI doctests cover this path; re-run with `PATHSPACE_UPDATE_GOLDENS=1` to refresh goldens when intentional.
 - **Diagnostics:** `windows/<win>/diagnostics/metrics/live/views/<view>/present` mirrors present stats, while renderer metrics live under `renderers/<rid>/targets/<kind>/<name>/output/v1/common/*`. Errors surface in both `lastError` and `diagnostics/errors/live`; capture logs via `scripts/run-test-with-logs.sh` if the loop harness flakes.
+- **Font assets:** When shaped text or emoji render incorrectly, compare a loop with `PATHSPACE_UI_FONT_MANAGER_ENABLED=0` to isolate the shaped pipeline. Inspect `renderers/<rid>/targets/<kind>/<name>/output/v1/common/font*` or the saved `font_diagnostics.jsonl` for zero atlas bytes or missing fingerprints. If a snapshot references a fingerprint that is absent under `resources/fonts/<family>/<style>/builds/<rev>/`, regenerate the atlas or refresh the resource pack. HTML mismatches usually mean the WOFF2 asset set under `output/v1/html/assets/fonts/` does not match `DrawableBucketSnapshot::font_assets`; rerun `tests/ui/test_HtmlAdapter.cpp` after fixing the assets.
 
 ## Entities and responsibilities
 
@@ -376,7 +377,8 @@ SoA layout (per snapshot revision)
   - alphaIndices[]: uint32[K_alpha]
   - per-layer indices: indices/layer/<layer>.bin if layer-local traversal is desired
 - Alignment/versioning:
-  - All binary buffers are 64-bit aligned; headers include magic, version, endianness, counts, checksum
+  - Each bucket binary is prefixed with a 32-byte `DBKT` header (magic, version=1, endianness byte, payload size, FNV-1a64 checksum, reserved=0) and padded to an 8-byte boundary (<=7 bytes of zero padding).
+  - Decode rejects checksum/version/endianness mismatches while still accepting legacy headerless payloads for backward compatibility.
 
 Sorting keys (render-time)
 - Opaque: stable 64-bit key encouraging state locality then depth order
@@ -536,6 +538,7 @@ Policy
 - Working space: linear light for all shading and blending.
 - Framebuffer encoding: default sRGB 8-bit with linear→sRGB encode on write; optional linear FP formats (e.g., RGBA16F/32F) for HDR.
 - Alpha: premultiplied everywhere by default.
+- MVP scope: restrict targets to 8-bit RGBA/BGRA outputs in sRGB or linear light. DisplayP3 and FP (RGBA16F/32F) targets remain deferred; surface descriptors reject unsupported combinations so renderers do not attempt unsupported color pipelines.
 
 Inputs
 - Solid colors are authored in sRGB; convert to linear at material upload.
@@ -604,7 +607,7 @@ Policy interaction
 Metrics (software presenter)
 - progressiveTilesCopied, progressiveRectsCoalesced, progressiveSkipOddSeq, progressiveRecopyAfterSeqChange
 - presentLatencyMs (min/avg/max), copyBytesPerSecond
-- **Contention metrics (December 4, 2025):** With `PATHSPACE_UI_DAMAGE_METRICS=1`, the renderer/presenter pair now publish encode worker stall telemetry (`encodeWorkerStallMsTotal`, `encodeWorkerStallMsMax`, `encodeWorkerStallWorkers`) and the progressive tile retry counters (`progressiveTileSeqRetryCount`, `progressiveTileSeqSkipCount`) under `renderers/<rid>/targets/<tid>/output/v1/diagnostics/metrics/*`. Dashboards consume these nodes to flag when multithreaded encode/copy paths are throttled by contention.
+- **Contention metrics (December 4, 2025):** With `PATHSPACE_UI_DAMAGE_METRICS=1`, the renderer/presenter pair now publish encode worker stall telemetry (`encodeWorkerStallMsTotal`, `encodeWorkerStallMsMax`, `encodeWorkerStallWorkers`) and the progressive tile retry counters (`progressiveTileSeqRetryCount`, `progressiveTileSeqSkipCount`) under `renderers/<rid>/targets/<tid>/diagnostics/metrics/contention/*` (legacy mirror lives at `output/v1/diagnostics/metrics/*`). Dashboards consume these nodes to flag when multithreaded encode/copy paths are throttled by contention.
 
 Safety and correctness
 - Seqlock per tile avoids locks and prevents torn reads.
@@ -1064,7 +1067,7 @@ Positioning:
 Implementation notes (October 23, 2025):
 - `Widgets::CreateStack`/`UpdateStackLayout` publish stack metadata under `widgets/<id>/layout/{style,children,computed}` and emit aggregated snapshots (`scenes/widgets/<id>`). Stack children reference existing widget scenes, so layout stays in sync with button/toggle/slider/list state styling.
 - `Widgets::Bindings::CreateStackBinding` wires stack layouts to renderer targets; `WidgetBindings::UpdateStack` recomputes layout when spacing/alignment changes and forwards dirty hints/auto-render requests automatically.
-- UITests (`tests/ui/test_Builders.cpp`) cover layout measurement, spacing/alignment, and dirty propagation. Gallery integration still pending (track in `docs/Plan_SceneGraph.md` Phase 8 follow-ups).
+- UITests (`tests/ui/test_Builders.cpp`) cover layout measurement, spacing/alignment, and dirty propagation. Gallery integration follow-ups landed; see `docs/finished/Plan_SceneGraph_Finished.md` for the archived notes.
 
 Z-order and hit testing:
 - Order within a stack remains `(zIndex asc, then children[] order)`
@@ -1559,7 +1562,7 @@ Goals
 - Wrap HarfBuzz + ICU (or equivalent) in a `FontManager` that maps logical font requests to fallback chains recorded under `resources/fonts/<name>/<style>/meta/{family,style,weight,fallbacks}`
 - Cache shaped glyph runs keyed by `(text, script, direction, font-set, features)` and publish glyph atlas textures under the font resource subtree
 - Snapshot publishes the atlas fingerprint per drawable so renderers can pin the correct atlas revision without reshaping
-- Support multi-format glyph assets: persist Alpha8 distance-field atlases for standard text and RGBA atlas pages for color glyphs (emoji, COLR/CPAL, SBIX), tagging each `font_assets` entry so renderers bind the correct shader/material path without losing chroma.
+- Support multi-format glyph assets: persist Alpha8 distance-field atlases for standard text and RGBA atlas pages for color glyphs (emoji, COLR/CPAL, SBIX) under `builds/<revision>/atlas_color.bin`, record the active preference in `meta/atlas/{hasColor,preferredFormat}`, and tag each `font_assets` entry so renderers bind the correct shader/material path without losing chroma.
 
 ### Shader compilation and persistent cache
 - Describe shaders via `resources/shaders/<name>/src` (source, macros, entry points) and compile through backend adapters (Metal library, SPIR-V, etc.)
@@ -1697,7 +1700,7 @@ Text shaping strategy (v1):
 - Canvas JSON mode:
   - Replay positioned glyphs; MSDF atlas path may be added later but is not required for v1.
 - Fonts:
-  - Emit @font-face rules referencing output/v1/html/assets/fonts/*; optional later subsetting to WOFF2.
+  - Emit @font-face rules referencing `assets/fonts/<fingerprint>.woff2`, backed by `output/v1/html/assets/fonts/*`. Fingerprints come from `DrawableBucketSnapshot::font_assets`, which also drive the inferred CSS family/style metadata. Optional later subsetting to WOFF2.
 
 Mapping:
 - Rect/rrect → div + border-radius (fallback to clip-path for non-uniform radii as needed).
@@ -2152,6 +2155,8 @@ Minimal tests:
 - Font registration + mixed-script shaping; verify cache invalidation after font swap.
 - Live image asset change triggers partial snapshot rebuild without tearing.
 
+Implementation note (December 10, 2025): Current MVP wiring routes fonts through `Runtime::Resources::Fonts` (app-root `resources/fonts/<family>/<style>/builds/<rev>` with atlas metadata/residency metrics) and keeps image assets revision-local under `scenes/<sid>/builds/<rev>/assets/images/<fingerprint>.png`, caching them by fingerprint inside PathRenderer2D/HtmlAdapter while surfacing per-target residency stats. The digest-indexed asset index plus policy-driven shared resource manager (cross-target LRU watermarks for images/shaders) remains deferred; treat this section as the target contract for that follow-on.
+
 ## Decision: Renderer cache watermarks (resolved)
 
 Summary:
@@ -2363,6 +2368,6 @@ These items clarify edge cases or finalize small inconsistencies. Resolve and re
 - ✅ (December 4, 2025) Damage pipeline ownership — `PathRenderer2D` now delegates dirty-rect hint coalescing, tile snapping, and fingerprint delta accounting to the dedicated helper implemented in `src/pathspace/ui/PathRenderer2DDamage.cpp`. The helper is unit-tested via `tests/ui/test_PathRenderer2D.cpp` (“Damage helper tracks fingerprint deltas and tiles” / “Damage helper applies dirty rect hints to tile grid”), so renderer code only consumes the summarized region + tiles.
 - ✅ (December 4, 2025) Progressive/presenter stress tests — `tests/ui/test_PathWindowView.cpp` now ships “present tolerates concurrent progressive tile mutation”, which spins a progressive writer thread against `PathWindowView::present` and asserts the skip/seq counters while the standard 5× PathSpaceUITests loop exercises the race.
 - ✅ (December 4, 2025) Surface cache lifecycle hooks — renderer targets now host `diagnostics/cacheWatch` sentinel values (written by RuntimeDetail). The sentinel stores a boolean marker, and (December 7, 2025) RuntimeDetail now wires it to a PathSpaceContext wait/notify watcher so deleting the target/app root drops the sentinel, wakes the watcher, and immediately evicts cached PathSurfaceSoftware/Metal instances without relying on serialized `std::shared_ptr` handles.
-- ✅ (December 4, 2025) Contention instrumentation — `targets/<tid>/output/v1/diagnostics/metrics/*` now publishes `encodeWorkerStallMs{Total,Max}`, `encodeWorkerStallWorkers`, and the presenter’s progressive tile retry counters (`progressiveTileSeqRetryCount`, `progressiveTileSeqSkipCount`) whenever `PATHSPACE_UI_DAMAGE_METRICS=1`. Dashboards can alert when encode workers consistently stall or when progressive readers keep rereading tiles due to writer contention.
+- ✅ (December 4, 2025) Contention instrumentation — `targets/<tid>/diagnostics/metrics/contention/*` now publishes `encodeWorkerStallMs{Total,Max}`, `encodeWorkerStallWorkers`, and the presenter’s progressive tile retry counters (`progressiveTileSeqRetryCount`, `progressiveTileSeqSkipCount`) whenever `PATHSPACE_UI_DAMAGE_METRICS=1` (compatibility mirror remains under `output/v1/diagnostics/metrics/*`). Dashboards can alert when encode workers consistently stall or when progressive readers keep rereading tiles due to writer contention.
 
 Remaining TODO: —

@@ -1,6 +1,6 @@
 # Scene Graph Implementation — Completed Work
 
-> Archived snapshot of completed milestones (updated October 30, 2025). Active items live in `docs/Plan_SceneGraph.md`.
+> Archived snapshot of completed milestones (updated October 30, 2025). Active items now live in `docs/finished/Plan_SceneGraph_Finished.md`.
 
 ## Handoff Notice
 
@@ -348,7 +348,7 @@ Next:
 - `WidgetOp` payload: `{ kind: WidgetOpKind, widget_path: string, pointer: { scene_x, scene_y, inside, primary }, value: float, sequence: uint64, timestamp_ns: uint64 }`.
 - Supported kinds (October 20, 2025): `HoverEnter`, `HoverExit`, `Press`, `Release`, `Activate`, `Toggle`, `SliderBegin`, `SliderUpdate`, `SliderCommit`, `ListHover`, `ListSelect`, `ListActivate`, `ListScroll` (document new ones alongside widget additions and clamp indices via widget metadata before mutating app state).
 - Reducer shape: wait/notify loop blocks on the queue, translates ops into app actions (`ops/<action>/inbox`) and calls `Widgets::Update*State` helpers to keep scenes in sync without republishing whole snapshots.
-  - Capture authoring guidelines in `docs/Plan_SceneGraph.md`'s appendix so contributors can add new widgets consistently.
+  - Capture authoring guidelines in `docs/finished/Plan_SceneGraph_Finished.md`'s appendix so contributors can add new widgets consistently.
 
 ## Dependencies and Ordering
 - Helpers (Phase 1) unblock snapshot builder and surfaces/presenters by standardizing paths.
@@ -373,7 +373,7 @@ Next:
 - `./scripts/compile.sh --enable-metal-tests --test --loop=1 --per-test-timeout 20` exercises the Metal presenter path on macOS hosts; keep it gated behind `PATHSPACE_ENABLE_METAL_UPLOADS` in CI.
 - The local `pre-push` hook (`scripts/git-hooks/pre-push.local.sh`) enables Metal presenter coverage by default; export `DISABLE_METAL_TESTS=1` when GPU access is unavailable.
 - CI currently runs the Linux matrix plus a macOS job invoking `./scripts/compile.sh --enable-metal-tests --test --loop=1` to guard the presenter path.
-- Draft a Linux/Wayland bring-up checklist (toolchain flags, presenter shims, input adapters, CI coverage) so non-macOS contributors know the remaining gaps for the UI stack.
+- ✅ (December 10, 2025) Drafted the Linux/Wayland bring-up checklist (toolchain flags, presenter shims, input adapters, CI coverage); see `docs/Wayland_Bringup_Checklist.md` for the working playbook non-macOS contributors should follow.
 - ✅ (October 24, 2025) Extended `scripts/compile.sh` to auto-run the PixelNoise perf harness (software + Metal) inside the mandated 15× loop, default the per-test timeout to 20 s, and enable `BUILD_PATHSPACE_EXAMPLES=ON` whenever tests run.
 - Add deterministic golden outputs (framebuffers, DrawableBucket metadata) with tolerance-aware comparisons.
 - Stress tests: concurrent edits vs renders, present policy edge cases, progressive tile churn, input-routing races, error-path validation (missing revisions, bad settings).
@@ -381,11 +381,11 @@ Next:
 
 ## Open Questions to Resolve Early
 - Finalize `DrawableBucket` binary schema (padding, endianness, checksum) before snapshot/renderer work diverges.
-- Decide on minimum color management scope for MVP (srgb8 only vs optional linear FP targets).
-- Clarify resource manager involvement for fonts/images in MVP vs deferred phases.
+- ✅ (December 10, 2025) Decision: MVP renderer targets stay on 8-bit RGBA/BGRA outputs in sRGB or linear light; DisplayP3 and FP (RGBA16F/32F) targets remain post-MVP items. Surface descriptor validation now rejects unsupported color spaces or FP formats to keep render paths aligned with the scoped rollout.
+- ✅ (December 10, 2025) Decision: Fonts flow through Runtime::Resources::Fonts (app-root `resources/fonts/<family>/<style>/builds/<rev>`, atlas metadata, residency metrics) and snapshots publish `font_assets` that PathRenderer2D/HtmlAdapter resolve. Images stay revision-local for the MVP (`scenes/<sid>/builds/<rev>/assets/images/<fingerprint>.png`), with renderer/HTML caches keyed by fingerprint plus residency reporting; the digest-indexed, policy-driven resource manager (assets index, shared pools/LRUs) remains deferred to the GPU/resource track.
 - Validate CAMetalLayer drawable lifetime, IOSurface reuse, and runloop coordination during resize/fullscreen transitions for the Metal presenter.
 - Nail down metrics format (`output/v1/common` vs `diagnostics/metrics`) to keep profiler expectations stable.
-- Define sequencing for path-traced lighting and tetrahedral acceleration work (post-MVP vs incremental alongside GPU backends).
+- ✅ (December 10, 2025) Decision: two-phase rollout. Integrate TLAS/BLAS emission and tetra adjacency builds alongside the GPU backend track under an `rt_foundations` gate so snapshot artifacts stay aligned while renderers remain raster/compute-only. Enable the full path-traced integrator (CPU fallback plus GPU compute/RT) after the GPU baseline hardens, reusing the shared acceleration/cache plumbing and guarding it with a separate path-tracing toggle.
 
 ## Documentation & Rollout Checklist
 - Update `README.md` build instructions once UI flags ship.

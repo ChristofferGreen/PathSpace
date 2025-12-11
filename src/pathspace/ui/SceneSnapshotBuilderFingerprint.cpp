@@ -240,6 +240,7 @@ auto compute_drawable_fingerprints(DrawableBucketSnapshot const& bucket)
                     }
                     hash.mix_value(asset.revision);
                     hash.mix_value(asset.fingerprint);
+                    hash.mix_value(static_cast<std::uint32_t>(asset.kind));
                 }
             }
         }

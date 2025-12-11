@@ -46,6 +46,7 @@ struct HistoryOperationRecord {
     std::size_t                           redoCountAfter   = 0;
     std::size_t                           bytesBefore      = 0;
     std::size_t                           bytesAfter       = 0;
+    std::string                           tag;
     std::string                           message;
 };
 
@@ -81,6 +82,7 @@ struct UndoJournalRootState {
     HistoryTelemetry                          telemetry;
     std::size_t                               liveBytes = 0;
     std::uint64_t                             nextSequence = 0;
+    std::string                               currentTag;
     bool                                      persistenceEnabled = false;
     std::filesystem::path                     persistencePath;
     std::filesystem::path                     journalPath;

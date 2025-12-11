@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/runtime/UIRuntime.hpp>
+#include <pathspace/ui/FontAtlas.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -27,6 +28,8 @@ public:
         std::string weight;
         std::vector<std::string> fallback_chain;
         std::uint64_t active_revision = 0;
+        FontAtlasFormat preferred_format = FontAtlasFormat::Alpha8;
+        bool has_color_atlas = false;
     };
 
     struct GlyphPlacement {

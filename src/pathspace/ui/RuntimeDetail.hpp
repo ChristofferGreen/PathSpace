@@ -70,6 +70,32 @@ inline auto make_error(std::string message,
     return SP::Error{code, std::move(message)};
 }
 
+inline auto validate_color_management_scope(Runtime::SurfaceDesc const& desc) -> SP::Expected<void> {
+    auto reject = [](std::string message) -> SP::Expected<void> {
+        return std::unexpected(make_error(std::move(message), SP::Error::Code::InvalidType));
+    };
+
+    bool const is_srgb_format = desc.pixel_format == Runtime::PixelFormat::RGBA8Unorm_sRGB
+                                || desc.pixel_format == Runtime::PixelFormat::BGRA8Unorm_sRGB;
+    bool const is_unorm_8bit = desc.pixel_format == Runtime::PixelFormat::RGBA8Unorm
+                               || desc.pixel_format == Runtime::PixelFormat::BGRA8Unorm
+                               || is_srgb_format;
+
+    if (!is_unorm_8bit) {
+        return reject("MVP renderer supports only 8-bit RGBA/BGRA formats; FP targets are deferred");
+    }
+
+    if (desc.color_space == Runtime::ColorSpace::DisplayP3) {
+        return reject("DisplayP3 targets are deferred; use sRGB or Linear for MVP");
+    }
+
+    if (is_srgb_format && desc.color_space == Runtime::ColorSpace::Linear) {
+        return reject("sRGB framebuffer formats must use sRGB color_space");
+    }
+
+    return SP::Expected<void>{};
+}
+
 namespace SceneData = SP::UI::Scene;
 
 template <typename T>
@@ -790,6 +816,9 @@ inline auto prepare_surface_render_context(PathSpace& space,
     if (!targetDesc) {
         return std::unexpected(targetDesc.error());
     }
+    if (auto status = validate_color_management_scope(*targetDesc); !status) {
+        return std::unexpected(status.error());
+    }
 
     auto const& targetStr = targetAbsolute->getPath();
     auto targetsPos = targetStr.find("/targets/");
@@ -1110,6 +1139,9 @@ inline auto read_relative_string(PathSpace const& space,
 inline auto store_desc(PathSpace& space,
                 std::string const& path,
                 SurfaceDesc const& desc) -> SP::Expected<void> {
+    if (auto status = validate_color_management_scope(desc); !status) {
+        return status;
+    }
     return replace_single<SurfaceDesc>(space, path, desc);
 }
 

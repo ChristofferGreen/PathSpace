@@ -1,5 +1,5 @@
 {
-  "captured_at_utc": "2025-10-23T16:37:24+00:00",
+  "captured_at_utc": "2025-12-10T10:42:40+00:00",
   "benchmark": "/Users/chrgre01/src/PathSpace/build/benchmarks/path_renderer2d_benchmark",
   "metrics_enabled": false,
   "samples": [
@@ -17,36 +17,36 @@
           "value": 2.0
         },
         "avg_ms": {
-          "raw": "5.39",
-          "value": 5.39
+          "raw": "9.67",
+          "value": 9.67
         },
         "fps": {
-          "raw": "185.39",
-          "value": 185.39
+          "raw": "103.40",
+          "value": 103.4
         },
         "worst_ms": {
-          "raw": "5.84",
-          "value": 5.84
+          "raw": "10.59",
+          "value": 10.59
         },
         "avg_damage_ms": {
-          "raw": "0.00",
-          "value": 0.0
+          "raw": "0.05",
+          "value": 0.05
         },
         "avg_encode_ms": {
-          "raw": "3.54",
-          "value": 3.54
+          "raw": "4.22",
+          "value": 4.22
         },
         "avg_copy_ms": {
-          "raw": "0.29",
-          "value": 0.29
+          "raw": "0.31",
+          "value": 0.31
         },
         "avg_publish_ms": {
           "raw": "0.00",
           "value": 0.0
         },
         "avg_present_ms": {
-          "raw": "0.48",
-          "value": 0.48
+          "raw": "0.69",
+          "value": 0.69
         },
         "avg_tiles": {
           "raw": "240.00",
@@ -64,24 +64,24 @@
           "value": 48.0
         },
         "avg_ms": {
-          "raw": "1.16",
-          "value": 1.16
+          "raw": "0.70",
+          "value": 0.7
         },
         "fps": {
-          "raw": "862.99",
-          "value": 862.99
+          "raw": "1423.30",
+          "value": 1423.3
         },
         "worst_ms": {
-          "raw": "1.41",
-          "value": 1.41
+          "raw": "1.20",
+          "value": 1.2
         },
         "avg_damage_ms": {
-          "raw": "0.00",
-          "value": 0.0
+          "raw": "0.01",
+          "value": 0.01
         },
         "avg_encode_ms": {
-          "raw": "0.34",
-          "value": 0.34
+          "raw": "0.40",
+          "value": 0.4
         },
         "avg_copy_ms": {
           "raw": "0.01",
@@ -92,12 +92,12 @@
           "value": 0.0
         },
         "avg_present_ms": {
-          "raw": "0.01",
-          "value": 0.01
+          "raw": "0.10",
+          "value": 0.1
         },
         "avg_tiles": {
-          "raw": "4.25",
-          "value": 4.25
+          "raw": "16.92",
+          "value": 16.92
         },
         "avg_bytes": {
           "raw": "0.07MB",
@@ -112,8 +112,8 @@
       "raw_output": [
         "=== PathRenderer2D Benchmark ===",
         "Canvas: 1280x720 progressive tiles=240 initial tile size=64px",
-        "Full repaint stats: frames=2 avg_ms=5.39 fps=185.39 worst_ms=5.84 avg_damage_ms=0.00 avg_encode_ms=3.54 avg_copy_ms=0.29 avg_publish_ms=0.00 avg_present_ms=0.48 avg_tiles=240.00 avg_bytes=3.69MB",
-        "Incremental stroke stats: frames=48 avg_ms=1.16 fps=862.99 worst_ms=1.41 avg_damage_ms=0.00 avg_encode_ms=0.34 avg_copy_ms=0.01 avg_publish_ms=0.00 avg_present_ms=0.01 avg_tiles=4.25 avg_bytes=0.07MB",
+        "Full repaint stats: frames=2 avg_ms=9.67 fps=103.40 worst_ms=10.59 avg_damage_ms=0.05 avg_encode_ms=4.22 avg_copy_ms=0.31 avg_publish_ms=0.00 avg_present_ms=0.69 avg_tiles=240.00 avg_bytes=3.69MB",
+        "Incremental stroke stats: frames=48 avg_ms=0.70 fps=1423.30 worst_ms=1.20 avg_damage_ms=0.01 avg_encode_ms=0.40 avg_copy_ms=0.01 avg_publish_ms=0.00 avg_present_ms=0.10 avg_tiles=16.92 avg_bytes=0.07MB",
         "Small-surface tiles: 0 (count=1)"
       ]
     },
@@ -131,36 +131,36 @@
           "value": 2.0
         },
         "avg_ms": {
-          "raw": "44.30",
-          "value": 44.3
+          "raw": "73.48",
+          "value": 73.48
         },
         "fps": {
-          "raw": "22.57",
-          "value": 22.57
+          "raw": "13.61",
+          "value": 13.61
         },
         "worst_ms": {
-          "raw": "47.28",
-          "value": 47.28
+          "raw": "76.01",
+          "value": 76.01
         },
         "avg_damage_ms": {
-          "raw": "0.00",
-          "value": 0.0
+          "raw": "1.85",
+          "value": 1.85
         },
         "avg_encode_ms": {
-          "raw": "28.77",
-          "value": 28.77
+          "raw": "32.47",
+          "value": 32.47
         },
         "avg_copy_ms": {
-          "raw": "1.63",
-          "value": 1.63
+          "raw": "1.73",
+          "value": 1.73
         },
         "avg_publish_ms": {
           "raw": "0.00",
           "value": 0.0
         },
         "avg_present_ms": {
-          "raw": "2.31",
-          "value": 2.31
+          "raw": "4.25",
+          "value": 4.25
         },
         "avg_tiles": {
           "raw": "2040.00",
@@ -178,40 +178,40 @@
           "value": 48.0
         },
         "avg_ms": {
-          "raw": "7.11",
-          "value": 7.11
+          "raw": "1.40",
+          "value": 1.4
         },
         "fps": {
-          "raw": "140.63",
-          "value": 140.63
+          "raw": "712.00",
+          "value": 712.0
         },
         "worst_ms": {
-          "raw": "7.80",
-          "value": 7.8
+          "raw": "3.65",
+          "value": 3.65
         },
         "avg_damage_ms": {
-          "raw": "0.00",
-          "value": 0.0
-        },
-        "avg_encode_ms": {
-          "raw": "0.34",
-          "value": 0.34
-        },
-        "avg_copy_ms": {
           "raw": "0.01",
           "value": 0.01
+        },
+        "avg_encode_ms": {
+          "raw": "0.39",
+          "value": 0.39
+        },
+        "avg_copy_ms": {
+          "raw": "0.03",
+          "value": 0.03
         },
         "avg_publish_ms": {
           "raw": "0.00",
           "value": 0.0
         },
         "avg_present_ms": {
-          "raw": "0.01",
-          "value": 0.01
+          "raw": "0.82",
+          "value": 0.82
         },
         "avg_tiles": {
-          "raw": "4.12",
-          "value": 4.12
+          "raw": "16.50",
+          "value": 16.5
         },
         "avg_bytes": {
           "raw": "0.07MB",
@@ -226,8 +226,8 @@
       "raw_output": [
         "=== PathRenderer2D Benchmark ===",
         "Canvas: 3840x2160 progressive tiles=2040 initial tile size=64px",
-        "Full repaint stats: frames=2 avg_ms=44.30 fps=22.57 worst_ms=47.28 avg_damage_ms=0.00 avg_encode_ms=28.77 avg_copy_ms=1.63 avg_publish_ms=0.00 avg_present_ms=2.31 avg_tiles=2040.00 avg_bytes=33.18MB",
-        "Incremental stroke stats: frames=48 avg_ms=7.11 fps=140.63 worst_ms=7.80 avg_damage_ms=0.00 avg_encode_ms=0.34 avg_copy_ms=0.01 avg_publish_ms=0.00 avg_present_ms=0.01 avg_tiles=4.12 avg_bytes=0.07MB",
+        "Full repaint stats: frames=2 avg_ms=73.48 fps=13.61 worst_ms=76.01 avg_damage_ms=1.85 avg_encode_ms=32.47 avg_copy_ms=1.73 avg_publish_ms=0.00 avg_present_ms=4.25 avg_tiles=2040.00 avg_bytes=33.18MB",
+        "Incremental stroke stats: frames=48 avg_ms=1.40 fps=712.00 worst_ms=3.65 avg_damage_ms=0.01 avg_encode_ms=0.39 avg_copy_ms=0.03 avg_publish_ms=0.00 avg_present_ms=0.82 avg_tiles=16.50 avg_bytes=0.07MB",
         "Small-surface tiles: 0 (count=1)"
       ]
     }

@@ -42,7 +42,12 @@ Links:
 ```bash
 git clone <this-repo>
 cd PathSpace
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+# Enable UI/presenter stack (software renderer on all platforms, Metal presenter on macOS)
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DPATHSPACE_ENABLE_UI=ON \
+  -DPATHSPACE_UI_SOFTWARE=ON \
+  -DPATHSPACE_UI_METAL=ON   # OFF on non-Apple hosts
 cmake --build build -j
 ```
 
@@ -63,6 +68,9 @@ or use the helper that wraps the loop/timeout policy from `docs/AI_Architecture.
 ```
 
 Build options:
+- PATHSPACE_ENABLE_UI=ON|OFF (UI/renderers/windows; defaults OFF for headless builds)
+- PATHSPACE_UI_SOFTWARE=ON|OFF (software renderer/surfaces; enable when PATHSPACE_ENABLE_UI=ON)
+- PATHSPACE_UI_METAL=ON|OFF (Metal presenter; Apple-only, defaults ON on macOS)
 - ENABLE_ADDRESS_SANITIZER=ON|OFF
 - ENABLE_THREAD_SANITIZER=ON|OFF
 - ENABLE_UNDEFINED_SANITIZER=ON|OFF

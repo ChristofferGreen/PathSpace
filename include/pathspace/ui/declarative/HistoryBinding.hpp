@@ -74,4 +74,6 @@ void RecordHistoryBindingActionResult(SP::PathSpace& space,
                                       HistoryBindingAction action,
                                       bool success);
 
+auto LookupHistoryBinding(std::string const& history_root) -> std::shared_ptr<HistoryBinding>;
+
 } // namespace SP::UI::Declarative

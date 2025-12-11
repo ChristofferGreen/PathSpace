@@ -247,7 +247,7 @@ auto initialize_render(PathSpace& space,
     return mark_render_dirty(space, root);
 }
 
-auto mark_render_dirty(PathSpace& space,
+auto mark_render_dirty(PathSpaceBase& space,
                        std::string const& root) -> SP::Expected<void> {
     if (auto status = write_value(space, WidgetSpacePath(root, "/render/dirty"), true); !status) {
         return status;

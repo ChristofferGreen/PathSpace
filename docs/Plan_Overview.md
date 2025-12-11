@@ -9,40 +9,40 @@ Provide a single index of active planning documents, ordered by current priority
 
 ## Priority Ordering
 
+> **Update (December 10, 2025):** `Plan_SceneGraph` (formerly `docs/Plan_SceneGraph.md`) is complete and archived at `docs/finished/Plan_SceneGraph_Finished.md`. Use it for the finalized scene graph/diagnostics rollout record; it no longer appears in the active list below.
 > **Update (December 6, 2025):** `Plan_Distributed_PathSpace.md` is complete and archived at `docs/finished/Plan_Distributed_PathSpace_Finished.md`. Use it as the distributed mount contract reference while the list below tracks active plans.
 > **Update (December 4, 2025):** `Plan_SceneGraph_Renderer` is complete and archived at `docs/finished/Plan_SceneGraph_Renderer_Finished.md`. Use it as the renderer/presenter contract reference while the plans below track active or ongoing work.
 
-1. **Plan_SceneGraph.md**  
-   Execution plan for landing the renderer stack (phases, diagnostics, testing discipline).
+1. **Plan_PathSpaceHtmlServer.md**  
+   Active: embeds ServeHtml directly inside apps via `PathSpaceHtmlServer<Space>`, aligns examples/tests with the helper, and unifies HTML telemetry so ServeHtml mirrors native windows without bespoke CLI flags.
 
-2. **Plan_Surface_Ray_Cache.md** (deferred)  
-   Future ray-query cache design. Read only when GPU path work resumes.
+2. **Plan_WidgetComposableRuntime.md**  
+   Active: capsule-based widget runtime (per-widget surfaces, mailboxes, HTML-compatible fragments) that consumes the renderer contracts. Lands right after the ServeHtml helper solidifies so declarative widgets can target both native and embedded contexts.
 
-3. **Plan_PathSpaceHtmlServer.md**  
-   NEW (December 3, 2025): roadmap for embedding ServeHtml directly inside PathSpace apps via `PathSpaceHtmlServer<Space>` and refactoring the examples to the helper so manual `--serve-html` plumbing disappears.
+3. **Plan_PathSpaceWindowManager.md**  
+   Queued: NextStep-inspired window chrome/dock controller building atop the stabilized renderer/runtime stack; depends on the composable runtime landing first.
 
-4. **Plan_WidgetComposableRuntime.md**  
-   Capsule-based widget runtime plan (per-widget render surfaces, mailboxes, primitives, HTML-compatible fragments). Executes after `docs/finished/Plan_SceneGraph_Renderer_Finished.md` and `Plan_SceneGraph.md` stabilize the renderer contracts.
+4. **Plan_PathSpaceTerminal.md**  
+   Queued: Carta Linea-aware terminal/launcher that captures command outputs as PathSpaces; green-lit once the window manager primitives exist so terminal panes can host arbitrary viewers.
 
-5. **Plan_PathSpaceWindowManager.md**  
-   NextStep-inspired window manager that manages declarative windows, chrome, and the dock on top of the UI layer.
+5. **Plan_Surface_Ray_Cache.md** (deferred)  
+   GPU-path backlog; revisit when ray-query acceleration re-enters scope after the current HTML/runtime deliveries.
 
-6. **Plan_PathSpaceTerminal.md**  
-   Carta Linea-aware terminal emulator where commands launch apps, capture returned PathSpaces, and visualize them with generic viewers.
+6. **Plan_CartaLinea.md** (paused)  
+   Cross-app deck/timeline/filesystem concept; stays paused until renderer + ServeHtml milestones finish and window manager UX is validated.
 
-7. **Plan_CartaLinea.md** (paused)  
-   Cross-app deck/timeline/filesystem concept; re-evaluate once renderer priorities stabilize.
-
-8. **Plan_PrimeScript.md** (research)  
-   Exploratory unified scripting/shading language investigation; the syntax/semantics draft lives in `docs/PrimeScript_SyntaxSpec.md` (November 21, 2025) to unblock parser prototype scoping.
+7. **Plan_PrimeScript.md**  
+   Unified scripting/shading language roadmap spanning host C++, GPU backends, and the embedded VM; follow the language spec and syntax draft in `docs/PrimeScript_SyntaxSpec.md` when prototyping.
 
 
 ## Recommended Implementation Focus (Q4 2025)
-1. **Plan_SceneGraph.md** — active execution path for the renderer/presenter stack defined in `docs/finished/Plan_SceneGraph_Renderer_Finished.md`; keep driving the in-flight phases to completion while validating against the renderer blueprint.
-2. **Plan_Surface_Ray_Cache.md** — revisit once core rendering + web requirements are satisfied (deferred).
-3. **Plan_PathSpaceWindowManager.md** — design shared window chrome/dock controls so multi-app sessions feel cohesive once the renderer work stabilizes.
-4. **Plan_PathSpaceTerminal.md** (after Carta Linea resumes) — prototype the command-driven launcher/visualizer so command outputs become Carta Linea cards.
-5. **Plan_CartaLinea.md / Plan_PrimeScript.md** — keep paused/research-only until earlier items reach steady state.
+1. **Plan_PathSpaceHtmlServer.md** — keep embedding ServeHtml into apps/examples, make the helper the default ServeHtml entry point, and finish the diagnostics/loop coverage that pairs with the HTML adapter work.
+2. **Plan_WidgetComposableRuntime.md** — land the capsule/runtime split so widgets render consistently across native, embedded ServeHtml, and future HTML-only contexts.
+3. **Plan_PathSpaceWindowManager.md** — begin chrome/dock design once the composable runtime stabilizes, enabling multi-window UX for apps that lean on the new renderer stack.
+4. **Plan_PathSpaceTerminal.md** — unblock terminal/launcher prototypes after the window manager foundation exists; keep Carta Linea integration requirements in scope during design.
+5. **Plan_SceneGraph_Finished.md** — archived; use for renderer/diagnostics history, goldens, and wrap-up notes.
+
+Deferred / paused tracks: **Plan_Surface_Ray_Cache.md** (GPU path) and **Plan_CartaLinea.md** (experience) stay out of the active rotation until the ServeHtml/runtime/window manager sequence is done.
 
 ## Status Snapshot — December 1, 2025
 - ✅ (December 6, 2025) `docs/Plan_Distributed_PathSpace.md` graduated to `docs/finished/Plan_Distributed_PathSpace_Finished.md`, capturing the full distributed mount implementation (phases 0–2, diagnostics, TLS, throttling) so remote web/server work references a stable contract.
@@ -108,7 +108,7 @@ Provide a single index of active planning documents, ordered by current priority
 - Pixel noise perf harness (`examples/pixel_noise_example.cpp`) still supports both Software2D and Metal backends, and baselines live under `docs/perf/`; however, the old `PixelNoisePerfHarness*` CTest entries were removed from the default loop. Use `python3 scripts/check_pixel_noise_baseline.py --build-dir build [--baseline ...]` when you need to compare against the recorded budgets, and expect the ServeHtml/example rewrite to provide the next automated gate. ✅ (October 23, 2025) Captured a representative frame grab for the harness (`docs/images/perf/pixel_noise.png`) using the new `pixel_noise_example --write-frame=<path>` option so perf regressions include a visual alongside the metrics.
 - Default software presents now skip serializing `SoftwareFramebuffer`; the capture path remains opt-in via `capture_framebuffer=true`, keeping production presents on direct IOSurface writes.
 - Widget state scenes now publish canonical idle/hover/pressed/disabled snapshots under `scenes/widgets/<id>/states/*`; theme-aware styles (`Widgets::WidgetTheme`) landed and `widgets_example` uses env-selectable palettes without rewriting scenes.
-- ✅ (October 23, 2025) Phase 8 widget bindings fuzz harness landed (`tests/ui/test_WidgetReducersFuzz.cpp`), covering randomized pointer/keyboard flows, reducer drains, and republished action queues; monitor follow-on coverage in `docs/Plan_SceneGraph.md`.
+- ✅ (October 23, 2025) Phase 8 widget bindings fuzz harness landed (`tests/ui/test_WidgetReducersFuzz.cpp`), covering randomized pointer/keyboard flows, reducer drains, and republished action queues; monitor follow-on coverage in `docs/finished/Plan_SceneGraph_Finished.md`.
 - ✅ (October 22, 2025) Split the monolithic `ui/Builders.cpp` into focused translation units (Scene/Renderer/Surface/Window/App/Widgets/Diagnostics + shared detail helpers), keeping each under 1 000 lines and revalidating the 5× looped CTest run.
 - ✅ (October 23, 2025) Follow-up split trims widget internals further: widget helpers now live in `WidgetDrawablesDetail.inl` and `WidgetMetadataDetail.inl`, with runtime code in `WidgetBuildersCore.cpp`, `WidgetBindings.cpp`, `WidgetFocus.cpp`, and `WidgetReducers.cpp`, keeping the largest TU under 1 000 lines post-refactor.
 - ✅ (October 23, 2025) Broke `WidgetDrawablesDetail.inl` into per-widget include shards (common/button/toggle/slider/list) so each inline module remains compact while `WidgetDetail.hpp` still exposes a single entry point.

@@ -73,11 +73,17 @@ struct LayerIndices {
     std::vector<std::uint32_t> indices;
 };
 
+enum class FontAssetKind : std::uint8_t {
+    Alpha = 0,
+    Color = 1,
+};
+
 struct FontAssetReference {
     std::uint64_t drawable_id = 0;
-   std::string   resource_root;
-   std::uint64_t revision = 0;
-   std::uint64_t fingerprint = 0;
+    std::string   resource_root;
+    std::uint64_t revision = 0;
+    std::uint64_t fingerprint = 0;
+    FontAssetKind kind = FontAssetKind::Alpha;
 };
 
 struct TextGlyphVertex {

@@ -41,6 +41,7 @@ struct LocalInputBridge {
     SP::PathSpace* space = nullptr;
     std::string pointer_queue = "/system/devices/in/pointer/default/events";
     std::string keyboard_queue = "/system/devices/in/text/default/events";
+    std::function<void(SP::UI::LocalKeyEvent const&)> on_key_event;
 };
 
 inline auto utf32_to_utf8(char32_t ch) -> std::string {
@@ -154,6 +155,9 @@ inline void forward_keyboard_event(SP::UI::LocalKeyEvent const& event, void* use
     auto* bridge = static_cast<LocalInputBridge*>(user_data);
     if (!bridge || !bridge->space) {
         return;
+    }
+    if (bridge->on_key_event) {
+        bridge->on_key_event(event);
     }
     SP::PathIOKeyboard::Event key{};
     key.timestampNs = now_timestamp_ns();

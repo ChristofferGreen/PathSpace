@@ -2,7 +2,10 @@
 
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/runtime/TextRuntime.hpp>
+#include <pathspace/ui/runtime/UIRuntime.hpp>
+#include <pathspace/ui/FontManager.hpp>
 
+#include <cstdio>
 #include <cstring>
 
 namespace SP::UI::Runtime::Widgets {
@@ -1781,6 +1784,119 @@ auto MakeDefaultWidgetTheme() -> WidgetTheme {
     return MakeSunsetWidgetTheme();
 }
 
+namespace {
+
+constexpr bool kDebugThemeFonts = false;
+
+auto canonical_font_value(std::string const& value, std::string_view fallback) -> std::string {
+    if (value.empty()) {
+        return std::string(fallback);
+    }
+    return value;
+}
+
+auto font_registration_key(std::string const& family, std::string const& style) -> std::string {
+    std::string key = family;
+    key.push_back('\n');
+    key.append(style);
+    return key;
+}
+
+auto ensure_font_registered(FontManager& manager,
+                            PathSpace& space,
+                            AppRootPathView appRoot,
+                            std::string const& family,
+                            std::string const& style,
+                            std::string const& weight,
+                            std::vector<std::string> const& requested_fallbacks)
+    -> SP::Expected<void> {
+    auto paths = Runtime::Resources::Fonts::Resolve(appRoot, family, style);
+    if (!paths) {
+        return std::unexpected(paths.error());
+    }
+
+    auto active_revision = space.read<std::uint64_t, std::string>(paths->active_revision.getPath());
+    if (active_revision) {
+        return {};
+    }
+    auto const& error = active_revision.error();
+    if (error.code != SP::Error::Code::NoSuchPath && error.code != SP::Error::Code::NoObjectFound) {
+        return std::unexpected(error);
+    }
+
+    Runtime::Resources::Fonts::RegisterFontParams params{};
+    params.family = family;
+    params.style = style;
+    params.weight = weight.empty() ? std::string{"400"} : weight;
+    params.initial_revision = 1;
+    if (!requested_fallbacks.empty()) {
+        params.fallback_families = requested_fallbacks;
+    } else {
+        params.fallback_families = {"system-ui", "sans-serif"};
+    }
+
+    auto registered = manager.register_font(appRoot, params);
+    if (!registered) {
+        return std::unexpected(registered.error());
+    }
+    return {};
+}
+
+auto collect_theme_typography(WidgetTheme const& theme)
+    -> std::array<TypographyStyle const*, 8> {
+    return {&theme.button.typography,
+            &theme.slider.label_typography,
+            &theme.list.item_typography,
+            &theme.tree.label_typography,
+            &theme.text_field.typography,
+            &theme.text_area.typography,
+            &theme.heading,
+            &theme.caption};
+}
+
+auto ensure_theme_fonts(PathSpace& space,
+                        AppRootPathView appRoot,
+                        WidgetTheme const& theme) -> SP::Expected<void> {
+    if (auto status = Runtime::Resources::Fonts::EnsureBuiltInPack(space, appRoot); !status) {
+        return status;
+    }
+
+    FontManager manager(space);
+
+    std::unordered_set<std::string> registered_faces;
+    auto register_for_style = [&](TypographyStyle const& typography) -> SP::Expected<void> {
+        auto family = canonical_font_value(typography.font_family, "PathSpaceSans");
+        auto style = canonical_font_value(typography.font_style, "Regular");
+        auto weight = canonical_font_value(typography.font_weight, "400");
+        auto key = font_registration_key(family, style);
+        if (!registered_faces.insert(key).second) {
+            return {};
+        }
+        if (kDebugThemeFonts) {
+            std::fprintf(stderr, "ensure_theme_fonts: %s/%s (%s)\n",
+                         family.c_str(),
+                         style.c_str(),
+                         weight.c_str());
+        }
+        return ensure_font_registered(manager,
+                                      space,
+                                      appRoot,
+                                      family,
+                                      style,
+                                      weight,
+                                      typography.fallback_families);
+    };
+
+    for (auto* typography : collect_theme_typography(theme)) {
+        if (auto status = register_for_style(*typography); !status) {
+            return status;
+        }
+    }
+    return {};
+}
+
+} // namespace
+
 auto LoadTheme(PathSpace& space,
                AppRootPathView appRoot,
                std::string_view requested_name) -> SP::Expected<ThemeSelection> {
@@ -1837,6 +1953,10 @@ auto LoadTheme(PathSpace& space,
             theme = *loaded;
         }
         (void)Config::Theme::SetActive(space, appRoot, canonical);
+    }
+
+    if (auto status = ensure_theme_fonts(space, appRoot, theme); !status) {
+        return std::unexpected(status.error());
     }
 
     selection.theme = std::move(theme);

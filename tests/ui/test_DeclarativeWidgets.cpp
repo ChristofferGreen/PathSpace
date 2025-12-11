@@ -16,6 +16,8 @@
 #include <pathspace/ui/WidgetSharedTypes.hpp>
 
 #include <algorithm>
+#include <atomic>
+#include <optional>
 #include <string>
 #include <span>
 
@@ -225,6 +227,93 @@ TEST_CASE("Button styles record explicit override intent") {
         CHECK_FALSE(HasStyleOverride(style->overrides,
                                      WidgetsNS::ButtonStyleOverrideField::TextColor));
     }
+}
+
+TEST_CASE("WidgetBindings dispatch invokes registry button handler") {
+    DeclarativeFixture fx;
+
+    std::atomic<int> press_count{0};
+    Button::Args args{};
+    args.label = "Trigger";
+    args.on_press = [&press_count](ButtonContext&) { press_count.fetch_add(1, std::memory_order_relaxed); };
+
+    auto button = Button::Create(fx.space, fx.parent_view(), "binding_button", std::move(args));
+    REQUIRE(button.has_value());
+
+    WidgetsNS::ButtonPaths paths{
+        .root = *button,
+        .state = SP::ConcretePath{widget_space(*button, "/state")},
+        .label = SP::ConcretePath{widget_space(*button, "/meta/label")},
+    };
+
+    SP::UI::DirtyRectHint zero_hint{};
+    SP::ConcretePath target{fx.window_path.getPath()};
+
+    auto binding = WidgetsNS::Bindings::CreateButtonBinding(fx.space,
+                                                            SP::App::AppRootPathView{fx.app_root.getPath()},
+                                                            paths,
+                                                            SP::UI::ConcretePathView{target.getPath()},
+                                                            zero_hint,
+                                                            std::nullopt,
+                                                            false);
+    REQUIRE(binding.has_value());
+
+    WidgetsNS::ButtonState pressed_state{};
+    pressed_state.enabled = true;
+    pressed_state.hovered = true;
+    pressed_state.pressed = true;
+
+    auto dispatched = WidgetsNS::Bindings::DispatchButton(fx.space,
+                                                          *binding,
+                                                          pressed_state,
+                                                          WidgetsNS::Bindings::WidgetOpKind::Press);
+    REQUIRE(dispatched.has_value());
+    CHECK(press_count.load(std::memory_order_relaxed) == 1);
+}
+
+TEST_CASE("WidgetBindings dispatch forwards slider value to handler") {
+    DeclarativeFixture fx;
+
+    std::atomic<float> last_value{0.0f};
+    Slider::Args args{};
+    args.minimum = 0.0f;
+    args.maximum = 1.0f;
+    args.value = 0.25f;
+    args.on_change = [&last_value](SliderContext& ctx) {
+        last_value.store(ctx.value, std::memory_order_relaxed);
+    };
+
+    auto slider = Slider::Create(fx.space, fx.parent_view(), "binding_slider", std::move(args));
+    REQUIRE(slider.has_value());
+
+    WidgetsNS::SliderPaths paths{
+        .root = *slider,
+        .state = SP::ConcretePath{widget_space(*slider, "/state")},
+        .range = SP::ConcretePath{widget_space(*slider, "/meta/range")},
+    };
+
+    SP::UI::DirtyRectHint zero_hint{};
+    SP::ConcretePath target{fx.window_path.getPath()};
+
+    auto binding = WidgetsNS::Bindings::CreateSliderBinding(fx.space,
+                                                            SP::App::AppRootPathView{fx.app_root.getPath()},
+                                                            paths,
+                                                            SP::UI::ConcretePathView{target.getPath()},
+                                                            zero_hint,
+                                                            std::nullopt,
+                                                            false);
+    REQUIRE(binding.has_value());
+
+    WidgetsNS::SliderState new_state{};
+    new_state.enabled = true;
+    new_state.value = 0.75f;
+
+    auto dispatched = WidgetsNS::Bindings::DispatchSlider(fx.space,
+                                                          *binding,
+                                                          new_state,
+                                                          WidgetsNS::Bindings::WidgetOpKind::SliderCommit);
+    REQUIRE(dispatched.has_value());
+    CHECK(last_value.load(std::memory_order_relaxed) == doctest::Approx(0.75f));
 }
 
 TEST_CASE("Button preserves explicit overrides after theme defaults") {

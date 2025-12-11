@@ -7,17 +7,21 @@
 #include "inspector/PaintScreenshotCard.hpp"
 #include "tools/PathSpaceJsonExporter.hpp"
 #include "path/ConcretePath.hpp"
+#include <pathspace/ui/DiagnosticsSummaryJson.hpp>
 
 #include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <charconv>
 #include <chrono>
+#include <ctime>
 #include <cstdint>
 #include <deque>
+#include <iomanip>
 #include <limits>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -2315,6 +2319,41 @@ auto InspectorHttpServer::configure_routes(httplib::Server& server) -> void {
         res.set_content(json.dump(2), "application/json");
         res.set_header("Cache-Control", "no-store");
     });
+
+    server.Get("/inspector/metrics/ui_targets",
+               [this](httplib::Request const&, httplib::Response& res) {
+                   auto summaries = UI::Runtime::Diagnostics::CollectTargetDiagnostics(space_);
+                   if (!summaries) {
+                       auto [status, payload] = make_error(
+                           "failed to collect UI diagnostics: "
+                               + describeError(summaries.error()),
+                           500);
+                       res.status             = status;
+                       res.set_content(payload, "application/json");
+                       return;
+                   }
+
+                   auto make_timestamp = []() {
+                       auto now  = std::chrono::system_clock::now();
+                       auto time = std::chrono::system_clock::to_time_t(now);
+                       std::tm tm{};
+#if defined(_WIN32)
+                       gmtime_s(&tm, &time);
+#else
+                       gmtime_r(&time, &tm);
+#endif
+                       std::ostringstream oss;
+                       oss << std::put_time(&tm, "%FT%TZ");
+                       return oss.str();
+                   };
+
+                   auto payload = UI::Runtime::Diagnostics::SerializeTargetDiagnostics(
+                       *summaries, make_timestamp());
+
+                   res.status = 200;
+                   res.set_content(payload.dump(2), "application/json");
+                   res.set_header("Cache-Control", "no-store");
+               });
 
     server.Post("/inspector/metrics/search", [this](httplib::Request const& req, httplib::Response& res) {
         if (req.body.empty()) {

@@ -222,6 +222,13 @@ cd "$ROOT"
 PREPUSH_SUMMARY_DIR="$ROOT/build/test-logs/pre-push"
 PREPUSH_SUMMARY_PATH="$PREPUSH_SUMMARY_DIR/pre-push_${PREPUSH_RUN_STAMP}_pid$$.json"
 
+if [[ -z "${PATHSPACE_TEST_ARTIFACT_DIR:-}" ]]; then
+  export PATHSPACE_TEST_ARTIFACT_DIR="$ROOT/build/test-logs/pre-push_artifacts"
+fi
+mkdir -p "$PATHSPACE_TEST_ARTIFACT_DIR"
+FONT_ATLAS_ARTIFACT="$PATHSPACE_TEST_ARTIFACT_DIR/widget_gallery_font_assets.bin"
+rm -f "$FONT_ATLAS_ARTIFACT"
+
 if [[ -z "${PATHSPACE_LEGACY_WIDGET_BUILDERS:-}" ]]; then
   export PATHSPACE_LEGACY_WIDGET_BUILDERS="error"
 fi
@@ -312,6 +319,13 @@ if [[ ${#SANITIZER_RUNS[@]} -gt 0 ]]; then
     ok "${upper_sanitizer} sanitizer pass succeeded"
   done
 fi
+
+if [[ ! -f "$FONT_ATLAS_ARTIFACT" ]]; then
+  err "Missing font atlas artifact from widget gallery UITest: $FONT_ATLAS_ARTIFACT"
+  err "Ensure PathSpaceUITests produced widget_gallery_font_assets.bin (persistence regression guard)."
+  exit 1
+fi
+ok "Captured font atlas artifact at $FONT_ATLAS_ARTIFACT"
 
 if [[ "${SKIP_HISTORY_CLI:-0}" != "1" ]]; then
   say "Running history savefile CLI roundtrip harness"

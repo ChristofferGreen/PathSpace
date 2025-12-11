@@ -113,6 +113,10 @@ TEST_CASE("FontManager registers font metadata and manifest") {
     auto atlas_bytes = space.read<std::vector<std::uint8_t>>(atlas_path);
     REQUIRE(atlas_bytes);
 
+    auto color_atlas_path = revision_base + "/atlas_color.bin";
+    auto color_bytes = space.read<std::vector<std::uint8_t>>(color_atlas_path);
+    REQUIRE(color_bytes);
+
     FontAtlasCache cache;
     auto atlas_data = cache.load(space, atlas_path, params.initial_revision);
     REQUIRE(atlas_data);
@@ -123,6 +127,14 @@ TEST_CASE("FontManager registers font metadata and manifest") {
     auto atlas_meta = space.read<std::string, std::string>(revision_base + "/meta/atlas.json");
     REQUIRE(atlas_meta);
     CHECK_FALSE(atlas_meta->empty());
+
+    auto has_color = space.read<std::uint64_t, std::string>(base + "/meta/atlas/hasColor");
+    REQUIRE(has_color);
+    CHECK(*has_color == 1);
+
+    auto preferred_format = space.read<std::string, std::string>(base + "/meta/atlas/preferredFormat");
+    REQUIRE(preferred_format);
+    CHECK(*preferred_format == "alpha8");
 }
 
 TEST_CASE("FontManager resolves manifest fallback chain") {

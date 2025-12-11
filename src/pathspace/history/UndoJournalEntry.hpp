@@ -12,7 +12,7 @@
 namespace SP::History::UndoJournal {
 
 inline constexpr std::uint32_t kJournalMagic   = 0x50534A4C; // 'PSJL'
-inline constexpr std::uint16_t kJournalVersion = 1;
+inline constexpr std::uint16_t kJournalVersion = 2;
 
 enum class OperationKind : std::uint8_t {
     Insert = 0,
@@ -27,6 +27,7 @@ struct SerializedPayload {
 struct JournalEntry {
     OperationKind operation      = OperationKind::Insert;
     std::string   path;
+    std::string   tag;
     SerializedPayload value;
     SerializedPayload inverseValue;
     std::uint64_t timestampMs    = 0;

@@ -87,6 +87,13 @@ Current masks (bit indices are defined in the matching `*StyleOverrideField` enu
 Fragments automatically populate the mask when they serialize a style, so downstream code no longer needs to bake the active theme into the payload just to get correct colors.
 When you need bespoke palette/typography values, call the widget’s `Args::style_override()` helper (e.g., `Button::Args::style_override().background_color(...)`) so the matching override bit flips while the serialized blob stays lean.
 
+### TextField/TextArea input runtime (December 10, 2025)
+
+- Builder bindings for `TextField` and `TextArea` now apply text ops directly: cursor movement, selection changes, IME composition start/update/commit/cancel, and clipboard copy/cut/paste mutate `state/*` before enqueuing the existing widget op so reducer handlers keep firing. UTF-8 boundaries are respected when moving cursors or deleting characters, so multi-byte glyphs remain intact.
+- Clipboard excerpts live under `widgets/<id>/ops/clipboard/last_text`. Copy/cut write the currently selected substring into that node; paste prefers the payload supplied via `composition_text` and falls back to the stored clipboard text when no payload is provided. Tooling can watch the same node to mirror clipboard contents into platform-specific APIs.
+- Composition payloads reuse the serialized `state/composition_*` fields that already flow through `WidgetSharedTypes`. `TextCompositionUpdate` expects the updated `composition_text` plus the desired start/end offsets; commit replaces the `[start,end)` range with the sanitized payload while cancel snaps the caret back to `composition_start`.
+- The new `tests/ui/test_WidgetBindingsText.cpp` suite drives both widgets via `DispatchTextField`/`DispatchTextArea`, covering inserts, deletions, selection/cursor updates, clipboard flows, multi-line input, and scroll deltas so regressions in the binding logic fail fast.
+
 ## Common widget nodes
 
 These nodes exist under every declarative widget root (`widgets/<widget-id>/…`).

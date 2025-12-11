@@ -131,7 +131,7 @@ auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Exp
         return {};
     }
 
-    JournalOperationScope scope(*this, state, "commit");
+    JournalOperationScope scope(*this, state, "commit", state.currentTag);
     auto beforeStats = state.journal.stats();
 
     if (state.persistenceEnabled && !state.persistenceWriter) {
@@ -213,6 +213,7 @@ void UndoableSpace::recordJournalOperation(UndoJournalRootState& state,
                                            std::size_t beforeLiveBytes,
                                            HistoryTelemetry const& beforeTelemetry,
                                            HistoryTelemetry const& afterTelemetry,
+                                           std::string_view tag,
                                            std::string message) {
     auto afterStats = state.journal.stats();
 
@@ -244,6 +245,7 @@ void UndoableSpace::recordJournalOperation(UndoJournalRootState& state,
     record.redoCountAfter  = afterStats.redoCount;
     record.bytesBefore     = beforeTotals.undo + beforeTotals.redo + beforeTotals.live;
     record.bytesAfter      = afterTotals.undo + afterTotals.redo + afterTotals.live;
+    record.tag             = std::string(tag);
     record.message         = std::move(message);
     state.telemetry.lastOperation = std::move(record);
 
@@ -295,6 +297,7 @@ auto UndoableSpace::recordJournalMutation(UndoJournalRootState& state,
                             std::chrono::steady_clock::now().time_since_epoch())
                             .count());
     entry.barrier     = barrier;
+    entry.tag         = state.currentTag;
     entry.value        = std::move(valuePayloadExpected.value());
     entry.inverseValue = std::move(inversePayloadExpected.value());
 

@@ -148,6 +148,61 @@ TEST_CASE("HtmlAdapter resolves assets via callback when provided") {
     CHECK(emitted->css.find("assets/fonts/custom.woff2") != std::string::npos);
 }
 
+TEST_CASE("HtmlAdapter emits fingerprinted font assets from snapshot") {
+    auto bucket = make_basic_bucket();
+    UIScene::FontAssetReference font{};
+    font.drawable_id = bucket.drawable_ids.front();
+    font.resource_root = "/system/applications/demo_app/resources/fonts/PathSpaceSans/Regular";
+    font.revision = 7;
+    font.fingerprint = 0x0102030405060708ull;
+    bucket.font_assets.push_back(font);
+
+    Html::Adapter adapter;
+    Html::EmitOptions options{};
+    int font_resolves = 0;
+    int image_resolves = 0;
+    options.resolve_asset =
+        [&](std::string_view logical_path,
+            std::uint64_t fingerprint,
+            Html::AssetKind kind) -> SP::Expected<Html::Asset> {
+            Html::Asset asset{};
+            switch (kind) {
+            case Html::AssetKind::Image:
+                ++image_resolves;
+                asset.logical_path = std::string(logical_path);
+                asset.mime_type = "image/png";
+                asset.bytes = {1u, 2u, 3u};
+                break;
+            case Html::AssetKind::Font:
+                ++font_resolves;
+                CHECK(fingerprint == font.fingerprint);
+                CHECK(logical_path == "fonts/0102030405060708.woff2");
+                asset.logical_path = std::string(logical_path);
+                asset.mime_type = "font/woff2";
+                asset.bytes = {9u, 8u, 7u};
+                break;
+            }
+            return asset;
+        };
+
+    auto emitted = adapter.emit(bucket, options);
+    REQUIRE(emitted);
+    CHECK(image_resolves == 1);
+    CHECK(font_resolves == 1);
+    CHECK(emitted->css.find("@font-face") != std::string::npos);
+    CHECK(emitted->css.find("assets/fonts/0102030405060708.woff2") != std::string::npos);
+    CHECK(emitted->css.find("PathSpaceSans") != std::string::npos);
+
+    bool found_font_asset = false;
+    for (auto const& asset : emitted->assets) {
+        if (asset.logical_path == "fonts/0102030405060708.woff2") {
+            found_font_asset = true;
+            CHECK(asset.bytes == std::vector<std::uint8_t>({9u, 8u, 7u}));
+        }
+    }
+    CHECK(found_font_asset);
+}
+
 TEST_CASE("HtmlAdapter falls back to canvas when DOM budget exceeded") {
     auto bucket = make_basic_bucket();
 

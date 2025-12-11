@@ -9,6 +9,7 @@
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 #include <pathspace/ui/runtime/RenderSettings.hpp>
+#include <pathspace/ui/FontAtlas.hpp>
 
 #include <algorithm>
 #include <array>
@@ -292,6 +293,8 @@ struct RegisterFontParams {
     std::uint64_t atlas_soft_bytes = 4 * 1024 * 1024;
     std::uint64_t atlas_hard_bytes = 8 * 1024 * 1024;
     std::uint64_t shaped_run_approx_bytes = 512;
+    bool emit_color_atlas = true;
+    FontAtlasFormat preferred_atlas_format = FontAtlasFormat::Alpha8;
 };
 
 auto Resolve(AppRootPathView appRoot,
@@ -301,6 +304,9 @@ auto Resolve(AppRootPathView appRoot,
 auto Register(PathSpace& space,
               AppRootPathView appRoot,
               RegisterFontParams const& params) -> SP::Expected<FontResourcePaths>;
+
+auto EnsureBuiltInPack(PathSpace& space,
+                       AppRootPathView appRoot) -> SP::Expected<void>;
 
 } // namespace Resources::Fonts
 
@@ -456,6 +462,19 @@ struct PathSpaceError {
     std::string detail;
 };
 
+struct ErrorStats {
+    std::uint64_t total = 0;
+    std::uint64_t cleared = 0;
+    std::uint64_t info = 0;
+    std::uint64_t warning = 0;
+    std::uint64_t recoverable = 0;
+    std::uint64_t fatal = 0;
+    std::uint64_t last_code = 0;
+    PathSpaceError::Severity last_severity = PathSpaceError::Severity::Info;
+    std::uint64_t last_timestamp_ns = 0;
+    std::uint64_t last_revision = 0;
+};
+
 struct TargetMetrics {
     uint64_t frame_index = 0;
     uint64_t revision = 0;
@@ -484,6 +503,12 @@ struct TargetMetrics {
     PathSpaceError::Severity last_error_severity = PathSpaceError::Severity::Info;
     uint64_t last_error_timestamp_ns = 0;
     std::string last_error_detail;
+    uint64_t error_total = 0;
+    uint64_t error_cleared = 0;
+    uint64_t error_info = 0;
+    uint64_t error_warning = 0;
+    uint64_t error_recoverable = 0;
+    uint64_t error_fatal = 0;
     double frame_age_ms = 0.0;
     uint64_t frame_age_frames = 0;
     uint64_t drawable_count = 0;
@@ -509,6 +534,30 @@ struct TargetMetrics {
     std::vector<MaterialDescriptor> materials;
     uint64_t material_resource_count = 0;
     std::vector<MaterialResourceResidency> material_resources;
+    uint64_t font_active_count = 0;
+    uint64_t font_atlas_cpu_bytes = 0;
+    uint64_t font_atlas_gpu_bytes = 0;
+    uint64_t font_atlas_resource_count = 0;
+    std::vector<SP::UI::Scene::FontAssetReference> font_assets;
+    uint64_t font_registered_fonts = 0;
+    uint64_t font_cache_hits = 0;
+    uint64_t font_cache_misses = 0;
+    uint64_t font_cache_evictions = 0;
+    uint64_t font_cache_size = 0;
+    uint64_t font_cache_capacity = 0;
+    uint64_t font_cache_hard_capacity = 0;
+    uint64_t font_atlas_soft_bytes = 0;
+    uint64_t font_atlas_hard_bytes = 0;
+    uint64_t font_shaped_run_approx_bytes = 0;
+    // HTML adapter metrics
+    uint64_t html_dom_node_count = 0;
+    uint64_t html_command_count = 0;
+    uint64_t html_asset_count = 0;
+    uint64_t html_max_dom_nodes = 0;
+    bool html_used_canvas_fallback = false;
+    bool html_prefer_dom = true;
+    bool html_allow_canvas_fallback = true;
+    std::string html_mode;
     // Residency metrics are optional; zero indicates unavailable.
     std::uint64_t cpu_bytes = 0;
     std::uint64_t cpu_soft_bytes = 0;
@@ -529,8 +578,20 @@ struct TargetMetrics {
     std::string residency_overall_status;
 };
 
+struct TargetDiagnosticsSummary {
+    std::string path;
+    std::string renderer;
+    std::string target;
+    TargetMetrics metrics;
+    std::optional<PathSpaceError> live_error;
+    ErrorStats error_stats;
+};
+
 auto ReadTargetMetrics(PathSpace const& space,
                         ConcretePathView targetPath) -> SP::Expected<TargetMetrics>;
+
+auto ReadTargetErrorStats(PathSpace const& space,
+                          ConcretePathView targetPath) -> SP::Expected<ErrorStats>;
 
 auto ClearTargetError(PathSpace& space,
                       ConcretePathView targetPath) -> SP::Expected<void>;
@@ -564,6 +625,10 @@ auto WriteResidencyMetrics(PathSpace& space,
                            std::uint64_t cpu_hard_bytes = 0,
                            std::uint64_t gpu_soft_bytes = 0,
                            std::uint64_t gpu_hard_bytes = 0) -> SP::Expected<void>;
+
+auto CollectTargetDiagnostics(PathSpace& space,
+                              std::string_view renderers_root = "/renderers")
+    -> SP::Expected<std::vector<TargetDiagnosticsSummary>>;
 
 } // namespace Diagnostics
 

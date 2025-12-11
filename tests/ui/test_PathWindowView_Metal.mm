@@ -377,6 +377,76 @@ TEST_CASE("PathWindowView presents Metal texture when uploads enabled") {
     }
 }
 
+TEST_CASE("PathWindowView clamps Metal blit size during resize") {
+    if (std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") == nullptr) {
+        INFO("PATHSPACE_ENABLE_METAL_UPLOADS is not set; skipping Metal resize clamp verification");
+        return;
+    }
+
+    @autoreleasepool {
+        id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+        if (!device) {
+            INFO("No Metal device available; skipping Metal resize clamp verification");
+            return;
+        }
+        id<MTLCommandQueue> queue = [device newCommandQueue];
+        REQUIRE(static_cast<bool>(queue));
+
+        CAMetalLayer* layer = [CAMetalLayer layer];
+        layer.device = device;
+        layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+        layer.framebufferOnly = NO;
+        layer.contentsScale = 1.0;
+
+        PathWindowView::MetalPresenterConfig config{
+            .layer = (__bridge void*)layer,
+            .device = (__bridge void*)device,
+            .command_queue = (__bridge void*)queue,
+            .contents_scale = 1.0,
+        };
+        PathWindowView::ConfigureMetalPresenter(config);
+
+        Runtime::SurfaceDesc desc{};
+        desc.size_px.width = 4;
+        desc.size_px.height = 4;
+        desc.pixel_format = Runtime::PixelFormat::BGRA8Unorm;
+        desc.metal.storage_mode = Runtime::MetalStorageMode::Shared;
+        desc.metal.texture_usage = static_cast<std::uint8_t>(Runtime::MetalTextureUsage::ShaderRead)
+                                   | static_cast<std::uint8_t>(Runtime::MetalTextureUsage::RenderTarget);
+
+        PathSurfaceMetal metal{desc};
+        std::array<std::uint8_t, 4u * 4u * 4u> pixels{};
+        pixels.fill(0xFFu);
+        metal.update_from_rgba8(pixels, 4u * 4u, 1, 2);
+
+        auto texture = metal.acquire_texture();
+
+        PathWindowView::PresentRequest request{
+            .now = std::chrono::steady_clock::now(),
+            .vsync_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{5},
+            .framebuffer = {},
+            .dirty_tiles = {},
+            .surface_width_px = 12,
+            .surface_height_px = 12,
+            .has_metal_texture = texture.texture != nullptr,
+            .metal_surface = &metal,
+            .metal_texture = texture,
+            .allow_iosurface_sharing = false,
+        };
+
+        PathWindowView view;
+        PathWindowView::PresentPolicy policy{};
+        policy.vsync_align = false;
+        auto stats = view.present(metal, policy, request);
+
+        CHECK(stats.presented);
+        CHECK(stats.used_metal_texture);
+        CHECK(stats.error.empty());
+        CHECK(stats.backend_kind == "Metal2D");
+        PathWindowView::ResetMetalPresenter();
+    }
+}
+
 TEST_CASE("PathRenderer2DMetal honors material blending state") {
     if (std::getenv("PATHSPACE_ENABLE_METAL_UPLOADS") == nullptr) {
         INFO("PATHSPACE_ENABLE_METAL_UPLOADS is not set; skipping Metal renderer verification");

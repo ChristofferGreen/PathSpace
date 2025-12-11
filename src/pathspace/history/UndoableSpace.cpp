@@ -161,6 +161,7 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
     state->rootPath   = normalized;
     state->components = components;
     state->options    = std::move(resolvedOptions);
+    state->encodedRoot = encodeRootForPersistence(state->rootPath);
 
     UndoJournal::JournalState::RetentionPolicy retention{};
     retention.maxEntries = state->options.maxEntries;
@@ -169,7 +170,6 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
 
     state->persistenceEnabled = state->options.persistHistory;
     if (state->persistenceEnabled) {
-        state->encodedRoot = encodeRootForPersistence(state->rootPath);
         auto setup = ensureJournalPersistenceSetup(*state);
         if (!setup)
             return std::unexpected(setup.error());
@@ -185,7 +185,9 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
 
     {
         std::scoped_lock lock(rootsMutex);
-        journalRoots.emplace(state->rootPath, std::move(state));
+        auto encodedKey = state->encodedRoot;
+        journalRoots.emplace(state->rootPath, state);
+        diagnosticsRoots.emplace(std::move(encodedKey), std::move(state));
     }
 
     return {};
@@ -201,6 +203,9 @@ auto UndoableSpace::disableHistory(ConcretePathStringView root) -> Expected<void
     if (auto it = journalRoots.find(normalized); it != journalRoots.end()) {
         auto state = it->second;
         journalRoots.erase(it);
+        if (state) {
+            diagnosticsRoots.erase(state->encodedRoot);
+        }
         lock.unlock();
         if (state && state->persistenceEnabled) {
             std::error_code ec;
@@ -235,6 +240,55 @@ auto UndoableSpace::findJournalRootByPath(std::string const& path) const
 
     auto canonicalStr = std::string{canonical->getPath()};
     ConcretePathStringView canonicalView{canonical->getPath()};
+
+    auto parseDiagnostics = [&](std::string const& prefix, bool compat)
+        -> std::optional<MatchedJournalRoot> {
+        if (!canonicalStr.starts_with(prefix)) {
+            return std::nullopt;
+        }
+        auto remaining = canonicalStr.substr(prefix.size());
+        if (!remaining.empty() && remaining.front() == '/') {
+            remaining.erase(0, 1);
+        }
+        if (remaining.empty()) {
+            return std::nullopt;
+        }
+
+        auto slashPos = remaining.find('/');
+        auto encoded  = slashPos == std::string::npos ? remaining : remaining.substr(0, slashPos);
+        if (encoded.empty()) {
+            return std::nullopt;
+        }
+
+        std::shared_ptr<UndoJournalRootState> state;
+        {
+            std::scoped_lock lock(rootsMutex);
+            auto it = diagnosticsRoots.find(encoded);
+            if (it != diagnosticsRoots.end()) {
+                state = it->second;
+            }
+        }
+        if (!state) {
+            return std::nullopt;
+        }
+
+        std::string relative;
+        if (slashPos != std::string::npos && slashPos + 1 < remaining.size()) {
+            relative = remaining.substr(slashPos + 1);
+        }
+
+        auto rootKey = state->rootPath;
+        return MatchedJournalRoot{state, std::move(rootKey), std::move(relative), true, compat};
+    };
+
+    auto diagPrefix = std::string{"/"} + std::string(UndoPaths::HistoryDiagnosticsRoot);
+    if (auto matched = parseDiagnostics(diagPrefix, false)) {
+        return matched;
+    }
+    auto compatPrefix = std::string{"/"} + std::string(UndoPaths::HistoryDiagnosticsCompatRoot);
+    if (auto matched = parseDiagnostics(compatPrefix, true)) {
+        return matched;
+    }
 
     std::string                              bestKey;
     std::shared_ptr<UndoJournalRootState>    bestState;

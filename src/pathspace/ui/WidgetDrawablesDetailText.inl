@@ -104,6 +104,10 @@ inline auto sanitize_text_area_state(Widgets::TextAreaState state,
     if (!state.enabled) {
         state.focused = false;
         state.hovered = false;
+        state.submit_pending = false;
+    }
+    if (state.read_only) {
+        state.submit_pending = false;
     }
 
     state.scroll_x = std::max(state.scroll_x, 0.0f);
@@ -139,6 +143,7 @@ inline auto text_field_states_equal(Widgets::TextFieldState const& lhs,
 inline auto text_area_states_equal(Widgets::TextAreaState const& lhs,
                                    Widgets::TextAreaState const& rhs) -> bool {
     return text_input_states_equal(lhs, rhs)
+        && lhs.submit_pending == rhs.submit_pending
         && std::fabs(lhs.scroll_x - rhs.scroll_x) <= 1e-6f
         && std::fabs(lhs.scroll_y - rhs.scroll_y) <= 1e-6f;
 }

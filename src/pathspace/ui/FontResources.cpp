@@ -4,6 +4,7 @@
 #include <pathspace/ui/FontAtlas.hpp>
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cstdint>
 #include <cstdio>
@@ -133,9 +134,28 @@ auto encode_font_atlas(SP::UI::FontAtlasData const& atlas) -> std::vector<std::u
     return bytes;
 }
 
+auto build_color_atlas_from_alpha(SP::UI::FontAtlasData const& source) -> SP::UI::FontAtlasData {
+    SP::UI::FontAtlasData color = source;
+    color.format = SP::UI::FontAtlasFormat::Rgba8;
+    color.bytes_per_pixel = 4;
+    auto pixel_count = static_cast<std::size_t>(color.width) * color.height;
+    color.pixels.resize(pixel_count * 4u);
+    for (std::size_t i = 0; i < pixel_count; ++i) {
+        auto value = (i < source.pixels.size()) ? source.pixels[i] : std::uint8_t{0u};
+        auto base_index = i * 4u;
+        color.pixels[base_index + 0] = value;
+        color.pixels[base_index + 1] = value;
+        color.pixels[base_index + 2] = value;
+        color.pixels[base_index + 3] = value;
+    }
+    return color;
+}
+
 auto persist_default_atlas(PathSpace& space,
                            FontResourcePaths const& paths,
-                           std::uint64_t revision) -> SP::Expected<void> {
+                           std::uint64_t revision,
+                           bool emit_color_atlas,
+                           SP::UI::FontAtlasFormat preferred_format) -> SP::Expected<void> {
     auto atlas = build_default_atlas();
     auto encoded = encode_font_atlas(atlas);
 
@@ -146,13 +166,25 @@ auto persist_default_atlas(PathSpace& space,
         return status;
     }
 
+    if (emit_color_atlas) {
+        auto color_atlas = build_color_atlas_from_alpha(atlas);
+        auto encoded_color = encode_font_atlas(color_atlas);
+        auto color_path = revision_dir + "/atlas_color.bin";
+        if (auto status = replace_single<std::vector<std::uint8_t>>(space, color_path, encoded_color); !status) {
+            return status;
+        }
+    }
+
     std::ostringstream meta;
     meta << "{";
     meta << "\"width\":" << atlas.width << ",";
     meta << "\"height\":" << atlas.height << ",";
     meta << "\"format\":\"alpha8\",";
     meta << "\"emSize\":" << atlas.em_size << ",";
-    meta << "\"glyphCount\":" << atlas.glyphs.size();
+    meta << "\"glyphCount\":" << atlas.glyphs.size() << ",";
+    meta << "\"hasColorAtlas\":" << (emit_color_atlas ? "true" : "false") << ",";
+    meta << "\"preferredFormat\":\""
+         << (preferred_format == SP::UI::FontAtlasFormat::Rgba8 ? "rgba8" : "alpha8") << "\"";
     meta << "}";
 
     auto meta_path = revision_dir + "/meta";
@@ -260,16 +292,109 @@ auto Register(PathSpace& space,
         return std::unexpected(status.error());
     }
 
+    auto has_color_path = atlas_base + "/hasColor";
+    if (auto status = replace_single<std::uint64_t>(space,
+                                                    has_color_path,
+                                                    params.emit_color_atlas ? 1ull : 0ull);
+        !status) {
+        return std::unexpected(status.error());
+    }
+
+    auto preferred_format_value =
+        (params.preferred_atlas_format == SP::UI::FontAtlasFormat::Rgba8) ? "rgba8" : "alpha8";
+    auto preferred_format_path = atlas_base + "/preferredFormat";
+    if (auto status = replace_single<std::string>(space, preferred_format_path, preferred_format_value); !status) {
+        return std::unexpected(status.error());
+    }
+
     auto active_path = std::string(paths->active_revision.getPath());
     if (auto status = replace_single<std::uint64_t>(space, active_path, params.initial_revision); !status) {
         return std::unexpected(status.error());
     }
 
-    if (auto status = persist_default_atlas(space, *paths, params.initial_revision); !status) {
+    if (auto status = persist_default_atlas(space,
+                                           *paths,
+                                           params.initial_revision,
+                                           params.emit_color_atlas,
+                                           params.preferred_atlas_format);
+        !status) {
         return std::unexpected(status.error());
     }
 
     return *paths;
+}
+
+namespace {
+
+struct BuiltInFontSpec {
+    std::string_view family;
+    std::string_view style;
+    std::string_view weight;
+    std::array<std::string_view, 3> fallbacks;
+    std::uint64_t revision = 1;
+};
+
+constexpr std::array<BuiltInFontSpec, 2> kBuiltInFonts = {{
+    {.family = "PathSpaceSans",
+     .style = "Regular",
+     .weight = "400",
+     .fallbacks = {"system-ui", "sans-serif", "Helvetica"},
+     .revision = 1},
+    {.family = "PathSpaceSans",
+     .style = "Italic",
+     .weight = "400",
+     .fallbacks = {"system-ui", "sans-serif", "Helvetica"},
+     .revision = 1},
+}};
+
+auto ensure_builtin_font(PathSpace& space,
+                         AppRootPathView appRoot,
+                         BuiltInFontSpec const& spec) -> SP::Expected<void> {
+    auto paths = make_paths(appRoot, spec.family, spec.style);
+    if (!paths) {
+        return std::unexpected(paths.error());
+    }
+
+    auto active = space.read<std::uint64_t, std::string>(paths->active_revision.getPath());
+    if (active) {
+        return {};
+    }
+
+    auto const code = active.error().code;
+    if (code != SP::Error::Code::NoSuchPath && code != SP::Error::Code::NoObjectFound) {
+        return std::unexpected(active.error());
+    }
+
+    RegisterFontParams params{};
+    params.family = std::string(spec.family);
+    params.style = std::string(spec.style);
+    params.weight = std::string(spec.weight);
+    params.initial_revision = spec.revision;
+    params.fallback_families.reserve(spec.fallbacks.size());
+    for (auto fallback : spec.fallbacks) {
+        if (!fallback.empty()) {
+            params.fallback_families.emplace_back(fallback);
+        }
+    }
+
+    auto registered = Register(space, appRoot, params);
+    if (!registered) {
+        return std::unexpected(registered.error());
+    }
+
+    return {};
+}
+
+} // namespace
+
+auto EnsureBuiltInPack(PathSpace& space,
+                       AppRootPathView appRoot) -> SP::Expected<void> {
+    for (auto const& spec : kBuiltInFonts) {
+        if (auto status = ensure_builtin_font(space, appRoot, spec); !status) {
+            return status;
+        }
+    }
+    return {};
 }
 
 } // namespace SP::UI::Runtime::Resources::Fonts

@@ -6,6 +6,7 @@
 #include <pathspace/ui/LocalWindowBridge.hpp>
 #include <pathspace/ui/PathWindowView.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/FontAtlas.hpp>
 #include <pathspace/ui/runtime/TextRuntime.hpp>
 #include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/layer/io/PathIOMouse.hpp>
@@ -242,8 +243,8 @@ struct TypographyStyle {
     float line_height = 28.0f;
     float letter_spacing = 1.0f;
     float baseline_shift = 0.0f;
-    std::string font_family = "system-ui";
-    std::string font_style = "normal";
+    std::string font_family = "PathSpaceSans";
+    std::string font_style = "Regular";
     std::string font_weight = "400";
     std::string language = "en";
     std::string direction = "ltr";
@@ -252,6 +253,8 @@ struct TypographyStyle {
     std::string font_resource_root;
     std::uint64_t font_active_revision = 0;
     std::uint64_t font_asset_fingerprint = 0;
+    SP::UI::FontAtlasFormat font_atlas_format = SP::UI::FontAtlasFormat::Alpha8;
+    bool font_has_color_atlas = false;
 };
 
 inline auto operator==(TypographyStyle const& lhs, TypographyStyle const& rhs) -> bool {
@@ -268,7 +271,9 @@ inline auto operator==(TypographyStyle const& lhs, TypographyStyle const& rhs) -
         && lhs.font_features == rhs.font_features
         && lhs.font_resource_root == rhs.font_resource_root
         && lhs.font_active_revision == rhs.font_active_revision
-        && lhs.font_asset_fingerprint == rhs.font_asset_fingerprint;
+        && lhs.font_asset_fingerprint == rhs.font_asset_fingerprint
+        && lhs.font_atlas_format == rhs.font_atlas_format
+        && lhs.font_has_color_atlas == rhs.font_has_color_atlas;
 }
 
 inline auto operator!=(TypographyStyle const& lhs, TypographyStyle const& rhs) -> bool {
@@ -1235,6 +1240,7 @@ struct TextAreaState {
     std::string composition_text;
     std::uint32_t composition_start = 0;
     std::uint32_t composition_end = 0;
+    bool submit_pending = false;
     float scroll_x = 0.0f;
     float scroll_y = 0.0f;
 };
@@ -1641,14 +1647,16 @@ auto DispatchTextField(PathSpace& space,
                        TextFieldBinding const& binding,
                        TextFieldState const& new_state,
                        WidgetOpKind op_kind,
-                       PointerInfo const& pointer = {}) -> SP::Expected<bool>;
+                       PointerInfo const& pointer = {},
+                       float op_value = 0.0f) -> SP::Expected<bool>;
 
 auto DispatchTextArea(PathSpace& space,
                       TextAreaBinding const& binding,
                       TextAreaState const& new_state,
                       WidgetOpKind op_kind,
                       PointerInfo const& pointer = {},
-                      float scroll_delta_y = 0.0f) -> SP::Expected<bool>;
+                      float scroll_delta_y = 0.0f,
+                      float op_value = 0.0f) -> SP::Expected<bool>;
 
 auto UpdateStack(PathSpace& space,
                  StackBinding const& binding,

@@ -11,8 +11,11 @@
 #include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/MaterialShaderKey.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/SceneUtilities.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 #include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
+#include <pathspace/ui/runtime/TextRuntime.hpp>
 
 #include <algorithm>
 #include <array>
@@ -22,6 +25,7 @@
 #include <cstring>
 #include <cmath>
 #include <cstdlib>
+#include <charconv>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -34,6 +38,8 @@
 #include <sstream>
 #include <string_view>
 #include <vector>
+#include <type_traits>
+#include <system_error>
 
 #define STB_IMAGE_WRITE_STATIC
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -74,6 +80,7 @@ using SP::UI::Scene::StrokeCommand;
 using namespace SP::UI::PipelineFlags;
 namespace UIScene = SP::UI::Scene;
 namespace RendererInternal = SP::UI::PathRenderer2DInternal;
+namespace Widgets = SP::UI::Runtime::Widgets;
 
 namespace SP::UI::Runtime {
 auto maybe_schedule_auto_render(PathSpace& space,
@@ -710,7 +717,634 @@ void expect_matches_golden(std::string_view name,
     }
 }
 
+struct BucketDigest {
+    std::size_t   drawable_count = 0;
+    std::size_t   command_count  = 0;
+    std::uint64_t drawable_ids_hash = 0;
+    std::uint64_t world_transforms_hash = 0;
+    std::uint64_t bounds_hash = 0;
+    std::uint64_t layers_hash = 0;
+    std::uint64_t material_ids_hash = 0;
+    std::uint64_t pipeline_flags_hash = 0;
+    std::uint64_t visibility_hash = 0;
+    std::uint64_t command_offsets_hash = 0;
+    std::uint64_t command_counts_hash = 0;
+    std::uint64_t command_kinds_hash = 0;
+    std::uint64_t command_payload_hash = 0;
+    std::uint64_t opaque_indices_hash = 0;
+    std::uint64_t alpha_indices_hash = 0;
+    std::uint64_t layer_indices_hash = 0;
+    std::uint64_t stroke_points_hash = 0;
+    std::uint64_t clip_nodes_hash = 0;
+    std::uint64_t clip_heads_hash = 0;
+    std::uint64_t authoring_map_hash = 0;
+    std::uint64_t fingerprints_hash = 0;
+    std::uint64_t font_assets_hash = 0;
+    std::uint64_t glyph_vertices_hash = 0;
+};
+
+constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
+constexpr std::uint64_t kFnvPrime  = 1099511628211ull;
+
+auto fnv_mix(std::uint64_t hash, std::uint8_t byte) -> std::uint64_t {
+    return (hash ^ static_cast<std::uint64_t>(byte)) * kFnvPrime;
+}
+
+template <typename T>
+auto fnv_mix_integral(std::uint64_t hash, T value) -> std::uint64_t {
+    static_assert(std::is_integral_v<T>, "integral type required");
+    using Unsigned = std::make_unsigned_t<T>;
+    auto v = std::bit_cast<Unsigned>(value);
+    for (std::size_t i = 0; i < sizeof(Unsigned); ++i) {
+        hash = fnv_mix(hash, static_cast<std::uint8_t>(v & 0xFFu));
+        if (i + 1 < sizeof(Unsigned)) {
+            v >>= 8;
+        }
+    }
+    return hash;
+}
+
+auto fnv_mix_bytes(std::uint64_t hash, std::span<std::byte const> bytes) -> std::uint64_t {
+    for (auto b : bytes) {
+        hash = fnv_mix(hash, static_cast<std::uint8_t>(b));
+    }
+    return hash;
+}
+
+auto fnv_mix_string(std::uint64_t hash, std::string_view value) -> std::uint64_t {
+    hash = fnv_mix_integral(hash, static_cast<std::uint64_t>(value.size()));
+    for (unsigned char ch : value) {
+        hash = fnv_mix(hash, static_cast<std::uint8_t>(ch));
+    }
+    return hash;
+}
+
+constexpr float kQuantizeScale = 1000.0f;
+
+auto quantize(float value, float scale = kQuantizeScale) -> std::int32_t {
+    return static_cast<std::int32_t>(std::lround(value * scale));
+}
+
+auto fnv_mix_float(std::uint64_t hash, float value, float scale = kQuantizeScale) -> std::uint64_t {
+    return fnv_mix_integral(hash, quantize(value, scale));
+}
+
+auto fnv_mix_float_default(std::uint64_t hash, float value) -> std::uint64_t {
+    return fnv_mix_float(hash, value, kQuantizeScale);
+}
+
+template <typename Range, typename Fn>
+auto hash_range(std::uint64_t seed, Range const& range, Fn&& mixer) -> std::uint64_t {
+    auto hash = seed;
+    for (auto const& value : range) {
+        hash = mixer(hash, value);
+    }
+    return hash;
+}
+
+auto hash_layer_indices(std::vector<UIScene::LayerIndices> const& layers) -> std::uint64_t {
+    auto hash = kFnvOffset;
+    for (auto const& layer : layers) {
+        hash = fnv_mix_integral(hash, layer.layer);
+        hash = hash_range(hash, layer.indices, fnv_mix_integral<std::uint32_t>);
+    }
+    return hash;
+}
+
+auto hash_bounds(std::vector<BoundingSphere> const& spheres,
+                 std::vector<BoundingBox> const& boxes,
+                 std::vector<std::uint8_t> const& valid) -> std::uint64_t {
+    auto hash = kFnvOffset;
+    for (auto const& sphere : spheres) {
+        for (float c : sphere.center) {
+            hash = fnv_mix_float(hash, c);
+        }
+        hash = fnv_mix_float(hash, sphere.radius);
+    }
+    for (auto const& box : boxes) {
+        for (float c : box.min) hash = fnv_mix_float(hash, c);
+        for (float c : box.max) hash = fnv_mix_float(hash, c);
+    }
+    hash = hash_range(hash, valid, fnv_mix_integral<std::uint8_t>);
+    return hash;
+}
+
+auto hash_clip_nodes(std::vector<UIScene::ClipNode> const& nodes) -> std::uint64_t {
+    auto hash = kFnvOffset;
+    for (auto const& node : nodes) {
+        hash = fnv_mix_integral(hash, static_cast<std::uint8_t>(node.type));
+        hash = fnv_mix_integral(hash, node.next);
+        hash = fnv_mix_float(hash, node.rect.min_x);
+        hash = fnv_mix_float(hash, node.rect.min_y);
+        hash = fnv_mix_float(hash, node.rect.max_x);
+        hash = fnv_mix_float(hash, node.rect.max_y);
+        hash = fnv_mix_integral(hash, node.path.command_offset);
+        hash = fnv_mix_integral(hash, node.path.command_count);
+    }
+    return hash;
+}
+
+auto hash_authoring_map(std::vector<DrawableAuthoringMapEntry> const& entries) -> std::uint64_t {
+    auto hash = kFnvOffset;
+    for (auto const& entry : entries) {
+        hash = fnv_mix_integral(hash, entry.drawable_id);
+        hash = fnv_mix_integral(hash, entry.drawable_index_within_node);
+        hash = fnv_mix_integral(hash, entry.generation);
+        hash = fnv_mix_string(hash, entry.authoring_node_id);
+    }
+    return hash;
+}
+
+auto hash_font_assets(std::vector<UIScene::FontAssetReference> const& assets) -> std::uint64_t {
+    auto hash = kFnvOffset;
+    for (auto const& asset : assets) {
+        hash = fnv_mix_integral(hash, asset.drawable_id);
+        hash = fnv_mix_string(hash, asset.resource_root);
+        hash = fnv_mix_integral(hash, asset.revision);
+        hash = fnv_mix_integral(hash, asset.fingerprint);
+        hash = fnv_mix_integral(hash, static_cast<std::uint8_t>(asset.kind));
+    }
+    return hash;
+}
+
+auto hash_glyph_vertices(std::vector<UIScene::TextGlyphVertex> const& vertices) -> std::uint64_t {
+    auto hash = kFnvOffset;
+    for (auto const& vertex : vertices) {
+        hash = fnv_mix_float(hash, vertex.min_x);
+        hash = fnv_mix_float(hash, vertex.min_y);
+        hash = fnv_mix_float(hash, vertex.max_x);
+        hash = fnv_mix_float(hash, vertex.max_y);
+        hash = fnv_mix_float(hash, vertex.u0, 100000.0f);
+        hash = fnv_mix_float(hash, vertex.v0, 100000.0f);
+        hash = fnv_mix_float(hash, vertex.u1, 100000.0f);
+        hash = fnv_mix_float(hash, vertex.v1, 100000.0f);
+    }
+    return hash;
+}
+
+auto compute_bucket_digest(DrawableBucketSnapshot const& bucket) -> BucketDigest {
+    BucketDigest digest{};
+    digest.drawable_count = bucket.drawable_ids.size();
+    digest.command_count  = bucket.command_kinds.size();
+
+    digest.drawable_ids_hash = hash_range(kFnvOffset, bucket.drawable_ids, fnv_mix_integral<std::uint64_t>);
+    digest.world_transforms_hash = kFnvOffset;
+    for (auto const& transform : bucket.world_transforms) {
+        digest.world_transforms_hash = hash_range(digest.world_transforms_hash,
+                                                  transform.elements,
+                                                  fnv_mix_float_default);
+    }
+
+    digest.bounds_hash = hash_bounds(bucket.bounds_spheres, bucket.bounds_boxes, bucket.bounds_box_valid);
+    digest.layers_hash = hash_range(kFnvOffset, bucket.layers, fnv_mix_integral<std::uint32_t>);
+    digest.layers_hash = hash_range(digest.layers_hash, bucket.z_values, fnv_mix_float_default);
+
+    digest.material_ids_hash = hash_range(kFnvOffset, bucket.material_ids, fnv_mix_integral<std::uint32_t>);
+    digest.pipeline_flags_hash = hash_range(kFnvOffset, bucket.pipeline_flags, fnv_mix_integral<std::uint32_t>);
+    digest.visibility_hash = hash_range(kFnvOffset, bucket.visibility, fnv_mix_integral<std::uint8_t>);
+
+    digest.command_offsets_hash = hash_range(kFnvOffset, bucket.command_offsets, fnv_mix_integral<std::uint32_t>);
+    digest.command_counts_hash  = hash_range(kFnvOffset, bucket.command_counts, fnv_mix_integral<std::uint32_t>);
+    digest.command_kinds_hash   = hash_range(kFnvOffset, bucket.command_kinds, fnv_mix_integral<std::uint32_t>);
+    digest.command_payload_hash = fnv_mix_bytes(kFnvOffset, std::as_bytes(std::span{bucket.command_payload}));
+
+    digest.opaque_indices_hash = hash_range(kFnvOffset, bucket.opaque_indices, fnv_mix_integral<std::uint32_t>);
+    digest.alpha_indices_hash  = hash_range(kFnvOffset, bucket.alpha_indices, fnv_mix_integral<std::uint32_t>);
+    digest.layer_indices_hash  = hash_layer_indices(bucket.layer_indices);
+
+    digest.stroke_points_hash = kFnvOffset;
+    for (auto const& pt : bucket.stroke_points) {
+        digest.stroke_points_hash = fnv_mix_float(digest.stroke_points_hash, pt.x);
+        digest.stroke_points_hash = fnv_mix_float(digest.stroke_points_hash, pt.y);
+    }
+
+    digest.clip_nodes_hash = hash_clip_nodes(bucket.clip_nodes);
+    digest.clip_heads_hash = hash_range(kFnvOffset, bucket.clip_head_indices, fnv_mix_integral<std::int32_t>);
+
+    digest.authoring_map_hash = hash_authoring_map(bucket.authoring_map);
+    digest.fingerprints_hash  = hash_range(kFnvOffset, bucket.drawable_fingerprints, fnv_mix_integral<std::uint64_t>);
+    digest.font_assets_hash   = hash_font_assets(bucket.font_assets);
+    digest.glyph_vertices_hash = hash_glyph_vertices(bucket.glyph_vertices);
+
+    return digest;
+}
+
+auto parse_uint(std::string const& text) -> std::optional<std::uint64_t> {
+    std::string_view view{text};
+    int base = 10;
+    if (view.size() > 2 && view[0] == '0' && (view[1] == 'x' || view[1] == 'X')) {
+        base = 16;
+        view.remove_prefix(2);
+    }
+    std::uint64_t value = 0;
+    auto result = std::from_chars(view.data(), view.data() + view.size(), value, base);
+    if (result.ec != std::errc{}) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+auto read_bucket_golden(std::string_view name) -> std::optional<BucketDigest> {
+    auto path = golden_path(name);
+    std::ifstream file{path};
+    if (!file.good()) {
+        return std::nullopt;
+    }
+
+    BucketDigest digest{};
+    bool got_drawable_count = false;
+    bool got_command_count = false;
+    std::string line;
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        auto pos = line.find('=');
+        if (pos == std::string::npos) {
+            continue;
+        }
+        auto key = line.substr(0, pos);
+        auto value = line.substr(pos + 1);
+
+        auto assign_u64 = [&](std::string const& k, std::uint64_t& target) {
+            if (key == k) {
+                if (auto parsed = parse_uint(value)) {
+                    target = *parsed;
+                }
+            }
+        };
+
+        if (key == "drawable_count") {
+            if (auto parsed = parse_uint(value)) {
+                digest.drawable_count = static_cast<std::size_t>(*parsed);
+                got_drawable_count = true;
+            }
+            continue;
+        }
+        if (key == "command_count") {
+            if (auto parsed = parse_uint(value)) {
+                digest.command_count = static_cast<std::size_t>(*parsed);
+                got_command_count = true;
+            }
+            continue;
+        }
+
+        assign_u64("drawable_ids_hash", digest.drawable_ids_hash);
+        assign_u64("world_transforms_hash", digest.world_transforms_hash);
+        assign_u64("bounds_hash", digest.bounds_hash);
+        assign_u64("layers_hash", digest.layers_hash);
+        assign_u64("material_ids_hash", digest.material_ids_hash);
+        assign_u64("pipeline_flags_hash", digest.pipeline_flags_hash);
+        assign_u64("visibility_hash", digest.visibility_hash);
+        assign_u64("command_offsets_hash", digest.command_offsets_hash);
+        assign_u64("command_counts_hash", digest.command_counts_hash);
+        assign_u64("command_kinds_hash", digest.command_kinds_hash);
+        assign_u64("command_payload_hash", digest.command_payload_hash);
+        assign_u64("opaque_indices_hash", digest.opaque_indices_hash);
+        assign_u64("alpha_indices_hash", digest.alpha_indices_hash);
+        assign_u64("layer_indices_hash", digest.layer_indices_hash);
+        assign_u64("stroke_points_hash", digest.stroke_points_hash);
+        assign_u64("clip_nodes_hash", digest.clip_nodes_hash);
+        assign_u64("clip_heads_hash", digest.clip_heads_hash);
+        assign_u64("authoring_map_hash", digest.authoring_map_hash);
+        assign_u64("fingerprints_hash", digest.fingerprints_hash);
+        assign_u64("font_assets_hash", digest.font_assets_hash);
+        assign_u64("glyph_vertices_hash", digest.glyph_vertices_hash);
+    }
+
+    if (!got_drawable_count || !got_command_count) {
+        return std::nullopt;
+    }
+    return digest;
+}
+
+void write_bucket_golden(std::string_view name, BucketDigest const& digest) {
+    auto dir = golden_dir();
+    std::filesystem::create_directories(dir);
+    auto path = golden_path(name);
+    std::ofstream file{path, std::ios::trunc};
+    REQUIRE(file.good());
+
+    auto write_hex = [&](std::string const& key, std::uint64_t value) {
+        file << key << "=0x" << std::hex << std::setw(16) << std::setfill('0') << value << std::dec
+             << '\n';
+    };
+
+    file << "# DrawableBucket digest" << '\n';
+    file << "drawable_count=" << digest.drawable_count << '\n';
+    file << "command_count=" << digest.command_count << '\n';
+    write_hex("drawable_ids_hash", digest.drawable_ids_hash);
+    write_hex("world_transforms_hash", digest.world_transforms_hash);
+    write_hex("bounds_hash", digest.bounds_hash);
+    write_hex("layers_hash", digest.layers_hash);
+    write_hex("material_ids_hash", digest.material_ids_hash);
+    write_hex("pipeline_flags_hash", digest.pipeline_flags_hash);
+    write_hex("visibility_hash", digest.visibility_hash);
+    write_hex("command_offsets_hash", digest.command_offsets_hash);
+    write_hex("command_counts_hash", digest.command_counts_hash);
+    write_hex("command_kinds_hash", digest.command_kinds_hash);
+    write_hex("command_payload_hash", digest.command_payload_hash);
+    write_hex("opaque_indices_hash", digest.opaque_indices_hash);
+    write_hex("alpha_indices_hash", digest.alpha_indices_hash);
+    write_hex("layer_indices_hash", digest.layer_indices_hash);
+    write_hex("stroke_points_hash", digest.stroke_points_hash);
+    write_hex("clip_nodes_hash", digest.clip_nodes_hash);
+    write_hex("clip_heads_hash", digest.clip_heads_hash);
+    write_hex("authoring_map_hash", digest.authoring_map_hash);
+    write_hex("fingerprints_hash", digest.fingerprints_hash);
+    write_hex("font_assets_hash", digest.font_assets_hash);
+    write_hex("glyph_vertices_hash", digest.glyph_vertices_hash);
+}
+
+void expect_matches_bucket_golden(std::string_view name, BucketDigest const& digest) {
+    if (env_update_goldens()) {
+        write_bucket_golden(name, digest);
+        return;
+    }
+
+    auto golden = read_bucket_golden(name);
+    REQUIRE_MESSAGE(golden.has_value(),
+                    "Missing bucket golden '" << golden_path(name).string()
+                                              << "'. Run with PATHSPACE_UPDATE_GOLDENS=1 to generate.");
+
+    CHECK(golden->drawable_count == digest.drawable_count);
+    CHECK(golden->command_count == digest.command_count);
+    CHECK(golden->drawable_ids_hash == digest.drawable_ids_hash);
+    CHECK(golden->world_transforms_hash == digest.world_transforms_hash);
+    CHECK(golden->bounds_hash == digest.bounds_hash);
+    CHECK(golden->layers_hash == digest.layers_hash);
+    CHECK(golden->material_ids_hash == digest.material_ids_hash);
+    CHECK(golden->pipeline_flags_hash == digest.pipeline_flags_hash);
+    CHECK(golden->visibility_hash == digest.visibility_hash);
+    CHECK(golden->command_offsets_hash == digest.command_offsets_hash);
+    CHECK(golden->command_counts_hash == digest.command_counts_hash);
+    CHECK(golden->command_kinds_hash == digest.command_kinds_hash);
+    CHECK(golden->command_payload_hash == digest.command_payload_hash);
+    CHECK(golden->opaque_indices_hash == digest.opaque_indices_hash);
+    CHECK(golden->alpha_indices_hash == digest.alpha_indices_hash);
+    CHECK(golden->layer_indices_hash == digest.layer_indices_hash);
+    CHECK(golden->stroke_points_hash == digest.stroke_points_hash);
+    CHECK(golden->clip_nodes_hash == digest.clip_nodes_hash);
+    CHECK(golden->clip_heads_hash == digest.clip_heads_hash);
+    CHECK(golden->authoring_map_hash == digest.authoring_map_hash);
+    CHECK(golden->fingerprints_hash == digest.fingerprints_hash);
+    CHECK(golden->font_assets_hash == digest.font_assets_hash);
+    CHECK(golden->glyph_vertices_hash == digest.glyph_vertices_hash);
+}
+
+void offset_drawable_ids(UIScene::DrawableBucketSnapshot& bucket, std::uint64_t delta) {
+    for (auto& id : bucket.drawable_ids) {
+        id += delta;
+    }
+    for (auto& entry : bucket.authoring_map) {
+        entry.drawable_id += delta;
+    }
+    for (auto& asset : bucket.font_assets) {
+        asset.drawable_id += delta;
+    }
+    for (auto& fingerprint : bucket.drawable_fingerprints) {
+        fingerprint += delta;
+    }
+}
+
+constexpr int kWidgetGalleryWidth = 480;
+constexpr int kWidgetGalleryHeight = 320;
+
+auto build_widget_gallery_bucket(PathSpace& space,
+                                 SP::App::AppRootPathView app_root,
+                                 Widgets::WidgetTheme const& theme)
+    -> UIScene::DrawableBucketSnapshot {
+    UIScene::SolidBackgroundOptions background_opts{};
+    background_opts.drawable_id = 0xC0FFEE00ull;
+    background_opts.authoring_node_id = "gallery/background";
+    background_opts.color = {0.10f, 0.12f, 0.16f, 1.0f};
+
+    auto combined = UIScene::BuildSolidBackground(static_cast<float>(kWidgetGalleryWidth),
+                                                  static_cast<float>(kWidgetGalleryHeight),
+                                                  background_opts);
+
+    Widgets::TypographyStyle heading_style = theme.heading;
+    Widgets::TypographyStyle caption_style = theme.caption;
+
+    SP::UI::Runtime::Text::ScopedShapingContext shaping_ctx(space, app_root);
+
+    auto heading_params = Widgets::LabelBuildParams::Make("Widget Gallery", heading_style)
+                              .WithOrigin(24.0f, 20.0f)
+                              .WithColor(theme.heading_color)
+                              .WithDrawable(0xC0FFEE10ull, "gallery/heading", 0.1f);
+    if (auto heading = Widgets::BuildLabel(heading_params)) {
+        offset_drawable_ids(heading->bucket, 0x10);
+        UIScene::AppendDrawableBucket(combined, heading->bucket);
+    }
+
+    auto caption_params = Widgets::LabelBuildParams::Make("Font pipeline preview", caption_style)
+                              .WithOrigin(24.0f, 54.0f)
+                              .WithColor(theme.caption_color)
+                              .WithDrawable(0xC0FFEE11ull, "gallery/caption", 0.1f);
+    if (auto caption = Widgets::BuildLabel(caption_params)) {
+        offset_drawable_ids(caption->bucket, 0x20);
+        UIScene::AppendDrawableBucket(combined, caption->bucket);
+    }
+
+    std::uint64_t id_offset = 0x1000ull;
+    auto append_at = [&](UIScene::DrawableBucketSnapshot bucket, float x, float y) {
+        UIScene::TranslateDrawableBucket(bucket, x, y);
+        offset_drawable_ids(bucket, id_offset);
+        id_offset += 0x1000ull;
+        UIScene::AppendDrawableBucket(combined, bucket);
+    };
+
+    Widgets::ButtonState button_state{};
+    button_state.hovered = true;
+    auto button_bucket = Widgets::BuildButtonPreview(theme.button,
+                                                    button_state,
+                                                    {.authoring_root = "gallery/button",
+                                                     .label = "Primary",
+                                                     .pulsing_highlight = true});
+    append_at(std::move(button_bucket), 24.0f, 84.0f);
+
+    Widgets::ToggleState toggle_state{.enabled = true, .hovered = true, .checked = true, .focused = true};
+    auto toggle_bucket = Widgets::BuildTogglePreview(theme.toggle,
+                                                    toggle_state,
+                                                    {.authoring_root = "gallery/toggle",
+                                                     .pulsing_highlight = true});
+    append_at(std::move(toggle_bucket), 24.0f, 144.0f);
+
+    Widgets::SliderRange slider_range{.minimum = 0.0f, .maximum = 1.0f, .step = 0.0f};
+    Widgets::SliderState slider_state{.enabled = true, .hovered = true, .dragging = false, .focused = true, .value = 0.65f};
+    auto slider_bucket = Widgets::BuildSliderPreview(theme.slider,
+                                                    slider_range,
+                                                    slider_state,
+                                                    {.authoring_root = "gallery/slider",
+                                                     .pulsing_highlight = true});
+    append_at(std::move(slider_bucket), 24.0f, 168.0f);
+
+    Widgets::ListStyle list_style = theme.list;
+    list_style.width = 220.0f;
+    Widgets::UpdateOverrides(list_style);
+    std::vector<Widgets::ListItem> list_items{
+        {.id = "alpha", .label = "Alpha", .enabled = true},
+        {.id = "beta", .label = "Beta", .enabled = true},
+        {.id = "gamma", .label = "Gamma", .enabled = true},
+    };
+    Widgets::ListState list_state{};
+    list_state.hovered_index = 1;
+    list_state.selected_index = 2;
+    auto list_preview = Widgets::BuildListPreview(list_style,
+                                                  list_items,
+                                                  list_state,
+                                                  {.authoring_root = "gallery/list",
+                                                   .label_inset = 18.0f,
+                                                   .pulsing_highlight = true});
+    append_at(std::move(list_preview.bucket), 24.0f, 208.0f);
+
+    Widgets::TreeStyle tree_style = theme.tree;
+    tree_style.width = 220.0f;
+    Widgets::UpdateOverrides(tree_style);
+    std::vector<Widgets::TreeNode> tree_nodes{
+        {.id = "settings", .parent_id = "", .label = "Settings", .enabled = true, .expandable = true, .loaded = true},
+        {.id = "display", .parent_id = "settings", .label = "Display", .enabled = true, .expandable = false, .loaded = true},
+        {.id = "input", .parent_id = "settings", .label = "Input", .enabled = true, .expandable = false, .loaded = true},
+        {.id = "about", .parent_id = "", .label = "About", .enabled = true, .expandable = false, .loaded = true},
+    };
+    Widgets::TreeState tree_state{};
+    tree_state.focused = true;
+    tree_state.hovered_id = "display";
+    tree_state.selected_id = "display";
+    tree_state.expanded_ids = {"settings"};
+    auto tree_preview = Widgets::BuildTreePreview(tree_style,
+                                                  tree_nodes,
+                                                  tree_state,
+                                                  {.authoring_root = "gallery/tree",
+                                                   .pulsing_highlight = true});
+    append_at(std::move(tree_preview.bucket), 244.0f, 84.0f);
+
+return combined;
+}
+
 } // namespace
+
+TEST_SUITE("PathRenderer2D_WidgetGalleryGoldens") {
+
+TEST_CASE("widget gallery framebuffer matches font manager golden") {
+    ScopedEnv font_manager_env{"PATHSPACE_UI_FONT_MANAGER_ENABLED", "1"};
+
+    RendererFixture fx;
+    fx.app_root = SP::App::AppRootPath{"/system/applications/widget_gallery_font_manager"};
+
+    auto app_root_view = fx.root_view();
+    auto theme_selection = Widgets::LoadTheme(fx.space, app_root_view, "");
+    REQUIRE(theme_selection);
+
+    auto gallery_bucket = build_widget_gallery_bucket(fx.space, app_root_view, theme_selection->theme);
+    auto bucket_digest = compute_bucket_digest(gallery_bucket);
+
+    auto scenePath = create_scene(fx, "scene_widget_gallery_font_manager", std::move(gallery_bucket));
+    auto rendererPath = create_renderer(fx, "renderer_widget_gallery_font_manager");
+
+    Runtime::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = kWidgetGalleryWidth;
+    surfaceDesc.size_px.height = kWidgetGalleryHeight;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx,
+                                      "surface_widget_gallery_font_manager",
+                                      surfaceDesc,
+                                      rendererPath.getPath());
+    REQUIRE(Runtime::Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware::Options opts{
+        .enable_progressive = true,
+        .enable_buffered = false,
+        .progressive_tile_size_px = 8,
+    };
+    PathSurfaceSoftware surface{surfaceDesc, opts};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.08f, 0.09f, 0.12f, 1.0f};
+    settings.time.frame_index = 1;
+
+    auto render_result = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(render_result);
+
+    auto buffer = copy_buffer(surface);
+    expect_matches_golden("widget_gallery_font_manager_enabled.golden",
+                          surfaceDesc,
+                          std::span<std::uint8_t const>{buffer.data(), buffer.size()});
+    expect_matches_bucket_golden("widget_gallery_font_manager_enabled.bucket.golden", bucket_digest);
+}
+
+TEST_CASE("widget gallery framebuffer matches legacy glyph golden") {
+    ScopedEnv font_manager_env{"PATHSPACE_UI_FONT_MANAGER_ENABLED", "0"};
+
+    RendererFixture fx;
+    fx.app_root = SP::App::AppRootPath{"/system/applications/widget_gallery_font_legacy"};
+
+    auto app_root_view = fx.root_view();
+    auto theme_selection = Widgets::LoadTheme(fx.space, app_root_view, "");
+    REQUIRE(theme_selection);
+
+    auto gallery_bucket = build_widget_gallery_bucket(fx.space, app_root_view, theme_selection->theme);
+    auto bucket_digest = compute_bucket_digest(gallery_bucket);
+
+    auto scenePath = create_scene(fx, "scene_widget_gallery_font_legacy", std::move(gallery_bucket));
+    auto rendererPath = create_renderer(fx, "renderer_widget_gallery_font_legacy");
+
+    Runtime::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = kWidgetGalleryWidth;
+    surfaceDesc.size_px.height = kWidgetGalleryHeight;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm_sRGB;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx,
+                                      "surface_widget_gallery_font_legacy",
+                                      surfaceDesc,
+                                      rendererPath.getPath());
+    REQUIRE(Runtime::Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware::Options opts{
+        .enable_progressive = true,
+        .enable_buffered = false,
+        .progressive_tile_size_px = 8,
+    };
+    PathSurfaceSoftware surface{surfaceDesc, opts};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.08f, 0.09f, 0.12f, 1.0f};
+    settings.time.frame_index = 1;
+
+    auto render_result = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(render_result);
+
+    auto buffer = copy_buffer(surface);
+    expect_matches_golden("widget_gallery_font_manager_legacy.golden",
+                          surfaceDesc,
+                          std::span<std::uint8_t const>{buffer.data(), buffer.size()});
+    expect_matches_bucket_golden("widget_gallery_font_manager_legacy.bucket.golden", bucket_digest);
+}
+
+} // TEST_SUITE
 
 TEST_SUITE("PathRenderer2D_RenderBasics") {
 
@@ -2674,6 +3308,22 @@ TEST_CASE("render executes text glyphs command") {
     bucket.drawable_fingerprints = {fingerprint};
     write_dummy_font_atlas(fx, resource_root, revision);
 
+    auto fonts_metrics_base = std::string(fx.root_view().getPath()) + "/diagnostics/metrics/fonts";
+    auto store_font_metric = [&](std::string const& suffix, auto value) {
+        auto result = fx.space.insert(fonts_metrics_base + suffix, value);
+        REQUIRE(result.errors.empty());
+    };
+    store_font_metric("/registeredFonts", 3ull);
+    store_font_metric("/cacheHits", 5ull);
+    store_font_metric("/cacheMisses", 2ull);
+    store_font_metric("/cacheEvictions", 1ull);
+    store_font_metric("/cacheSize", 4ull);
+    store_font_metric("/cacheCapacity", 8ull);
+    store_font_metric("/cacheHardCapacity", 16ull);
+    store_font_metric("/atlasSoftBytes", 1024ull);
+    store_font_metric("/atlasHardBytes", 4096ull);
+    store_font_metric("/shapedRunApproxBytes", 256ull);
+
     auto scenePath = create_scene(fx, "scene_text", bucket);
     auto rendererPath = create_renderer(fx, "renderer_text");
 
@@ -2719,6 +3369,26 @@ TEST_CASE("render executes text glyphs command") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/textFallbackCount").value() == 0);
     CHECK(fx.space.read<std::string, std::string>(metricsBase + "/textPipeline").value() == "GlyphQuads");
     CHECK(fx.space.read<bool>(metricsBase + "/textFallbackAllowed").value());
+
+    auto metrics = Runtime::Diagnostics::ReadTargetMetrics(fx.space,
+                                                          SP::ConcretePathStringView{targetPath.getPath()});
+    REQUIRE(metrics);
+    CHECK(metrics->font_active_count == 1);
+    CHECK(metrics->font_atlas_resource_count == 1);
+    CHECK(metrics->font_atlas_cpu_bytes > 0);
+    CHECK(metrics->font_atlas_gpu_bytes > 0);
+    REQUIRE(metrics->font_assets.size() == 1);
+    CHECK(metrics->font_assets.front().fingerprint == fingerprint);
+    CHECK(metrics->font_registered_fonts == 3);
+    CHECK(metrics->font_cache_hits == 5);
+    CHECK(metrics->font_cache_misses == 2);
+    CHECK(metrics->font_cache_evictions == 1);
+    CHECK(metrics->font_cache_size == 4);
+    CHECK(metrics->font_cache_capacity == 8);
+    CHECK(metrics->font_cache_hard_capacity == 16);
+    CHECK(metrics->font_atlas_soft_bytes == 1024);
+    CHECK(metrics->font_atlas_hard_bytes == 4096);
+    CHECK(metrics->font_shaped_run_approx_bytes == 256);
 }
 
 TEST_CASE("text fallback engages when shaped pipeline requested") {

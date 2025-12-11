@@ -12,7 +12,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 
 2. **Read-before-you-touch**
    - `docs/AI_Architecture.md` (legacy, but now annotated with hand-off notes).
-   - `docs/Plan_SceneGraph.md` — check Phase 7 for the freshly completed Metal streaming work and remaining GPU milestones.
+   - `docs/finished/Plan_SceneGraph_Finished.md` — archived phase tracker for renderer/diagnostics milestones and follow-ups.
    - `docs/AI_Todo.task` — verify priority ordering and align new work with open items.
    - `docs/Widget_Schema_Reference.md` — per-widget declarative schema tables; read alongside `docs/AI_Paths.md` before touching widget namespaces.
    - `docs/WidgetDeclarativeAPI.md` — declarative runtime workflow (LaunchStandard/App/Window/Scene helpers, handler registry, readiness guard, paint/history helpers, testing discipline). Consult this before modifying declarative widgets or samples.
@@ -27,12 +27,17 @@ Welcome! This repository just transitioned away from a previous assistant. The n
    ./scripts/compile.sh --loop=5 --per-test-timeout 20
    ```
 
-4. **Verify Environment Flags**
+4. **Test Loop + Artifact Capture (quickstart)**
+   - Export `PATHSPACE_TEST_ARTIFACT_DIR=/tmp/pathspace-artifacts` before the loop to keep logs, goldens, and renderer telemetry in one place. The UITest harness already enables `PATHSPACE_CAPTURE_FONT_DIAGNOSTICS=1`, so each iteration writes `font_diagnostics.jsonl` plus `widget_gallery_font_assets.bin` into the artifact directory.
+   - For a focused smoke: `PATHSPACE_TEST_ARTIFACT_DIR=/tmp/pathspace-artifacts ./scripts/compile.sh --loop=5 --timeout=20 --test` (mirrors the CI gate; add `--disable-metal-tests` on hosts without Metal).
+   - Inspect outputs with `ls $PATHSPACE_TEST_ARTIFACT_DIR` and `jq '.[0]' $PATHSPACE_TEST_ARTIFACT_DIR/font_diagnostics.jsonl` (per-target font assets/atlas bytes) or `hexdump -C $PATHSPACE_TEST_ARTIFACT_DIR/widget_gallery_font_assets.bin | head` (persisted atlas snapshot). Keep the directory when filing bugs so repros include logs and artifacts.
+
+5. **Verify Environment Flags**
    - `./scripts/compile.sh` now enables Metal presenter tests by default (builds with `PATHSPACE_UI_METAL=ON` and runs the Metal UITests). Use `--disable-metal-tests` only when the host lacks a compatible GPU.
    - Manual command line runs still respect `PATHSPACE_ENABLE_METAL_UPLOADS=1`; unset it when you explicitly want the software fallback.
    - Use `PATHSPACE_UI_DAMAGE_METRICS=1` only when collecting diagnostics; disable for perf runs.
 
-5. **Quick Test Pass (recommended)**
+6. **Quick Test Pass (recommended)**
    ```bash
    ./build/tests/PathSpaceTests
    ./build/tests/PathSpaceUITests
@@ -55,7 +60,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 ## 3. Communication & Handoff Hygiene
 
 - Annotate every modified doc with a short hand-off note (keep the pattern used during this transition).
-- Document open questions or blockers in the PR body and, when relevant, in `docs/Plan_SceneGraph.md`.
+- Document open questions or blockers in the PR body and, when relevant, in `docs/finished/Plan_SceneGraph_Finished.md`.
 - Use the local pre-push hook (`scripts/git-hooks/pre-push.local.sh`) or `SKIP_LOOP_TESTS=1` only with maintainer approval.
 
 ## 4. Reference Index
@@ -66,7 +71,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 | `docs/AI_Paths.md` | Canonical path layout and namespace conventions. |
 | `docs/Widget_Schema_Reference.md` | Declarative widget namespace + per-widget node tables. |
 | `docs/finished/Plan_SceneGraph_Renderer_Finished.md` | Renderer and presenter plan, including snapshot semantics. |
-| `docs/Plan_SceneGraph.md` | Phase tracker with latest renderer/diagnostics updates. |
+| `docs/finished/Plan_SceneGraph_Finished.md` | Archived phase tracker for renderer/diagnostics updates. |
 | `docs/AI_Debugging_Playbook.md` | Loop test expectations, log locations, and diagnostics tooling. |
 | `docs/AI_Todo.task` | Structured backlog (P1/P2) with acceptance criteria. |
 | `docs/Widget_Contribution_Quickstart.md` | Checklist for authoring new widgets (paths, reducers, themes, tests). |
@@ -76,7 +81,7 @@ Welcome! This repository just transitioned away from a previous assistant. The n
 - Confirm the build/test loop passes locally (see the quick test pass above).
 - Align your planned work with an entry in `docs/AI_Todo.task` (add one if missing).
 - Announce the scope in your PR description and keep doc updates synchronized with code changes. Remember to run `ctest -R HtmlCanvasVerify` when touching the adapter or HTML outputs so the headless replay harness stays green.
-- When you spot a gap in test coverage, either add the test immediately or log a follow-up in `docs/Plan_SceneGraph.md` / `docs/AI_Todo.task` so the need is visible to the next maintainer.
+- When you spot a gap in test coverage, either add the test immediately or log a follow-up in `docs/finished/Plan_SceneGraph_Finished.md` / `docs/AI_Todo.task` so the need is visible to the next maintainer.
 
 ### Latest Highlights (October 27, 2025)
 - Declarative screenshots are standardized in `<pathspace/ui/screenshot/DeclarativeScreenshotCli.hpp>` for `widgets_example` and `devices_example --paint-controls-demo`. Both share the same headless CLI (`--screenshot`, optional `--screenshot-compare/--screenshot-diff/--screenshot-metrics`, force-software toggles) layered on top of `CaptureDeclarative`. Use whichever sample best exercises the UI you are touching; keep `declarative_hello_example` as the minimal interactive quickstart and rely on `PATHSPACE_HELLO_SCREENSHOT=<png>` when you need its reference capture (the env hook now ships with a software fallback so the PNG is produced even on headless hosts).

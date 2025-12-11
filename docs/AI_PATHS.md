@@ -229,9 +229,39 @@ For schema tables, handler metadata, theme resolution rules, and per-widget spec
     - `meta/atlas/softBytes` — soft residency budget in bytes for persisted glyph atlases
     - `meta/atlas/hardBytes` — hard residency budget in bytes for persisted glyph atlases
     - `meta/atlas/shapedRunApproxBytes` — approx bytes consumed per shaped run to scale cache capacity
-    - `builds/<revision>/atlas.bin` — persisted atlas payload for the revision
-    - `builds/<revision>/meta/*` — optional per-revision metadata (features, language coverage, etc.)
+    - `meta/atlas/hasColor` — boolean flag (stored as `0/1`) indicating whether `atlas_color.bin` is present
+    - `meta/atlas/preferredFormat` — string (`alpha8` or `rgba8`) hinting which atlas lane the text pipeline should default to
+    - `builds/<revision>/atlas.bin` — persisted atlas payload for the revision (Alpha8/MSDF)
+    - `builds/<revision>/atlas_color.bin` — optional RGBA atlas page for multi-color glyphs (emoji, COLR/CPAL)
+    - `builds/<revision>/meta/*` — optional per-revision metadata (features, language coverage, pxRange, etc.)
+    - `diagnostics/errors` — `PathSpaceError` entries from loader/shaping failures
+    - `diagnostics/metrics/*` — cache residency, queue depth, and bake/upload timings
     - `inbox` — staging area for loader jobs and background ingestion
+- `resources/images/<name>/`
+    - `meta/name` — canonical identifier for the image
+    - `meta/source` — optional original filename or URI (app-relative)
+    - `meta/format` — encoded container (e.g., `png`, `jpeg`, `webp`)
+    - `meta/color_space` — `srgb`, `linear-srgb`, or other supported space
+    - `meta/hash` — content fingerprint of the encoded bytes
+    - `meta/active_revision` — `uint64_t` of the adopted image build
+    - `builds/<revision>/image.bin` — encoded image payload (original format preserved)
+    - `builds/<revision>/meta.json` — width/height/mime/hash metadata for the revision
+    - `diagnostics/errors` — loader/decode errors with `PathSpaceError` payloads
+    - `diagnostics/metrics/*` — queue depth, decode ms, cache hits/evictions
+    - `inbox/queue` — loader job queue; writers enqueue new assets here
+    - `prefetch/<fingerprint>` — optional hint for renderer/adapters to stage a revision
+- `resources/shaders/<name>/`
+    - `src/source` — UTF-8 shader source (combined or stage-tagged)
+    - `src/entry/{vertex,fragment,compute}` — entry-point symbols per stage
+    - `src/defines/*` — macro definitions and specialization constants
+    - `meta/active_revision` — `uint64_t` of the adopted compiled binary
+    - `builds/<revision>/meta.json` — backend (`metal`, `spirv`, etc.), options, and source hash
+    - `builds/<revision>/<backend>.bin` — compiled shader library/object for the backend
+    - `cache/<backend>/<fingerprint>` — persistent cache keyed by (source hash, options, backend)
+    - `diagnostics/errors` — compiler/validation errors surfaced as `PathSpaceError`
+    - `diagnostics/metrics/*` — compile ms, cache hits, validation counts
+    - `inbox/queue` — compilation requests from authoring tools or build steps
+    - `prefetch/<fingerprint>` — optional hint to warm a backend-specific binary
 - `config/theme/`
     - `active` — string canonical name of the active widget theme
     - `theme/<name>/value` — stored `WidgetTheme` struct describing colors, typography, and widget styles

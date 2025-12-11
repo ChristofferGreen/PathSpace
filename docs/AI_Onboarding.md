@@ -1,7 +1,7 @@
 # PathSpace — AI Onboarding (Fresh Session)
 
 > **Context update (October 15, 2025):** This onboarding now targets the assistant context introduced for the current launch window; adjust legacy workflows to align with this context.
-> **Session hand-off (October 17, 2025):** Software renderer incremental paths are healthy (~140 FPS for 64 px brush hints at 4 K) and the zero-copy path now skips redundant IOSurface→CPU copies. Use `./build/benchmarks/path_renderer2d_benchmark [--canvas=WIDTHxHEIGHT] [--metrics]` for per-phase timing (damage diff, encode, progressive copy, publish, present) and `./build/paint_example --debug` to watch live frame stats. Expect FPS to dip as brush history grows because the demo keeps each stroke as a drawable; stroke compositing is logged as optional follow-up in `docs/Plan_SceneGraph.md`. 
+> **Session hand-off (October 17, 2025):** Software renderer incremental paths are healthy (~140 FPS for 64 px brush hints at 4 K) and the zero-copy path now skips redundant IOSurface→CPU copies. Use `./build/benchmarks/path_renderer2d_benchmark [--canvas=WIDTHxHEIGHT] [--metrics]` for per-phase timing (damage diff, encode, progressive copy, publish, present) and `./build/paint_example --debug` to watch live frame stats. Expect FPS to dip as brush history grows because the demo keeps each stroke as a drawable; stroke compositing is logged as optional follow-up in `docs/finished/Plan_SceneGraph_Finished.md`. 
 > **Session hand-off (October 18, 2025):** CAMetalLayer fullscreen perf is covered by `PathSpaceUITests`, `capture_framebuffer` defaults to off, diagnostics now surface structured `PathSpaceError` payloads under `diagnostics/errors/live`, and the presenter reuses a bounded IOSurface pool so long paint sessions no longer exhaust range groups. Next focus: expand automation (`scripts/compile.sh`, CI docs) to collect UI logs and document the debugging playbook before moving deeper into Phase 6.
 > **Session hand-off (October 19, 2025 — late):** PathWindowView now drives the CAMetalLayer presenter path, records `gpuEncodeMs`/`gpuPresentMs`, and example apps simply forward the window’s layer/queue. Keep `PATHSPACE_ENABLE_METAL_UPLOADS=1` gated for manual Metal runs while CI stays on the software fallback. Next focus: add Metal UITest coverage and continue trimming the macOS-specific event pump down to input only.
 > **Streaming update (October 19, 2025 — night):** RendererTrigger + PathRenderer2D stream Metal targets directly into the cached CAMetalLayer texture and publish `textureGpuBytes`/`resourceGpuBytes` metrics. The next iteration is the dedicated Metal encoder path so we can bypass CPU raster entirely.
@@ -23,7 +23,7 @@ Review these documents (order matters):
 3. `docs/AI_Paths.md` — canonical namespace/layout conventions.
 4. `docs/WidgetDeclarativeAPI.md` — declarative runtime workflow (bootstrap, widget helpers, readiness guard, handler/focus/runtime services, testing discipline).
 5. `docs/finished/Plan_SceneGraph_Renderer_Finished.md` — renderer stack plan, snapshot semantics, target contracts.
-6. `docs/Plan_SceneGraph.md` — current phase status and outstanding tasks.
+6. `docs/finished/Plan_SceneGraph_Finished.md` — archived phase status and outcomes.
 7. `docs/AI_Debugging_Playbook.md` — hands-on troubleshooting steps, log capture workflow, and diagnostics quick reference.
 8. Any task-specific plans under `docs/` (e.g., `Plan_CartaLinea.md`) when relevant.
 
@@ -43,6 +43,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ./scripts/compile.sh --loop=5 --per-test-timeout 20
 ```
+Set `PATHSPACE_TEST_ARTIFACT_DIR=/tmp/pathspace-artifacts` before the loop to keep UITest logs, screenshots, bucket binaries, and `font_diagnostics.jsonl` together. Inspect with `ls $PATHSPACE_TEST_ARTIFACT_DIR` and `jq '.[0]' $PATHSPACE_TEST_ARTIFACT_DIR/font_diagnostics.jsonl`; keep the directory when filing bugs so repros include the captured artifacts.
 Investigate and resolve failures prior to new development.
 
 > **Metal presenter coverage:** On macOS hosts with Metal GPUs, run `./scripts/compile.sh --enable-metal-tests --test` to compile with `PATHSPACE_UI_METAL=ON` and execute the Metal-enabled UITest (`test_PathWindowView_Metal`). Leave the flag off in CI/headless runs so automation stays on the software fallback.
@@ -55,7 +56,7 @@ Investigate and resolve failures prior to new development.
 - Treat `docs/WidgetDeclarativeAPI.md` as the authoritative UI workflow. All new widget or sample work must use the declarative runtime; only touch the legacy imperative builders when explicitly migrating existing consumers.
 - Use `SP::UI::Screenshot::CaptureDeclarative` for screenshots instead of hand-written readiness + `ScreenshotService::Capture` blocks. Pass your `ScreenshotRequest::Hooks` through `DeclarativeScreenshotOptions` so overlays/fallback writers keep working while the helper handles readiness, force-publish, and telemetry defaults.
 - Legacy builder detections now live under `/_system/diagnostics/legacy_widget_builders/<entry>/*`; keep the counters at zero so we can delete the diagnostics block after the support window wraps (February 1, 2026). The old `LegacyBuilders::ScopedAllow` guard has been removed—every UI entry point now flows through `SP::UI::Runtime::*`, so the only reason those nodes would change is if an external consumer still runs an older binary. Investigate any deltas and update the migration tracker when you confirm the source.
-- When you notice a missing or thin test, either land the coverage or file the follow-up in `docs/Plan_SceneGraph.md` / `docs/AI_Todo.task` so the gap is tracked for the next session.
+- When you notice a missing or thin test, either land the coverage or file the follow-up in `docs/finished/Plan_SceneGraph_Finished.md` / `docs/AI_Todo.task` so the gap is tracked for the next session.
 
 ## 6. Rapid Context Refresh Commands
 Use these when resuming work mid-session:
@@ -68,9 +69,9 @@ rg "TODO" -n
 ```
 
 ## 7. Hand-off Notes
-Before ending a session, record progress in the relevant plan (e.g., `docs/Plan_SceneGraph.md`) and leave explicit next steps in the conversation or a README snippet for the next AI instance.
+Before ending a session, record progress in the relevant plan (e.g., `docs/finished/Plan_SceneGraph_Finished.md`) and leave explicit next steps in the conversation or a README snippet for the next AI instance.
 
-> **Quick status snapshot:** the latest build/test pointers, Metal presenter status, and open follow-ups now live in `docs/Plan_SceneGraph.md`.
+> **Quick status snapshot:** the latest build/test pointers, Metal presenter status, and archived follow-ups now live in `docs/finished/Plan_SceneGraph_Finished.md`.
 
 ### Immediate next steps (October 19, 2025 — refreshed)
 1. Extend the new Metal encoder (currently rect-only) to cover rounded rects, images, glyph batches, and material/shader binding so Metal2D can stay on-GPU for full scenes; keep residency metrics and UITests in sync.

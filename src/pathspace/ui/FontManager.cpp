@@ -232,6 +232,14 @@ auto is_italic_style(std::string_view style) -> bool {
     return lowered == "italic" || lowered == "oblique";
 }
 
+auto parse_atlas_format(std::string_view value) -> SP::UI::FontAtlasFormat {
+    auto lowered = to_lower_copy(value);
+    if (lowered == "rgba8" || lowered == "rgba" || lowered == "color") {
+        return SP::UI::FontAtlasFormat::Rgba8;
+    }
+    return SP::UI::FontAtlasFormat::Alpha8;
+}
+
 auto build_family_candidates(std::string_view family,
                              std::string_view style) -> std::vector<std::string> {
     std::vector<std::string> candidates;
@@ -377,6 +385,10 @@ auto create_ct_font_for_candidate(std::string const& candidate,
 }
 
 auto create_hb_font_for_typography(FontManager::TypographyStyle const& typography) -> hb_font_t* {
+    if (equals_ignore_case(typography.font_family, "PathSpaceSans")) {
+        return nullptr;
+    }
+
     auto weight = parse_css_weight(typography.font_weight);
     auto primary_candidates = build_family_candidates(typography.font_family, typography.font_style);
 
@@ -601,6 +613,25 @@ auto FontManager::resolve_font(App::AppRootPathView appRoot,
     resolved.weight = std::move(*weight_result);
     auto fallbacks = std::move(*fallback_values);
     resolved.fallback_chain = sanitize_fallbacks(std::move(fallbacks), resolved.family);
+
+    auto preferred_format = load_string_with_default(*space_,
+                                                     meta_base + "/atlas/preferredFormat",
+                                                     "alpha8");
+    if (!preferred_format) {
+        return std::unexpected(preferred_format.error());
+    }
+    resolved.preferred_format = parse_atlas_format(*preferred_format);
+
+    auto has_color_path = meta_base + "/atlas/hasColor";
+    auto has_color = space_->read<std::uint64_t, std::string>(has_color_path);
+    if (has_color) {
+        resolved.has_color_atlas = (*has_color != 0);
+    } else {
+        auto const code = has_color.error().code;
+        if (code != SP::Error::Code::NoSuchPath && code != SP::Error::Code::NoObjectFound) {
+            return std::unexpected(has_color.error());
+        }
+    }
 
     auto active_revision = space_->read<std::uint64_t, std::string>(paths->active_revision.getPath());
     if (active_revision) {

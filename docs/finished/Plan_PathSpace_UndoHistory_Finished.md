@@ -63,9 +63,10 @@
   - `insert("<root>/_history/redo", n)` — redo `n` steps (same defaulting rules).
   - `insert("<root>/_history/garbage_collect")` — run retention/compaction immediately using the current `HistoryOptions`. Callers trigger this when the subtree is quiescent (e.g., scene minimized, document saved) instead of relying on idle detection heuristics.
   - `insert("<root>/_history/set_manual_garbage_collect", true|false)` — toggles whether durability waits for explicit commands. `false` (default) keeps flush-on-commit; `true` lets callers batch writes and manually trigger `_history/garbage_collect`.
+  - `insert("<root>/_history/set_tag", std::string{label})` — attaches a user-visible label to subsequent history commits; the tag is stored on each journal entry and mirrored to `_history/lastOperation/tag` and inspector telemetry.
   - New mutations automatically clear the redo stack; the layer updates `_history/stats/redoCount` accordingly.
 - Read-only nodes provide state for tooling:
-  - `<root>/_history/stats/{undoCount,redoCount,bytesRetained,diskBytes,lastOperation}`
+  - `<root>/_history/stats/{undoCount,redoCount,bytesRetained,diskBytes,lastOperation}` (lastOperation now includes `tag`)
   - `<root>/_history/head/generation` (current snapshot id) and optional per-entry metadata under `<root>/_history/entries/<generation>/…`.
   - `<root>/_history/unsupported/{totalCount,recentCount,recent/<index>/{path,reason,occurrences,timestampMs}}` — inspector-facing log of unsupported payload captures (nested PathSpaces, executable nodes, serialization failures).
 - All interactions use standard PathSpace operations (`insert`, `read`, `listChildren`); no new public API surface is required.
@@ -188,11 +189,12 @@ The inspector backend should surface undo telemetry as JSON nodes so the browser
   { "path": "/doc/_history/lastOperation/type",       "type": "string", "value": "insert", "timestampMs": 1730985602123 },
   { "path": "/doc/_history/lastOperation/success",    "type": "bool",   "value": true,   "timestampMs": 1730985602123 },
   { "path": "/doc/_history/lastOperation/durationMs", "type": "uint64", "value": 12,     "timestampMs": 1730985602123 },
+  { "path": "/doc/_history/lastOperation/tag",        "type": "string", "value": "paint_stroke", "timestampMs": 1730985602123 },
   { "path": "/doc/_history/lastOperation/undoCountAfter", "type": "uint64", "value": 4, "timestampMs": 1730985602123 }
 ]
 ```
 
-Use the sample when wiring the inspector API and UI so `_history/stats/*` values display with the correct types and timestamps; treat the versioned binary codec (`history.journal.v1`) as the authoritative source for on-disk journals and metadata.
+Use the sample when wiring the inspector API and UI so `_history/stats/*` values display with the correct types and timestamps; treat the versioned binary codec (`history.journal.v2`, backward-compatible with v1 entries) as the authoritative source for on-disk journals and metadata.
 
 ## Open Questions
 - **Future migration:** Track the C++26 reflection-based serializer rollout; once compilers ship it, plan to replace Alpaca with standard reflection serialization for both in-memory snapshots and on-disk metadata. Capture prerequisites (toolchain support, compatibility shims) before scheduling the migration.

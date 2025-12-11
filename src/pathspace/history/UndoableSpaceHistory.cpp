@@ -18,6 +18,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <typeinfo>
 
 namespace {
 
@@ -355,6 +356,7 @@ auto UndoableSpace::performJournalStep(UndoJournalRootState& state,
                                      std::string(emptyMessage)});
     }
     auto const& entry = entryOpt->get();
+    scope.setTag(entry.tag);
 
     auto componentsExpected = parseJournalRelativeComponents(state, entry.path);
     if (!componentsExpected) {
@@ -419,7 +421,7 @@ auto UndoableSpace::handleJournalControlInsert(MatchedJournalRoot const& matched
     }
     if (command == UndoPaths::CommandGarbageCollect) {
         std::unique_lock lock(state->mutex);
-        JournalOperationScope scope(*this, *state, "garbage_collect");
+        JournalOperationScope scope(*this, *state, "garbage_collect", state->currentTag);
         auto const currentThread = std::this_thread::get_id();
         state->transactionCv.wait(lock, [&] {
             return !state->activeTransaction
@@ -482,13 +484,30 @@ auto UndoableSpace::handleJournalControlInsert(MatchedJournalRoot const& matched
         }
         return ret;
     }
+    if (command == UndoPaths::CommandSetTag) {
+        if (!data.obj || !data.metadata.typeInfo
+            || *data.metadata.typeInfo != typeid(std::string)
+            || data.metadata.deserialize == nullptr) {
+            ret.errors.push_back(
+                Error{Error::Code::InvalidType, "History tag expects std::string payload"});
+            return ret;
+        }
+
+        auto const& tagValue = *static_cast<std::string const*>(data.obj);
+        std::scoped_lock lock(state->mutex);
+        JournalOperationScope scope(*this, *state, "set_tag", tagValue);
+        state->currentTag = tagValue;
+        state->stateDirty = true;
+        scope.setResult(true);
+        return ret;
+    }
     if (command == UndoPaths::CommandSetManualGc) {
         bool manual = false;
         if (data.obj && data.metadata.typeInfo && *data.metadata.typeInfo == typeid(bool)) {
             manual = *static_cast<bool const*>(data.obj);
         }
         std::scoped_lock lock(state->mutex);
-        JournalOperationScope scope(*this, *state, "set_manual_gc");
+        JournalOperationScope scope(*this, *state, "set_manual_gc", state->currentTag);
         state->options.manualGarbageCollect = manual;
         state->stateDirty                   = true;
         state->persistenceDirty             = state->persistenceEnabled
@@ -526,7 +545,7 @@ auto UndoableSpace::readHistoryStatsValue(HistoryStats const& stats,
         std::function<std::optional<Error>()> apply;
     };
 
-    const std::array<FieldHandler, 16> simpleHandlers{ {
+    const std::array<FieldHandler, 28> simpleHandlers{ {
         {std::string(UndoPaths::HistoryStats), [&] { return assign(stats, UndoPaths::HistoryStats); }},
         {std::string(UndoPaths::HistoryStatsUndoCount),
          [&] { return assign(stats.counts.undo, UndoPaths::HistoryStatsUndoCount); }},
@@ -542,6 +561,39 @@ auto UndoableSpace::readHistoryStatsValue(HistoryStats const& stats,
          [&] { return assign(stats.bytes.total, UndoPaths::HistoryStatsBytesRetained); }},
         {std::string(UndoPaths::HistoryStatsManualGcEnabled),
          [&] { return assign(stats.counts.manualGarbageCollect, UndoPaths::HistoryStatsManualGcEnabled); }},
+        {std::string(UndoPaths::HistoryStatsLimits),
+         [&] { return assign(stats.limits, UndoPaths::HistoryStatsLimits); }},
+        {std::string(UndoPaths::HistoryStatsLimitsMaxEntries),
+         [&] { return assign(stats.limits.maxEntries, UndoPaths::HistoryStatsLimitsMaxEntries); }},
+        {std::string(UndoPaths::HistoryStatsLimitsMaxBytesRetained),
+         [&] {
+             return assign(stats.limits.maxBytesRetained,
+                           UndoPaths::HistoryStatsLimitsMaxBytesRetained);
+         }},
+        {std::string(UndoPaths::HistoryStatsLimitsKeepLatestForMs),
+         [&] {
+             return assign(stats.limits.keepLatestForMs,
+                           UndoPaths::HistoryStatsLimitsKeepLatestForMs);
+         }},
+        {std::string(UndoPaths::HistoryStatsLimitsRamCacheEntries),
+         [&] {
+             return assign(stats.limits.ramCacheEntries,
+                           UndoPaths::HistoryStatsLimitsRamCacheEntries);
+         }},
+        {std::string(UndoPaths::HistoryStatsLimitsMaxDiskBytes),
+         [&] {
+             return assign(stats.limits.maxDiskBytes, UndoPaths::HistoryStatsLimitsMaxDiskBytes);
+         }},
+        {std::string(UndoPaths::HistoryStatsLimitsPersistHistory),
+         [&] {
+             return assign(stats.limits.persistHistory,
+                           UndoPaths::HistoryStatsLimitsPersistHistory);
+         }},
+        {std::string(UndoPaths::HistoryStatsLimitsRestoreFromPersistence),
+         [&] {
+             return assign(stats.limits.restoreFromPersistence,
+                           UndoPaths::HistoryStatsLimitsRestoreFromPersistence);
+         }},
         {std::string(UndoPaths::HistoryStatsTrimOperationCount),
          [&] { return assign(stats.trim.operationCount, UndoPaths::HistoryStatsTrimOperationCount); }},
         {std::string(UndoPaths::HistoryStatsTrimmedEntries),
@@ -550,6 +602,16 @@ auto UndoableSpace::readHistoryStatsValue(HistoryStats const& stats,
          [&] { return assign(stats.trim.bytes, UndoPaths::HistoryStatsTrimmedBytes); }},
         {std::string(UndoPaths::HistoryStatsLastTrimTimestamp),
          [&] { return assign(stats.trim.lastTimestampMs, UndoPaths::HistoryStatsLastTrimTimestamp); }},
+        {std::string(UndoPaths::HistoryStatsCompactionRuns),
+         [&] { return assign(stats.trim.operationCount, UndoPaths::HistoryStatsCompactionRuns); }},
+        {std::string(UndoPaths::HistoryStatsCompactionEntries),
+         [&] { return assign(stats.trim.entries, UndoPaths::HistoryStatsCompactionEntries); }},
+        {std::string(UndoPaths::HistoryStatsCompactionBytes),
+         [&] { return assign(stats.trim.bytes, UndoPaths::HistoryStatsCompactionBytes); }},
+        {std::string(UndoPaths::HistoryStatsCompactionLastTimestamp),
+         [&] {
+             return assign(stats.trim.lastTimestampMs, UndoPaths::HistoryStatsCompactionLastTimestamp);
+         }},
         {std::string(UndoPaths::HistoryUnsupported),
          [&] { return assign(stats.unsupported, UndoPaths::HistoryUnsupported); }},
         {std::string(UndoPaths::HistoryUnsupportedTotalCount),
@@ -579,7 +641,7 @@ auto UndoableSpace::readHistoryStatsValue(HistoryStats const& stats,
             return Error{Error::Code::NoObjectFound, "No history operation recorded"};
         }
         auto const& op = *stats.lastOperation;
-        const std::array<FieldHandler, 11> operationHandlers{ {
+        const std::array<FieldHandler, 12> operationHandlers{ {
             {std::string(UndoPaths::HistoryLastOperationType),
              [&] { return assign(op.type, UndoPaths::HistoryLastOperationType); }},
             {std::string(UndoPaths::HistoryLastOperationTimestamp),
@@ -602,6 +664,8 @@ auto UndoableSpace::readHistoryStatsValue(HistoryStats const& stats,
              [&] { return assign(op.bytesAfter, UndoPaths::HistoryLastOperationBytesAfter); }},
             {std::string(UndoPaths::HistoryLastOperationMessage),
              [&] { return assign(op.message, UndoPaths::HistoryLastOperationMessage); }},
+            {std::string(UndoPaths::HistoryLastOperationTag),
+             [&] { return assign(op.tag, UndoPaths::HistoryLastOperationTag); }},
         } };
         for (auto const& handler : operationHandlers) {
             if (relativePath == handler.path) {
@@ -646,6 +710,123 @@ auto UndoableSpace::readHistoryStatsValue(HistoryStats const& stats,
     return Error{Error::Code::NoObjectFound, "History telemetry path not found"};
 }
 
+auto UndoableSpace::readDiagnosticsHistoryValue(MatchedJournalRoot const& matchedRoot,
+                                                std::string const& relativePath,
+                                                InputMetadata const& metadata,
+                                                void* obj) -> std::optional<Error> {
+    auto state = matchedRoot.state;
+    if (!state) {
+        return Error{Error::Code::UnknownError, "History root missing"};
+    }
+
+    auto assign = [&](auto const& value, std::string_view descriptor) -> std::optional<Error> {
+        using ValueT = std::decay_t<decltype(value)>;
+        if (!metadata.typeInfo || *metadata.typeInfo != typeid(ValueT)) {
+            return Error{Error::Code::InvalidType,
+                         std::string("History diagnostics path ") + std::string(descriptor)
+                             + " expects type " + typeid(ValueT).name()};
+        }
+        if (obj == nullptr) {
+            return Error{Error::Code::MalformedInput, "Output pointer is null"};
+        }
+        *static_cast<ValueT*>(obj) = value;
+        return std::nullopt;
+    };
+
+    auto parseUint64 = [](std::string_view value) -> std::optional<std::uint64_t> {
+        std::uint64_t parsed = 0;
+        auto          res    = std::from_chars(value.data(), value.data() + value.size(), parsed);
+        if (res.ec != std::errc{} || res.ptr != value.data() + value.size()) {
+            return std::nullopt;
+        }
+        return parsed;
+    };
+
+    std::unique_lock lock(state->mutex);
+    auto stats = gatherJournalStatsLocked(*state);
+    auto headGeneration = std::optional<std::size_t>{static_cast<std::size_t>(
+        std::min<std::uint64_t>(state->nextSequence,
+                                static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()))) };
+
+    if (relativePath == UndoPaths::HistoryDiagnosticsHeadSequence) {
+        std::uint64_t headSeq = state->nextSequence == 0 ? 0 : state->nextSequence - 1;
+        return assign(headSeq, UndoPaths::HistoryDiagnosticsHeadSequence);
+    }
+
+    if (relativePath.starts_with(UndoPaths::HistoryDiagnosticsEntriesPrefix)) {
+        std::string_view remaining{relativePath};
+        remaining.remove_prefix(std::string_view{UndoPaths::HistoryDiagnosticsEntriesPrefix}.size());
+        auto slashPos = remaining.find('/');
+        if (slashPos == std::string_view::npos) {
+            return Error{Error::Code::NoObjectFound, "Missing history entry field"};
+        }
+        auto seqView   = remaining.substr(0, slashPos);
+        auto fieldView = remaining.substr(slashPos + 1);
+        auto sequence  = parseUint64(seqView);
+        if (!sequence) {
+            return Error{Error::Code::InvalidPath, "Invalid history entry sequence"};
+        }
+
+        UndoJournal::JournalEntry const* entryPtr = nullptr;
+        for (std::size_t i = 0; i < state->journal.size(); ++i) {
+            auto const& entry = state->journal.entryAt(i);
+            if (entry.sequence == *sequence) {
+                entryPtr = &entry;
+                break;
+            }
+        }
+        if (!entryPtr) {
+            return Error{Error::Code::NoObjectFound, "History entry not found"};
+        }
+
+        auto const& entry = *entryPtr;
+        auto const  opStr = entry.operation == UndoJournal::OperationKind::Insert ? "insert" : "take";
+
+        if (fieldView == UndoPaths::HistoryDiagnosticsEntryOperation) {
+            return assign(std::string(opStr), UndoPaths::HistoryDiagnosticsEntryOperation);
+        }
+        if (fieldView == UndoPaths::HistoryDiagnosticsEntryPath) {
+            return assign(entry.path, UndoPaths::HistoryDiagnosticsEntryPath);
+        }
+        if (fieldView == UndoPaths::HistoryDiagnosticsEntryTag) {
+            return assign(entry.tag, UndoPaths::HistoryDiagnosticsEntryTag);
+        }
+        if (fieldView == UndoPaths::HistoryDiagnosticsEntryTimestamp) {
+            return assign(entry.timestampMs, UndoPaths::HistoryDiagnosticsEntryTimestamp);
+        }
+        if (fieldView == UndoPaths::HistoryDiagnosticsEntryMonotonic) {
+            return assign(entry.monotonicNs, UndoPaths::HistoryDiagnosticsEntryMonotonic);
+        }
+        if (fieldView == UndoPaths::HistoryDiagnosticsEntrySequence) {
+            return assign(entry.sequence, UndoPaths::HistoryDiagnosticsEntrySequence);
+        }
+        if (fieldView == UndoPaths::HistoryDiagnosticsEntryBarrier) {
+            return assign(entry.barrier, UndoPaths::HistoryDiagnosticsEntryBarrier);
+        }
+        if (fieldView == UndoPaths::HistoryDiagnosticsEntryValueBytes) {
+            return assign(entry.value.bytes.size(), UndoPaths::HistoryDiagnosticsEntryValueBytes);
+        }
+        if (fieldView == UndoPaths::HistoryDiagnosticsEntryInverseBytes) {
+            return assign(entry.inverseValue.bytes.size(), UndoPaths::HistoryDiagnosticsEntryInverseBytes);
+        }
+        if (fieldView == UndoPaths::HistoryDiagnosticsEntryHasValue) {
+            return assign(entry.value.present, UndoPaths::HistoryDiagnosticsEntryHasValue);
+        }
+        if (fieldView == UndoPaths::HistoryDiagnosticsEntryHasInverse) {
+            return assign(entry.inverseValue.present, UndoPaths::HistoryDiagnosticsEntryHasInverse);
+        }
+
+        return Error{Error::Code::NoObjectFound, "History entry field not found"};
+    }
+
+    std::string mapped = std::string(UndoPaths::HistoryRoot);
+    if (!relativePath.empty()) {
+        mapped.push_back('/');
+        mapped.append(relativePath);
+    }
+    return readHistoryStatsValue(stats, headGeneration, mapped, metadata, obj);
+}
+
 auto UndoableSpace::readJournalHistoryValue(MatchedJournalRoot const& matchedRoot,
                                             std::string const& relativePath,
                                             InputMetadata const& metadata,
@@ -686,6 +867,14 @@ auto UndoableSpace::gatherJournalStatsLocked(UndoJournalRootState const& state) 
     stats.bytes.total = undoBytes + redoBytes + liveBytes;
     stats.bytes.disk  = state.telemetry.diskBytes;
 
+    stats.limits.maxEntries             = state.options.maxEntries;
+    stats.limits.maxBytesRetained       = state.options.maxBytesRetained;
+    stats.limits.maxDiskBytes           = state.options.maxDiskBytes;
+    stats.limits.ramCacheEntries        = state.options.ramCacheEntries;
+    stats.limits.keepLatestForMs        = static_cast<std::uint64_t>(state.options.keepLatestFor.count());
+    stats.limits.persistHistory         = state.options.persistHistory;
+    stats.limits.restoreFromPersistence = state.options.restoreFromPersistence;
+
     stats.counts.manualGarbageCollect = state.options.manualGarbageCollect;
     stats.counts.diskEntries          = state.telemetry.diskEntries;
     stats.counts.cachedUndo           = state.telemetry.cachedUndo;
@@ -711,6 +900,7 @@ auto UndoableSpace::gatherJournalStatsLocked(UndoJournalRootState const& state) 
         op.redoCountAfter  = record.redoCountAfter;
         op.bytesBefore     = record.bytesBefore;
         op.bytesAfter      = record.bytesAfter;
+        op.tag             = record.tag;
         op.message         = record.message;
         stats.lastOperation = std::move(op);
     }
@@ -740,6 +930,13 @@ auto UndoableSpace::in(Iterator const& path, InputData const& data) -> InsertRet
     if (!state) {
         InsertReturn ret;
         ret.errors.push_back(Error{Error::Code::UnknownError, "History root missing"});
+        return ret;
+    }
+
+    if (journalMatched->diagnostics) {
+        InsertReturn ret;
+        ret.errors.push_back(Error{Error::Code::InvalidPermissions,
+                                   "History diagnostics are read-only"});
         return ret;
     }
 
@@ -833,6 +1030,10 @@ auto UndoableSpace::out(Iterator const& path,
         if (!journalMatched.has_value()) {
             return inner->out(path, inputMetadata, options, obj);
         }
+        if (journalMatched->diagnostics) {
+            return readDiagnosticsHistoryValue(
+                *journalMatched, journalMatched->relativePath, inputMetadata, obj);
+        }
         if (!journalMatched->relativePath.empty()
             && journalMatched->relativePath.starts_with(UndoPaths::HistoryRoot)) {
             return readJournalHistoryValue(
@@ -848,6 +1049,10 @@ auto UndoableSpace::out(Iterator const& path,
     auto state = journalMatched->state;
     if (!state) {
         return Error{Error::Code::UnknownError, "History root missing"};
+    }
+
+    if (journalMatched->diagnostics) {
+        return Error{Error::Code::InvalidPermissions, "History diagnostics are read-only"};
     }
 
     if (!journalMatched->relativePath.empty()

@@ -1,12 +1,47 @@
 #include "WidgetDetail.hpp"
 
+#include <pathspace/ui/declarative/Widgets.hpp>
+#include <pathspace/ui/declarative/widgets/Common.hpp>
+
+#include <cmath>
 #include <functional>
+#include <limits>
+#include <optional>
 
 namespace SP::UI::Runtime::Widgets::Bindings {
 
 using namespace Detail;
+namespace DeclarativeDetail = SP::UI::Declarative::Detail;
+using SP::UI::Declarative::ButtonContext;
+using SP::UI::Declarative::ButtonHandler;
+using SP::UI::Declarative::HandlerKind;
+using SP::UI::Declarative::HandlerVariant;
+using SP::UI::Declarative::InputFieldContext;
+using SP::UI::Declarative::InputFieldHandler;
+using SP::UI::Declarative::LabelContext;
+using SP::UI::Declarative::LabelHandler;
+using SP::UI::Declarative::ListChildContext;
+using SP::UI::Declarative::ListChildHandler;
+using SP::UI::Declarative::PaintSurfaceContext;
+using SP::UI::Declarative::PaintSurfaceHandler;
+using SP::UI::Declarative::SliderContext;
+using SP::UI::Declarative::SliderHandler;
+using SP::UI::Declarative::StackPanelContext;
+using SP::UI::Declarative::StackPanelHandler;
+using SP::UI::Declarative::ToggleContext;
+using SP::UI::Declarative::ToggleHandler;
+using SP::UI::Declarative::TreeNodeContext;
+using SP::UI::Declarative::TreeNodeHandler;
 
 namespace {
+
+struct HandlerInvocationInfo {
+    std::optional<std::string> target_id{};
+    std::optional<float> value{};
+};
+
+auto read_list_items(PathSpace& space,
+                     ListPaths const& paths) -> SP::Expected<std::vector<Widgets::ListItem>>;
 
 auto write_widget_footprint(PathSpace& space,
                             WidgetPath const& root,
@@ -117,31 +152,162 @@ auto schedule_auto_render(PathSpace& space,
                                      *frame_index);
 }
 
-using EventHandler = std::function<void()>;
-
 auto invoke_handler_if_present(PathSpace& space,
                                WidgetPath const& widget,
-                               std::string_view event) -> SP::Expected<void> {
+                               std::string_view event,
+                               HandlerInvocationInfo const& info = {})
+    -> SP::Expected<void> {
     if (event.empty()) {
         return {};
     }
-    std::string handler_path = std::string(widget.getPath());
-    handler_path.append("/events/");
-    handler_path.append(event);
-    handler_path.append("/handler");
 
-    auto handler = space.read<EventHandler, std::string>(handler_path);
-    if (!handler) {
-        auto const& error = handler.error();
+    auto binding = DeclarativeDetail::read_handler_binding(space, widget.getPath(), event);
+    if (!binding) {
+        auto const& error = binding.error();
         if (error.code == SP::Error::Code::NoObjectFound
             || error.code == SP::Error::Code::NoSuchPath) {
             return {};
         }
         return std::unexpected(error);
     }
+    if (!binding->has_value()) {
+        return {};
+    }
 
-    (*handler)();
-    return {};
+    auto handler = DeclarativeDetail::resolve_handler(binding->value().registry_key);
+    if (!handler || std::holds_alternative<std::monostate>(*handler)) {
+        return {};
+    }
+
+    auto kind_mismatch = [&]() -> SP::Expected<void> {
+        return std::unexpected(make_error("handler kind mismatch for event '" + std::string(event) + "'",
+                                          SP::Error::Code::InvalidType));
+    };
+
+    switch (binding->value().kind) {
+    case HandlerKind::ButtonPress: {
+        auto fn = std::get_if<ButtonHandler>(&*handler);
+        if (!fn) {
+            return kind_mismatch();
+        }
+        ButtonContext ctx{space, widget};
+        (*fn)(ctx);
+        return {};
+    }
+    case HandlerKind::Toggle: {
+        auto fn = std::get_if<ToggleHandler>(&*handler);
+        if (!fn) {
+            return kind_mismatch();
+        }
+        ToggleContext ctx{space, widget};
+        (*fn)(ctx);
+        return {};
+    }
+    case HandlerKind::Slider: {
+        auto fn = std::get_if<SliderHandler>(&*handler);
+        if (!fn) {
+            return kind_mismatch();
+        }
+        SliderContext ctx{space, widget};
+        if (info.value) {
+            ctx.value = *info.value;
+        } else {
+            auto state = space.read<Widgets::SliderState, std::string>(
+                WidgetSpacePath(widget.getPath(), "/state"));
+            if (!state) {
+                return std::unexpected(state.error());
+            }
+            ctx.value = state->value;
+        }
+        (*fn)(ctx);
+        return {};
+    }
+    case HandlerKind::ListChild: {
+        auto fn = std::get_if<ListChildHandler>(&*handler);
+        if (!fn) {
+            return kind_mismatch();
+        }
+        ListChildContext ctx{space, widget};
+        if (info.target_id) {
+            ctx.child_id = *info.target_id;
+        } else {
+            auto state = space.read<Widgets::ListState, std::string>(
+                WidgetSpacePath(widget.getPath(), "/state"));
+            if (!state) {
+                return std::unexpected(state.error());
+            }
+            if (state->selected_index >= 0) {
+                auto items = space.read<std::vector<Widgets::ListItem>, std::string>(
+                    WidgetSpacePath(widget.getPath(), "/meta/items"));
+                if (!items) {
+                    return std::unexpected(items.error());
+                }
+                auto idx = static_cast<std::size_t>(state->selected_index);
+                if (idx < items->size()) {
+                    ctx.child_id = (*items)[idx].id;
+                }
+            }
+        }
+        (*fn)(ctx);
+        return {};
+    }
+    case HandlerKind::TreeNode: {
+        auto fn = std::get_if<TreeNodeHandler>(&*handler);
+        if (!fn) {
+            return kind_mismatch();
+        }
+        TreeNodeContext ctx{space, widget};
+        if (info.target_id) {
+            ctx.node_id = *info.target_id;
+        }
+        (*fn)(ctx);
+        return {};
+    }
+    case HandlerKind::StackPanel: {
+        auto fn = std::get_if<StackPanelHandler>(&*handler);
+        if (!fn) {
+            return kind_mismatch();
+        }
+        StackPanelContext ctx{space, widget};
+        if (info.target_id) {
+            ctx.panel_id = *info.target_id;
+        }
+        (*fn)(ctx);
+        return {};
+    }
+    case HandlerKind::LabelActivate: {
+        auto fn = std::get_if<LabelHandler>(&*handler);
+        if (!fn) {
+            return kind_mismatch();
+        }
+        LabelContext ctx{space, widget};
+        (*fn)(ctx);
+        return {};
+    }
+    case HandlerKind::InputChange:
+    case HandlerKind::InputSubmit: {
+        auto fn = std::get_if<InputFieldHandler>(&*handler);
+        if (!fn) {
+            return kind_mismatch();
+        }
+        InputFieldContext ctx{space, widget};
+        (*fn)(ctx);
+        return {};
+    }
+    case HandlerKind::PaintDraw: {
+        auto fn = std::get_if<PaintSurfaceHandler>(&*handler);
+        if (!fn) {
+            return kind_mismatch();
+        }
+        PaintSurfaceContext ctx{space, widget};
+        (*fn)(ctx);
+        return {};
+    }
+    case HandlerKind::None:
+        return {};
+    }
+
+    return kind_mismatch();
 }
 
 auto enqueue_widget_op(PathSpace& space,
@@ -166,6 +332,320 @@ auto enqueue_widget_op(PathSpace& space,
     }
     emit_action_callbacks(options, op);
     return {};
+}
+
+auto is_utf8_continuation(char c) -> bool {
+    return (static_cast<unsigned char>(c) & 0xC0u) == 0x80u;
+}
+
+auto clamp_index(std::string const& text, std::uint32_t index) -> std::uint32_t {
+    return std::min<std::uint32_t>(index, static_cast<std::uint32_t>(text.size()));
+}
+
+auto utf8_next_index(std::string const& text, std::uint32_t index) -> std::uint32_t {
+    index = clamp_index(text, index);
+    if (index >= text.size()) {
+        return static_cast<std::uint32_t>(text.size());
+    }
+    ++index;
+    while (index < text.size() && is_utf8_continuation(text[index])) {
+        ++index;
+    }
+    return clamp_index(text, index);
+}
+
+auto utf8_prev_index(std::string const& text, std::uint32_t index) -> std::uint32_t {
+    index = clamp_index(text, index);
+    if (index == 0) {
+        return 0;
+    }
+    --index;
+    while (index > 0 && is_utf8_continuation(text[index])) {
+        --index;
+    }
+    return clamp_index(text, index);
+}
+
+template <typename State>
+auto normalized_selection(State const& state) -> std::pair<std::uint32_t, std::uint32_t> {
+    auto length = static_cast<std::uint32_t>(state.text.size());
+    std::uint32_t start = std::min(state.selection_start, state.selection_end);
+    std::uint32_t end = std::max(state.selection_start, state.selection_end);
+    start = std::min(start, length);
+    end = std::min(end, length);
+    return {start, end};
+}
+
+template <typename State>
+auto collapse_selection(State& state, std::uint32_t index) -> void {
+    index = clamp_index(state.text, index);
+    state.cursor = index;
+    state.selection_start = index;
+    state.selection_end = index;
+    state.composition_start = index;
+    state.composition_end = index;
+}
+
+template <typename State>
+auto clear_composition(State& state) -> void {
+    state.composition_active = false;
+    state.composition_text.clear();
+    state.composition_start = clamp_index(state.text, state.cursor);
+    state.composition_end = state.composition_start;
+}
+
+template <typename State>
+auto erase_selection(State& state) -> bool {
+    auto [start, end] = normalized_selection(state);
+    if (start == end) {
+        return false;
+    }
+    state.text.erase(start, end - start);
+    collapse_selection(state, start);
+    clear_composition(state);
+    return true;
+}
+
+auto encode_utf8(char32_t ch) -> std::string {
+    std::string out;
+    if (ch <= 0x7Fu) {
+        out.push_back(static_cast<char>(ch));
+        return out;
+    }
+    if (ch <= 0x7FFu) {
+        out.push_back(static_cast<char>(0xC0u | ((ch >> 6) & 0x1Fu)));
+        out.push_back(static_cast<char>(0x80u | (ch & 0x3Fu)));
+        return out;
+    }
+    if (ch <= 0xFFFFu) {
+        out.push_back(static_cast<char>(0xE0u | ((ch >> 12) & 0x0Fu)));
+        out.push_back(static_cast<char>(0x80u | ((ch >> 6) & 0x3Fu)));
+        out.push_back(static_cast<char>(0x80u | (ch & 0x3Fu)));
+        return out;
+    }
+    out.push_back(static_cast<char>(0xF0u | ((ch >> 18) & 0x07u)));
+    out.push_back(static_cast<char>(0x80u | ((ch >> 12) & 0x3Fu)));
+    out.push_back(static_cast<char>(0x80u | ((ch >> 6) & 0x3Fu)));
+    out.push_back(static_cast<char>(0x80u | (ch & 0x3Fu)));
+    return out;
+}
+
+auto sanitize_single_line(std::string_view text) -> std::string {
+    std::string filtered;
+    filtered.reserve(text.size());
+    for (char c : text) {
+        if (c == '\n' || c == '\r') {
+            continue;
+        }
+        filtered.push_back(c);
+    }
+    return filtered;
+}
+
+template <typename State>
+auto insert_text(State& state, std::string_view text, bool allow_newlines) -> bool {
+    bool removed = erase_selection(state);
+    std::string value;
+    if (allow_newlines) {
+        value.assign(text.begin(), text.end());
+    } else {
+        value = sanitize_single_line(text);
+    }
+    if (value.empty()) {
+        return removed;
+    }
+    auto insert_at = clamp_index(state.text, state.cursor);
+    state.text.insert(insert_at, value);
+    collapse_selection(state, insert_at + static_cast<std::uint32_t>(value.size()));
+    clear_composition(state);
+    return true;
+}
+
+template <typename State>
+auto delete_single(State& state, bool forward) -> bool {
+    if (erase_selection(state)) {
+        return true;
+    }
+    auto length = static_cast<std::uint32_t>(state.text.size());
+    if (forward) {
+        if (state.cursor >= length) {
+            return false;
+        }
+        auto next = utf8_next_index(state.text, state.cursor);
+        if (next == state.cursor) {
+            return false;
+        }
+        state.text.erase(state.cursor, next - state.cursor);
+        collapse_selection(state, state.cursor);
+        clear_composition(state);
+        return true;
+    }
+    if (state.cursor == 0) {
+        return false;
+    }
+    auto prev = utf8_prev_index(state.text, state.cursor);
+    state.text.erase(prev, state.cursor - prev);
+    collapse_selection(state, prev);
+    clear_composition(state);
+    return true;
+}
+
+template <typename State>
+auto move_cursor(State& state, int delta) -> bool {
+    if (delta == 0) {
+        return false;
+    }
+    auto target = state.cursor;
+    if (delta > 0) {
+        for (int i = 0; i < delta; ++i) {
+            auto next = utf8_next_index(state.text, target);
+            if (next == target) {
+                break;
+            }
+            target = next;
+        }
+    } else {
+        for (int i = 0; i < -delta; ++i) {
+            auto prev = utf8_prev_index(state.text, target);
+            if (prev == target) {
+                break;
+            }
+            target = prev;
+        }
+    }
+    if (target == state.cursor) {
+        return false;
+    }
+    collapse_selection(state, target);
+    clear_composition(state);
+    return true;
+}
+
+template <typename State>
+auto apply_selection_payload(State& state, State const& payload) -> bool {
+    auto length = static_cast<std::uint32_t>(state.text.size());
+    std::uint32_t start = std::min(payload.selection_start, length);
+    std::uint32_t end = std::min(payload.selection_end, length);
+    if (start == state.selection_start && end == state.selection_end) {
+        return false;
+    }
+    state.selection_start = start;
+    state.selection_end = end;
+    state.cursor = std::min(payload.cursor, length);
+    state.composition_start = std::min(payload.composition_start, length);
+    state.composition_end = std::min(payload.composition_end, length);
+    return true;
+}
+
+template <typename State>
+auto begin_composition(State& state) -> bool {
+    auto [start, end] = normalized_selection(state);
+    state.composition_start = start;
+    state.composition_end = end;
+    state.composition_text.clear();
+    if (!state.composition_active) {
+        state.composition_active = true;
+        return true;
+    }
+    return false;
+}
+
+template <typename State>
+auto update_composition(State& state,
+                        std::string const& text,
+                        std::uint32_t start,
+                        std::uint32_t end,
+                        bool allow_newlines) -> bool {
+    auto length = static_cast<std::uint32_t>(state.text.size());
+    state.composition_start = std::min(start, length);
+    state.composition_end = std::min(end, length);
+    std::string value = allow_newlines ? text : sanitize_single_line(text);
+    bool changed = (state.composition_text != value) || !state.composition_active;
+    state.composition_text = std::move(value);
+    state.composition_active = true;
+    return changed;
+}
+
+template <typename State>
+auto commit_composition(State& state, bool allow_newlines) -> bool {
+    if (!state.composition_active) {
+        return false;
+    }
+    auto start = std::min(state.composition_start, state.composition_end);
+    auto end = std::max(state.composition_start, state.composition_end);
+    start = clamp_index(state.text, start);
+    end = clamp_index(state.text, end);
+    state.text.erase(start, end - start);
+    std::string value = allow_newlines ? state.composition_text : sanitize_single_line(state.composition_text);
+    state.text.insert(start, value);
+    collapse_selection(state, start + static_cast<std::uint32_t>(value.size()));
+    state.composition_text.clear();
+    state.composition_active = false;
+    return true;
+}
+
+template <typename State>
+auto cancel_composition(State& state) -> bool {
+    if (!state.composition_active) {
+        return false;
+    }
+    collapse_selection(state, state.composition_start);
+    state.composition_text.clear();
+    state.composition_active = false;
+    return true;
+}
+
+template <typename State>
+auto selection_text(State const& state) -> std::string {
+    auto [start, end] = normalized_selection(state);
+    if (start >= end) {
+        return {};
+    }
+    return state.text.substr(start, end - start);
+}
+
+auto clipboard_text_path(WidgetPath const& root) -> std::string {
+    std::string path = std::string(root.getPath());
+    path.append("/ops/clipboard/last_text");
+    return path;
+}
+
+auto write_clipboard_text(PathSpace& space,
+                          WidgetPath const& root,
+                          std::string const& text) -> SP::Expected<void> {
+    auto path = clipboard_text_path(root);
+    if (auto status = replace_single<std::string>(space, path, text); !status) {
+        return std::unexpected(status.error());
+    }
+    return {};
+}
+
+auto read_clipboard_text(PathSpace& space,
+                         WidgetPath const& root) -> SP::Expected<std::string> {
+    auto path = clipboard_text_path(root);
+    auto stored = read_optional<std::string>(space, path);
+    if (!stored) {
+        return std::unexpected(stored.error());
+    }
+    if (!stored->has_value()) {
+        return std::string{};
+    }
+    return **stored;
+}
+
+template <typename State>
+auto copy_selection(PathSpace& space,
+                    WidgetPath const& root,
+                    State const& state) -> SP::Expected<void> {
+    return write_clipboard_text(space, root, selection_text(state));
+}
+
+inline auto set_flag(bool& field, bool value) -> bool {
+    if (field == value) {
+        return false;
+    }
+    field = value;
+    return true;
 }
 
 auto read_button_style(PathSpace& space,
@@ -585,7 +1065,14 @@ auto DispatchSlider(PathSpace& space,
             return std::unexpected(status.error());
         }
         if (op_kind == WidgetOpKind::SliderCommit) {
-            if (auto handler = invoke_handler_if_present(space, binding.widget.root, "change"); !handler) {
+            HandlerInvocationInfo handler_info{
+                .value = current_state->value,
+            };
+            if (auto handler = invoke_handler_if_present(space,
+                                                         binding.widget.root,
+                                                         "change",
+                                                         handler_info);
+                !handler) {
                 return std::unexpected(handler.error());
             }
         }
@@ -652,6 +1139,18 @@ auto DispatchList(PathSpace& space,
         return std::unexpected(updated_state.error());
     }
 
+    std::optional<std::string> selected_id;
+    if (updated_state->selected_index >= 0) {
+        auto items = read_list_items(space, binding.widget);
+        if (!items) {
+            return std::unexpected(items.error());
+        }
+        auto idx = static_cast<std::size_t>(updated_state->selected_index);
+        if (idx < items->size()) {
+            selected_id = (*items)[idx].id;
+        }
+    }
+
     if (*changed) {
         if (auto status = submit_dirty_hint(space, binding.options); !status) {
             return std::unexpected(status.error());
@@ -689,7 +1188,15 @@ auto DispatchList(PathSpace& space,
         return std::unexpected(status.error());
     }
     if (op_kind == WidgetOpKind::ListSelect || op_kind == WidgetOpKind::ListActivate) {
-        if (auto handler = invoke_handler_if_present(space, binding.widget.root, "child_event"); !handler) {
+        HandlerInvocationInfo handler_info{};
+        if (selected_id) {
+            handler_info.target_id = *selected_id;
+        }
+        if (auto handler = invoke_handler_if_present(space,
+                                                     binding.widget.root,
+                                                     "child_event",
+                                                     handler_info);
+            !handler) {
             return std::unexpected(handler.error());
         }
     }
@@ -887,7 +1394,15 @@ auto DispatchTree(PathSpace& space,
     case WidgetOpKind::TreeScroll:
         break;
     default:
-        if (auto handler = invoke_handler_if_present(space, binding.widget.root, "node_event"); !handler) {
+        HandlerInvocationInfo handler_info{};
+        if (!node_key.empty()) {
+            handler_info.target_id = node_key;
+        }
+        if (auto handler = invoke_handler_if_present(space,
+                                                     binding.widget.root,
+                                                     "node_event",
+                                                     handler_info);
+            !handler) {
             return std::unexpected(handler.error());
         }
         break;
@@ -904,7 +1419,13 @@ auto DispatchTree(PathSpace& space,
             !status) {
             return std::unexpected(status.error());
         }
-        if (auto handler = invoke_handler_if_present(space, binding.widget.root, "node_event"); !handler) {
+        HandlerInvocationInfo handler_info{};
+        handler_info.target_id = node_key;
+        if (auto handler = invoke_handler_if_present(space,
+                                                     binding.widget.root,
+                                                     "node_event",
+                                                     handler_info);
+            !handler) {
             return std::unexpected(handler.error());
         }
     }
@@ -924,10 +1445,13 @@ auto DispatchTextField(PathSpace& space,
                        TextFieldBinding const& binding,
                        TextFieldState const& new_state,
                        WidgetOpKind op_kind,
-                       PointerInfo const& pointer) -> SP::Expected<bool> {
+                       PointerInfo const& pointer,
+                       float op_value) -> SP::Expected<bool> {
     switch (op_kind) {
     case WidgetOpKind::HoverEnter:
     case WidgetOpKind::HoverExit:
+    case WidgetOpKind::TextHover:
+    case WidgetOpKind::TextFocus:
     case WidgetOpKind::TextInput:
     case WidgetOpKind::TextDelete:
     case WidgetOpKind::TextMoveCursor:
@@ -936,6 +1460,9 @@ auto DispatchTextField(PathSpace& space,
     case WidgetOpKind::TextCompositionUpdate:
     case WidgetOpKind::TextCompositionCommit:
     case WidgetOpKind::TextCompositionCancel:
+    case WidgetOpKind::TextClipboardCopy:
+    case WidgetOpKind::TextClipboardCut:
+    case WidgetOpKind::TextClipboardPaste:
     case WidgetOpKind::TextSubmit:
         break;
     default:
@@ -943,7 +1470,110 @@ auto DispatchTextField(PathSpace& space,
                                           SP::Error::Code::InvalidType));
     }
 
-    auto changed = Widgets::UpdateTextFieldState(space, binding.widget, new_state);
+    auto state_value = space.read<TextFieldState, std::string>(binding.widget.state.getPath());
+    if (!state_value) {
+        return std::unexpected(state_value.error());
+    }
+
+    Widgets::TextFieldState desired = *state_value;
+    bool can_edit_text = desired.enabled && !desired.read_only;
+
+    switch (op_kind) {
+    case WidgetOpKind::HoverEnter:
+        set_flag(desired.hovered, true);
+        break;
+    case WidgetOpKind::HoverExit:
+        set_flag(desired.hovered, false);
+        break;
+    case WidgetOpKind::TextHover:
+        set_flag(desired.hovered, pointer.inside);
+        break;
+    case WidgetOpKind::TextFocus:
+        set_flag(desired.focused, true);
+        if (pointer.inside) {
+            set_flag(desired.hovered, true);
+        }
+        break;
+    case WidgetOpKind::TextInput:
+        if (can_edit_text && std::isfinite(op_value)) {
+            auto codepoint = static_cast<char32_t>(std::llround(op_value));
+            auto utf8 = encode_utf8(codepoint);
+            insert_text(desired, utf8, false);
+        }
+        break;
+    case WidgetOpKind::TextDelete:
+        if (can_edit_text) {
+            bool forward = op_value >= 0.0f;
+            delete_single(desired, forward);
+        }
+        break;
+    case WidgetOpKind::TextMoveCursor:
+        move_cursor(desired, static_cast<int>(std::llround(op_value)));
+        break;
+    case WidgetOpKind::TextSetSelection:
+        apply_selection_payload(desired, new_state);
+        break;
+    case WidgetOpKind::TextCompositionStart:
+        if (can_edit_text) {
+            begin_composition(desired);
+        }
+        break;
+    case WidgetOpKind::TextCompositionUpdate:
+        if (can_edit_text) {
+            update_composition(desired,
+                               new_state.composition_text,
+                               new_state.composition_start,
+                               new_state.composition_end,
+                               false);
+        }
+        break;
+    case WidgetOpKind::TextCompositionCommit:
+        if (can_edit_text) {
+            commit_composition(desired, false);
+        }
+        break;
+    case WidgetOpKind::TextCompositionCancel:
+        cancel_composition(desired);
+        break;
+    case WidgetOpKind::TextClipboardCopy: {
+        auto status = copy_selection(space, binding.widget.root, desired);
+        if (!status) {
+            return std::unexpected(status.error());
+        }
+        break;
+    }
+    case WidgetOpKind::TextClipboardCut: {
+        if (can_edit_text) {
+            auto status = copy_selection(space, binding.widget.root, desired);
+            if (!status) {
+                return std::unexpected(status.error());
+            }
+            erase_selection(desired);
+        }
+        break;
+    }
+    case WidgetOpKind::TextClipboardPaste: {
+        if (can_edit_text) {
+            std::string pasted = new_state.composition_text;
+            if (pasted.empty()) {
+                auto stored = read_clipboard_text(space, binding.widget.root);
+                if (!stored) {
+                    return std::unexpected(stored.error());
+                }
+                pasted = *stored;
+            }
+            insert_text(desired, pasted, false);
+        }
+        break;
+    }
+    case WidgetOpKind::TextSubmit:
+        set_flag(desired.submit_pending, true);
+        break;
+    default:
+        break;
+    }
+
+    auto changed = Widgets::UpdateTextFieldState(space, binding.widget, desired);
     if (!changed) {
         return std::unexpected(changed.error());
     }
@@ -957,8 +1587,11 @@ auto DispatchTextField(PathSpace& space,
         }
     }
 
+    bool requires_focus = !(op_kind == WidgetOpKind::HoverEnter
+                            || op_kind == WidgetOpKind::HoverExit
+                            || op_kind == WidgetOpKind::TextHover);
     bool focus_changed = false;
-    if (op_kind != WidgetOpKind::HoverEnter && op_kind != WidgetOpKind::HoverExit) {
+    if (requires_focus) {
         auto focus = set_widget_focus(space, binding.options, binding.widget.root);
         if (!focus) {
             return std::unexpected(focus.error());
@@ -966,24 +1599,35 @@ auto DispatchTextField(PathSpace& space,
         focus_changed = *focus;
     }
 
-    bool enqueue = (op_kind != WidgetOpKind::HoverEnter && op_kind != WidgetOpKind::HoverExit);
-    float value = (op_kind == WidgetOpKind::TextSubmit) ? 1.0f : 0.0f;
-    if (enqueue) {
+    float event_value = 0.0f;
+    switch (op_kind) {
+    case WidgetOpKind::TextInput:
+        event_value = op_value;
+        break;
+    case WidgetOpKind::TextDelete:
+        event_value = (op_value >= 0.0f) ? 1.0f : -1.0f;
+        break;
+    case WidgetOpKind::TextMoveCursor:
+        event_value = op_value;
+        break;
+    case WidgetOpKind::TextSubmit:
+        event_value = 1.0f;
+        break;
+    default:
+        break;
+    }
+
+    if (requires_focus) {
         if (auto status = enqueue_widget_op(space,
                                             binding.options,
                                             binding.widget.root.getPath(),
                                             op_kind,
                                             pointer,
-                                            value);
+                                            event_value);
             !status) {
             return std::unexpected(status.error());
         }
-        std::string_view event_name;
-        if (op_kind == WidgetOpKind::TextSubmit) {
-            event_name = "submit";
-        } else {
-            event_name = "change";
-        }
+        std::string_view event_name = (op_kind == WidgetOpKind::TextSubmit) ? "submit" : "change";
         if (!event_name.empty()) {
             if (auto handler = invoke_handler_if_present(space, binding.widget.root, event_name); !handler) {
                 return std::unexpected(handler.error());
@@ -999,10 +1643,13 @@ auto DispatchTextArea(PathSpace& space,
                       TextAreaState const& new_state,
                       WidgetOpKind op_kind,
                       PointerInfo const& pointer,
-                      float scroll_delta_y) -> SP::Expected<bool> {
+                      float scroll_delta_y,
+                      float op_value) -> SP::Expected<bool> {
     switch (op_kind) {
     case WidgetOpKind::HoverEnter:
     case WidgetOpKind::HoverExit:
+    case WidgetOpKind::TextHover:
+    case WidgetOpKind::TextFocus:
     case WidgetOpKind::TextInput:
     case WidgetOpKind::TextDelete:
     case WidgetOpKind::TextMoveCursor:
@@ -1011,6 +1658,9 @@ auto DispatchTextArea(PathSpace& space,
     case WidgetOpKind::TextCompositionUpdate:
     case WidgetOpKind::TextCompositionCommit:
     case WidgetOpKind::TextCompositionCancel:
+    case WidgetOpKind::TextClipboardCopy:
+    case WidgetOpKind::TextClipboardCut:
+    case WidgetOpKind::TextClipboardPaste:
     case WidgetOpKind::TextSubmit:
     case WidgetOpKind::TextScroll:
         break;
@@ -1019,7 +1669,115 @@ auto DispatchTextArea(PathSpace& space,
                                           SP::Error::Code::InvalidType));
     }
 
-    auto changed = Widgets::UpdateTextAreaState(space, binding.widget, new_state);
+    auto state_value = space.read<TextAreaState, std::string>(binding.widget.state.getPath());
+    if (!state_value) {
+        return std::unexpected(state_value.error());
+    }
+
+    Widgets::TextAreaState desired = *state_value;
+    bool can_edit_text = desired.enabled && !desired.read_only;
+
+    switch (op_kind) {
+    case WidgetOpKind::HoverEnter:
+        set_flag(desired.hovered, true);
+        break;
+    case WidgetOpKind::HoverExit:
+        set_flag(desired.hovered, false);
+        break;
+    case WidgetOpKind::TextHover:
+        set_flag(desired.hovered, pointer.inside);
+        break;
+    case WidgetOpKind::TextFocus:
+        set_flag(desired.focused, true);
+        if (pointer.inside) {
+            set_flag(desired.hovered, true);
+        }
+        break;
+    case WidgetOpKind::TextInput:
+        if (can_edit_text && std::isfinite(op_value)) {
+            auto codepoint = static_cast<char32_t>(std::llround(op_value));
+            auto utf8 = encode_utf8(codepoint);
+            insert_text(desired, utf8, true);
+        }
+        break;
+    case WidgetOpKind::TextDelete:
+        if (can_edit_text) {
+            bool forward = op_value >= 0.0f;
+            delete_single(desired, forward);
+        }
+        break;
+    case WidgetOpKind::TextMoveCursor:
+        move_cursor(desired, static_cast<int>(std::llround(op_value)));
+        break;
+    case WidgetOpKind::TextSetSelection:
+        apply_selection_payload(desired, new_state);
+        break;
+    case WidgetOpKind::TextCompositionStart:
+        if (can_edit_text) {
+            begin_composition(desired);
+        }
+        break;
+    case WidgetOpKind::TextCompositionUpdate:
+        if (can_edit_text) {
+            update_composition(desired,
+                               new_state.composition_text,
+                               new_state.composition_start,
+                               new_state.composition_end,
+                               true);
+        }
+        break;
+    case WidgetOpKind::TextCompositionCommit:
+        if (can_edit_text) {
+            commit_composition(desired, true);
+        }
+        break;
+    case WidgetOpKind::TextCompositionCancel:
+        cancel_composition(desired);
+        break;
+    case WidgetOpKind::TextClipboardCopy: {
+        auto status = copy_selection(space, binding.widget.root, desired);
+        if (!status) {
+            return std::unexpected(status.error());
+        }
+        break;
+    }
+    case WidgetOpKind::TextClipboardCut: {
+        if (can_edit_text) {
+            auto status = copy_selection(space, binding.widget.root, desired);
+            if (!status) {
+                return std::unexpected(status.error());
+            }
+            erase_selection(desired);
+        }
+        break;
+    }
+    case WidgetOpKind::TextClipboardPaste: {
+        if (can_edit_text) {
+            std::string pasted = new_state.composition_text;
+            if (pasted.empty()) {
+                auto stored = read_clipboard_text(space, binding.widget.root);
+                if (!stored) {
+                    return std::unexpected(stored.error());
+                }
+                pasted = *stored;
+            }
+            insert_text(desired, pasted, true);
+        }
+        break;
+    }
+    case WidgetOpKind::TextSubmit:
+        set_flag(desired.submit_pending, true);
+        break;
+    case WidgetOpKind::TextScroll:
+        if (std::isfinite(scroll_delta_y) && scroll_delta_y != 0.0f) {
+            desired.scroll_y = std::max(0.0f, desired.scroll_y + scroll_delta_y);
+        }
+        break;
+    default:
+        break;
+    }
+
+    auto changed = Widgets::UpdateTextAreaState(space, binding.widget, desired);
     if (!changed) {
         return std::unexpected(changed.error());
     }
@@ -1033,8 +1791,11 @@ auto DispatchTextArea(PathSpace& space,
         }
     }
 
+    bool requires_focus = !(op_kind == WidgetOpKind::HoverEnter
+                            || op_kind == WidgetOpKind::HoverExit
+                            || op_kind == WidgetOpKind::TextHover);
     bool focus_changed = false;
-    if (op_kind != WidgetOpKind::HoverEnter && op_kind != WidgetOpKind::HoverExit) {
+    if (requires_focus) {
         auto focus = set_widget_focus(space, binding.options, binding.widget.root);
         if (!focus) {
             return std::unexpected(focus.error());
@@ -1042,24 +1803,38 @@ auto DispatchTextArea(PathSpace& space,
         focus_changed = *focus;
     }
 
-    bool enqueue = (op_kind != WidgetOpKind::HoverEnter && op_kind != WidgetOpKind::HoverExit);
-    float value = (op_kind == WidgetOpKind::TextScroll) ? scroll_delta_y : 0.0f;
-    if (enqueue) {
+    float event_value = 0.0f;
+    switch (op_kind) {
+    case WidgetOpKind::TextInput:
+        event_value = op_value;
+        break;
+    case WidgetOpKind::TextDelete:
+        event_value = (op_value >= 0.0f) ? 1.0f : -1.0f;
+        break;
+    case WidgetOpKind::TextMoveCursor:
+        event_value = op_value;
+        break;
+    case WidgetOpKind::TextSubmit:
+        event_value = 1.0f;
+        break;
+    case WidgetOpKind::TextScroll:
+        event_value = desired.scroll_y;
+        break;
+    default:
+        break;
+    }
+
+    if (requires_focus) {
         if (auto status = enqueue_widget_op(space,
                                             binding.options,
                                             binding.widget.root.getPath(),
                                             op_kind,
                                             pointer,
-                                            value);
+                                            event_value);
             !status) {
             return std::unexpected(status.error());
         }
-        std::string_view event_name;
-        if (op_kind == WidgetOpKind::TextSubmit) {
-            event_name = "submit";
-        } else {
-            event_name = "change";
-        }
+        std::string_view event_name = (op_kind == WidgetOpKind::TextSubmit) ? "submit" : "change";
         if (!event_name.empty()) {
             if (auto handler = invoke_handler_if_present(space, binding.widget.root, event_name); !handler) {
                 return std::unexpected(handler.error());

@@ -39,6 +39,7 @@ struct HistoryLastOperation {
     std::size_t  redoCountAfter    = 0;
     std::size_t  bytesBefore       = 0;
     std::size_t  bytesAfter        = 0;
+    std::string  tag;
     std::string  message;
 };
 
@@ -47,6 +48,16 @@ struct HistoryTrimMetrics {
     std::size_t entries          = 0;
     std::size_t bytes            = 0;
     std::uint64_t lastTimestampMs = 0;
+};
+
+struct HistoryLimitMetrics {
+    std::size_t  maxEntries              = 0;
+    std::size_t  maxBytesRetained        = 0;
+    std::uint64_t keepLatestForMs        = 0;
+    std::size_t  ramCacheEntries         = 0;
+    std::size_t  maxDiskBytes            = 0;
+    bool         persistHistory          = false;
+    bool         restoreFromPersistence  = true;
 };
 
 struct HistoryBytes {
@@ -82,6 +93,7 @@ struct HistoryStats {
     HistoryCounts                      counts;
     HistoryBytes                       bytes;
     HistoryTrimMetrics                 trim;
+    HistoryLimitMetrics                limits;
     std::optional<HistoryLastOperation> lastOperation;
     HistoryUnsupportedStats             unsupported;
 };
@@ -149,10 +161,12 @@ private:
     public:
         JournalOperationScope(UndoableSpace& owner,
                               UndoJournalRootState& state,
-                              std::string_view type)
+                              std::string_view type,
+                              std::string_view tag = {})
             : owner(owner)
             , state(state)
             , type(type)
+            , tag(tag)
             , startSteady(std::chrono::steady_clock::now())
             , beforeStats(state.journal.stats())
             , beforeLiveBytes(state.liveBytes)
@@ -163,6 +177,8 @@ private:
             messageText = std::move(message);
         }
 
+        void setTag(std::string_view newTag) { tag.assign(newTag.begin(), newTag.end()); }
+
         ~JournalOperationScope() {
             owner.recordJournalOperation(state,
                                          type,
@@ -172,6 +188,7 @@ private:
                                          beforeLiveBytes,
                                          beforeTelemetry,
                                          state.telemetry,
+                                         tag,
                                          messageText);
         }
 
@@ -179,6 +196,7 @@ private:
         UndoableSpace&                  owner;
         UndoJournalRootState&           state;
         std::string                     type;
+        std::string                     tag;
         std::chrono::steady_clock::time_point startSteady;
         UndoJournal::JournalState::Stats beforeStats;
         std::size_t                      beforeLiveBytes = 0;
@@ -233,6 +251,8 @@ private:
         std::shared_ptr<UndoJournalRootState> state;
         std::string                           key;
         std::string                           relativePath;
+        bool                                  diagnostics      = false;
+        bool                                  diagnosticsCompat = false;
     };
 
     auto findJournalRoot(SP::ConcretePathStringView root) const
@@ -273,14 +293,15 @@ private:
                                     InputData const& data) -> InsertReturn;
 
     void recordJournalOperation(UndoJournalRootState& state,
-                                std::string_view type,
-                                std::chrono::steady_clock::duration duration,
-                                bool success,
-                                UndoJournal::JournalState::Stats const& beforeStats,
-                                std::size_t beforeLiveBytes,
-                                HistoryTelemetry const& beforeTelemetry,
-                                HistoryTelemetry const& afterTelemetry,
-                                std::string message);
+                               std::string_view type,
+                               std::chrono::steady_clock::duration duration,
+                               bool success,
+                               UndoJournal::JournalState::Stats const& beforeStats,
+                               std::size_t beforeLiveBytes,
+                               HistoryTelemetry const& beforeTelemetry,
+                               HistoryTelemetry const& afterTelemetry,
+                               std::string_view tag,
+                               std::string message);
     void recordJournalUnsupportedPayload(UndoJournalRootState& state,
                                          std::string_view path,
                                          std::string_view reason);
@@ -290,6 +311,10 @@ private:
                                std::string const& relativePath,
                                InputMetadata const& metadata,
                                void* obj) const -> std::optional<Error>;
+    auto readDiagnosticsHistoryValue(MatchedJournalRoot const& matchedRoot,
+                                     std::string const& relativePath,
+                                     InputMetadata const& metadata,
+                                     void* obj) -> std::optional<Error>;
     auto readJournalHistoryValue(MatchedJournalRoot const& matchedRoot,
                                  std::string const& relativePath,
                                  InputMetadata const& metadata,
@@ -321,6 +346,7 @@ private:
     std::unique_ptr<PathSpaceBase> inner;
     mutable std::mutex rootsMutex;
     std::unordered_map<std::string, std::shared_ptr<UndoJournalRootState>> journalRoots;
+    std::unordered_map<std::string, std::shared_ptr<UndoJournalRootState>> diagnosticsRoots;
     std::string spaceUuid;
 };
 

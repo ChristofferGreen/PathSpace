@@ -12,6 +12,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace SP::UI::Html {
 namespace {
@@ -146,6 +147,106 @@ auto infer_font_format(std::string const& mime_type, std::string const& logical_
         return "opentype";
     }
     return "truetype";
+}
+
+struct FontFaceDesc {
+    std::string logical_path;
+    std::string family;
+    std::string css_style;
+    std::string css_weight;
+    std::uint64_t fingerprint = 0;
+};
+
+auto to_lower_ascii(std::string_view text) -> std::string {
+    std::string lowered;
+    lowered.reserve(text.size());
+    for (char ch : text) {
+        lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+    }
+    return lowered;
+}
+
+auto contains_token_ci(std::string_view haystack, std::string_view needle) -> bool {
+    auto lowered_haystack = to_lower_ascii(haystack);
+    auto lowered_needle = to_lower_ascii(needle);
+    return lowered_haystack.find(lowered_needle) != std::string::npos;
+}
+
+auto parse_font_family_and_style(std::string const& resource_root) -> std::pair<std::string, std::string> {
+    std::pair<std::string, std::string> result;
+    if (resource_root.empty()) {
+        return result;
+    }
+    constexpr std::string_view marker = "/fonts/";
+    auto pos = resource_root.find(marker);
+    if (pos == std::string::npos) {
+        return result;
+    }
+    auto family_start = pos + marker.size();
+    auto family_end = resource_root.find('/', family_start);
+    if (family_end == std::string::npos) {
+        return result;
+    }
+    result.first = resource_root.substr(family_start, family_end - family_start);
+    auto style_start = family_end + 1;
+    auto style_end = resource_root.find('/', style_start);
+    if (style_start < resource_root.size()) {
+        if (style_end == std::string::npos) {
+            result.second = resource_root.substr(style_start);
+        } else {
+            result.second = resource_root.substr(style_start, style_end - style_start);
+        }
+    }
+    return result;
+}
+
+auto infer_font_weight_from_style(std::string const& style_name) -> std::string {
+    if (style_name.empty()) {
+        return "400";
+    }
+    if (contains_token_ci(style_name, "thin")) {
+        return "100";
+    }
+    if (contains_token_ci(style_name, "extralight") || contains_token_ci(style_name, "ultralight")) {
+        return "200";
+    }
+    if (contains_token_ci(style_name, "light")) {
+        return "300";
+    }
+    if (contains_token_ci(style_name, "medium")) {
+        return "500";
+    }
+    if (contains_token_ci(style_name, "semibold") || contains_token_ci(style_name, "demibold")) {
+        return "600";
+    }
+    if (contains_token_ci(style_name, "bold")) {
+        return "700";
+    }
+    if (contains_token_ci(style_name, "extrabold") || contains_token_ci(style_name, "ultrabold")) {
+        return "800";
+    }
+    if (contains_token_ci(style_name, "black")) {
+        return "900";
+    }
+    return "400";
+}
+
+auto infer_font_css_style(std::string const& style_name) -> std::string {
+    if (contains_token_ci(style_name, "italic")) {
+        return "italic";
+    }
+    if (contains_token_ci(style_name, "oblique")) {
+        return "oblique";
+    }
+    return "normal";
+}
+
+auto make_font_logical_path(std::uint64_t fingerprint) -> std::string {
+    auto hex = fingerprint_to_hex(fingerprint);
+    std::string logical = "fonts/";
+    logical += hex;
+    logical += ".woff2";
+    return logical;
 }
 
 auto color_to_css(std::array<float, 4> const& rgba, bool premultiplied = false) -> std::string {
@@ -496,6 +597,8 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
     std::unordered_map<std::uint64_t, Asset> image_assets;
     std::unordered_map<std::string, Asset> font_assets;
     std::unordered_set<std::string> font_paths;
+    std::vector<FontFaceDesc> font_face_descs;
+    font_face_descs.reserve(snapshot.font_assets.size() + options.font_logical_paths.size());
     bool requires_canvas_only = false;
 
     auto ensure_payload = [&](std::size_t command_index,
@@ -651,18 +754,60 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
         }
     }
 
+    auto add_font_face = [&](FontFaceDesc desc) {
+        if (desc.logical_path.empty()) {
+            return;
+        }
+        if (!font_paths.insert(desc.logical_path).second) {
+            return;
+        }
+        if (desc.family.empty()) {
+            desc.family = infer_font_family(desc.logical_path);
+        }
+        if (desc.css_style.empty()) {
+            desc.css_style = "normal";
+        }
+        if (desc.css_weight.empty()) {
+            desc.css_weight = "400";
+        }
+        font_face_descs.push_back(std::move(desc));
+    };
+
+    for (auto const& font_ref : snapshot.font_assets) {
+        if (font_ref.fingerprint == 0) {
+            continue;
+        }
+        FontFaceDesc desc{};
+        desc.logical_path = make_font_logical_path(font_ref.fingerprint);
+        desc.fingerprint = font_ref.fingerprint;
+        auto [family, style_name] = parse_font_family_and_style(font_ref.resource_root);
+        desc.family = std::move(family);
+        desc.css_style = infer_font_css_style(style_name);
+        desc.css_weight = infer_font_weight_from_style(style_name);
+        add_font_face(std::move(desc));
+    }
+
     for (auto const& logical_path : options.font_logical_paths) {
         if (logical_path.empty()) {
             continue;
         }
-        if (!font_paths.insert(logical_path).second) {
+        FontFaceDesc desc{};
+        desc.logical_path = logical_path;
+        desc.family = infer_font_family(logical_path);
+        desc.css_style = "normal";
+        desc.css_weight = "400";
+        desc.fingerprint = 0;
+        add_font_face(std::move(desc));
+    }
+
+    for (auto const& face : font_face_descs) {
+        auto asset = resolve_asset(options, face.logical_path, face.fingerprint, Html::AssetKind::Font);
+        if (!asset) {
+            font_assets.emplace(face.logical_path,
+                                make_placeholder_asset(face.logical_path, Html::AssetKind::Font));
             continue;
         }
-        auto asset = resolve_asset(options, logical_path, /*fingerprint=*/0, Html::AssetKind::Font);
-        if (!asset) {
-            return std::unexpected(asset.error());
-        }
-        font_assets.emplace(logical_path, std::move(*asset));
+        font_assets.emplace(face.logical_path, std::move(*asset));
     }
 
     auto dom_node_count = nodes.size();
@@ -694,17 +839,28 @@ auto Adapter::emit(Scene::DrawableBucketSnapshot const& snapshot,
         result.assets.push_back(entry.second);
     }
 
-    if (!font_assets.empty()) {
+    if (!font_face_descs.empty()) {
         if (!result.css.empty() && result.css.back() != '\n') {
             result.css.push_back('\n');
         }
-        for (auto const& entry : font_assets) {
-            auto const& asset = entry.second;
-            auto family = css_escape_single_quotes(infer_font_family(asset.logical_path));
+        for (auto const& face : font_face_descs) {
+            auto asset_it = font_assets.find(face.logical_path);
+            if (asset_it == font_assets.end()) {
+                continue;
+            }
+            auto const& asset = asset_it->second;
+            auto family_name = face.family.empty() ? infer_font_family(face.logical_path) : face.family;
+            auto family = css_escape_single_quotes(family_name);
             auto format = infer_font_format(asset.mime_type, asset.logical_path);
+            auto style_value = face.css_style.empty() ? std::string{"normal"} : face.css_style;
+            auto weight_value = face.css_weight.empty() ? std::string{"400"} : face.css_weight;
             result.css += "@font-face{font-family:'";
             result.css += family;
-            result.css += "';src:url(\"assets/";
+            result.css += "';font-style:";
+            result.css += style_value;
+            result.css += ";font-weight:";
+            result.css += weight_value;
+            result.css += ";src:url(\"assets/";
             result.css += asset.logical_path;
             result.css += "\") format('";
             result.css += format;

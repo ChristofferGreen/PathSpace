@@ -8,9 +8,29 @@
 
 #include <chrono>
 #include <iostream>
+#include <mutex>
+#include <unordered_map>
 #include <utility>
 
 namespace {
+
+using BindingWeakMap = std::unordered_map<std::string, std::weak_ptr<SP::UI::Declarative::HistoryBinding>>;
+
+BindingWeakMap& history_binding_map() {
+    static BindingWeakMap map;
+    return map;
+}
+
+std::mutex& history_binding_mutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
+void register_history_binding(std::string const& root,
+                              std::shared_ptr<SP::UI::Declarative::HistoryBinding> const& binding) {
+    std::lock_guard lock(history_binding_mutex());
+    history_binding_map()[root] = binding;
+}
 
 auto now_timestamp_ns() -> std::uint64_t {
     auto now = std::chrono::steady_clock::now().time_since_epoch();
@@ -173,6 +193,21 @@ auto CreateHistoryBinding(SP::PathSpace& space,
     binding->buttons_enabled = false;
     binding->buttons_enabled_last_change_ns = now_timestamp_ns();
     SetHistoryBindingState(space, *binding, "ready");
+    register_history_binding(binding->root, binding);
+    return binding;
+}
+
+auto LookupHistoryBinding(std::string const& history_root) -> std::shared_ptr<HistoryBinding> {
+    std::lock_guard lock(history_binding_mutex());
+    auto& map = history_binding_map();
+    auto it = map.find(history_root);
+    if (it == map.end()) {
+        return {};
+    }
+    auto binding = it->second.lock();
+    if (!binding) {
+        map.erase(it);
+    }
     return binding;
 }
 

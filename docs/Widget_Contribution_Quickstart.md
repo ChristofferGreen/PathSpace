@@ -17,7 +17,7 @@ examples, tests, and tooling.
 > support-window deadline (February 1, 2026) and the authoritative plan link.
 
 ## Prerequisites
-- Read `docs/Plan_SceneGraph.md` (Phase 8), `docs/AI_Paths.md`
+- Read `docs/finished/Plan_SceneGraph_Finished.md` (archived Phase 8), `docs/AI_Paths.md`
   (widgets section), and—only when diagnosing compatibility bugs—skim the legacy builder code in
   `src/pathspace/ui/WidgetBuildersCore.cpp`.
 - Keep `docs/Widget_Schema_Reference.md` nearby; it mirrors the declarative schema headers so you can confirm every node you author.
@@ -131,7 +131,7 @@ The steps below describe the declarative workflow. When legacy builder files are
   theme overrides so the runtime-focused sample stays current.
 - Update `docs/WidgetDeclarativeAPI.md` whenever workflow, readiness, or
   testing expectations change so contributors have a single operational guide.
-- Update `docs/Plan_SceneGraph.md` (Phase 8 status list) and
+- Update `docs/finished/Plan_SceneGraph_Finished.md` (Phase 8 status list) and
   `docs/AI_Onboarding_Next.md` to mention the new widget and any follow-on work.
 - If new queues or metadata land, refresh `docs/AI_Debugging_Playbook.md` with
   inspection tips.
@@ -161,9 +161,15 @@ The steps below describe the declarative workflow. When legacy builder files are
   every frame) and ensure residency metrics remain within budgets.
 - Validate HTML parity via `HtmlCanvasVerify` so DOM/canvas replays render the
   new widget correctly.
+- Font pipeline sanity (December 10, 2025): if text is missing or emoji lose
+  color, toggle `PATHSPACE_UI_FONT_MANAGER_ENABLED=0` to compare the shaped
+  path against the legacy bitmap fallback, then inspect `renderers/<rid>/targets/<tid>/output/v1/common/font*`
+  and the loop artifacts’ `font_diagnostics.jsonl` for zero atlas bytes or
+  missing `font_assets`. Gallery UITest goldens (`tests/ui/test_WidgetGallery.cpp`)
+  should stay green; rerun it when fonts or themes change.
 
 ## Hand-off Requirements
-- Update `docs/Plan_SceneGraph.md` to flip the relevant bullet
+- Update `docs/finished/Plan_SceneGraph_Finished.md` to flip the relevant bullet
   (Phase 8) and capture follow-ups.
 - Mirror the change in `docs/AI_Onboarding_Next.md` so the next maintainer sees
   the fresh coverage status.

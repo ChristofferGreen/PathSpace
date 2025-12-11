@@ -12,6 +12,9 @@
 #include <pathspace/web/serve_html/routing/AuthController.hpp>
 #include <pathspace/web/serve_html/routing/HttpHelpers.hpp>
 #include <pathspace/web/serve_html/routing/OpsController.hpp>
+#include <pathspace/web/serve_html/TimeUtils.hpp>
+
+#include <pathspace/ui/DiagnosticsSummaryJson.hpp>
 
 #include "core/Error.hpp"
 
@@ -56,6 +59,30 @@ std::string make_metrics_publish_path(std::string const& apps_root) {
     }
     path.append("/io/metrics/web_server/serve_html/live");
     return path;
+}
+
+std::string make_ui_metrics_publish_path(std::string const& apps_root) {
+    if (apps_root.empty()) {
+        return {};
+    }
+    std::string path = apps_root;
+    while (path.size() > 1 && path.back() == '/') {
+        path.pop_back();
+    }
+    path.append("/io/metrics/web_server/serve_html/ui_targets");
+    return path;
+}
+
+auto build_ui_diagnostics_json(PathSpace& space) -> std::optional<nlohmann::json> {
+    auto summaries = UI::Runtime::Diagnostics::CollectTargetDiagnostics(space);
+    if (!summaries) {
+        std::cerr << "[serve_html] Failed to read UI diagnostics: "
+                  << SP::describeError(summaries.error()) << "\n";
+        return std::nullopt;
+    }
+
+    auto captured_at = format_timestamp(std::chrono::system_clock::now());
+    return UI::Runtime::Diagnostics::SerializeTargetDiagnostics(*summaries, captured_at);
 }
 } // namespace
 
@@ -117,24 +144,42 @@ int RunServeHtmlServer(ServeHtmlSpace& space, ServeHtmlOptions const& options) {
         return EXIT_FAILURE;
     }
 
-    auto           metrics_publish_path = make_metrics_publish_path(options.apps_root);
+    auto metrics_publish_path    = make_metrics_publish_path(options.apps_root);
+    auto ui_metrics_publish_path = make_ui_metrics_publish_path(options.apps_root);
     std::atomic<bool> metrics_publish_stop{false};
     std::thread        metrics_publish_thread;
-    if (!metrics_publish_path.empty()) {
+    if (!metrics_publish_path.empty() || !ui_metrics_publish_path.empty()) {
         metrics_publish_thread = std::thread([&space,
                                               metrics_publish_path,
+                                              ui_metrics_publish_path,
                                               &metrics,
                                               &metrics_publish_stop]() {
             while (!metrics_publish_stop.load(std::memory_order_acquire)
                    && !g_should_stop.load(std::memory_order_acquire)) {
-                auto snapshot   = metrics.capture_snapshot();
-                auto serialized = metrics.snapshot_json(snapshot).dump();
-                auto status = replace_single_value(space, metrics_publish_path, serialized);
-                if (!status) {
-                    std::cerr << "[serve_html] Failed to publish metrics at "
-                              << metrics_publish_path << ": "
-                              << SP::describeError(status.error()) << "\n";
+                if (!metrics_publish_path.empty()) {
+                    auto snapshot   = metrics.capture_snapshot();
+                    auto serialized = metrics.snapshot_json(snapshot).dump();
+                    auto status = replace_single_value(space, metrics_publish_path, serialized);
+                    if (!status) {
+                        std::cerr << "[serve_html] Failed to publish metrics at "
+                                  << metrics_publish_path << ": "
+                                  << SP::describeError(status.error()) << "\n";
+                    }
                 }
+
+                if (!ui_metrics_publish_path.empty()) {
+                    if (auto ui_json = build_ui_diagnostics_json(space)) {
+                        auto status = replace_single_value(space,
+                                                           ui_metrics_publish_path,
+                                                           ui_json->dump());
+                        if (!status) {
+                            std::cerr << "[serve_html] Failed to publish UI diagnostics at "
+                                      << ui_metrics_publish_path << ": "
+                                      << SP::describeError(status.error()) << "\n";
+                        }
+                    }
+                }
+
                 for (int i = 0; i < 10 && !metrics_publish_stop.load(std::memory_order_acquire)
                                      && !g_should_stop.load(std::memory_order_acquire);
                      ++i) {
@@ -179,6 +224,26 @@ int RunServeHtmlServer(ServeHtmlSpace& space, ServeHtmlOptions const& options) {
         auto body     = metrics.render_prometheus(snapshot);
         res.set_header("Cache-Control", "no-store");
         res.set_content(body, "text/plain; version=0.0.4");
+    });
+
+    server.Get("/diagnostics/ui", [&](httplib::Request const& req, httplib::Response& res) {
+        [[maybe_unused]] RequestMetricsScope request_scope{metrics, RouteMetric::Diagnostics, res};
+        auto session_cookie = read_cookie_value(req, session_store.cookie_name());
+        if (!apply_rate_limits(http_context, "diagnostics_ui", req, res, session_cookie, nullptr)) {
+            return;
+        }
+        if (!ensure_session(http_context, req, res, session_cookie)) {
+            return;
+        }
+
+        auto payload = build_ui_diagnostics_json(space);
+        if (!payload) {
+            respond_server_error(res, "failed to build UI diagnostics snapshot");
+            return;
+        }
+
+        res.set_header("Cache-Control", "no-store");
+        res.set_content(payload->dump(2), "application/json");
     });
 
     auto html_controller = HtmlController::Create(http_context);

@@ -113,6 +113,23 @@ Within each widget subtree we store focus metadata (`focus/order`), layout hints
 Undo/redo integrations must keep all data for a logical command inside a single widget root. For paint surfaces that means colocating stroke history, layout/index metadata, and any ancillary bookkeeping under `widgets/<id>/state/...`. Editors that need to update shared indexes should funnel those writes through a command-log subtree owned by the same root before enabling history; duplicate `HistoryOptions::sharedStackKey` values across siblings are now rejected by `enableHistory`, so regrouping is required before opting-in.
 Declarative builders now have a dedicated helper: `SP::UI::Declarative::HistoryBinding` seeds metrics via `InitializeHistoryMetrics`, creates the alias + `UndoableSpace` with `CreateHistoryBinding`, toggles undo/redo UI state through `SetHistoryBindingButtonsEnabled`, tracks action totals with `RecordHistoryBindingActionResult`, and refreshes the serialized telemetry card via `PublishHistoryBindingCard`. New widgets should reuse this helper instead of duplicating the paint example’s old history glue.
 
+History bindings and inspector dashboards are expected to consume the finalized telemetry schema: `_history/stats/limits/{maxEntries,maxBytesRetained,keepLatestForMs,ramCacheEntries,maxDiskBytes,persistHistory,restoreFromPersistence}` exposes the active retention budgets, while `_history/stats/compaction/{runs,entries,bytes,lastTimestampMs}` mirrors the trim metrics so UI panels can present compaction health without scraping the raw struct. See `docs/History_Journal_Wiring.md` for the authoritative table before extending bindings.
+
+##### History binding workflow (December 9, 2025 update)
+1. Wrap the widget root in `SP::History::UndoableSpace` before mounting declarative widgets. Call `enableHistory(root, HistoryOptions{...})` with the finalized defaults (`maxEntries = 128`, `ramCacheEntries = 8`, mutation journal forced on) and set `sharedStackKey` only when multiple roots intentionally reuse the same stack. Duplicate keys now fail fast so widgets are forced to consolidate command logs under a single undo root.
+2. Immediately register the declarative helper: `auto binding = SP::UI::Declarative::CreateHistoryBinding(space, root_path, options)`. The helper seeds `_history/undo`, `_history/redo`, and `_history/stats/*` mirrors, wires `_history/set_manual_garbage_collect`, and primes `/widgets/<id>/metrics/history_binding/` with enablement state.
+3. Hook UI affordances directly to `_history/{undo,redo}` inserts (`HistoryBinding::record_action()` already publishes totals and last-error state) and rely on `SetHistoryBindingButtonsEnabled` to keep button/shortcut state synchronized with the `_history/lastOperation/*` nodes.
+4. Call `PublishHistoryBindingCard` whenever retention knobs or telemetry change; the helper writes the serialized card under `metrics/history_binding/card` so inspector overlays and ServeHtml dashboards can render the same summary without parsing raw `_history/*` leaves.
+
+| Path | Purpose | Notes |
+| --- | --- | --- |
+| `<root>/_history/stats/limits/*` | Mirrors the effective `HistoryOptions` (entries, bytes, persistence, cache, restore flags). | Consumed by HistoryBinding and external dashboards; source of truth documented in `docs/History_Journal_Wiring.md`. |
+| `<root>/_history/stats/compaction/*` | Tracks journal trims (runs, entries, bytes, timestamps). | Declarative widgets surface these counters via history binding telemetry so inspector panels can warn when compaction lags. |
+| `<root>/_history/lastOperation/*` | Records the last undo/redo action, duration, and byte deltas. | HistoryBinding copies these fields into `metrics/history_binding/last_operation/*` for UI toggles. |
+| `<widget>/metrics/history_binding/{card,state,*}` | Declarative helper’s mirror of enablement, pending actions, totals, and serialized telemetry cards. | Consumers should read these nodes instead of scraping `_history/*`; they remain stable even if the journal structure evolves. |
+
+These steps keep the declarative documentation aligned with the finalized undo journal guardrails and ensure widgets inherit the shared telemetry surface without bespoke glue.
+
 #### Event Dispatch Contract
 
 - Widget bindings enqueue `WidgetOp` items describing the widget path and event kind (e.g., `Press`, `Toggle`, `Draw`).
@@ -120,6 +137,8 @@ Declarative builders now have a dedicated helper: `SP::UI::Declarative::HistoryB
 - Missing handlers are treated as no-ops; future telemetry work will decide whether to mirror these drops under `<widget>/log/events`.
 - Scenes that need higher-level interception can swap the handler node entirely (write a different callable) or wrap the existing callback in a delegating lambda—no separate routing tables are required.
 - Declarative scenes now have first-class helpers: `Widgets::Handlers::Read/Replace/Wrap/Restore` expose the live handler registry so instrumentation layers can wrap callbacks in place and roll back when overlays de-mount.
+
+`events/<event>/handler` now stores a `HandlerBinding { registry_key, kind, debug_label }` record instead of opaque lambdas. The registry key resolves back into the in-memory handler table, the kind identifies the widget event enum, and the debug label keeps inspector output human-readable. `Widgets::Handlers::*` helpers operate entirely in terms of these bindings, so instrumentation layers can wrap or restore callbacks without re-registering lambdas, and scenes that shadow handlers temporarily do not lose telemetry (`metrics/handlers/{invoked_total,missing_total}`) because the binding remains stable.
 
 Canonical namespaces stay consistent across widgets: `state/` for mutable widget data, `style/` for theme references and overrides, `layout/` for layout hints, `events/` for handler callables and their logs, `children/` for nested widget mount points, and `render/` for cached rendering artifacts.
 

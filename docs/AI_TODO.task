@@ -265,7 +265,7 @@ task {
   steps: [
     "DONE (Oct 20, 2025) Implement Widgets::Reducers::{WidgetOpsQueue, ReducePending, PublishActions} helpers with doctest coverage.",
     "DONE (Oct 20, 2025) Update widgets_example.cpp to seed a sample action and print reducer results.",
-    "DONE (Oct 20, 2025) Document reducer queues in Plan_SceneGraph.md and AI_Onboarding_Next.md." 
+    "DONE (Oct 20, 2025) Document reducer queues in finished/Plan_SceneGraph_Finished.md and AI_Onboarding_Next.md." 
   ]
 }
 
@@ -283,7 +283,7 @@ task {
 
   steps: [
     "DONE (Oct 20, 2025) Implemented `Widgets::Bindings::Dispatch{Button,Toggle,Slider}` helpers that diff widget state, submit dirty rect hints, and auto-schedule renders.",
-    "DONE (Oct 20, 2025) Defined `WidgetOp` schema under `widgets/<id>/ops/inbox/queue` (documented in Plan_SceneGraph.md & AI_Paths.md).",
+    "DONE (Oct 20, 2025) Defined `WidgetOp` schema under `widgets/<id>/ops/inbox/queue` (documented in finished/Plan_SceneGraph_Finished.md & AI_Paths.md).",
     "DONE (Oct 20, 2025) Added doctest coverage exercising hover/press/release and slider updates (loop=5 harness)."
   ]
 }
@@ -341,7 +341,7 @@ task {
   steps: [
     "DONE (Oct 23, 2025) Audited LocalWindowBridge + example loops and added shared quit request wiring for widgets_example, paint_example, pixel_noise_example, and devices_example.",
     "DONE (Oct 23, 2025) Captured Command+Q / Ctrl+Q / Alt+F4 in LocalWindowBridge::RequestLocalWindowQuit() so OS shortcuts close windows via the shared shutdown path.",
-    "DONE (Oct 23, 2025) Documented the quit shortcut manual test checklist in docs/AI_Onboarding_Next.md and cross-referenced the behaviour in Plan_SceneGraph.md."
+    "DONE (Oct 23, 2025) Documented the quit shortcut manual test checklist in docs/AI_Onboarding_Next.md and cross-referenced the behaviour in finished/Plan_SceneGraph_Finished.md."
   ]
 }
 
@@ -379,7 +379,7 @@ task {
   steps: [
     "DONE (Oct 21, 2025) Attach widget scenes to a software renderer target and present via PathWindowView while streaming present/FPS telemetry.",
     "DONE (Oct 21, 2025) Added WIDGETS_EXAMPLE_HEADLESS env toggle so headless/test contexts can skip the gallery window.",
-    "DONE (Oct 21, 2025) Updated docs/Plan_SceneGraph.md with gallery guidance and telemetry follow-ups."
+    "DONE (Oct 21, 2025) Updated docs/finished/Plan_SceneGraph_Finished.md with gallery guidance and telemetry follow-ups."
   ]
 }
 
@@ -394,7 +394,7 @@ task {
     "Dirty-hint bucketing or adaptive tile sizing keeps copied pixel counts proportional to brush area, not full-surface area.",
     "paint_example maintains ≥75 FPS at 2560×1600 and ≥70 FPS at 3840×2160 on reference hardware, with PATHSPACE_TRACE_DAMAGE logs confirming bounded damage regions.",
     "Encode/raster pass is parallelised across dirty tiles; benchmark captures show full-repaint FPS on the reference Mac Studio more than doubles vs the current single-threaded baseline.",
-    "Docs updated (Plan_SceneGraph.md, Plan_SceneGraph_Renderer_Finished.md, AI_Debugging_Playbook.md) with the new algorithm, metrics flag guidance, and measured results."
+    "Docs updated (finished/Plan_SceneGraph_Finished.md, Plan_SceneGraph_Renderer_Finished.md, AI_Debugging_Playbook.md) with the new algorithm, metrics flag guidance, and measured results."
   ]
 
   steps: [
@@ -419,7 +419,7 @@ task {
 
   steps: [
     "Investigate lightweight texture compositing or stroke decimation strategies for the demo.",
-    "Measure performance vs. current approach and capture findings in docs/Plan_SceneGraph.md.",
+    "Measure performance vs. current approach and capture findings in docs/finished/Plan_SceneGraph_Finished.md.",
     "Decide whether to upstream as default or leave as optional mode."
   ]
 }

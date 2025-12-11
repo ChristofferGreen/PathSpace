@@ -334,6 +334,9 @@ auto TriggerRender(PathSpace& space,
     if (!surfaceDesc) {
         return std::unexpected(surfaceDesc.error());
     }
+    if (auto status = validate_color_management_scope(*surfaceDesc); !status) {
+        return std::unexpected(status.error());
+    }
 
     auto const targetStr = std::string(targetPath.getPath());
     auto targetsPos = targetStr.find("/targets/");

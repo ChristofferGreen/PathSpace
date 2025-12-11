@@ -55,6 +55,7 @@ auto parse_env_bool(std::string const& text) -> std::optional<bool>;
 
 namespace PaintControlsNS = SP::Examples::PaintControls;
 using PaintControlsNS::BrushState;
+using PaintControlsNS::HistoryAction;
 using PaintLayoutMetrics = PaintControlsNS::PaintLayoutMetrics;
 using DeclarativeHistoryBinding = SP::UI::Declarative::HistoryBinding;
 namespace PaintScreenshot = SP::Examples::PaintScreenshot;
@@ -717,10 +718,14 @@ auto write_screenshot_metrics(std::optional<std::filesystem::path> const& metric
            << "}\n";
 }
 
-auto playback_scripted_strokes(SP::PathSpace& space, std::string const& widget_path) -> bool {
+auto playback_scripted_strokes(SP::PathSpace& space,
+                               SP::History::UndoableSpace* history_override,
+                               std::string const& widget_path) -> bool {
     auto actions = scripted_stroke_actions(widget_path);
     for (auto& action : actions) {
-        auto handled = SP::UI::Declarative::PaintRuntime::HandleAction(space, action);
+        auto handled = history_override
+                           ? SP::UI::Declarative::PaintRuntime::HandleAction(*history_override, action)
+                           : SP::UI::Declarative::PaintRuntime::HandleAction(space, action);
         if (!handled) {
             log_expected_error("PaintRuntime::HandleAction", handled.error());
             return false;
@@ -886,7 +891,7 @@ auto wait_for_paint_capture_ready(SP::PathSpace& space,
 auto run_gpu_smoke(SP::PathSpace& space,
                    std::string const& widget_path,
                    GpuSmokeConfig const& config) -> bool {
-    if (!playback_scripted_strokes(space, widget_path)) {
+    if (!playback_scripted_strokes(space, nullptr, widget_path)) {
         return false;
     }
 
@@ -1039,6 +1044,109 @@ auto set_history_buttons_enabled(SP::PathSpace& space,
     update(bindings.undo_button_path, "undo");
     update(bindings.redo_button_path, "redo");
 }
+
+auto get_history_binding(PaintUiBindings const& bindings)
+    -> std::shared_ptr<DeclarativeHistoryBinding> {
+    if (!bindings.history_binding || !*bindings.history_binding) {
+        return {};
+    }
+    return *bindings.history_binding;
+}
+
+auto history_status_label_path(PaintUiBindings const& bindings) -> std::string {
+    if (!bindings.status_label_path || bindings.status_label_path->empty()) {
+        return {};
+    }
+    return *bindings.status_label_path;
+}
+
+auto write_history_status(SP::PathSpace& space,
+                          PaintUiBindings const& bindings,
+                          std::string_view message) -> void {
+    auto status_path = history_status_label_path(bindings);
+    if (status_path.empty()) {
+        return;
+    }
+    auto widget_path = SP::UI::Runtime::WidgetPath{status_path};
+    log_error(SP::UI::Declarative::Label::SetText(space, widget_path, std::string(message)),
+              "Label::SetText");
+}
+
+auto history_command_leaf(HistoryAction action) -> std::string_view {
+    return action == HistoryAction::Undo ? "_history/undo" : "_history/redo";
+}
+
+auto perform_history_action(SP::PathSpace& space,
+                            PaintUiBindings const& bindings,
+                            HistoryAction action,
+                            std::string_view source_label) -> void {
+    auto binding_ptr = get_history_binding(bindings);
+    if (!binding_ptr) {
+        std::cerr << "paint_example: history action requested from " << source_label
+                  << " but binding is missing\n";
+        return;
+    }
+    auto undo_space = binding_ptr->undo;
+    if (!undo_space) {
+        std::cerr << "paint_example: history binding missing undo space for source "
+                  << source_label << "\n";
+        return;
+    }
+
+    std::string command_path = binding_ptr->root;
+    if (!command_path.empty() && command_path.back() != '/') {
+        command_path.push_back('/');
+    }
+    command_path.append(history_command_leaf(action));
+
+    auto result = undo_space->insert(command_path, std::size_t{1});
+    auto binding_action = action == HistoryAction::Undo ? SP::UI::Declarative::HistoryBindingAction::Undo
+                                                       : SP::UI::Declarative::HistoryBindingAction::Redo;
+    bool success = result.errors.empty();
+    SP::UI::Declarative::RecordHistoryBindingActionResult(space, *binding_ptr, binding_action, success);
+    if (!success) {
+        auto const& error = result.errors.front();
+        log_expected_error("history command", error);
+        SP::UI::Declarative::SetHistoryBindingState(space, *binding_ptr, "error");
+        SP::UI::Declarative::RecordHistoryBindingError(space,
+                                                       binding_ptr->metrics_root,
+                                                       std::string(history_command_leaf(action)),
+                                                       &error);
+        SP::UI::Declarative::PublishHistoryBindingCard(space, *binding_ptr);
+        return;
+    }
+
+    SP::UI::Declarative::SetHistoryBindingState(space, *binding_ptr, "ready");
+    write_history_status(space,
+                         bindings,
+                         action == HistoryAction::Undo ? "Undo applied" : "Redo applied");
+}
+
+struct HistoryShortcutHandler {
+    SP::PathSpace* space = nullptr;
+    PaintUiBindings const* bindings = nullptr;
+
+    void operator()(SP::UI::LocalKeyEvent const& event) const {
+        if (!space || !bindings) {
+            return;
+        }
+        if (event.type != SP::UI::LocalKeyEventType::KeyDown) {
+            return;
+        }
+        bool meta = (event.modifiers & SP::UI::LocalKeyModifierCommand) != 0;
+        bool ctrl = (event.modifiers & SP::UI::LocalKeyModifierControl) != 0;
+        if (!(meta || ctrl)) {
+            return;
+        }
+        char32_t ch = event.character;
+        if (!(ch == U'z' || ch == U'Z')) {
+            return;
+        }
+        bool redo = (event.modifiers & SP::UI::LocalKeyModifierShift) != 0;
+        auto action = redo ? HistoryAction::Redo : HistoryAction::Undo;
+        perform_history_action(*space, *bindings, action, "shortcut");
+    }
+};
 
 auto build_controls_fragment(PaintUiBindings const& bindings,
                              PaintControlsNS::PaintLayoutMetrics const& layout,
@@ -1195,7 +1303,7 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
     HistoryActionsConfig actions_config{
         .layout = layout,
         .on_action = [bindings](SP::UI::Declarative::ButtonContext& ctx, HistoryAction action) {
-            auto binding_ptr = bindings.history_binding ? *bindings.history_binding : std::shared_ptr<DeclarativeHistoryBinding>{};
+            auto binding_ptr = get_history_binding(bindings);
             if (!binding_ptr) {
                 std::cerr << "paint_example: history binding missing for "
                           << (action == HistoryAction::Undo ? "undo" : "redo")
@@ -1211,42 +1319,11 @@ auto build_controls_fragment(PaintUiBindings const& bindings,
                                                                &missing_error);
                 return;
             }
-            auto root = SP::ConcretePathStringView{binding_ptr->root};
-            auto action_kind = action == HistoryAction::Undo ? SP::UI::Declarative::HistoryBindingAction::Undo
-                                                             : SP::UI::Declarative::HistoryBindingAction::Redo;
-            auto update_action_metrics = [&](bool success) {
-                SP::UI::Declarative::RecordHistoryBindingActionResult(ctx.space, *binding_ptr, action_kind, success);
-            };
-            SP::Expected<void> status = action == HistoryAction::Undo ? binding_ptr->undo->undo(root)
-                                                                      : binding_ptr->undo->redo(root);
-            auto action_label = action == HistoryAction::Undo ? "UndoableSpace::undo" : "UndoableSpace::redo";
-            if (!status) {
-                update_action_metrics(false);
-                log_error(status, action_label);
-                SP::UI::Declarative::SetHistoryBindingState(ctx.space, *binding_ptr, "error");
-
-                auto error_info = SP::UI::Declarative::RecordHistoryBindingError(ctx.space,
-                                                                                binding_ptr->metrics_root,
-                                                                                action_label,
-                                                                                &status.error());
-                binding_ptr->last_error_context = error_info.context;
-                binding_ptr->last_error_message = error_info.message;
-                binding_ptr->last_error_code = error_info.code;
-                binding_ptr->last_error_timestamp_ns = error_info.timestamp_ns;
-                SP::UI::Declarative::PublishHistoryBindingCard(ctx.space, *binding_ptr);
-                return;
-            }
-            update_action_metrics(true);
-            SP::UI::Declarative::SetHistoryBindingState(ctx.space, *binding_ptr, "ready");
-            auto status_label = bindings.status_label_path ? *bindings.status_label_path : std::string{};
-            if (!status_label.empty()) {
-                auto status_path = SP::UI::Runtime::WidgetPath{status_label};
-                log_error(SP::UI::Declarative::Label::SetText(ctx.space,
-                                                              status_path,
-                                                              action == HistoryAction::Undo ? "Undo applied"
-                                                                                           : "Redo applied"),
-                          "Label::SetText");
-            }
+            perform_history_action(ctx.space,
+                                   bindings,
+                                   action,
+                                   action == HistoryAction::Undo ? "undo_button"
+                                                                 : "redo_button");
         },
     };
     controls.panels.push_back(SP::UI::Declarative::Stack::Panel{
@@ -1833,7 +1910,9 @@ auto RunPaintExample(CommandLineOptions options) -> int {
             std::cerr << "\n";
         };
         log_lifecycle_state("before_playback");
-        if (!playback_scripted_strokes(space, paint_widget_path)) {
+        auto binding_ptr = get_history_binding(bindings);
+        auto undo_space = binding_ptr ? binding_ptr->undo.get() : nullptr;
+        if (!playback_scripted_strokes(space, undo_space, paint_widget_path)) {
             SP::System::ShutdownDeclarativeRuntime(space);
             return 1;
         }
@@ -1987,6 +2066,10 @@ auto RunPaintExample(CommandLineOptions options) -> int {
 
     LocalInputBridge bridge{};
     bridge.space = &space;
+    HistoryShortcutHandler shortcut_handler{&space, &bindings};
+    bridge.on_key_event = [handler = std::move(shortcut_handler)](SP::UI::LocalKeyEvent const& event) {
+        handler(event);
+    };
     install_local_window_bridge(bridge);
 
     PresentLoopHooks hooks{};

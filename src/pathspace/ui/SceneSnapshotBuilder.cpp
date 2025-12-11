@@ -320,6 +320,14 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
     }
 
     auto revisionBase = make_revision_base(scene_path_, revision);
+    auto store_enveloped = [&](std::string const& path, auto const& obj) -> Expected<void> {
+        auto encoded = encode_bucket_envelope(obj);
+        if (!encoded) {
+            return std::unexpected(encoded.error());
+        }
+        return replace_single<std::vector<std::uint8_t>>(space_, path, *encoded);
+    };
+
     std::vector<std::uint64_t> fingerprints = bucket.drawable_fingerprints;
     if (fingerprints.size() != bucket.drawable_ids.size()) {
         auto computed = compute_drawable_fingerprints(bucket);
@@ -329,76 +337,62 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
         fingerprints = std::move(*computed);
     }
 
-    auto drawablesBytes = to_bytes(BucketDrawablesBinary{
-        .drawable_ids    = bucket.drawable_ids,
-        .command_offsets = bucket.command_offsets,
-        .command_counts  = bucket.command_counts,
-    });
-    if (!drawablesBytes) {
-        return std::unexpected(drawablesBytes.error());
-    }
-    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/drawables.bin", *drawablesBytes); !status) {
+    if (auto status = store_enveloped(revisionBase + "/bucket/drawables.bin",
+                                      BucketDrawablesBinary{
+                                          .drawable_ids    = bucket.drawable_ids,
+                                          .command_offsets = bucket.command_offsets,
+                                          .command_counts  = bucket.command_counts,
+                                      });
+        !status) {
         return status;
     }
 
-    auto fingerprintBytes = to_bytes(BucketFingerprintsBinary{ .drawable_fingerprints = fingerprints });
-    if (!fingerprintBytes) {
-        return std::unexpected(fingerprintBytes.error());
-    }
-    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/fingerprints.bin", *fingerprintBytes); !status) {
+    if (auto status = store_enveloped(revisionBase + "/bucket/fingerprints.bin",
+                                      BucketFingerprintsBinary{ .drawable_fingerprints = fingerprints });
+        !status) {
         return status;
     }
 
-    auto transformsBytes = to_bytes(BucketTransformsBinary{ .world_transforms = bucket.world_transforms });
-    if (!transformsBytes) {
-        return std::unexpected(transformsBytes.error());
-    }
-    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/transforms.bin", *transformsBytes); !status) {
+    if (auto status = store_enveloped(revisionBase + "/bucket/transforms.bin",
+                                      BucketTransformsBinary{ .world_transforms = bucket.world_transforms });
+        !status) {
         return status;
     }
 
-    auto boundsBytes = to_bytes(BucketBoundsBinary{
-        .spheres   = bucket.bounds_spheres,
-        .boxes     = bucket.bounds_boxes,
-        .box_valid = bucket.bounds_box_valid,
-    });
-    if (!boundsBytes) {
-        return std::unexpected(boundsBytes.error());
-    }
-    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/bounds.bin", *boundsBytes); !status) {
+    if (auto status = store_enveloped(revisionBase + "/bucket/bounds.bin",
+                                      BucketBoundsBinary{
+                                          .spheres   = bucket.bounds_spheres,
+                                          .boxes     = bucket.bounds_boxes,
+                                          .box_valid = bucket.bounds_box_valid,
+                                      });
+        !status) {
         return status;
     }
 
-    auto stateBytes = to_bytes(BucketStateBinary{
-        .layers         = bucket.layers,
-        .z_values       = bucket.z_values,
-        .material_ids   = bucket.material_ids,
-        .pipeline_flags = bucket.pipeline_flags,
-        .visibility     = bucket.visibility,
-    });
-    if (!stateBytes) {
-        return std::unexpected(stateBytes.error());
-    }
-    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/state.bin", *stateBytes); !status) {
+    if (auto status = store_enveloped(revisionBase + "/bucket/state.bin",
+                                      BucketStateBinary{
+                                          .layers         = bucket.layers,
+                                          .z_values       = bucket.z_values,
+                                          .material_ids   = bucket.material_ids,
+                                          .pipeline_flags = bucket.pipeline_flags,
+                                          .visibility     = bucket.visibility,
+                                      });
+        !status) {
         return status;
     }
 
-    auto cmdBytes = to_bytes(BucketCommandBufferBinary{
-        .command_kinds   = bucket.command_kinds,
-        .command_payload = bucket.command_payload,
-    });
-    if (!cmdBytes) {
-        return std::unexpected(cmdBytes.error());
-    }
-    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/cmd-buffer.bin", *cmdBytes); !status) {
+    if (auto status = store_enveloped(revisionBase + "/bucket/cmd-buffer.bin",
+                                      BucketCommandBufferBinary{
+                                          .command_kinds   = bucket.command_kinds,
+                                          .command_payload = bucket.command_payload,
+                                      });
+        !status) {
         return status;
     }
 
-    auto strokeBytes = to_bytes(BucketStrokePointsBinary{ .stroke_points = bucket.stroke_points });
-    if (!strokeBytes) {
-        return std::unexpected(strokeBytes.error());
-    }
-    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/strokes.bin", *strokeBytes); !status) {
+    if (auto status = store_enveloped(revisionBase + "/bucket/strokes.bin",
+                                      BucketStrokePointsBinary{ .stroke_points = bucket.stroke_points });
+        !status) {
         return status;
     }
 
@@ -406,19 +400,15 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
     if (clipHeads.empty()) {
         clipHeads.assign(bucket.drawable_ids.size(), -1);
     }
-    auto clipHeadBytes = to_bytes(BucketClipHeadsBinary{ .clip_head_indices = clipHeads });
-    if (!clipHeadBytes) {
-        return std::unexpected(clipHeadBytes.error());
-    }
-    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/clip-heads.bin", *clipHeadBytes); !status) {
+    if (auto status = store_enveloped(revisionBase + "/bucket/clip-heads.bin",
+                                      BucketClipHeadsBinary{ .clip_head_indices = clipHeads });
+        !status) {
         return status;
     }
 
-    auto clipNodesBytes = to_bytes(BucketClipNodesBinary{ .clip_nodes = bucket.clip_nodes });
-    if (!clipNodesBytes) {
-        return std::unexpected(clipNodesBytes.error());
-    }
-    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/clip-nodes.bin", *clipNodesBytes); !status) {
+    if (auto status = store_enveloped(revisionBase + "/bucket/clip-nodes.bin",
+                                      BucketClipNodesBinary{ .clip_nodes = bucket.clip_nodes });
+        !status) {
         return status;
     }
 
@@ -429,15 +419,13 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
             authoringMap[i].drawable_id = bucket.drawable_ids[i];
         }
     }
-    auto authoringBytes = to_bytes(BucketAuthoringMapBinary{ .authoring_map = authoringMap });
-    if (!authoringBytes) {
-        return std::unexpected(authoringBytes.error());
-    }
-    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/authoring-map.bin", *authoringBytes); !status) {
+    if (auto status = store_enveloped(revisionBase + "/bucket/authoring-map.bin",
+                                      BucketAuthoringMapBinary{ .authoring_map = authoringMap });
+        !status) {
         return status;
     }
 
-    auto fontAssetsBytes = to_bytes(BucketFontAssetsBinary{ .font_assets = bucket.font_assets });
+    auto fontAssetsBytes = encode_font_assets(bucket.font_assets);
     if (!fontAssetsBytes) {
         return std::unexpected(fontAssetsBytes.error());
     }
@@ -445,11 +433,9 @@ auto SceneSnapshotBuilder::store_bucket(std::uint64_t revision,
         return status;
     }
 
-    auto glyphVerticesBytes = to_bytes(BucketGlyphVerticesBinary{ .glyph_vertices = bucket.glyph_vertices });
-    if (!glyphVerticesBytes) {
-        return std::unexpected(glyphVerticesBytes.error());
-    }
-    if (auto status = replace_single<std::vector<std::uint8_t>>(space_, revisionBase + "/bucket/glyph-vertices.bin", *glyphVerticesBytes); !status) {
+    if (auto status = store_enveloped(revisionBase + "/bucket/glyph-vertices.bin",
+                                      BucketGlyphVerticesBinary{ .glyph_vertices = bucket.glyph_vertices });
+        !status) {
         return status;
     }
 

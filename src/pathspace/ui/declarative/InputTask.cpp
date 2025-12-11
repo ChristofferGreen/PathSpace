@@ -2,6 +2,7 @@
 #include <pathspace/ui/declarative/Detail.hpp>
 #include "widgets/Common.hpp"
 
+#include <pathspace/ui/declarative/HistoryBinding.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/Reducers.hpp>
 #include <pathspace/ui/declarative/Telemetry.hpp>
@@ -503,7 +504,10 @@ void dispatch_action(PathSpace& space,
     enqueue_widget_event(space, action, *route, stats);
 
     if (route->kind == HandlerKind::PaintDraw) {
-        auto runtime_status = PaintRuntime::HandleAction(space, action);
+        auto binding = LookupHistoryBinding(action.widget_path);
+        auto runtime_status = (binding && binding->undo)
+                                  ? PaintRuntime::HandleAction(*binding->undo, action)
+                                  : PaintRuntime::HandleAction(space, action);
         if (!runtime_status) {
             auto message = runtime_status.error().message.value_or("paint runtime failure");
             auto formatted = format_handler_error(action,

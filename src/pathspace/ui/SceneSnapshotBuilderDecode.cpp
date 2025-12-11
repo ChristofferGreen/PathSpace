@@ -85,6 +85,16 @@ auto decode_drawables_binary_varint(std::vector<std::uint8_t> const& bytes)
     return decoded;
 }
 
+template <typename T>
+auto decode_bucket_section(std::vector<std::uint8_t> const& bytes) -> Expected<T> {
+    if (auto enveloped = decode_bucket_envelope_as<T>(bytes); enveloped) {
+        return enveloped;
+    } else if (enveloped.error().code != Error::Code::UnserializableType) {
+        return std::unexpected(enveloped.error());
+    }
+    return from_bytes<T>(bytes);
+}
+
 } // namespace
 
 auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
@@ -109,22 +119,39 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     auto drawablesBytes = read_bytes(revisionBase + "/bucket/drawables.bin");
     if (!drawablesBytes) return std::unexpected(drawablesBytes.error());
     BucketDrawablesBinary drawablesBinary{};
-    if (auto decoded = from_bytes<BucketDrawablesBinary>(*drawablesBytes); decoded) {
+    auto decode_drawables = [&](std::vector<std::uint8_t> const& bytes)
+        -> Expected<BucketDrawablesBinary> {
+        auto enveloped = decode_bucket_envelope_as<BucketDrawablesBinary>(bytes);
+        if (enveloped) {
+            return enveloped;
+        }
+        auto const& envelope_error = enveloped.error();
+        if (envelope_error.code != Error::Code::UnserializableType) {
+            return std::unexpected(envelope_error);
+        }
+        if (auto decoded = from_bytes<BucketDrawablesBinary>(bytes); decoded) {
+            return decoded;
+        } else {
+            auto fallback = decode_drawables_binary_varint(bytes);
+            if (!fallback) {
+                return std::unexpected(fallback.error());
+            }
+            return fallback;
+        }
+    };
+
+    if (auto decoded = decode_drawables(*drawablesBytes); decoded) {
         drawablesBinary = std::move(*decoded);
     } else {
-        auto fallback = decode_drawables_binary_varint(*drawablesBytes);
-        if (!fallback) {
-            return std::unexpected(annotate_error(decoded.error(),
-                                                  revisionBase + "/bucket/drawables.bin"));
-        }
-        drawablesBinary = std::move(*fallback);
+        return std::unexpected(annotate_error(decoded.error(),
+                                              revisionBase + "/bucket/drawables.bin"));
     }
 
     std::vector<std::uint64_t> drawable_fingerprints;
     {
         auto fingerprintBytes = space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/fingerprints.bin");
         if (fingerprintBytes) {
-            auto decoded = from_bytes<BucketFingerprintsBinary>(*fingerprintBytes);
+            auto decoded = decode_bucket_section<BucketFingerprintsBinary>(*fingerprintBytes);
             if (!decoded) {
                 return std::unexpected(annotate_error(decoded.error(), revisionBase + "/bucket/fingerprints.bin"));
             }
@@ -140,29 +167,29 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
 
     auto transformsBytes = read_bytes(revisionBase + "/bucket/transforms.bin");
     if (!transformsBytes) return std::unexpected(transformsBytes.error());
-    auto transformsDecoded = from_bytes<BucketTransformsBinary>(*transformsBytes);
+    auto transformsDecoded = decode_bucket_section<BucketTransformsBinary>(*transformsBytes);
     if (!transformsDecoded) return std::unexpected(annotate_error(transformsDecoded.error(), revisionBase + "/bucket/transforms.bin"));
 
     auto boundsBytes = read_bytes(revisionBase + "/bucket/bounds.bin");
     if (!boundsBytes) return std::unexpected(boundsBytes.error());
-    auto boundsDecoded = from_bytes<BucketBoundsBinary>(*boundsBytes);
+    auto boundsDecoded = decode_bucket_section<BucketBoundsBinary>(*boundsBytes);
     if (!boundsDecoded) return std::unexpected(annotate_error(boundsDecoded.error(), revisionBase + "/bucket/bounds.bin"));
 
     auto stateBytes = read_bytes(revisionBase + "/bucket/state.bin");
     if (!stateBytes) return std::unexpected(stateBytes.error());
-    auto stateDecoded = from_bytes<BucketStateBinary>(*stateBytes);
+    auto stateDecoded = decode_bucket_section<BucketStateBinary>(*stateBytes);
     if (!stateDecoded) return std::unexpected(annotate_error(stateDecoded.error(), revisionBase + "/bucket/state.bin"));
 
     auto cmdBytes = read_bytes(revisionBase + "/bucket/cmd-buffer.bin");
     if (!cmdBytes) return std::unexpected(cmdBytes.error());
-    auto cmdDecoded = from_bytes<BucketCommandBufferBinary>(*cmdBytes);
+    auto cmdDecoded = decode_bucket_section<BucketCommandBufferBinary>(*cmdBytes);
     if (!cmdDecoded) return std::unexpected(annotate_error(cmdDecoded.error(), revisionBase + "/bucket/cmd-buffer.bin"));
 
     std::vector<StrokePoint> stroke_points;
     {
         auto strokeBytes = space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/strokes.bin");
         if (strokeBytes) {
-            auto decoded = from_bytes<BucketStrokePointsBinary>(*strokeBytes);
+            auto decoded = decode_bucket_section<BucketStrokePointsBinary>(*strokeBytes);
             if (!decoded) {
                 return std::unexpected(annotate_error(decoded.error(), revisionBase + "/bucket/strokes.bin"));
             }
@@ -189,7 +216,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     {
         auto clipHeadsBytes = space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/clip-heads.bin");
         if (clipHeadsBytes) {
-            auto decoded = from_bytes<BucketClipHeadsBinary>(*clipHeadsBytes);
+            auto decoded = decode_bucket_section<BucketClipHeadsBinary>(*clipHeadsBytes);
             if (!decoded) {
                 return std::unexpected(annotate_error(decoded.error(), revisionBase + "/bucket/clip-heads.bin"));
             }
@@ -209,7 +236,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     {
         auto clipNodesBytes = space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/clip-nodes.bin");
         if (clipNodesBytes) {
-            auto decoded = from_bytes<BucketClipNodesBinary>(*clipNodesBytes);
+            auto decoded = decode_bucket_section<BucketClipNodesBinary>(*clipNodesBytes);
             if (!decoded) {
                 return std::unexpected(annotate_error(decoded.error(), revisionBase + "/bucket/clip-nodes.bin"));
             }
@@ -229,7 +256,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     {
         auto authoringBytes = space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/authoring-map.bin");
         if (authoringBytes) {
-            auto decoded = from_bytes<BucketAuthoringMapBinary>(*authoringBytes);
+            auto decoded = decode_bucket_section<BucketAuthoringMapBinary>(*authoringBytes);
             if (!decoded) {
                 return std::unexpected(annotate_error(decoded.error(), revisionBase + "/bucket/authoring-map.bin"));
             }
@@ -252,11 +279,11 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     {
         auto fontBytes = space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/font-assets.bin");
         if (fontBytes) {
-            auto decoded = from_bytes<BucketFontAssetsBinary>(*fontBytes);
+            auto decoded = decode_font_assets(*fontBytes);
             if (!decoded) {
                 return std::unexpected(annotate_error(decoded.error(), revisionBase + "/bucket/font-assets.bin"));
             }
-            font_assets = std::move(decoded->font_assets);
+            font_assets = std::move(*decoded);
         } else {
             auto const& error = fontBytes.error();
             if (error.code != Error::Code::NoObjectFound
@@ -270,7 +297,7 @@ auto SceneSnapshotBuilder::decode_bucket(PathSpace const& space,
     {
         auto glyphBytes = space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/glyph-vertices.bin");
         if (glyphBytes) {
-            auto decoded = from_bytes<BucketGlyphVerticesBinary>(*glyphBytes);
+            auto decoded = decode_bucket_section<BucketGlyphVerticesBinary>(*glyphBytes);
             if (!decoded) {
                 return std::unexpected(annotate_error(decoded.error(), revisionBase + "/bucket/glyph-vertices.bin"));
             }

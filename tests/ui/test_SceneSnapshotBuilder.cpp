@@ -129,6 +129,51 @@ auto make_bucket(std::size_t drawables, std::size_t commands) -> DrawableBucketS
     return bucket;
 }
 
+constexpr std::size_t kBucketHeaderSize = 32;
+
+auto read_le32(std::span<const std::uint8_t> bytes, std::size_t offset) -> std::uint32_t {
+    return static_cast<std::uint32_t>(bytes[offset])
+        | (static_cast<std::uint32_t>(bytes[offset + 1]) << 8u)
+        | (static_cast<std::uint32_t>(bytes[offset + 2]) << 16u)
+        | (static_cast<std::uint32_t>(bytes[offset + 3]) << 24u);
+}
+
+auto read_le64(std::span<const std::uint8_t> bytes, std::size_t offset) -> std::uint64_t {
+    auto lower = read_le32(bytes, offset);
+    auto upper = read_le32(bytes, offset + 4);
+    return (static_cast<std::uint64_t>(upper) << 32u) | static_cast<std::uint64_t>(lower);
+}
+
+auto fnv1a64(std::span<const std::uint8_t> bytes) -> std::uint64_t {
+    constexpr std::uint64_t kOffsetBasis = 14695981039346656037ull;
+    constexpr std::uint64_t kPrime = 1099511628211ull;
+    std::uint64_t hash = kOffsetBasis;
+    for (auto byte : bytes) {
+        hash ^= static_cast<std::uint64_t>(byte);
+        hash *= kPrime;
+    }
+    return hash;
+}
+
+auto replace_bytes(PathSpace& space,
+                   std::string const& path,
+                   std::vector<std::uint8_t> const& value) -> void {
+    while (true) {
+        auto taken = space.take<std::vector<std::uint8_t>>(path);
+        if (taken) {
+            continue;
+        }
+        auto const& error = taken.error();
+        if (error.code == Error::Code::NoObjectFound
+            || error.code == Error::Code::NoSuchPath) {
+            break;
+        }
+        REQUIRE_MESSAGE(false, error.message.value_or("unexpected error while draining bucket path"));
+    }
+    auto result = space.insert(path, value);
+    REQUIRE_MESSAGE(result.errors.empty(), "failed to write bucket bytes");
+}
+
 } // namespace
 
 TEST_SUITE("SceneSnapshotBuilder") {
@@ -208,6 +253,41 @@ TEST_CASE("publish snapshot encodes bucket and metadata") {
     auto storedFingerprints = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/fingerprints.bin");
     REQUIRE(storedFingerprints);
     CHECK_FALSE(storedFingerprints->empty());
+
+    REQUIRE(storedDrawables->size() > kBucketHeaderSize);
+    std::span<const std::uint8_t> drawable_bytes{*storedDrawables};
+    CHECK(drawable_bytes[0] == static_cast<std::uint8_t>('D'));
+    CHECK(drawable_bytes[1] == static_cast<std::uint8_t>('B'));
+    CHECK(drawable_bytes[2] == static_cast<std::uint8_t>('K'));
+    CHECK(drawable_bytes[3] == static_cast<std::uint8_t>('T'));
+
+    auto version = read_le32(drawable_bytes, 4);
+    CHECK(version == 1u);
+    CHECK(drawable_bytes[8] == 0u);
+
+    auto payload_size = read_le32(drawable_bytes, 12);
+    auto checksum     = read_le64(drawable_bytes, 16);
+    auto reserved     = read_le64(drawable_bytes, 24);
+    CHECK(reserved == 0u);
+
+    auto payload_and_padding = storedDrawables->size() - kBucketHeaderSize;
+    REQUIRE(payload_size <= payload_and_padding);
+    auto padding = payload_and_padding - payload_size;
+    CHECK(padding <= 7u);
+
+    std::span<const std::uint8_t> payload_span{storedDrawables->data() + kBucketHeaderSize,
+                                               static_cast<std::size_t>(payload_size)};
+    CHECK(fnv1a64(payload_span) == checksum);
+
+    if (payload_size > 0) {
+        auto corrupted = *storedDrawables;
+        corrupted[kBucketHeaderSize] ^= 0x1u;
+        replace_bytes(fx.space, revisionBase + "/bucket/drawables.bin", corrupted);
+
+        auto corrupted_decode = SceneSnapshotBuilder::decode_bucket(fx.space, revisionBase);
+        REQUIRE_FALSE(corrupted_decode);
+        CHECK(corrupted_decode.error().code == Error::Code::InvalidType);
+    }
 }
 
 TEST_CASE("drawable fingerprints remain stable when drawable id changes") {

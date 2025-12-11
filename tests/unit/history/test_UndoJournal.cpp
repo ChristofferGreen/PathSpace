@@ -9,6 +9,7 @@
 #include <span>
 #include <string>
 #include <vector>
+#include <cstring>
 
 using namespace SP;
 using namespace SP::History::UndoJournal;
@@ -54,6 +55,7 @@ TEST_SUITE("UndoJournalEntry") {
         JournalEntry entry;
         entry.operation    = OperationKind::Insert;
         entry.path         = "/doc/value";
+        entry.tag          = "stroke";
         entry.value        = insertedPayloadExpected.value();
         entry.inverseValue = previousPayloadExpected.value();
         entry.timestampMs  = 123456789u;
@@ -72,6 +74,7 @@ TEST_SUITE("UndoJournalEntry") {
 
         CHECK(decoded.operation == entry.operation);
         CHECK(decoded.path == entry.path);
+        CHECK(decoded.tag == entry.tag);
         CHECK(decoded.timestampMs == entry.timestampMs);
         CHECK(decoded.monotonicNs == entry.monotonicNs);
         CHECK(decoded.sequence == entry.sequence);
@@ -88,5 +91,32 @@ TEST_SUITE("UndoJournalEntry") {
         REQUIRE_FALSE(payloadDecodedNode->deserialize(&storedInserted, metadataForInt()).has_value());
         CHECK(storedInserted == insertedValue);
     }
-}
 
+    TEST_CASE("Journal entry decoder accepts legacy v1 payloads without tags") {
+        JournalEntry entry;
+        entry.operation   = OperationKind::Insert;
+        entry.path        = "/legacy";
+        entry.timestampMs = 1u;
+        entry.sequence    = 2u;
+        entry.barrier     = false;
+
+        auto encodedExpected = serializeEntry(entry);
+        REQUIRE(encodedExpected);
+        auto encoded = std::move(encodedExpected.value());
+
+        // Strip the tag footer and downgrade the version to mimic a v1 payload.
+        if (encoded.size() >= sizeof(std::uint32_t)) {
+            encoded.resize(encoded.size() - sizeof(std::uint32_t));
+        }
+        std::uint16_t legacyVersion = 1;
+        std::memcpy(encoded.data() + sizeof(std::uint32_t), &legacyVersion, sizeof(legacyVersion));
+
+        auto decodedExpected = deserializeEntry(std::span<const std::byte>{encoded.data(), encoded.size()});
+        REQUIRE(decodedExpected);
+        auto decoded = std::move(decodedExpected.value());
+
+        CHECK(decoded.tag.empty());
+        CHECK(decoded.path == entry.path);
+        CHECK(decoded.operation == entry.operation);
+    }
+}

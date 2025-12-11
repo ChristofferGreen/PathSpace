@@ -1,0 +1,18 @@
+{
+  "command": {
+    "iterations": 200,
+    "seed": 1337
+  },
+  "metadata": {
+    "declarative": {
+      "bucketTotalMs": 23.506827,
+      "mutateTotalMs": 117.670918
+    }
+  },
+  "metrics": {
+    "declarative.bucketAvgMs": 0.11753413500000001,
+    "declarative.bucketBytesPerIter": 11654.8,
+    "declarative.dirtyWidgetsPerSec": 6798.621219220879,
+    "declarative.paintGpuLastUploadNs": 3642459.0
+  }
+}

@@ -10,7 +10,7 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 
 ## 1. Prerequisites
 - Skim `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md` plus the renderer plans
-  (`docs/finished/Plan_SceneGraph_Renderer_Finished.md`, `docs/Plan_SceneGraph.md`).
+  (`docs/finished/Plan_SceneGraph_Renderer_Finished.md`, `docs/finished/Plan_SceneGraph_Finished.md`).
 - Make sure the Release build tree exists: `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`.
 - Keep `cmake --build build -j` and `./scripts/compile.sh --clean --test --loop=5 --release`
   handy; the 5× loop is mandatory for any code change that touches runtime or

@@ -23,9 +23,13 @@ This guide consolidates the practical steps for investigating failures across un
 - Additional logs use the pattern `<test>_loop<iteration>of<total>_<timestamp>.log`; the manifest is the authoritative index when `--loop-keep-logs` names more tests.
 - `PATHSPACE_LOG` defaults to `1` in the helper so tagged logging is enabled when an error surfaces; adjust via `--env PATHSPACE_LOG=0` if you need silence.
 - Want to exercise the Metal presenter path locally? Append `--enable-metal-tests` (macOS only) so the helper sets `PATHSPACE_UI_METAL=ON` during configuration and runs the suites with `PATHSPACE_ENABLE_METAL_UPLOADS=1`.
+- Metal presenter live-resize guard (December 10, 2025): during live resize/fullscreen transitions the LocalWindow bridge now defers Metal presents and flushes its IOSurface pool; once the resize ends, the presenter reschedules with the new drawable size. If you see a blank frame mid-resize, wait for `windowDidEndLiveResize`/`windowDidExitFullScreen` or trigger a fresh present after the transition completes.
 - Need structured evidence from the loop run? Set `PATHSPACE_LOOP_BASELINE_OUT=<path>` and the helper will summarize `build/test-logs/loop_manifest.tsv` into that JSON file (iteration count, timeout, participating labels, saved logs/artifacts). CI’s `loop-stability` workflow writes `loop_baseline.json` at the repo root so dashboards always have a fresh baseline before declarative changes land.
 - Watching the IO Pump? Check `/system/widgets/runtime/input/metrics/{pointer_events_total,button_events_total,text_events_total,events_dropped_total,last_pump_ns}` plus `/system/widgets/runtime/io/state/running` to confirm the worker is alive and consuming Trellis events. Pump errors share the same `/system/widgets/runtime/input/log/errors/queue` as reducer failures, so grep for `io_pump` tags when diagnosing drops.
 - When `PATHSPACE_RECORD_MANUAL_PUMPS=1` the declarative readiness helper snapshots `/system/widgets/runtime/input/windows/<token>/metrics/*` and `/system/widgets/runtime/input/apps/<app>/metrics/*` into each test’s artifact directory (`manual_pump_metrics.jsonl`). Call `python3 scripts/manual_pump_ingest.py --log-root build/test-logs --output build/test-logs/manual_pump_summary.json` (automatically executed by the helper whenever the env var is set) to aggregate those counters for dashboards or quick regressions triage.
+- **Font fallback toggle (December 10, 2025):** set `PATHSPACE_UI_FONT_MANAGER_ENABLED=0` to bypass the FontManager/shaped text path and force the bitmap TextBuilder fallback. Use this when shaped text artifacts appear or when you need a rollback during perf triage; the flag keeps renderer snapshots and HTML output on the legacy glyph quads while you collect evidence.
+- **Font diagnostics (December 10, 2025):** With `PATHSPACE_CAPTURE_FONT_DIAGNOSTICS=1` (enabled by default for looped UITest runs) the renderer appends `font_diagnostics.jsonl` to each `PATHSPACE_TEST_ARTIFACT_DIR`, capturing per-target font assets plus atlas/cache counters. Keep the JSONL next to the loop manifest so shaped-text regressions have resident telemetry without rerunning the suite.
+- **FontManager triage (December 10, 2025):** When text renders blank, low-chroma, or with mismatched glyphs, run one loop with `PATHSPACE_UI_FONT_MANAGER_ENABLED=0` to see if the shaped pipeline is at fault. Then read `font_diagnostics.jsonl` (or the `metrics.fonts` block from `scripts/ui_capture_logs.py`) and check for missing `font_assets` entries or zero atlas bytes. If a snapshot references an atlas fingerprint that does not exist on disk, decode it with `SceneSnapshotBuilder::decode_bucket` and verify `resources/fonts/<family>/<style>/builds/<rev>/{atlas.bin,atlas_color.bin}` are present. HTML mismatches usually point to a missing WOFF2 asset—compare `DrawableBucketSnapshot::font_assets` to `output/v1/html/assets/fonts/` and rerun `tests/ui/test_HtmlAdapter.cpp` when hashes diverge.
 - **Visitor snapshots (November 30, 2025):** `PathSpaceBase::visit(PathVisitor const&, VisitOptions const&)` replaces ad-hoc `listChildren` crawls. Set `VisitOptions` (`root`, `maxDepth`, `maxChildren`, `includeNestedSpaces`, `includeValues`) and supply a callback that receives `PathEntry` metadata plus a `ValueHandle`. Use the handle’s `read<T>()` only when `includeValues=true`; otherwise call `snapshot()` to inspect queue metadata without copying bytes. Layers (PathView/Alias/Trellis/UndoableSpace) already delegate to their upstreams, so the same visitor works on aliased spaces, inspector views, or trellis mounts. Set `maxChildren = VisitOptions::kUnlimitedChildren` (0) whenever you need every child; the exporter/CLI will report `"max_children": "unlimited"` so diagnostics know the cap is disabled.
 - **JSON dumps (November 30, 2025):** `PathSpaceBase::toJSON(PathSpaceJsonOptions const&)` wraps `PathSpaceJsonExporter` so you can stamp the same subtree structure that the inspector expects. Tune `maxQueueEntries` for queue depth (default 4), set `includeOpaquePlaceholders=false` if you only want converted values, and disable `visit.includeValues` when you just need structural inventories. Attach the emitted JSON to flaky bug reports alongside the compile-loop logs. The supported CLI (`./build/pathspace_dump_json --demo --root /demo --max-depth 3 --max-children 4 --max-queue-entries 2 --output demo.json`) exercises the same exporter and is covered by the `PathSpaceDumpJsonDemo` fixture. Use `PathSpaceJsonRegisterConverterAs<T>("FriendlyType", lambda)` (or the legacy `PathSpaceJsonRegisterConverter`) to register readable type names—those aliases show up in `values[*].type` and the opaque placeholders when converters are missing.
 
@@ -107,7 +111,46 @@ Environment knobs (all respected by the wrapper and the logger):
 
   The recorder/replayer now lives in shared UI tooling—include `pathspace/ui/WidgetTrace.hpp` and construct `SP::UI::WidgetTraceOptions` with your own env var names when you want the same workflow in other apps or tests.
 
-### 1.4 Widget gallery screenshots
+### 1.4 UI diagnostics snapshot helper
+
+Collect renderer/target health snapshots without spelunking every node manually:
+
+1. Dump the `/renderers` subtree (diagnostics enabled by default):
+
+   ```bash
+   ./build/pathspace_dump_json \
+     --root /renderers \
+     --max-depth 8 \
+     --max-children 0 \
+     --max-queue-entries 4 \
+     --output build/diagnostics/renderers.json
+   ```
+
+2. Summarize the targets with the new helper:
+
+   ```bash
+   python3 scripts/ui_capture_logs.py \
+     --snapshot build/diagnostics/renderers.json \
+     --pretty \
+     --output build/diagnostics/ui_summary.json
+   ```
+
+   Use `--target-filter 'paint|widgets'` to focus on specific targets.
+
+3. Attach `ui_summary.json` to bug reports. Each target now includes:
+   - `metrics.summary` — frame index, revision, drawable count.
+   - `metrics.timings` — render/present/gpu encode timings plus wait/staleness budgets.
+   - `metrics.presentation` — resolved present mode, backend, staleness flags, age counters, buffered/presented state.
+   - `metrics.progressive` — tile copy counts, retries, diagnostics flags, and progressive worker stats.
+   - `metrics.pipeline` — encode worker usage and queued jobs; `metrics.work_contention` — encode stall totals plus progressive retry/skip counters (populated when `PATHSPACE_UI_DAMAGE_METRICS=1`).
+   - `metrics.materials` and `metrics.residency` — persisted atlas descriptors along with CPU/GPU residency budgets and exceed flags.
+   - `metrics.fonts.activity` — the live font asset list (`fontActiveAssets`) plus atlas CPU/GPU residency bytes and active counts written under `diagnostics/metrics/render/font*` (mirrored for compatibility in `output/v1/common/font*`); `metrics.fonts.cache` mirrors the FontManager cache stats (`registeredFonts`, cache hits/misses/evictions, atlas budgets, shaped-run approx bytes) so shaping health stays attached to every target summary.
+   - `metrics.html` — HTML adapter stats: DOM node and command counts, asset counts, mode (`dom`/`canvas`), the selected max DOM budget, and whether the adapter used a canvas fallback.
+   - `errors.last_message`, `errors.live`, and `errors.stats` — the legacy last-error string, the structured PathSpaceError payload, and the per-severity counters from `diagnostics/errors/stats`.
+     `diagnostics/errors/stats` is now enabled by default (set `PATHSPACE_UI_ERROR_STATS=0|false|off` to opt out) and the runtime mirrors code/severity/revision/timestamp/detail to `output/v1/common/lastError*` so the summary stays populated even when `diagnostics/errors/live` has been cleared.
+   Use `jq` (or the inspector ingest scripts) to diff policy changes between runs without spelunking raw PathSpace dumps.
+
+### 1.5 Widget gallery screenshots
 
 - Capture a deterministic PNG of the gallery UI without manual interaction:
 
@@ -144,7 +187,7 @@ Recent fix: declarative presents once again honor `/present/params/capture_frame
 - `build/tests/PathSpaceUITests --test-case "Widget focus slider-to-list transition covers highlight footprint"` guards the historical lingering highlight bug. The case now asserts that dirty hints cover both slider and list footprints, checks focus hand-off, and compares framebuffer diffs; it must pass. If it fails, confirm slider footprints are persisted and that `Widgets::Input::FocusHighlightPadding()` matches the renderer’s highlight inflation before digging into pointer routing.
 - Because the capture is headless, the LocalWindow bridge is skipped—no IOSurface hand-off is required. If you need to reproduce an interactive issue instead, run without `--screenshot` or use the trace replay helpers below.
 
-### 1.5 Sanitizer runs on demand
+### 1.6 Sanitizer runs on demand
 
 - Run AddressSanitizer or ThreadSanitizer loops without juggling flags manually:
 
@@ -183,9 +226,11 @@ Recent fix: declarative presents once again honor `/present/params/capture_frame
 ## 3. PathSpace Runtime Diagnostics
 
 - **Structured errors:** Renderer/presenter components publish `PathSpaceError` payloads under `renderers/<rid>/targets/<tid>/diagnostics/errors/live`. In tests, call `Diagnostics::ReadTargetMetrics` to fetch the payload and correlate with frame indices.
+- **Font telemetry (December 10, 2025):** `renderers/<rid>/targets/<tid>/diagnostics/metrics/render/font*` is now the canonical home for the active font fingerprints, atlas CPU/GPU byte totals, and the mirrored FontManager cache stats from `/diagnostics/metrics/fonts` (legacy mirror remains at `output/v1/common/font*`). The helper (`scripts/ui_capture_logs.py`) emits them under `metrics.fonts.*`, so inspect that block whenever shaped text looks wrong or cache thrash is suspected.
 - **Per-target metrics:** `renderers/<rid>/targets/<tid>/output/v1/common/*` stores the latest `frameIndex`, `revision`, `renderMs`, progressive copy counters (including `progressiveTileSize`, `progressiveWorkersUsed`, `progressiveJobs`), encode fan-out stats (`encodeWorkersUsed`, `encodeJobs`), backend telemetry (`backendKind`, `usedMetalTexture`), GPU timings (`gpuEncodeMs`, `gpuPresentMs`), present policy outcomes, and—when `PATHSPACE_UI_DAMAGE_METRICS=1` is set—damage/fingerprint telemetry (`damageRectangles`, `damageCoverageRatio`, `fingerprint*`, `progressiveTiles*`). Use `PathWindowView` doctest helpers or the builders’ diagnostics reader to dump these values.
+  - **New (December 9, 2025):** `renderers/<rid>/targets/<tid>/diagnostics/errors/stats` tracks `total`, `cleared`, and per-severity counts (`info`, `warning`, `recoverable`, `fatal`) plus `last_{code,severity,timestamp_ns,revision}`. Pair it with `diagnostics/errors/live` for structured payloads or run `scripts/ui_capture_logs.py --snapshot …` to capture everything in one JSON blob.
   - **New (October 27, 2025):** `damageTiles` lists the tile-aligned damage rectangles the renderer cleared for the last frame. Enable `PATHSPACE_UI_DAMAGE_METRICS=1` for the extended counters; the tile list is always populated and is handy when cross-checking the widget footprints logged by `widgets_example`.
-  - **New (December 4, 2025):** When `PATHSPACE_UI_DAMAGE_METRICS=1`, encode/presenter contention telemetry mirrors into `renderers/<rid>/targets/<tid>/output/v1/diagnostics/metrics/*`: `encodeWorkerStallMsTotal`, `encodeWorkerStallMsMax`, `encodeWorkerStallWorkers`, plus the progressive tile retry counters (`progressiveTileSeqRetryCount`, `progressiveTileSeqSkipCount`). Watch these nodes when FPS drops despite stable damage, since they highlight cores that are spending time waiting rather than encoding/copying pixels.
+- **New (December 4, 2025):** When `PATHSPACE_UI_DAMAGE_METRICS=1`, encode/presenter contention telemetry now writes to `renderers/<rid>/targets/<tid>/diagnostics/metrics/contention/*` (legacy mirror remains under `output/v1/diagnostics/metrics/*`): `encodeWorkerStallMsTotal`, `encodeWorkerStallMsMax`, `encodeWorkerStallWorkers`, plus the progressive tile retry counters (`progressiveTileSeqRetryCount`, `progressiveTileSeqSkipCount`). Watch these nodes when FPS drops despite stable damage, since they highlight cores that are spending time waiting rather than encoding/copying pixels.
 - **Trellis runtime mirrors (November 14, 2025):** The previous PathSpaceTrellis layer and its diagnostics were removed on November 14, 2025. Historical notes remain for context only; new fan-in tooling will be documented once the replacement lands.
 - **Window diagnostics sinks:** Presenter metrics mirror into `windows/<win>/diagnostics/metrics/live/views/<view>/present/*`, including frame indices, present/render timings, progressive counters, last error strings, and timestamps, so dashboards can monitor windows without crawling every renderer target. With `PATHSPACE_UI_DAMAGE_METRICS=1` the mirror also carries the tile-damage diagnostics (`progressiveTiles{Dirty,Total,Skipped}`, `progressiveTilesUpdated`, `progressiveBytesCopied`, encode worker/job counts) alongside the core progressive copy telemetry.
 - **Font manager metrics (October 30, 2025):** `diagnostics/metrics/fonts/*` now captures font registration + cache telemetry: `registeredFonts`, `cacheHits`, `cacheMisses`, `cacheEvictions`, `cacheSize`, `cacheCapacity`, `cacheHardCapacity`, `atlasSoftBytes`, `atlasHardBytes`, and `shapedRunApproxBytes`. Check these nodes when typography glitches appear—cache thrash, mismatched budgets, or an empty registration set often signals missing `FontManager::register_font` calls or stale font metadata. The metrics publish on every registration and `FontManager::shape_text` invocation. Use `FontManager::resolve_font` during triage to confirm the stored font meta (family, style, weight, fallbacks) and active atlas revisions match expectations.
@@ -212,7 +257,7 @@ Recent fix: declarative presents once again honor `/present/params/capture_frame
    - Re-run the failing test with doctest filters and specific tags enabled (`PATHSPACE_LOG_ENABLE_TAGS=TEST,UI`).
    - Use `--loop=3` on the helper to confirm the fix eliminates intermittent races before scaling back to the mandated 5.
 4. **Document findings**
-   - Update the relevant plan doc (`docs/Plan_SceneGraph.md` or task entry) with repro steps, log references, and next actions.
+   - Update the relevant plan doc (`docs/finished/Plan_SceneGraph_Finished.md` or task entry) with repro steps, log references, and next actions.
 
 ## 5. Tooling Quick Reference
 
@@ -585,6 +630,7 @@ With the shared test runner and this playbook, every failure leaves behind actio
 - When testing exported bundles, run `./build/widgets_example --export-html out/html/widgets` (or paint equivalent) and point the server at the directory via `--apps-root` overrides so browser fetches mirror the renderer output.
 - `GET /session` and `POST /logout` help confirm cookie lifetimes before involving the UI; both endpoints serialize the session state defined in `docs/web_server.toml`.
 - Metrics scrape: reuse the authenticated cookie jar to hit `/metrics` and confirm the Prometheus view is alive. You should see counters such as `pathspace_serve_html_requests_total{route="apps"}` and the latency histogram buckets. For dashboards without Prometheus, read the structured JSON snapshot under `<apps_root>/io/metrics/web_server/serve_html/live` (the collector rewrites it every ~2 s).
+- UI renderer diagnostics now publish alongside the server metrics: hit `GET /diagnostics/ui` on the HTML server (session + rate-limit checks still apply) to retrieve the same summary produced by `scripts/ui_capture_logs.py`, or read the mirrored JSON at `<apps_root>/io/metrics/web_server/serve_html/ui_targets`. Inspector dashboards can fetch the same data via `GET /inspector/metrics/ui_targets`.
 - When a subsystem misbehaves, instrument its module directly—`serve_html/auth/*`
   for credential/session churn, `serve_html/routing/*` for middleware or
   controller bugs, `serve_html/streaming/SseBroadcaster.*` for SSE stalls, and
