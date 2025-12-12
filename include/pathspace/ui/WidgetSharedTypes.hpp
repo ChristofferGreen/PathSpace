@@ -2485,18 +2485,12 @@ struct WidgetAction {
 auto MakeWidgetAction(Bindings::WidgetOp const& op) -> WidgetAction;
 
 struct ProcessActionsResult {
-    ConcretePath ops_queue;
     ConcretePath actions_queue;
+    std::vector<std::string> mailbox_topics;
     std::vector<WidgetAction> actions;
 };
 
-auto WidgetOpsQueue(WidgetPath const& widget_root) -> ConcretePath;
-
 auto DefaultActionsQueue(WidgetPath const& widget_root) -> ConcretePath;
-
-auto ReducePending(PathSpace& space,
-                   ConcretePathView ops_queue,
-                   std::size_t max_actions = std::numeric_limits<std::size_t>::max()) -> SP::Expected<std::vector<WidgetAction>>;
 
 auto PublishActions(PathSpace& space,
                     ConcretePathView actions_queue,

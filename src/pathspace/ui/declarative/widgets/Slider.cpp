@@ -50,10 +50,12 @@ auto Fragment(Args args) -> WidgetFragment {
     auto clamped_value = clamp_slider_value(args.value, range);
 
     auto on_change = std::move(args.on_change);
+    bool has_change_handler = static_cast<bool>(on_change);
     auto builder = WidgetDetail::FragmentBuilder{"slider",
                                    [args = std::move(args),
                                     range,
-                                    clamped_value](FragmentContext const& ctx) -> SP::Expected<void> {
+                                    clamped_value,
+                                    has_change_handler](FragmentContext const& ctx) -> SP::Expected<void> {
                                        BuilderWidgets::SliderState state{};
                                        state.enabled = args.enabled;
                                        state.value = clamped_value;
@@ -79,6 +81,15 @@ auto Fragment(Args args) -> WidgetFragment {
                                        if (auto status = WidgetDetail::initialize_render(ctx.space,
                                                                                   ctx.root,
                                                                                   WidgetKind::Slider);
+                                           !status) {
+                                           return status;
+                                       }
+                                       if (auto status = WidgetDetail::mirror_slider_capsule(ctx.space,
+                                                                                             ctx.root,
+                                                                                             state,
+                                                                                             args.style,
+                                                                                             range,
+                                                                                             has_change_handler);
                                            !status) {
                                            return status;
                                        }
@@ -122,6 +133,9 @@ auto SetValue(PathSpace& space,
     }
     state->value = clamped;
     if (auto status = WidgetDetail::write_state(space, widget.getPath(), *state); !status) {
+        return status;
+    }
+    if (auto status = WidgetDetail::update_slider_capsule_state(space, widget.getPath(), *state); !status) {
         return status;
     }
     return WidgetDetail::mark_render_dirty(space, widget.getPath());

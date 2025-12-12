@@ -64,6 +64,17 @@ auto Fragment(Args args) -> WidgetFragment {
                                                !status) {
                                                return status;
                                            }
+                                           if (auto status = WidgetDetail::mirror_paint_surface_capsule(ctx.space,
+                                                                                                 ctx.root,
+                                                                                                 args.brush_size,
+                                                                                                 args.brush_color,
+                                                                                                 args.buffer_width,
+                                                                                                 args.buffer_height,
+                                                                                                 args.buffer_dpi,
+                                                                                                 args.gpu_enabled);
+                                               !status) {
+                                               return status;
+                                           }
                                            return SP::Expected<void>{};
                                        }}
         ;

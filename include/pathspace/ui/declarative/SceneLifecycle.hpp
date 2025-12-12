@@ -32,6 +32,8 @@ struct ManualPumpResult {
     std::uint64_t buckets_ready = 0;
 };
 
+using CapsuleWalkResult = ManualPumpResult;
+
 [[nodiscard]] auto Start(PathSpace& space,
                          SP::App::AppRootPathView app_root,
                          SP::UI::ScenePath const& scene_path,
@@ -49,6 +51,10 @@ struct ManualPumpResult {
 [[nodiscard]] auto PumpSceneOnce(PathSpace& space,
                                  SP::UI::ScenePath const& scene_path,
                                  ManualPumpOptions const& options = {}) -> SP::Expected<ManualPumpResult>;
+
+[[nodiscard]] auto WalkWidgetCapsules(PathSpace& space,
+                                      SP::UI::ScenePath const& scene_path,
+                                      ManualPumpOptions const& options = {}) -> SP::Expected<CapsuleWalkResult>;
 
 auto InvalidateThemes(PathSpace& space,
                       SP::App::AppRootPathView app_root) -> void;

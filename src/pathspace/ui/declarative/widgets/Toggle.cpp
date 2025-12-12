@@ -14,8 +14,9 @@ namespace Toggle {
 auto Fragment(Args args) -> WidgetFragment {
     auto children = std::move(args.children);
     auto on_toggle = std::move(args.on_toggle);
+    bool has_toggle_handler = static_cast<bool>(on_toggle);
     auto builder = WidgetDetail::FragmentBuilder{"toggle",
-                                   [args = std::move(args)](FragmentContext const& ctx)
+                                   [args = std::move(args), has_toggle_handler](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
                                            BuilderWidgets::ToggleState state{};
                                            state.enabled = args.enabled;
@@ -35,6 +36,14 @@ auto Fragment(Args args) -> WidgetFragment {
                                            if (auto status = WidgetDetail::initialize_render(ctx.space,
                                                                                       ctx.root,
                                                                                       WidgetKind::Toggle);
+                                               !status) {
+                                               return status;
+                                           }
+                                          if (auto status = WidgetDetail::mirror_toggle_capsule(ctx.space,
+                                                                                          ctx.root,
+                                                                                          state,
+                                                                                          args.style,
+                                                                                          has_toggle_handler);
                                                !status) {
                                                return status;
                                            }
@@ -72,6 +81,10 @@ auto SetChecked(PathSpace& space,
     }
     state->checked = checked;
     if (auto status = WidgetDetail::write_state(space, widget.getPath(), *state); !status) {
+        return status;
+    }
+    if (auto status = WidgetDetail::update_toggle_capsule_state(space, widget.getPath(), *state);
+        !status) {
         return status;
     }
     return WidgetDetail::mark_render_dirty(space, widget.getPath());

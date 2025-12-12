@@ -9,18 +9,8 @@ auto MakeWidgetAction(Bindings::WidgetOp const& op) -> WidgetAction {
     return DeclarativeReducers::MakeWidgetAction(op);
 }
 
-auto WidgetOpsQueue(WidgetPath const& widget_root) -> ConcretePath {
-    return DeclarativeReducers::WidgetOpsQueue(widget_root);
-}
-
 auto DefaultActionsQueue(WidgetPath const& widget_root) -> ConcretePath {
     return DeclarativeReducers::DefaultActionsQueue(widget_root);
-}
-
-auto ReducePending(PathSpace& space,
-                   ConcretePathView ops_queue,
-                   std::size_t max_actions) -> SP::Expected<std::vector<WidgetAction>> {
-    return DeclarativeReducers::ReducePending(space, ops_queue, max_actions);
 }
 
 auto PublishActions(PathSpace& space,

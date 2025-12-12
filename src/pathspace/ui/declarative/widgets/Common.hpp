@@ -2,6 +2,7 @@
 
 #include <pathspace/ui/declarative/Detail.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
+#include <pathspace/ui/WidgetSharedTypes.hpp>
 
 #include <array>
 #include <string>
@@ -324,6 +325,131 @@ auto read_handler_binding(PathSpace& space,
 auto clear_handler_binding(PathSpace& space,
                            std::string const& root,
                            std::string_view event) -> SP::Expected<void>;
+
+auto mirror_button_capsule(PathSpace& space,
+                           std::string const& root,
+                           BuilderWidgets::ButtonState const& state,
+                           BuilderWidgets::ButtonStyle const& style,
+                           std::string const& label,
+                           bool has_press_handler) -> SP::Expected<void>;
+
+auto mirror_toggle_capsule(PathSpace& space,
+                           std::string const& root,
+                           BuilderWidgets::ToggleState const& state,
+                           BuilderWidgets::ToggleStyle const& style,
+                           bool has_toggle_handler) -> SP::Expected<void>;
+
+auto mirror_label_capsule(PathSpace& space,
+                          std::string const& root,
+                          std::string const& text,
+                          BuilderWidgets::TypographyStyle const& typography,
+                          std::array<float, 4> const& color,
+                          bool has_activate_handler) -> SP::Expected<void>;
+
+auto mirror_slider_capsule(PathSpace& space,
+                           std::string const& root,
+                           BuilderWidgets::SliderState const& state,
+                           BuilderWidgets::SliderStyle const& style,
+                           BuilderWidgets::SliderRange const& range,
+                           bool has_change_handler) -> SP::Expected<void>;
+
+auto mirror_list_capsule(PathSpace& space,
+                         std::string const& root,
+                         BuilderWidgets::ListState const& state,
+                         BuilderWidgets::ListStyle const& style,
+                         std::vector<BuilderWidgets::ListItem> const& items,
+                         bool has_child_handler) -> SP::Expected<void>;
+
+auto mirror_tree_capsule(PathSpace& space,
+                         std::string const& root,
+                         BuilderWidgets::TreeState const& state,
+                         BuilderWidgets::TreeStyle const& style,
+                         std::vector<BuilderWidgets::TreeNode> const& nodes,
+                         bool has_node_handler) -> SP::Expected<void>;
+
+auto mirror_stack_capsule(PathSpace& space,
+                          std::string const& root,
+                          BuilderWidgets::StackLayoutStyle const& style,
+                          std::vector<std::string> const& panel_ids,
+                          std::string const& active_panel,
+                          bool has_select_handler) -> SP::Expected<void>;
+
+auto mirror_input_capsule(PathSpace& space,
+                          std::string const& root,
+                          BuilderWidgets::TextFieldState const& state,
+                          BuilderWidgets::TextFieldStyle const& style,
+                          bool has_change_handler,
+                          bool has_submit_handler) -> SP::Expected<void>;
+
+auto update_button_capsule_state(PathSpace& space,
+                                 std::string const& root,
+                                 BuilderWidgets::ButtonState const& state) -> SP::Expected<void>;
+
+auto update_button_capsule_label(PathSpace& space,
+                                 std::string const& root,
+                                 std::string const& label) -> SP::Expected<void>;
+
+auto update_toggle_capsule_state(PathSpace& space,
+                                 std::string const& root,
+                                 BuilderWidgets::ToggleState const& state) -> SP::Expected<void>;
+
+auto update_label_capsule_text(PathSpace& space,
+                               std::string const& root,
+                               std::string const& text) -> SP::Expected<void>;
+
+auto update_slider_capsule_state(PathSpace& space,
+                                 std::string const& root,
+                                 BuilderWidgets::SliderState const& state) -> SP::Expected<void>;
+
+auto update_list_capsule_state(PathSpace& space,
+                               std::string const& root,
+                               BuilderWidgets::ListState const& state) -> SP::Expected<void>;
+
+auto update_list_capsule_items(PathSpace& space,
+                               std::string const& root,
+                               std::vector<BuilderWidgets::ListItem> const& items)
+    -> SP::Expected<void>;
+
+auto update_tree_capsule_state(PathSpace& space,
+                               std::string const& root,
+                               BuilderWidgets::TreeState const& state) -> SP::Expected<void>;
+
+auto update_tree_capsule_nodes(PathSpace& space,
+                               std::string const& root,
+                               std::vector<BuilderWidgets::TreeNode> const& nodes)
+    -> SP::Expected<void>;
+
+auto update_stack_capsule_state(PathSpace& space,
+                                std::string const& root,
+                                std::string const& active_panel) -> SP::Expected<void>;
+
+auto update_input_capsule_state(PathSpace& space,
+                                std::string const& root,
+                                BuilderWidgets::TextFieldState const& state)
+    -> SP::Expected<void>;
+
+auto mirror_paint_surface_capsule(PathSpace& space,
+                                  std::string const& root,
+                                  float brush_size,
+                                  std::array<float, 4> const& brush_color,
+                                  std::uint32_t buffer_width,
+                                  std::uint32_t buffer_height,
+                                  float buffer_dpi,
+                                  bool gpu_enabled) -> SP::Expected<void>;
+
+void record_capsule_render_invocation(PathSpace& space,
+                                      std::string const& widget_root,
+                                      WidgetKind kind);
+
+void record_capsule_mailbox_event(
+    PathSpace& space,
+    std::string const& widget_root,
+    SP::UI::Runtime::Widgets::Bindings::WidgetOpKind op_kind,
+    std::string_view target_id = {},
+    std::uint64_t dispatch_ns = 0,
+    std::uint64_t sequence = 0);
+
+void record_capsule_mailbox_failure(PathSpace& space, std::string const& widget_root);
 
 struct FragmentBuilder {
     WidgetFragment fragment;

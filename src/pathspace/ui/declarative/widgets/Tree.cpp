@@ -13,8 +13,9 @@ namespace Tree {
 
 auto Fragment(Args args) -> WidgetFragment {
     auto on_node_event = std::move(args.on_node_event);
+    bool has_node_handler = on_node_event.has_value();
     auto builder = WidgetDetail::FragmentBuilder{"tree",
-                                   [args = std::move(args)](FragmentContext const& ctx)
+                                   [args = std::move(args), has_node_handler](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
                                            BuilderWidgets::TreeState state{};
                                            if (auto status = WidgetDetail::write_state(ctx.space,
@@ -39,6 +40,15 @@ auto Fragment(Args args) -> WidgetFragment {
                                            if (auto status = WidgetDetail::initialize_render(ctx.space,
                                                                                       ctx.root,
                                                                                       WidgetKind::Tree);
+                                               !status) {
+                                               return status;
+                                           }
+                                           if (auto status = WidgetDetail::mirror_tree_capsule(ctx.space,
+                                                                                       ctx.root,
+                                                                                       state,
+                                                                                       args.style,
+                                                                                       args.nodes,
+                                                                                       has_node_handler);
                                                !status) {
                                                return status;
                                            }
@@ -68,7 +78,11 @@ auto SetNodes(PathSpace& space,
               std::vector<TreeNode> nodes) -> SP::Expected<void> {
     if (auto status = WidgetDetail::write_value(space,
                                           WidgetSpacePath(widget.getPath(), "/meta/nodes"),
-                                          std::move(nodes));
+                                          nodes);
+        !status) {
+        return status;
+    }
+    if (auto status = WidgetDetail::update_tree_capsule_nodes(space, widget.getPath(), nodes);
         !status) {
         return status;
     }

@@ -6,6 +6,7 @@
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
+#include <pathspace/ui/declarative/WidgetCapsule.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
 #include <nlohmann/json.hpp>
@@ -28,6 +29,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -69,6 +71,8 @@ struct DeclarativeMetrics {
     double bucket_avg_ms = 0.0;
     double bucket_bytes_per_iter = 0.0;
     double paint_gpu_last_upload_ns = 0.0;
+    double capsule_total_ms = 0.0;
+    double capsule_avg_ms = 0.0;
 };
 
 struct DeclarativePaths {
@@ -475,6 +479,9 @@ auto create_app(PathSpace& space) -> SP::Expected<SP::App::AppRootPath> {
     std::size_t total_bucket_bytes = 0;
     auto mutate_duration = Clock::duration::zero();
     auto bucket_duration = Clock::duration::zero();
+    auto capsule_duration = Clock::duration::zero();
+    std::size_t capsule_packages = 0;
+    std::unordered_map<std::string, std::uint64_t> capsule_sequences;
 
     for (int iteration = 0; iteration < options.iterations; ++iteration) {
         auto mutate_start = Clock::now();
@@ -487,6 +494,7 @@ auto create_app(PathSpace& space) -> SP::Expected<SP::App::AppRootPath> {
 
         auto bucket_start = Clock::now();
         for (auto const& path : widget_order) {
+            auto widget_root = std::string(path.getPath());
             auto descriptor = Declarative::LoadWidgetDescriptor(space, path);
             if (!descriptor) {
                 return std::unexpected(descriptor.error());
@@ -496,6 +504,16 @@ auto create_app(PathSpace& space) -> SP::Expected<SP::App::AppRootPath> {
                 return std::unexpected(bucket.error());
             }
             total_bucket_bytes += bucket_bytes(*bucket);
+
+            auto capsule_start = Clock::now();
+            auto capsule = Declarative::LoadWidgetCapsule(space, widget_root, descriptor->kind);
+            if (!capsule) {
+                return std::unexpected(capsule.error());
+            }
+            auto sequence = ++capsule_sequences[widget_root];
+            (void)Declarative::BuildRenderPackageFromBucket(*capsule, *bucket, {}, sequence);
+            capsule_duration += Clock::now() - capsule_start;
+            ++capsule_packages;
         }
         bucket_duration += Clock::now() - bucket_start;
     }
@@ -508,6 +526,11 @@ auto create_app(PathSpace& space) -> SP::Expected<SP::App::AppRootPath> {
     auto mutate_seconds = std::chrono::duration<double>(mutate_duration).count();
     if (mutate_seconds > 0.0) {
         metrics.dirty_per_sec = static_cast<double>(total_dirty_ops) / mutate_seconds;
+    }
+
+    metrics.capsule_total_ms = std::chrono::duration<double, std::milli>(capsule_duration).count();
+    if (capsule_packages > 0) {
+        metrics.capsule_avg_ms = metrics.capsule_total_ms / static_cast<double>(capsule_packages);
     }
 
     auto gpu_upload = run_paint_gpu_cycle(space, paths.paint, options.seed + 42u);
@@ -528,12 +551,14 @@ auto write_report_json(CommandLineOptions const& options,
         {"declarative.bucketBytesPerIter", declarative.bucket_bytes_per_iter},
         {"declarative.dirtyWidgetsPerSec", declarative.dirty_per_sec},
         {"declarative.paintGpuLastUploadNs", declarative.paint_gpu_last_upload_ns},
+        {"declarative.capsuleAvgMs", declarative.capsule_avg_ms},
     };
 
     json["metadata"] = {
         {"declarative", {
              {"bucketTotalMs", declarative.bucket_total_ms},
              {"mutateTotalMs", declarative.mutate_total_ms},
+             {"capsuleTotalMs", declarative.capsule_total_ms},
         }},
     };
     return json;
@@ -580,6 +605,7 @@ int main(int argc, char** argv) {
         std::cout << "declarative.bucketAvgMs=" << declarative->bucket_avg_ms << "\n";
         std::cout << "declarative.dirtyWidgetsPerSec=" << declarative->dirty_per_sec << "\n";
         std::cout << "declarative.paintGpuLastUploadNs=" << declarative->paint_gpu_last_upload_ns << "\n";
+        std::cout << "declarative.capsuleAvgMs=" << declarative->capsule_avg_ms << "\n";
     }
 
     return 0;

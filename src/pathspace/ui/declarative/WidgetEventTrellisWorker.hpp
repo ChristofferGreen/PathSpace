@@ -6,6 +6,7 @@
 #include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace SP::UI::Declarative {
 
@@ -131,6 +132,15 @@ private:
                         bool inside,
                         std::optional<WidgetBindings::PointerInfo> pointer_override = std::nullopt);
 
+    auto mailbox_subscriptions(std::string const& widget_path)
+        -> std::unordered_set<std::string> const&;
+    bool route_mailbox_event(TargetInfo const& target,
+                             WidgetBindings::WidgetOpKind kind,
+                             float value,
+                             WidgetBindings::PointerInfo const& pointer,
+                             std::uint64_t sequence,
+                             std::uint64_t timestamp_ns);
+
     PointerState& pointer_state(std::string const& token);
     void publish_metrics();
 
@@ -145,6 +155,9 @@ private:
 
     std::mutex pointer_mutex_;
     std::unordered_map<std::string, PointerState> pointer_states_;
+    std::unordered_map<std::string, std::unordered_set<std::string>> mailbox_subscriptions_;
+
+    bool capsules_enabled_ = false;
 
     std::atomic<bool> stop_flag_{false};
     std::atomic<bool> stop_requested_{false};

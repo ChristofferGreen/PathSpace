@@ -590,6 +590,9 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
     elif [[ "$LOOP" -gt 0 ]]; then
       TEST_ENV_FLAGS+=("--env" "PATHSPACE_CAPTURE_FONT_DIAGNOSTICS=1")
     fi
+    if [[ -n "${PATHSPACE_TEST_ARTIFACT_DIR:-}" ]]; then
+      TEST_ENV_FLAGS+=("--env" "PATHSPACE_TEST_ARTIFACT_DIR=${PATHSPACE_TEST_ARTIFACT_DIR}")
+    fi
     if [[ -n "$TEST_LOG_MANIFEST" ]]; then
       export PATHSPACE_TEST_LOG_MANIFEST="$TEST_LOG_MANIFEST"
       TEST_ENV_FLAGS+=("--env" "PATHSPACE_TEST_LOG_MANIFEST=${TEST_LOG_MANIFEST}")

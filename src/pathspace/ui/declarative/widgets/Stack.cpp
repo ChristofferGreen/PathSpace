@@ -135,41 +135,51 @@ auto Fragment(Args args) -> WidgetFragment {
     }
 
     auto on_select = std::move(args.on_select);
-auto style_override = args.style;
-auto builder = WidgetDetail::FragmentBuilder{"stack",
-                                   [panel_ids = std::move(panel_ids),
-                                    active_panel = std::move(args.active_panel)](FragmentContext const& ctx)
-                                       -> SP::Expected<void> {
-                                           if (auto status = WidgetDetail::write_value(ctx.space,
-                                                                                WidgetSpacePath(ctx.root,
-                                                                                                "/state/active_panel"),
-                                                                                active_panel);
-                                               !status) {
-                                               return status;
-                                           }
-                                           if (auto status = WidgetDetail::initialize_render(ctx.space,
-                                                                                      ctx.root,
-                                                                                      WidgetKind::Stack);
-                                               !status) {
-                                               return status;
-                                           }
-                                           for (std::uint32_t index = 0; index < panel_ids.size(); ++index) {
-                                               auto const& panel_id = panel_ids[index];
-                                               if (auto status = WidgetDetail::ensure_child_name(panel_id); !status) {
-                                                   return status;
-                                               }
-                                               auto visible = panel_id == active_panel;
-                                               if (auto status = write_panel_metadata(ctx.space,
-                                                                                     ctx.root,
-                                                                                     panel_id,
-                                                                                     index,
-                                                                                     visible);
-                                                   !status) {
-                                                   return status;
-                                               }
-                                           }
-                                           return SP::Expected<void>{};
-                                       }}
+    auto style_override = args.style;
+    bool has_select_handler = static_cast<bool>(on_select);
+
+    auto builder = WidgetDetail::FragmentBuilder{
+        "stack",
+        [panel_ids = std::move(panel_ids),
+         active_panel = std::move(args.active_panel),
+         style_override,
+         has_select_handler](FragmentContext const& ctx) -> SP::Expected<void> {
+            if (auto status = WidgetDetail::write_value(ctx.space,
+                                                        WidgetSpacePath(ctx.root, "/state/active_panel"),
+                                                        active_panel);
+                !status) {
+                return status;
+            }
+            if (auto status = WidgetDetail::initialize_render(ctx.space, ctx.root, WidgetKind::Stack);
+                !status) {
+                return status;
+            }
+            for (std::uint32_t index = 0; index < panel_ids.size(); ++index) {
+                auto const& panel_id = panel_ids[index];
+                if (auto status = WidgetDetail::ensure_child_name(panel_id); !status) {
+                    return status;
+                }
+                auto visible = panel_id == active_panel;
+                if (auto status = write_panel_metadata(ctx.space,
+                                                      ctx.root,
+                                                      panel_id,
+                                                      index,
+                                                      visible);
+                    !status) {
+                    return status;
+                }
+            }
+            if (auto status = WidgetDetail::mirror_stack_capsule(ctx.space,
+                                                                 ctx.root,
+                                                                 style_override,
+                                                                 panel_ids,
+                                                                 active_panel,
+                                                                 has_select_handler);
+                !status) {
+                return status;
+            }
+            return SP::Expected<void>{};
+        }}
         .with_children(std::move(child_fragments));
 
     if (on_select) {
@@ -189,12 +199,12 @@ auto Create(PathSpace& space,
             std::string_view name,
             Args args,
             MountOptions const& options) -> SP::Expected<WidgetPath> {
-auto fragment = Fragment(std::move(args));
-auto mounted = MountFragment(space, parent, name, fragment, options);
-if (!mounted) {
+    auto fragment = Fragment(std::move(args));
+    auto mounted = MountFragment(space, parent, name, fragment, options);
+    if (!mounted) {
+        return mounted;
+    }
     return mounted;
-}
-return mounted;
 }
 
 auto SetActivePanel(PathSpace& space,
@@ -208,6 +218,10 @@ auto SetActivePanel(PathSpace& space,
         return status;
     }
     if (auto status = update_panel_visibility(space, root, std::string(panel_id)); !status) {
+        return status;
+    }
+    if (auto status = WidgetDetail::update_stack_capsule_state(space, root, std::string(panel_id));
+        !status) {
         return status;
     }
     (void)WidgetDetail::mark_render_dirty(space, root);

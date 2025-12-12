@@ -492,6 +492,14 @@ void WidgetEventTrellisWorker::handle_button_event(WindowBinding const& binding,
                                1.0f,
                                true);
                 break;
+            case TargetKind::Label:
+                state.focus_press_target = target;
+                emit_widget_op(binding,
+                               *target,
+                               WidgetBindings::WidgetOpKind::Press,
+                               1.0f,
+                               true);
+                break;
             case TargetKind::Toggle:
                 state.focus_press_target = target;
                 emit_widget_op(binding,
@@ -522,6 +530,20 @@ void WidgetEventTrellisWorker::handle_button_event(WindowBinding const& binding,
                            0.0f,
                            inside);
             DeclarativeDetail::SetButtonPressed(space_, target.widget_path, false);
+            if (inside) {
+                emit_widget_op(binding,
+                               target,
+                               WidgetBindings::WidgetOpKind::Activate,
+                               1.0f,
+                               true);
+            }
+            break;
+        case TargetKind::Label:
+            emit_widget_op(binding,
+                           target,
+                           WidgetBindings::WidgetOpKind::Release,
+                           0.0f,
+                           inside);
             if (inside) {
                 emit_widget_op(binding,
                                target,

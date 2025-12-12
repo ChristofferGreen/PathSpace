@@ -78,6 +78,13 @@ void WidgetEventTrellisWorker::handle_pointer_event(WindowBinding const& binding
                         DeclarativeDetail::SetButtonPressed(space_, state.active_target->widget_path, true);
                     }
                     break;
+                case TargetKind::Label:
+                    emit_widget_op(binding,
+                                   *state.active_target,
+                                   WidgetBindings::WidgetOpKind::Press,
+                                   1.0f,
+                                   true);
+                    break;
                 case TargetKind::Slider:
                     handle_slider_begin(binding, state, *state.active_target);
                     break;
@@ -115,6 +122,21 @@ void WidgetEventTrellisWorker::handle_pointer_event(WindowBinding const& binding
                                0.0f,
                                true);
                 DeclarativeDetail::SetButtonPressed(space_, state.active_target->widget_path, false);
+                if (state.hover_target
+                    && state.hover_target->widget_path == state.active_target->widget_path) {
+                    emit_widget_op(binding,
+                                   *state.active_target,
+                               WidgetBindings::WidgetOpKind::Activate,
+                               1.0f,
+                               true);
+                }
+                break;
+            case TargetKind::Label:
+                emit_widget_op(binding,
+                               *state.active_target,
+                               WidgetBindings::WidgetOpKind::Release,
+                               0.0f,
+                               true);
                 if (state.hover_target
                     && state.hover_target->widget_path == state.active_target->widget_path) {
                     emit_widget_op(binding,
@@ -649,6 +671,10 @@ void WidgetEventTrellisWorker::handle_hover_state(WindowBinding const& binding,
         auto const& prefix = parts.front();
         if (prefix == "button") {
             info.kind = TargetKind::Button;
+            return;
+        }
+        if (prefix == "label") {
+            info.kind = TargetKind::Label;
             return;
         }
         if (prefix == "toggle") {

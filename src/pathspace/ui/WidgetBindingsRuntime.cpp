@@ -1,5 +1,6 @@
 #include "WidgetDetail.hpp"
 
+#include <pathspace/ui/declarative/WidgetMailbox.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/declarative/widgets/Common.hpp>
 
@@ -32,6 +33,7 @@ using SP::UI::Declarative::ToggleContext;
 using SP::UI::Declarative::ToggleHandler;
 using SP::UI::Declarative::TreeNodeContext;
 using SP::UI::Declarative::TreeNodeHandler;
+using SP::UI::Declarative::WidgetMailboxEvent;
 
 namespace {
 
@@ -57,10 +59,6 @@ auto write_widget_footprint(PathSpace& space,
     return {};
 }
 
-auto compute_ops_queue(WidgetPath const& root) -> ConcretePath {
-    return ConcretePath{WidgetSpacePath(root, "/ops/inbox/queue")};
-}
-
 auto build_options(AppRootPathView appRoot,
                    WidgetPath const& root,
                    ConcretePathView targetPath,
@@ -68,7 +66,7 @@ auto build_options(AppRootPathView appRoot,
                    bool auto_render) -> BindingOptions {
     BindingOptions options{
         .target = ConcretePath{std::string(targetPath.getPath())},
-        .ops_queue = compute_ops_queue(root),
+        .ops_queue = ConcretePath{WidgetSpacePath(root, "/capsule/mailbox/events")},
         .dirty_rect = ensure_valid_hint(hint),
         .auto_render = auto_render,
     };
@@ -317,19 +315,38 @@ auto enqueue_widget_op(PathSpace& space,
                        PointerInfo const& pointer,
                        float value,
                        std::string_view target_id = {}) -> SP::Expected<void> {
+    auto topic = Declarative::Mailbox::TopicFor(kind);
+    if (topic.empty()) {
+        return std::unexpected(SP::Error{SP::Error::Code::InvalidType,
+                                         "WidgetBindingsRuntime missing mailbox topic"});
+    }
+
+    WidgetMailboxEvent event{};
+    event.topic = std::string{topic};
+    event.kind = kind;
+    event.widget_path = widget_path;
+    event.target_id = target_id;
+    event.pointer = pointer;
+    event.value = value;
+    event.sequence = g_widget_op_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
+    event.timestamp_ns = to_epoch_ns(std::chrono::system_clock::now());
+
+    auto queue_path = WidgetSpacePath(widget_path, "/capsule/mailbox/events/")
+        + std::string{topic} + "/queue";
+    auto inserted = space.insert(queue_path, event);
+    if (!inserted.errors.empty()) {
+        return std::unexpected(inserted.errors.front());
+    }
+
     WidgetOp op{};
     op.kind = kind;
     op.widget_path = widget_path;
     op.target_id = target_id;
     op.pointer = pointer;
     op.value = value;
-    op.sequence = g_widget_op_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
-    op.timestamp_ns = to_epoch_ns(std::chrono::system_clock::now());
+    op.sequence = event.sequence;
+    op.timestamp_ns = event.timestamp_ns;
 
-    auto inserted = space.insert(options.ops_queue.getPath(), op);
-    if (!inserted.errors.empty()) {
-        return std::unexpected(inserted.errors.front());
-    }
     emit_action_callbacks(options, op);
     return {};
 }

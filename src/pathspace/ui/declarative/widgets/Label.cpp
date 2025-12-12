@@ -12,8 +12,9 @@ namespace Label {
 
 auto Fragment(Args args) -> WidgetFragment {
     auto on_activate = std::move(args.on_activate);
+    bool has_activate_handler = static_cast<bool>(on_activate);
     auto builder = WidgetDetail::FragmentBuilder{"label",
-                                   [args = std::move(args)](FragmentContext const& ctx)
+                                   [args = std::move(args), has_activate_handler](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
                                            if (auto status = WidgetDetail::write_value(ctx.space,
                                                                                 WidgetSpacePath(ctx.root,
@@ -39,6 +40,15 @@ auto Fragment(Args args) -> WidgetFragment {
                                            if (auto status = WidgetDetail::initialize_render(ctx.space,
                                                                                       ctx.root,
                                                                                       WidgetKind::Label);
+                                               !status) {
+                                               return status;
+                                           }
+                                           if (auto status = WidgetDetail::mirror_label_capsule(ctx.space,
+                                                                                         ctx.root,
+                                                                                         args.text,
+                                                                                         args.typography,
+                                                                                         args.color,
+                                                                                         has_activate_handler);
                                                !status) {
                                                return status;
                                            }
@@ -69,6 +79,10 @@ auto SetText(PathSpace& space,
     if (auto status = WidgetDetail::write_value(space,
                                           WidgetSpacePath(widget.getPath(), "/state/text"),
                                           std::string(text));
+        !status) {
+        return status;
+    }
+    if (auto status = WidgetDetail::update_label_capsule_text(space, widget.getPath(), std::string(text));
         !status) {
         return status;
     }

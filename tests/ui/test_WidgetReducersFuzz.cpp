@@ -6,6 +6,7 @@
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/declarative/Reducers.hpp>
+#include <pathspace/ui/declarative/WidgetMailbox.hpp>
 #include <pathspace/ui/WidgetSharedTypes.hpp>
 
 #include <algorithm>
@@ -24,6 +25,7 @@ namespace Declarative = SP::UI::Declarative;
 namespace WidgetsNS = SP::UI::Runtime::Widgets;
 namespace WidgetBindings = SP::UI::Runtime::Widgets::Bindings;
 namespace DeclarativeReducers = SP::UI::Declarative::Reducers;
+namespace Mailbox = SP::UI::Declarative::Mailbox;
 
 auto is_not_found_error(SP::Error::Code code) -> bool {
     return code == SP::Error::Code::NoObjectFound || code == SP::Error::Code::NoSuchPath;
@@ -62,8 +64,8 @@ struct Bounds {
 };
 
 struct WidgetQueues {
-    std::string ops_queue;
     std::string actions_queue;
+    std::vector<std::string> mailbox_topics;
     std::uint64_t next_sequence = 1;
 };
 
@@ -82,10 +84,17 @@ auto mark_widget_dirty(PathSpace& space, std::string const& root_path) -> void {
     overwrite_node(space, dirty_path, true);
 }
 
-auto make_widget_queues(SP::UI::Runtime::WidgetPath const& widget) -> WidgetQueues {
+auto init_widget_mailbox(PathSpace& space,
+                         SP::UI::Runtime::WidgetPath const& widget,
+                         std::vector<std::string> topics) -> WidgetQueues {
     WidgetQueues queues;
-    queues.ops_queue = DeclarativeReducers::WidgetOpsQueue(widget).getPath();
     queues.actions_queue = DeclarativeReducers::DefaultActionsQueue(widget).getPath();
+    queues.mailbox_topics = std::move(topics);
+
+    auto subs_path = WidgetsNS::WidgetSpacePath(widget, "/capsule/mailbox/subscriptions");
+    auto inserted = space.insert(subs_path, queues.mailbox_topics);
+    REQUIRE(inserted.errors.empty());
+
     return queues;
 }
 
@@ -151,15 +160,25 @@ auto enqueue_widget_op(PathSpace& space,
                        std::string_view target_id,
                        WidgetBindings::PointerInfo pointer,
                        float analog_value) -> void {
-    WidgetBindings::WidgetOp op{};
-    op.kind = kind;
-    op.widget_path = std::string(widget_path);
-    op.target_id = std::string(target_id);
-    op.pointer = pointer;
-    op.value = analog_value;
-    op.sequence = queues.next_sequence++;
-    op.timestamp_ns = op.sequence * 100; // deterministic monotonic timestamp
-    auto inserted = space.insert(queues.ops_queue, op);
+    auto topic = Mailbox::TopicFor(kind);
+    REQUIRE_FALSE(topic.empty());
+
+    Declarative::WidgetMailboxEvent event{};
+    event.topic = std::string{topic};
+    event.kind = kind;
+    event.widget_path = std::string(widget_path);
+    event.target_id = std::string(target_id);
+    event.pointer = pointer;
+    event.value = analog_value;
+    event.sequence = queues.next_sequence++;
+    event.timestamp_ns = event.sequence * 100; // deterministic monotonic timestamp
+
+    std::string queue_path{widget_path};
+    queue_path.append("/capsule/mailbox/events/");
+    queue_path.append(event.topic);
+    queue_path.append("/queue");
+
+    auto inserted = space.insert(queue_path, event);
     REQUIRE(inserted.errors.empty());
 }
 
@@ -409,24 +428,18 @@ auto drive_list(ListContext& ctx, std::mt19937& rng) -> void {
 }
 
 template <typename Context>
-auto reduce_actions(PathSpace& space, Context const& ctx) -> std::vector<DeclarativeReducers::WidgetAction> {
-    auto ops_view = SP::ConcretePathStringView{ctx.queues.ops_queue};
-    auto actions = DeclarativeReducers::ReducePending(space, ops_view, 2048);
-    REQUIRE(actions);
-    REQUIRE_FALSE(actions->empty());
-    return *std::move(actions);
-}
-
-auto publish_actions(PathSpace& space,
-                     WidgetQueues const& queues,
-                     std::span<DeclarativeReducers::WidgetAction const> actions) -> void {
-    auto queue_view = SP::ConcretePathStringView{queues.actions_queue};
-    auto publish = DeclarativeReducers::PublishActions(space, queue_view, actions);
-    REQUIRE(publish);
+auto reduce_actions(PathSpace& space, Context const& ctx)
+    -> DeclarativeReducers::ProcessActionsResult {
+    auto processed = DeclarativeReducers::ProcessPendingActions(space, ctx.widget, 2048);
+    REQUIRE(processed);
+    REQUIRE_FALSE(processed->actions.empty());
+    return *std::move(processed);
 }
 
 auto verify_button_actions(PathSpace& space, ButtonContext const& ctx) -> void {
-    auto actions = reduce_actions(space, ctx);
+    auto result = reduce_actions(space, ctx);
+    auto const& actions = result.actions;
+    auto actions_queue = result.actions_queue.getPath();
 
     std::uint64_t last_sequence = 0;
     for (auto const& action : actions) {
@@ -440,10 +453,8 @@ auto verify_button_actions(PathSpace& space, ButtonContext const& ctx) -> void {
                || action.analog_value == doctest::Approx(1.0f)));
     }
 
-    publish_actions(space, ctx.queues, std::span(actions.data(), actions.size()));
-
     for (auto const& expected : actions) {
-        auto stored = space.take<DeclarativeReducers::WidgetAction, std::string>(ctx.queues.actions_queue);
+        auto stored = space.take<DeclarativeReducers::WidgetAction, std::string>(actions_queue);
         REQUIRE(stored);
         CHECK(stored->kind == expected.kind);
         CHECK(stored->widget_path == expected.widget_path);
@@ -451,7 +462,7 @@ auto verify_button_actions(PathSpace& space, ButtonContext const& ctx) -> void {
         CHECK(stored->analog_value == doctest::Approx(expected.analog_value));
     }
 
-    auto empty = space.take<DeclarativeReducers::WidgetAction, std::string>(ctx.queues.actions_queue);
+    auto empty = space.take<DeclarativeReducers::WidgetAction, std::string>(actions_queue);
     CHECK_FALSE(empty);
     if (!empty) {
         CHECK(is_not_found_error(empty.error().code));
@@ -459,7 +470,9 @@ auto verify_button_actions(PathSpace& space, ButtonContext const& ctx) -> void {
 }
 
 auto verify_toggle_actions(PathSpace& space, ToggleContext const& ctx) -> void {
-    auto actions = reduce_actions(space, ctx);
+    auto result = reduce_actions(space, ctx);
+    auto const& actions = result.actions;
+    auto actions_queue = result.actions_queue.getPath();
 
     std::uint64_t last_sequence = 0;
     for (auto const& action : actions) {
@@ -473,10 +486,8 @@ auto verify_toggle_actions(PathSpace& space, ToggleContext const& ctx) -> void {
                || action.analog_value == doctest::Approx(1.0f)));
     }
 
-    publish_actions(space, ctx.queues, std::span(actions.data(), actions.size()));
-
     for (auto const& expected : actions) {
-        auto stored = space.take<DeclarativeReducers::WidgetAction, std::string>(ctx.queues.actions_queue);
+        auto stored = space.take<DeclarativeReducers::WidgetAction, std::string>(actions_queue);
         REQUIRE(stored);
         CHECK(stored->kind == expected.kind);
         CHECK(stored->widget_path == expected.widget_path);
@@ -484,7 +495,7 @@ auto verify_toggle_actions(PathSpace& space, ToggleContext const& ctx) -> void {
         CHECK(stored->analog_value == doctest::Approx(expected.analog_value));
     }
 
-    auto empty = space.take<DeclarativeReducers::WidgetAction, std::string>(ctx.queues.actions_queue);
+    auto empty = space.take<DeclarativeReducers::WidgetAction, std::string>(actions_queue);
     CHECK_FALSE(empty);
     if (!empty) {
         CHECK(is_not_found_error(empty.error().code));
@@ -492,7 +503,9 @@ auto verify_toggle_actions(PathSpace& space, ToggleContext const& ctx) -> void {
 }
 
 auto verify_slider_actions(PathSpace& space, SliderContext const& ctx) -> void {
-    auto actions = reduce_actions(space, ctx);
+    auto result = reduce_actions(space, ctx);
+    auto const& actions = result.actions;
+    auto actions_queue = result.actions_queue.getPath();
 
     auto min_value = std::min(ctx.range.minimum, ctx.range.maximum);
     auto max_value = std::max(ctx.range.minimum, ctx.range.maximum);
@@ -509,10 +522,8 @@ auto verify_slider_actions(PathSpace& space, SliderContext const& ctx) -> void {
         last_sequence = action.sequence;
     }
 
-    publish_actions(space, ctx.queues, std::span(actions.data(), actions.size()));
-
     for (auto const& expected : actions) {
-        auto stored = space.take<DeclarativeReducers::WidgetAction, std::string>(ctx.queues.actions_queue);
+        auto stored = space.take<DeclarativeReducers::WidgetAction, std::string>(actions_queue);
         REQUIRE(stored);
         CHECK(stored->kind == expected.kind);
         CHECK(stored->widget_path == expected.widget_path);
@@ -520,7 +531,7 @@ auto verify_slider_actions(PathSpace& space, SliderContext const& ctx) -> void {
         CHECK(stored->analog_value == doctest::Approx(expected.analog_value));
     }
 
-    auto empty = space.take<DeclarativeReducers::WidgetAction, std::string>(ctx.queues.actions_queue);
+    auto empty = space.take<DeclarativeReducers::WidgetAction, std::string>(actions_queue);
     CHECK_FALSE(empty);
     if (!empty) {
         CHECK(is_not_found_error(empty.error().code));
@@ -528,7 +539,9 @@ auto verify_slider_actions(PathSpace& space, SliderContext const& ctx) -> void {
 }
 
 auto verify_list_actions(PathSpace& space, ListContext const& ctx) -> void {
-    auto actions = reduce_actions(space, ctx);
+    auto result = reduce_actions(space, ctx);
+    auto const& actions = result.actions;
+    auto actions_queue = result.actions_queue.getPath();
 
     std::uint64_t last_sequence = 0;
     auto const& widget_path = ctx.root_path;
@@ -561,10 +574,8 @@ auto verify_list_actions(PathSpace& space, ListContext const& ctx) -> void {
         }
     }
 
-    publish_actions(space, ctx.queues, std::span(actions.data(), actions.size()));
-
     for (auto const& expected : actions) {
-        auto stored = space.take<DeclarativeReducers::WidgetAction, std::string>(ctx.queues.actions_queue);
+        auto stored = space.take<DeclarativeReducers::WidgetAction, std::string>(actions_queue);
         REQUIRE(stored);
         CHECK(stored->kind == expected.kind);
         CHECK(stored->widget_path == expected.widget_path);
@@ -572,7 +583,7 @@ auto verify_list_actions(PathSpace& space, ListContext const& ctx) -> void {
         CHECK(stored->discrete_index == expected.discrete_index);
     }
 
-    auto empty = space.take<DeclarativeReducers::WidgetAction, std::string>(ctx.queues.actions_queue);
+    auto empty = space.take<DeclarativeReducers::WidgetAction, std::string>(actions_queue);
     CHECK_FALSE(empty);
     if (!empty) {
         CHECK(is_not_found_error(empty.error().code));
@@ -634,6 +645,15 @@ TEST_CASE("Widget reducers fuzz harness maintains invariants") {
     auto list_state = fx.space.read<WidgetsNS::ListState, std::string>(list_state_path);
     REQUIRE(list_state);
 
+    std::vector<std::string> button_topics{
+        "hover_enter", "hover_exit", "press", "release", "activate"};
+    std::vector<std::string> toggle_topics{
+        "hover_enter", "hover_exit", "press", "release", "toggle"};
+    std::vector<std::string> slider_topics{
+        "slider_begin", "slider_update", "slider_commit"};
+    std::vector<std::string> list_topics{
+        "list_hover", "list_select", "list_activate", "list_scroll"};
+
     ButtonContext button_ctx{
         .space = &fx.space,
         .widget = *button,
@@ -641,7 +661,7 @@ TEST_CASE("Widget reducers fuzz harness maintains invariants") {
         .state_path = button_state_path,
         .state = *button_state,
         .bounds = Bounds{256.0f, 128.0f},
-        .queues = make_widget_queues(*button),
+        .queues = init_widget_mailbox(fx.space, *button, button_topics),
     };
 
     ToggleContext toggle_ctx{
@@ -651,7 +671,7 @@ TEST_CASE("Widget reducers fuzz harness maintains invariants") {
         .state_path = toggle_state_path,
         .state = *toggle_state,
         .bounds = Bounds{192.0f, 96.0f},
-        .queues = make_widget_queues(*toggle),
+        .queues = init_widget_mailbox(fx.space, *toggle, toggle_topics),
     };
 
     SliderContext slider_ctx{
@@ -662,7 +682,7 @@ TEST_CASE("Widget reducers fuzz harness maintains invariants") {
         .state = *slider_state,
         .range = slider_range,
         .bounds = Bounds{320.0f, 96.0f},
-        .queues = make_widget_queues(*slider),
+        .queues = init_widget_mailbox(fx.space, *slider, slider_topics),
     };
 
     auto list_height = list_args.style.border_thickness * 2.0f
@@ -675,7 +695,7 @@ TEST_CASE("Widget reducers fuzz harness maintains invariants") {
         .state = *list_state,
         .items = list_args.items,
         .bounds = Bounds{list_args.style.width, list_height},
-        .queues = make_widget_queues(*list),
+        .queues = init_widget_mailbox(fx.space, *list, list_topics),
     };
 
     std::mt19937 rng{1337};

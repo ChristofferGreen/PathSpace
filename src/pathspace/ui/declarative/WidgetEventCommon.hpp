@@ -24,6 +24,7 @@ inline constexpr std::string_view kWidgetEventsLogQueue =
 enum class TargetKind {
     Unknown = 0,
     Button,
+    Label,
     Toggle,
     Slider,
     List,

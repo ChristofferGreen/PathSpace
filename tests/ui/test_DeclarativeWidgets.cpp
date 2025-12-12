@@ -11,6 +11,8 @@
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/Reducers.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
+#include <pathspace/ui/declarative/WidgetStateMutators.hpp>
+#include <pathspace/ui/declarative/WidgetPrimitives.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/WidgetDetail.hpp>
 #include <pathspace/ui/WidgetSharedTypes.hpp>
@@ -20,6 +22,7 @@
 #include <optional>
 #include <string>
 #include <span>
+#include <variant>
 
 using namespace std::chrono_literals;
 
@@ -31,6 +34,7 @@ namespace Runtime = SP::UI::Runtime;
 namespace WidgetsNS = SP::UI::Runtime::Widgets;
 namespace DetailNS = SP::UI::Declarative::Detail;
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
+namespace Primitives = SP::UI::Declarative::Primitives;
 
 inline auto widget_space(std::string const& root, std::string_view relative) -> std::string {
     return WidgetsNS::WidgetSpacePath(root, relative);
@@ -118,6 +122,537 @@ TEST_CASE("Declarative Button mounts under window widgets") {
         fx.space.read<std::string, std::string>(widget_space(*button, "/meta/label"));
     REQUIRE(updated.has_value());
     CHECK_EQ(*updated, "Updated");
+}
+
+TEST_CASE("Button capsule mirrors state and meta") {
+    DeclarativeFixture fx;
+
+    auto button = Button::Create(fx.space,
+                                 fx.parent_view(),
+                                 "capsule_button",
+                                 Button::Args{.label = "Capsule"});
+    REQUIRE(button.has_value());
+
+    auto kind = fx.space.read<std::string, std::string>(
+        widget_space(*button, "/capsule/kind"));
+    REQUIRE(kind.has_value());
+    CHECK_EQ(*kind, "button");
+
+    auto capsule_state = fx.space.read<WidgetsNS::ButtonState, std::string>(
+        widget_space(*button, "/capsule/state"));
+    REQUIRE(capsule_state.has_value());
+    CHECK(capsule_state->enabled);
+
+    auto capsule_label = fx.space.read<std::string, std::string>(
+        widget_space(*button, "/capsule/meta/label"));
+    REQUIRE(capsule_label.has_value());
+    CHECK_EQ(*capsule_label, "Capsule");
+
+    auto index = fx.space.read<Primitives::WidgetPrimitiveIndex, std::string>(
+        widget_space(*button, "/capsule/primitives/index"));
+    REQUIRE(index.has_value());
+    std::vector<std::string> expected_roots{"behavior"};
+    CHECK_EQ(index->roots, expected_roots);
+
+    auto behavior = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*button, "/capsule/primitives/behavior"));
+    REQUIRE(behavior.has_value());
+    CHECK(behavior->kind == Primitives::WidgetPrimitiveKind::Behavior);
+    auto* behavior_data = std::get_if<Primitives::BehaviorPrimitive>(&behavior->data);
+    REQUIRE(behavior_data != nullptr);
+    CHECK_EQ(behavior_data->topics.size(), 4);
+
+    auto text_prim = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*button, "/capsule/primitives/label"));
+    REQUIRE(text_prim.has_value());
+    auto* text_data = std::get_if<Primitives::TextPrimitive>(&text_prim->data);
+    REQUIRE(text_data != nullptr);
+    CHECK_EQ(text_data->text, "Capsule");
+
+    REQUIRE(Button::SetEnabled(fx.space, *button, false).has_value());
+    auto updated_state = fx.space.read<WidgetsNS::ButtonState, std::string>(
+        widget_space(*button, "/capsule/state"));
+    REQUIRE(updated_state.has_value());
+    CHECK(!updated_state->enabled);
+
+    REQUIRE(Button::SetLabel(fx.space, *button, "Capsule Updated").has_value());
+    auto updated_label = fx.space.read<std::string, std::string>(
+        widget_space(*button, "/capsule/meta/label"));
+    REQUIRE(updated_label.has_value());
+    CHECK_EQ(*updated_label, "Capsule Updated");
+
+    auto updated_text_prim = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*button, "/capsule/primitives/label"));
+    REQUIRE(updated_text_prim.has_value());
+    auto* updated_text_data = std::get_if<Primitives::TextPrimitive>(&updated_text_prim->data);
+    REQUIRE(updated_text_data != nullptr);
+    CHECK_EQ(updated_text_data->text, "Capsule Updated");
+}
+
+TEST_CASE("Label capsule mirrors text and updates") {
+    DeclarativeFixture fx;
+
+    auto label = Label::Create(fx.space,
+                               fx.parent_view(),
+                               "capsule_label",
+                               Label::Args{.text = "Hello",
+                                           .typography = WidgetsNS::TypographyStyle{},
+                                           .color = {0.1f, 0.2f, 0.3f, 1.0f}});
+    REQUIRE(label.has_value());
+
+    auto capsule_kind = fx.space.read<std::string, std::string>(
+        widget_space(*label, "/capsule/kind"));
+    REQUIRE(capsule_kind.has_value());
+    CHECK_EQ(*capsule_kind, "label");
+
+    auto capsule_text = fx.space.read<std::string, std::string>(
+        widget_space(*label, "/capsule/state/text"));
+    REQUIRE(capsule_text.has_value());
+    CHECK_EQ(*capsule_text, "Hello");
+
+    auto label_index = fx.space.read<Primitives::WidgetPrimitiveIndex, std::string>(
+        widget_space(*label, "/capsule/primitives/index"));
+    REQUIRE(label_index.has_value());
+    std::vector<std::string> expected_roots{"behavior"};
+    CHECK_EQ(label_index->roots, expected_roots);
+
+    auto behavior = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*label, "/capsule/primitives/behavior"));
+    REQUIRE(behavior.has_value());
+    auto* behavior_data = std::get_if<Primitives::BehaviorPrimitive>(&behavior->data);
+    REQUIRE(behavior_data != nullptr);
+    std::vector<std::string> expected_topics{
+        "hover_enter",
+        "hover_exit",
+        "press",
+        "release",
+    };
+    CHECK_EQ(behavior_data->topics, expected_topics);
+
+    auto label_prim = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*label, "/capsule/primitives/label"));
+    REQUIRE(label_prim.has_value());
+    auto* text_data = std::get_if<Primitives::TextPrimitive>(&label_prim->data);
+    REQUIRE(text_data != nullptr);
+    CHECK_EQ(text_data->text, "Hello");
+
+    REQUIRE(Label::SetText(fx.space, *label, "World").has_value());
+    auto updated_text = fx.space.read<std::string, std::string>(
+        widget_space(*label, "/capsule/state/text"));
+    REQUIRE(updated_text.has_value());
+    CHECK_EQ(*updated_text, "World");
+
+    auto updated_label_prim = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*label, "/capsule/primitives/label"));
+    REQUIRE(updated_label_prim.has_value());
+    auto* updated_text_data = std::get_if<Primitives::TextPrimitive>(&updated_label_prim->data);
+    REQUIRE(updated_text_data != nullptr);
+    CHECK_EQ(updated_text_data->text, "World");
+}
+
+TEST_CASE("Input capsule mirrors state and primitives") {
+    DeclarativeFixture fx;
+
+    auto input = InputField::Create(fx.space,
+                                    fx.parent_view(),
+                                    "capsule_input",
+                                    InputField::Args{.text = "Hello",
+                                                     .placeholder = "Type here",
+                                                     .focused = true});
+    REQUIRE(input.has_value());
+
+    auto capsule_kind = fx.space.read<std::string, std::string>(
+        widget_space(*input, "/capsule/kind"));
+    REQUIRE(capsule_kind.has_value());
+    CHECK_EQ(*capsule_kind, "input_field");
+
+    auto capsule_state = fx.space.read<WidgetsNS::TextFieldState, std::string>(
+        widget_space(*input, "/capsule/state"));
+    REQUIRE(capsule_state.has_value());
+    CHECK_EQ(capsule_state->text, "Hello");
+    CHECK_EQ(capsule_state->placeholder, "Type here");
+    CHECK(capsule_state->focused);
+
+    auto capsule_style = fx.space.read<WidgetsNS::TextFieldStyle, std::string>(
+        widget_space(*input, "/capsule/meta/style"));
+    REQUIRE(capsule_style.has_value());
+
+    auto index = fx.space.read<Primitives::WidgetPrimitiveIndex, std::string>(
+        widget_space(*input, "/capsule/primitives/index"));
+    REQUIRE(index.has_value());
+    std::vector<std::string> expected_roots{"behavior"};
+    CHECK_EQ(index->roots, expected_roots);
+
+    auto behavior = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*input, "/capsule/primitives/behavior"));
+    REQUIRE(behavior.has_value());
+    auto* behavior_data = std::get_if<Primitives::BehaviorPrimitive>(&behavior->data);
+    REQUIRE(behavior_data != nullptr);
+    CHECK_FALSE(behavior_data->topics.empty());
+
+    auto text_prim = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*input, "/capsule/primitives/text"));
+    REQUIRE(text_prim.has_value());
+    auto* text_data = std::get_if<Primitives::TextPrimitive>(&text_prim->data);
+    REQUIRE(text_data != nullptr);
+    CHECK_EQ(text_data->text, "Hello");
+
+    auto placeholder_prim = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*input, "/capsule/primitives/placeholder"));
+    REQUIRE(placeholder_prim.has_value());
+    auto* placeholder_data = std::get_if<Primitives::TextPrimitive>(&placeholder_prim->data);
+    REQUIRE(placeholder_data != nullptr);
+    CHECK(placeholder_data->text.empty());
+
+    REQUIRE(InputField::SetText(fx.space, *input, "Updated").has_value());
+
+    auto updated_state = fx.space.read<WidgetsNS::TextFieldState, std::string>(
+        widget_space(*input, "/capsule/state"));
+    REQUIRE(updated_state.has_value());
+    CHECK_EQ(updated_state->text, "Updated");
+
+    auto updated_text_prim = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*input, "/capsule/primitives/text"));
+    REQUIRE(updated_text_prim.has_value());
+    auto* updated_text_data = std::get_if<Primitives::TextPrimitive>(&updated_text_prim->data);
+    REQUIRE(updated_text_data != nullptr);
+    CHECK_EQ(updated_text_data->text, "Updated");
+}
+
+TEST_CASE("Toggle capsule primitives reflect checked state") {
+    DeclarativeFixture fx;
+
+    Toggle::Args args{};
+    args.style.track_off_color = {0.2f, 0.2f, 0.2f, 1.0f};
+    args.style.track_on_color = {0.8f, 0.4f, 0.1f, 1.0f};
+    args.style.thumb_color = {0.9f, 0.9f, 0.9f, 1.0f};
+
+    auto toggle = Toggle::Create(fx.space,
+                                 fx.parent_view(),
+                                 "capsule_toggle",
+                                 args);
+    REQUIRE(toggle.has_value());
+
+    auto track_prim = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*toggle, "/capsule/primitives/track"));
+    REQUIRE(track_prim.has_value());
+    auto* track_data = std::get_if<Primitives::SurfacePrimitive>(&track_prim->data);
+    REQUIRE(track_data != nullptr);
+    CHECK_EQ(track_data->fill_color, args.style.track_off_color);
+
+    REQUIRE(Toggle::SetChecked(fx.space, *toggle, true).has_value());
+
+    auto updated_track = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*toggle, "/capsule/primitives/track"));
+    REQUIRE(updated_track.has_value());
+    auto* updated_track_data = std::get_if<Primitives::SurfacePrimitive>(&updated_track->data);
+    REQUIRE(updated_track_data != nullptr);
+    CHECK_EQ(updated_track_data->fill_color, args.style.track_on_color);
+}
+
+TEST_CASE("Slider capsule mirrors primitives and updates value") {
+    DeclarativeFixture fx;
+
+    Slider::Args args{};
+    args.minimum = 0.0f;
+    args.maximum = 100.0f;
+    args.value = 25.0f;
+    args.style.track_color = {0.1f, 0.2f, 0.3f, 1.0f};
+    args.style.fill_color = {0.4f, 0.5f, 0.6f, 1.0f};
+    args.style.thumb_color = {0.9f, 0.9f, 0.9f, 1.0f};
+
+    auto slider = Slider::Create(fx.space, fx.parent_view(), "capsule_slider", args);
+    REQUIRE(slider.has_value());
+
+    auto capsule_kind = fx.space.read<std::string, std::string>(
+        widget_space(*slider, "/capsule/kind"));
+    REQUIRE(capsule_kind.has_value());
+    CHECK_EQ(*capsule_kind, "slider");
+
+    auto capsule_state = fx.space.read<WidgetsNS::SliderState, std::string>(
+        widget_space(*slider, "/capsule/state"));
+    REQUIRE(capsule_state.has_value());
+    CHECK(capsule_state->enabled);
+    CHECK_EQ(capsule_state->value, doctest::Approx(25.0f));
+
+    auto capsule_range = fx.space.read<WidgetsNS::SliderRange, std::string>(
+        widget_space(*slider, "/capsule/meta/range"));
+    REQUIRE(capsule_range.has_value());
+    CHECK_EQ(capsule_range->minimum, doctest::Approx(0.0f));
+    CHECK_EQ(capsule_range->maximum, doctest::Approx(100.0f));
+
+    auto index = fx.space.read<Primitives::WidgetPrimitiveIndex, std::string>(
+        widget_space(*slider, "/capsule/primitives/index"));
+    REQUIRE(index.has_value());
+    REQUIRE_EQ(index->roots.size(), 1U);
+    CHECK_EQ(index->roots.front(), "behavior");
+
+    auto behavior = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*slider, "/capsule/primitives/behavior"));
+    REQUIRE(behavior.has_value());
+    auto* behavior_data = std::get_if<Primitives::BehaviorPrimitive>(&behavior->data);
+    REQUIRE(behavior_data != nullptr);
+    CHECK(std::find(behavior_data->topics.begin(),
+                    behavior_data->topics.end(),
+                    std::string{"slider_update"})
+          != behavior_data->topics.end());
+
+    auto layout = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*slider, "/capsule/primitives/layout"));
+    REQUIRE(layout.has_value());
+    auto* layout_data = std::get_if<Primitives::BoxLayoutPrimitive>(&layout->data);
+    REQUIRE(layout_data != nullptr);
+    REQUIRE_EQ(layout_data->weights.size(), 3U);
+    CHECK(layout_data->distribution == Primitives::LayoutDistribution::Weighted);
+    CHECK(layout_data->weights[0] == doctest::Approx(0.25f));
+
+    auto fill = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*slider, "/capsule/primitives/fill"));
+    REQUIRE(fill.has_value());
+    auto* fill_data = std::get_if<Primitives::SurfacePrimitive>(&fill->data);
+    REQUIRE(fill_data != nullptr);
+    CHECK_EQ(fill_data->fill_color, args.style.fill_color);
+
+    REQUIRE(Slider::SetValue(fx.space, *slider, 75.0f).has_value());
+
+    auto updated_layout = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*slider, "/capsule/primitives/layout"));
+    REQUIRE(updated_layout.has_value());
+    auto* updated_layout_data = std::get_if<Primitives::BoxLayoutPrimitive>(&updated_layout->data);
+    REQUIRE(updated_layout_data != nullptr);
+    REQUIRE_EQ(updated_layout_data->weights.size(), 3U);
+    CHECK(updated_layout_data->weights[0] == doctest::Approx(0.75f));
+}
+
+TEST_CASE("List capsule mirrors items and updates primitives") {
+    DeclarativeFixture fx;
+
+    List::Args args{};
+    args.style.item_color = {0.2f, 0.3f, 0.4f, 1.0f};
+    args.style.item_selected_color = {0.8f, 0.7f, 0.1f, 1.0f};
+    args.items.push_back({"alpha", "Alpha"});
+    args.items.push_back({"beta", "Beta"});
+
+    auto list = List::Create(fx.space, fx.parent_view(), "capsule_list", args);
+    REQUIRE(list.has_value());
+
+    auto capsule_kind = fx.space.read<std::string, std::string>(
+        widget_space(*list, "/capsule/kind"));
+    REQUIRE(capsule_kind.has_value());
+    CHECK_EQ(*capsule_kind, "list");
+
+    auto index = fx.space.read<Primitives::WidgetPrimitiveIndex, std::string>(
+        widget_space(*list, "/capsule/primitives/index"));
+    REQUIRE(index.has_value());
+    std::vector<std::string> expected_roots{"behavior"};
+    CHECK_EQ(index->roots, expected_roots);
+
+    auto behavior = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*list, "/capsule/primitives/behavior"));
+    REQUIRE(behavior.has_value());
+    auto* behavior_data = std::get_if<Primitives::BehaviorPrimitive>(&behavior->data);
+    REQUIRE(behavior_data != nullptr);
+    CHECK(std::find(behavior_data->topics.begin(), behavior_data->topics.end(), "list_select")
+          != behavior_data->topics.end());
+
+    auto layout = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*list, "/capsule/primitives/layout"));
+    REQUIRE(layout.has_value());
+    auto* layout_data = std::get_if<Primitives::BoxLayoutPrimitive>(&layout->data);
+    REQUIRE(layout_data != nullptr);
+    CHECK(layout_data->axis == Primitives::LayoutAxis::Vertical);
+    REQUIRE_EQ(layout_data->weights.size(), args.items.size());
+
+    auto row0 = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*list, "/capsule/primitives/row_0"));
+    REQUIRE(row0.has_value());
+    auto* row0_data = std::get_if<Primitives::SurfacePrimitive>(&row0->data);
+    REQUIRE(row0_data != nullptr);
+    CHECK_EQ(row0_data->fill_color, args.style.item_color);
+
+    auto row0_label = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*list, "/capsule/primitives/row_label_0"));
+    REQUIRE(row0_label.has_value());
+    auto* label_data = std::get_if<Primitives::TextPrimitive>(&row0_label->data);
+    REQUIRE(label_data != nullptr);
+    CHECK_EQ(label_data->text, "Alpha");
+
+    SP::UI::Declarative::Detail::SetListSelectionIndex(fx.space, list->getPath(), 1);
+
+    auto row1 = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*list, "/capsule/primitives/row_1"));
+    REQUIRE(row1.has_value());
+    auto* row1_data = std::get_if<Primitives::SurfacePrimitive>(&row1->data);
+    REQUIRE(row1_data != nullptr);
+    CHECK_EQ(row1_data->fill_color, args.style.item_selected_color);
+}
+
+TEST_CASE("Tree capsule mirrors nodes and expands primitives") {
+    DeclarativeFixture fx;
+
+    Tree::Args args{};
+    args.style.row_selected_color = {0.7f, 0.2f, 0.1f, 1.0f};
+    args.style.indent_per_level = 12.0f;
+    args.nodes.push_back(Tree::TreeNode{.id = "root",
+                                        .parent_id = "",
+                                        .label = "Root",
+                                        .enabled = true,
+                                        .expandable = true,
+                                        .loaded = true});
+    args.nodes.push_back(Tree::TreeNode{.id = "child",
+                                        .parent_id = "root",
+                                        .label = "Child",
+                                        .enabled = true,
+                                        .expandable = false,
+                                        .loaded = true});
+
+    auto tree = Tree::Create(fx.space, fx.parent_view(), "capsule_tree", args);
+    REQUIRE(tree.has_value());
+
+    auto capsule_kind = fx.space.read<std::string, std::string>(
+        widget_space(*tree, "/capsule/kind"));
+    REQUIRE(capsule_kind.has_value());
+    CHECK_EQ(*capsule_kind, "tree");
+
+    auto index = fx.space.read<Primitives::WidgetPrimitiveIndex, std::string>(
+        widget_space(*tree, "/capsule/primitives/index"));
+    REQUIRE(index.has_value());
+    std::vector<std::string> expected_roots{"behavior"};
+    CHECK_EQ(index->roots, expected_roots);
+
+    auto behavior = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*tree, "/capsule/primitives/behavior"));
+    REQUIRE(behavior.has_value());
+    auto* behavior_data = std::get_if<Primitives::BehaviorPrimitive>(&behavior->data);
+    REQUIRE(behavior_data != nullptr);
+    CHECK(std::find(behavior_data->topics.begin(),
+                    behavior_data->topics.end(),
+                    "tree_select")
+          != behavior_data->topics.end());
+
+    auto layout = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*tree, "/capsule/primitives/layout"));
+    REQUIRE(layout.has_value());
+    auto* layout_data = std::get_if<Primitives::BoxLayoutPrimitive>(&layout->data);
+    REQUIRE(layout_data != nullptr);
+    REQUIRE_EQ(layout_data->weights.size(), 1U);
+
+    auto row0_label = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*tree, "/capsule/primitives/row_label_0"));
+    REQUIRE(row0_label.has_value());
+    auto* row0_label_data = std::get_if<Primitives::TextPrimitive>(&row0_label->data);
+    REQUIRE(row0_label_data != nullptr);
+    CHECK_EQ(row0_label_data->text, "Root");
+
+    auto row0_layout = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*tree, "/capsule/primitives/row_layout_0"));
+    REQUIRE(row0_layout.has_value());
+    auto* row0_layout_data = std::get_if<Primitives::BoxLayoutPrimitive>(&row0_layout->data);
+    REQUIRE(row0_layout_data != nullptr);
+    CHECK(row0_layout_data->padding[0] == doctest::Approx(0.0f));
+
+    DetailNS::ToggleTreeExpanded(fx.space, tree->getPath(), "root");
+
+    auto expanded_layout = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*tree, "/capsule/primitives/layout"));
+    REQUIRE(expanded_layout.has_value());
+    auto* expanded_layout_data = std::get_if<Primitives::BoxLayoutPrimitive>(&expanded_layout->data);
+    REQUIRE(expanded_layout_data != nullptr);
+    REQUIRE_EQ(expanded_layout_data->weights.size(), 2U);
+
+    auto row1_label = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*tree, "/capsule/primitives/row_label_1"));
+    REQUIRE(row1_label.has_value());
+    auto* row1_label_data = std::get_if<Primitives::TextPrimitive>(&row1_label->data);
+    REQUIRE(row1_label_data != nullptr);
+    CHECK_EQ(row1_label_data->text, "Child");
+
+    auto row1_layout = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*tree, "/capsule/primitives/row_layout_1"));
+    REQUIRE(row1_layout.has_value());
+    auto* row1_layout_data = std::get_if<Primitives::BoxLayoutPrimitive>(&row1_layout->data);
+    REQUIRE(row1_layout_data != nullptr);
+    CHECK(row1_layout_data->padding[0] == doctest::Approx(args.style.indent_per_level));
+
+    DetailNS::SetTreeSelectedNode(fx.space, tree->getPath(), "child");
+
+    auto row1_surface = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*tree, "/capsule/primitives/row_1"));
+    REQUIRE(row1_surface.has_value());
+    auto* row1_surface_data = std::get_if<Primitives::SurfacePrimitive>(&row1_surface->data);
+    REQUIRE(row1_surface_data != nullptr);
+    CHECK_EQ(row1_surface_data->fill_color, args.style.row_selected_color);
+}
+
+TEST_CASE("Stack capsule mirrors primitives and active panel") {
+    DeclarativeFixture fx;
+
+    Stack::Args args{};
+    args.active_panel = "alpha";
+    args.panels.push_back(Stack::Panel{
+        .id = "alpha",
+        .fragment = Label::Fragment(Label::Args{.text = "Alpha"}),
+    });
+    args.panels.push_back(Stack::Panel{
+        .id = "beta",
+        .fragment = Label::Fragment(Label::Args{.text = "Beta"}),
+    });
+
+    auto stack = Stack::Create(fx.space, fx.parent_view(), "capsule_stack", std::move(args));
+    REQUIRE(stack.has_value());
+
+    auto kind = fx.space.read<std::string, std::string>(
+        widget_space(*stack, "/capsule/kind"));
+    REQUIRE(kind.has_value());
+    CHECK_EQ(*kind, "stack");
+
+    auto active_panel = fx.space.read<std::string, std::string>(
+        widget_space(*stack, "/capsule/state/active_panel"));
+    REQUIRE(active_panel.has_value());
+    CHECK_EQ(*active_panel, "alpha");
+
+    auto panel_ids = fx.space.read<std::vector<std::string>, std::string>(
+        widget_space(*stack, "/capsule/meta/panels"));
+    REQUIRE(panel_ids.has_value());
+    REQUIRE_EQ(panel_ids->size(), 2U);
+    CHECK_EQ((*panel_ids)[0], "alpha");
+    CHECK_EQ((*panel_ids)[1], "beta");
+
+    auto subscriptions = fx.space.read<std::vector<std::string>, std::string>(
+        widget_space(*stack, "/capsule/mailbox/subscriptions"));
+    REQUIRE(subscriptions.has_value());
+    CHECK(std::find(subscriptions->begin(), subscriptions->end(), "stack_select")
+          != subscriptions->end());
+
+    auto layout = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*stack, "/capsule/primitives/layout"));
+    REQUIRE(layout.has_value());
+    auto* layout_data = std::get_if<Primitives::BoxLayoutPrimitive>(&layout->data);
+    REQUIRE(layout_data != nullptr);
+    REQUIRE_EQ(layout_data->weights.size(), 2U);
+    CHECK_EQ(layout_data->weights[0], doctest::Approx(1.0f));
+    CHECK_EQ(layout_data->weights[1], doctest::Approx(0.0f));
+
+    auto panel_beta = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*stack, "/capsule/primitives/panel_beta"));
+    REQUIRE(panel_beta.has_value());
+    CHECK(panel_beta->kind == Primitives::WidgetPrimitiveKind::Surface);
+
+    REQUIRE(Stack::SetActivePanel(fx.space, *stack, "beta"));
+
+    auto updated_active = fx.space.read<std::string, std::string>(
+        widget_space(*stack, "/capsule/state/active_panel"));
+    REQUIRE(updated_active.has_value());
+    CHECK_EQ(*updated_active, "beta");
+
+    auto updated_layout = fx.space.read<Primitives::WidgetPrimitive, std::string>(
+        widget_space(*stack, "/capsule/primitives/layout"));
+    REQUIRE(updated_layout.has_value());
+    auto* updated_layout_data = std::get_if<Primitives::BoxLayoutPrimitive>(&updated_layout->data);
+    REQUIRE(updated_layout_data != nullptr);
+    REQUIRE_EQ(updated_layout_data->weights.size(), 2U);
+    CHECK_EQ(updated_layout_data->weights[0], doctest::Approx(0.0f));
+    CHECK_EQ(updated_layout_data->weights[1], doctest::Approx(1.0f));
 }
 
 TEST_CASE("Declarative List mounts child fragments") {

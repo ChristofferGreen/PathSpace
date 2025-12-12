@@ -3,6 +3,7 @@
 #include "PathSpace.hpp"
 #include "core/Error.hpp"
 #include "core/InsertReturn.hpp"
+#include "inspector/InspectorMailboxMetrics.hpp"
 #include "inspector/InspectorSnapshot.hpp"
 #include "inspector/PaintScreenshotCard.hpp"
 #include "tools/PathSpaceJsonExporter.hpp"
@@ -2315,6 +2316,69 @@ auto InspectorHttpServer::configure_routes(httplib::Server& server) -> void {
                  {"idle_timeout_ms", options_.stream.idle_timeout.count()},
              }},
         };
+        res.status = 200;
+        res.set_content(json.dump(2), "application/json");
+        res.set_header("Cache-Control", "no-store");
+    });
+
+    server.Get("/inspector/metrics/mailbox", [this](httplib::Request const&, httplib::Response& res) {
+        auto snapshot = CollectMailboxMetrics(space_);
+        if (!snapshot) {
+            auto [status, payload] = make_error("failed to collect mailbox metrics: "
+                                                  + describeError(snapshot.error()),
+                                              500);
+            res.status             = status;
+            res.set_content(payload, "application/json");
+            return;
+        }
+
+        nlohmann::json summary{
+            {"widgets_scanned", snapshot->summary.widgets_scanned},
+            {"widgets_with_mailbox", snapshot->summary.widgets_with_mailbox},
+            {"total_events", snapshot->summary.total_events},
+            {"total_failures", snapshot->summary.total_failures},
+            {"last_event_ns",
+             snapshot->summary.last_event_ns ? nlohmann::json(*snapshot->summary.last_event_ns)
+                                             : nlohmann::json(nullptr)},
+            {"last_event_kind",
+             snapshot->summary.last_event_kind ? nlohmann::json(*snapshot->summary.last_event_kind)
+                                               : nlohmann::json(nullptr)},
+            {"last_event_widget",
+             snapshot->summary.last_event_widget ? nlohmann::json(*snapshot->summary.last_event_widget)
+                                                 : nlohmann::json(nullptr)},
+        };
+
+        nlohmann::json widgets = nlohmann::json::array();
+        for (auto const& widget : snapshot->widgets) {
+            nlohmann::json topics = nlohmann::json::array();
+            for (auto const& topic : widget.topics) {
+                topics.push_back({{"topic", topic.topic}, {"total", topic.total}});
+            }
+
+            widgets.push_back({
+                {"path", widget.widget_path},
+                {"kind", widget.widget_kind},
+                {"subscriptions", widget.subscriptions},
+                {"events_total", widget.events_total},
+                {"dispatch_failures_total", widget.dispatch_failures_total},
+                {"last_dispatch_ns",
+                 widget.last_dispatch_ns ? nlohmann::json(*widget.last_dispatch_ns)
+                                         : nlohmann::json(nullptr)},
+                {"last_event_kind",
+                 widget.last_event_kind ? nlohmann::json(*widget.last_event_kind)
+                                        : nlohmann::json(nullptr)},
+                {"last_event_ns",
+                 widget.last_event_ns ? nlohmann::json(*widget.last_event_ns) : nlohmann::json(nullptr)},
+                {"last_event_target",
+                 widget.last_event_target ? nlohmann::json(*widget.last_event_target)
+                                          : nlohmann::json(nullptr)},
+                {"topics", std::move(topics)},
+            });
+        }
+
+        nlohmann::json json{{"summary", std::move(summary)},
+                             {"widgets", std::move(widgets)},
+                             {"diagnostics", snapshot->diagnostics}};
         res.status = 200;
         res.set_content(json.dump(2), "application/json");
         res.set_header("Cache-Control", "no-store");

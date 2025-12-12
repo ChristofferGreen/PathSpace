@@ -33,8 +33,9 @@ auto Fragment(Args args) -> WidgetFragment {
     args.style = sanitize_button_style(args.style);
     auto children = std::move(args.children);
     auto on_press = std::move(args.on_press);
+    bool has_press_handler = static_cast<bool>(on_press);
     auto builder = WidgetDetail::FragmentBuilder{"button",
-                                   [args = std::move(args)](FragmentContext const& ctx)
+                                   [args = std::move(args), has_press_handler](FragmentContext const& ctx)
                                        -> SP::Expected<void> {
                                            BuilderWidgets::ButtonState state{};
                                            state.enabled = args.enabled;
@@ -72,6 +73,15 @@ auto Fragment(Args args) -> WidgetFragment {
                                                !status) {
                                                return status;
                                            }
+                                           if (auto status = WidgetDetail::mirror_button_capsule(ctx.space,
+                                                                                          ctx.root,
+                                                                                          state,
+                                                                                          args.style,
+                                                                                          args.label,
+                                                                                          has_press_handler);
+                                               !status) {
+                                               return status;
+                                           }
                                            return SP::Expected<void>{};
                                        }}
         .with_children(std::move(children));
@@ -102,6 +112,12 @@ auto SetLabel(PathSpace& space,
         !status) {
         return status;
     }
+    if (auto status = WidgetDetail::update_button_capsule_label(space,
+                                                                widget.getPath(),
+                                                                std::string(label));
+        !status) {
+        return status;
+    }
     return WidgetDetail::mark_render_dirty(space, widget.getPath());
 }
 
@@ -118,6 +134,10 @@ auto SetEnabled(PathSpace& space,
     }
     state->enabled = enabled;
     if (auto status = WidgetDetail::write_state(space, widget.getPath(), *state); !status) {
+        return status;
+    }
+    if (auto status = WidgetDetail::update_button_capsule_state(space, widget.getPath(), *state);
+        !status) {
         return status;
     }
     return WidgetDetail::mark_render_dirty(space, widget.getPath());

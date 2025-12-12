@@ -58,6 +58,15 @@ auto Fragment(Args args) -> WidgetFragment {
                                                !status) {
                                                return status;
                                            }
+                                           if (auto status = WidgetDetail::mirror_list_capsule(ctx.space,
+                                                                                         ctx.root,
+                                                                                         state,
+                                                                                         args.style,
+                                                                                         items,
+                                                                                         static_cast<bool>(args.on_child_event));
+                                               !status) {
+                                               return status;
+                                           }
                                            return SP::Expected<void>{};
                                        }}
         .with_children(std::move(children));
@@ -88,6 +97,15 @@ auto SetItems(PathSpace& space,
                                           std::move(items));
         !status) {
         return status;
+    }
+    auto capsule_items = space.read<std::vector<ListItem>, std::string>(
+        WidgetSpacePath(widget.getPath(), "/meta/items"));
+    if (capsule_items) {
+        if (auto capsule_status =
+                WidgetDetail::update_list_capsule_items(space, widget.getPath(), *capsule_items);
+            !capsule_status) {
+            return capsule_status;
+        }
     }
     return WidgetDetail::mark_render_dirty(space, widget.getPath());
 }

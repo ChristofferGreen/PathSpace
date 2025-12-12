@@ -3,6 +3,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
+#include <pathspace/ui/declarative/WidgetMailbox.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/WidgetSharedTypes.hpp>
 
@@ -10,7 +11,6 @@
 #include <thread>
 
 TEST_CASE("InputTask updates per-widget handler metrics") {
-    using WidgetOp = SP::UI::Runtime::Widgets::Bindings::WidgetOp;
     using HandlerBinding = SP::UI::Declarative::HandlerBinding;
     using HandlerKind = SP::UI::Declarative::HandlerKind;
 
@@ -23,12 +23,27 @@ TEST_CASE("InputTask updates per-widget handler metrics") {
         .kind = HandlerKind::ButtonPress,
     };
     REQUIRE(space.insert(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/events/press/handler"), binding).errors.empty());
+    REQUIRE(space.insert(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/meta/kind"),
+                         std::string{"button"})
+                .errors.empty());
+    REQUIRE(space.insert(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/capsule/mailbox/subscriptions"),
+                         std::vector<std::string>{"activate"})
+                .errors.empty());
 
-    WidgetOp op{};
-    op.kind = SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Activate;
-    op.widget_path = widget_path;
-    op.target_id = "button/background";
-    REQUIRE(space.insert(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/ops/inbox/queue"), op).errors.empty());
+    SP::UI::Declarative::WidgetMailboxEvent mailbox_event{};
+    mailbox_event.topic = "activate";
+    mailbox_event.kind = SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Activate;
+    mailbox_event.widget_path = widget_path;
+    mailbox_event.target_id = "button/background";
+    mailbox_event.pointer = SP::UI::Runtime::Widgets::Bindings::PointerInfo::Make(0.0f, 0.0f)
+                               .WithInside(true)
+                               .WithPrimary(true);
+    mailbox_event.sequence = 1;
+    mailbox_event.timestamp_ns = 1;
+    REQUIRE(space.insert(SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path,
+                                                                  "/capsule/mailbox/events/activate/queue"),
+                         mailbox_event)
+                .errors.empty());
 
     SP::UI::Declarative::InputTaskOptions options;
     options.poll_interval = std::chrono::milliseconds{1};

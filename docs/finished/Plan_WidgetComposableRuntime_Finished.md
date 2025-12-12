@@ -1,6 +1,6 @@
 # Plan: Widget Capsule Runtime
 
-_Status:_ Draft - December 4, 2025  
+_Status:_ Finished - December 12, 2025  
 _Owner:_ PathSpace UI Runtime Team  
 _Related:_ `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`, `docs/WidgetDeclarativeAPI.md`, `docs/finished/Plan_SceneGraph_Renderer_Finished.md`
 
@@ -19,11 +19,33 @@ Declarative widgets replaced the imperative builders, but each widget still reli
 5. Maintain compatibility with the existing declarative schemas and readiness helpers while providing migration shims for samples/tests.
 
 ## Status Tracker
-- ☐ Phase 0 – Research & Instrumentation (capsule mirrors + telemetry hooks)
-- ☐ Phase 1 – Render Walker (WidgetSurface generation + per-widget software raster)
-- ☐ Phase 2 – Event Mailboxes (subscription schema + reducer migration)
-- ☐ Phase 3 – Primitive Composition Library (BoxLayoutPrimitive, fragment-only helpers)
-- ☐ Phase 4 – Capsule-Only Runtime (legacy mirror removal, doc/test sweep)
+- ☑ Phase 0 – Research & Instrumentation (capsule mirrors + telemetry hooks)
+  - 2025-12-11: Declarative widget audit completed (reducers/render data/events). See "Phase 0 Audit Summary" below for capsule mirror inputs.
+  - 2025-12-11: Button + Label capsule mirrors landed with render/mailbox telemetry and UITest coverage (capsule creation, render invocation counters, mailbox dispatch metrics).
+- ☑ Phase 1 – Render Walker (WidgetSurface generation + per-widget software raster)
+  - 2025-12-11: `WidgetRenderPackage` v1 struct + serializer landed with tests; walker integration and widget ports still pending.
+  - 2025-12-12: SceneLifecycle adds `WalkWidgetCapsules` behind `PATHSPACE_WIDGET_CAPSULES`; button/label renders now emit `capsule/render/package` snapshots while legacy buckets stay in place. `widget_pipeline` benchmark now records per-capsule render timing for the capsule walker flag.
+  - 2025-12-12: Capsule walker software-rasterizes widget buckets into per-widget framebuffers under `capsule/render/framebuffer`, hashes the rendered pixels into `WidgetSurface` fingerprints, and stores the updated `WidgetRenderPackage` alongside the legacy buckets.
+- ☑ Phase 2 – Event Mailboxes (subscription schema + reducer migration)
+  - 2025-12-12: WidgetEventTrellis routes capsule mailboxes under `capsule/mailbox/events/<topic>/queue` when `PATHSPACE_WIDGET_CAPSULES` is set; button/label mirrors now declare hover/press/release/activate subscriptions and UITests cover label + button mailbox delivery without legacy ops writes.
+  - 2025-12-12: InputTask now drains capsule mailbox queues for button/toggle/label when the feature flag is set, publishing actions without legacy `ops/inbox` writes; toggle capsules mirror state/style + mailbox metrics. UITests cover mailbox-only dispatch across button/toggle/label and trellis mailboxes without legacy ops.
+  - 2025-12-12: Inspector surface adds `/inspector/metrics/mailbox` endpoint and UI panel that summarizes capsule mailbox counters (events, failures, last event) per widget and highlights the most recent mailbox activity.
+- ☑ Phase 3 – Primitive Composition Library (BoxLayoutPrimitive, fragment-only helpers)
+  - 2025-12-12: Capsule primitives landed for button/label/toggle with `BoxLayout` scaffolding, surface/text/behavior wrappers, and mailbox topics mirrored under `capsule/primitives/*`. Capsule updates rewrite the primitives when labels or toggle state change, and regression coverage checks primitive roots + colors.
+  - 2025-12-12: Slider capsules mirror state/style/range into capsule mailboxes and primitives (fill/track/thumb with weighted layout reflecting value). Mailbox reducers run without legacy ops queues, and UITests cover slider capsule primitives + mailbox dispatch.
+  - 2025-12-12: List capsules add mailbox-only subscriptions for hover/select/activate/scroll, mirror sanitized items and style into capsule meta, and emit per-row primitives (background + vertical layout of row surfaces/text). Selection rewrites the primitive colors, and UITests cover mailbox topics and primitive updates.
+  - 2025-12-12: Tree capsules mirror state/style/nodes into capsule meta, emit per-row primitives (background + depth-aware layouts with toggle/label text), and wire mailbox topics for tree hover/select/toggle/expand/collapse/request_load/scroll. UITests cover expansion/selection rewriting the primitive tree.
+  - 2025-12-12: InputField capsules mirror text/placeholder/focus state and text-field style into capsule meta, emit primitives (background + text/placeholder + input behavior), and InputTask/Trellis route `text_*` mailbox topics without legacy ops writes. UITests cover primitive mirroring and mailbox reducer dispatch for input widgets.
+  - 2025-12-12: Stack capsules mirror active_panel + panel ids into capsule meta, expose `stack_select` mailbox topics, and emit panel/layout primitives with weighted active panels. InputTask/Trellis treat stack panels as mailbox-only under `PATHSPACE_WIDGET_CAPSULES`, and UITests cover primitive weights plus mailbox dispatch.
+  - 2025-12-12: InputTask now drains tree capsule mailbox queues (`tree_hover/select/toggle/expand/collapse/request_load/scroll`) and dispatches handlers without legacy `ops/inbox` writes; UITest coverage updated alongside mailbox metrics. Phase 3 composition + mailbox stack considered complete.
+- ☑ Phase 4 – Capsule-Only Runtime (legacy mirror removal, doc/test sweep)
+  - 2025-12-12: `PATHSPACE_WIDGET_CAPSULES` is now default-on; WidgetEventTrellis routes subscribed mailbox events without dual-writing legacy `ops/inbox`, and InputTask drains `text_area` + `paint_surface` mailboxes alongside existing widgets to begin the capsule-only transition.
+  - 2025-12-12: PaintSurface fragments now mirror capsule metadata (kind, brush, buffer, render lambda) and subscribe to paint stroke mailbox topics so WidgetEventTrellis delivers paint events through capsule queues without legacy `ops/inbox` writes; UITests assert mailbox commits for stroke fuzzing.
+  - 2025-12-12: InputTask stops consuming legacy `ops/inbox` queues for mailbox-capable widgets, relying solely on capsule mailboxes and flagging missing subscriptions to continue the reducer inbox removal.
+  - 2025-12-12: WidgetEventTrellis + WidgetBindings now emit only capsule mailbox events; reducer helpers/tests were migrated off `/ops/inbox/queue`, completing the legacy reducer inbox removal for capsule widgets.
+  - 2025-12-12: `PATHSPACE_WIDGET_CAPSULES_ONLY` bypasses legacy widget action/event inbox writes during InputTask dispatch so capsule-only environments rely exclusively on mailbox queues while keeping legacy paths available when the flag is unset.
+  - 2025-12-12: Capsule-only runtime is now the default (`PATHSPACE_WIDGET_CAPSULES_ONLY` defaults to enabled); InputTask no longer mirrors mailbox actions into legacy event queues unless explicitly disabled, and UITests cover compatibility via `PATHSPACE_WIDGET_CAPSULES_ONLY=0`.
+  - 2025-12-12: Doc/test sweep completed for capsule-only runtime; plan archived to `docs/finished/Plan_WidgetComposableRuntime_Finished.md`.
 
 ## 3. Non-Objectives
 - Rewriting the SceneGraph or renderer snapshot pipeline; we only define a new widget-facing contract that existing targets can consume.
@@ -108,8 +130,46 @@ Declarative widgets replaced the imperative builders, but each widget still reli
 ## 5. Execution Phases
 ### Phase 0 - Research & Instrumentation (December 2025)
 - Audit existing declarative widgets to catalog their reducers, render data, and event types.
-- Add `capsule/` mirrors for two pilot widgets (button, label) without changing behaviour; record render lambda invocations and mailbox usage.
-- Extend UITests to assert the presence of capsule nodes and to log noop render passes.
+- Add `capsule/` mirrors for two pilot widgets (button, label) without changing behaviour; record render lambda invocations and mailbox usage. **Status:** button + label mirrors plus render/mailbox metrics landed; capsule nodes covered by UITests.
+- Extend UITests to assert the presence of capsule nodes and to log noop render passes. **Status:** coverage added in `tests/ui/test_DeclarativeWidgets.cpp`, `tests/ui/test_DeclarativeSceneLifecycle.cpp`, and `tests/ui/test_WidgetEventTrellis.cpp`.
+
+#### Phase 0 Audit Summary (December 11, 2025)
+- **Button**
+  - Render data: `/state` stores `ButtonState{enabled, hovered, pressed}`, `/meta/style` holds the sanitized style, `/meta/label` keeps the text, optional `/style/theme`, and `render/{synthesize,dirty,dirty_version}` mark paint work.
+  - Reducers: `SetButtonHovered` + `SetButtonPressed` (`WidgetStateMutators.cpp`) flip hover/press flags and mark dirty from pointer + focus events (`WidgetEventPointerHandlers.cpp`, `WidgetEventFocusHandlers.cpp`).
+  - Events: pointer/focus generate `WidgetOpKind::{Press,Release,Activate}` routed to `events/press` (HandlerKind::ButtonPress) via `InputTask`.
+- **Toggle**
+  - Render data: `/state` `ToggleState{enabled, checked, hovered}`, `/meta/style`, render synthesize/dirty nodes.
+  - Reducers: `SetToggleHovered`, `ToggleToggleChecked` mutate state on hover and release-inside actions; wired in pointer + focus handlers.
+  - Events: `WidgetOpKind::Toggle` hits `events/toggle` (HandlerKind::Toggle); press/release ops still flow for telemetry.
+- **Slider**
+  - Render data: `/state` `SliderState{enabled, value, hovered, dragging}`, `/meta/style`, `/meta/range` (min/max/step), render synthesize/dirty nodes.
+  - Reducers: slider begin/update/commit set `dragging`, clamp `value`, and mark dirty via `write_slider_state`/`update_slider_hover` in `WidgetEventHelpers.cpp` invoked from pointer drag handlers.
+  - Events: `WidgetOpKind::{SliderBegin,SliderUpdate,SliderCommit}` resolve to `events/change` (HandlerKind::Slider); pointer hover tracks inside/outside for hit-testing.
+- **List**
+  - Render data: `/meta/items` (ids + labels), `/meta/style`, `/state` `ListState{hovered_index, selected_index, enabled}`.
+  - Reducers: `SetListHoverIndex`, `SetListSelectionIndex` adjust hover/selection when pointer presses/releases inside rows (`WidgetEventPointerHandlers.cpp`).
+  - Events: `WidgetOpKind::{ListSelect,ListActivate}` route to `events/child_event` (HandlerKind::ListChild) carrying row id/index.
+- **Tree**
+  - Render data: `/meta/nodes` (flat tree spec), `/meta/style`, `/state` `TreeState{hovered_id, selected_id, expanded_ids, enabled}`.
+  - Reducers: `SetTreeHoveredNode`, `SetTreeSelectedNode`, `ToggleTreeExpanded` mutate hover/selection/expansion; fed by pointer handlers for row/toggle targets.
+  - Events: `WidgetOpKind::{TreeSelect,TreeToggle,TreeExpand,TreeCollapse,TreeRequestLoad}` route to `events/node_event` (HandlerKind::TreeNode) with the node id.
+- **Stack**
+  - Render data: `/state/active_panel`, per-panel metadata under `/panels/<id>/{order,visible,target}`, children under `/children/<id>`.
+  - Reducers: `SetActivePanel` and `update_panel_visibility` flip visibility + dirty when selection changes (pointer + focus stack handlers).
+  - Events: `WidgetOpKind::StackSelect` targets `events/panel_select` (HandlerKind::StackPanel) with the panel id suffix.
+- **Label**
+  - Render data: `/state/text`, `/meta/typography`, `/meta/color`, render synthesize/dirty nodes.
+  - Reducers: `SetText` writes `/state/text` and marks dirty; no hover/press reducers.
+  - Events: optional `events/activate` (HandlerKind::LabelActivate) registered by the fragment but currently not dispatched by `InputTask` (falls through as unsupported), so capsules should treat it as future-facing only.
+- **InputField**
+  - Render data: `/state/text`, `/state/placeholder`, render synthesize/dirty nodes; text editing uses `TextFieldState` under `/state` (cursor, selection, composition) for trellis updates.
+  - Reducers: text focus + editing handlers read/write `TextFieldState` via `read_text_state`/`write_text_state` on movement, deletion, composition, clipboard, and scroll events (`WidgetEventFocusHandlers.cpp`).
+  - Events: `WidgetOpKind::{TextInput,TextDelete,TextMoveCursor,TextSetSelection,TextComposition* ,TextClipboard*,TextScroll}` go to `events/change` (HandlerKind::InputChange); `TextSubmit` goes to `events/submit` (HandlerKind::InputSubmit).
+- **PaintSurface**
+  - Render data: brush params under `/state/brush/*`, GPU toggle `/render/gpu/enabled`, buffer defaults via `PaintRuntime::EnsureBufferDefaults`, render synthesize/dirty nodes.
+  - Reducers: pointer paint handlers manage stroke ids and last-local tracking; strokes are emitted as ops and leave render-dirty markers when buffers change.
+  - Events: `WidgetOpKind::{PaintStrokeBegin,PaintStrokeUpdate,PaintStrokeCommit}` address `events/draw` (HandlerKind::PaintDraw) with components `paint_surface/stroke/<id>`.
 
 ### Phase 1 - Render Walker (January 2026)
 - Implement `RenderPackage` struct + serializer.
@@ -127,10 +187,11 @@ Declarative widgets replaced the imperative builders, but each widget still reli
 - Rebuild button, toggle, slider, list using primitives; prove that composed widgets emit the same render packages and event responses.
 - Publish docs (`docs/WidgetPrimitives.md`) and migration guides.
 
-### Phase 4 - Capsule-Only Runtime (March 2026)
+### Phase 4 - Capsule-Only Runtime (Complete — December 2025)
+- Delivered December 12, 2025; objectives retained for historical reference.
 - Flip declarative widgets to emit only capsules; delete legacy reducer inboxes and render cache plumbing once perf + telemetry parity holds.
 - Update samples/tests/docs to reference primitives and mailboxes exclusively.
-- Archive this plan under `docs/finished/Plan_WidgetComposableRuntime_Finished.md`.
+- Archived at `docs/finished/Plan_WidgetComposableRuntime_Finished.md`.
 
 ## 6. Deliverables
 - New contract headers: `WidgetCapsule.hpp`, `WidgetRenderPackage.hpp`, `WidgetMailbox.hpp`, `WidgetPrimitives.hpp`.

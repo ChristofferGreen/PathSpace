@@ -198,6 +198,65 @@ auto PathRenderer2D::target_cache() -> TargetCache& {
 }
 
 auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
+    auto app_root = SP::App::derive_app_root(params.target_path);
+    if (!app_root) {
+        auto message = std::string{"unable to derive application root for target"};
+        (void)set_last_error(space_, params.target_path, message);
+        return std::unexpected(app_root.error());
+    }
+
+    auto scene_field = std::string(params.target_path.getPath()) + "/scene";
+    auto scene_rel = space_.read<std::string, std::string>(scene_field);
+    if (!scene_rel) {
+        auto message = std::string{"target missing scene binding"};
+        (void)set_last_error(space_, params.target_path, message);
+        return std::unexpected(make_error(message, scene_rel.error().code));
+    }
+    if (scene_rel->empty()) {
+        auto message = std::string{"target scene binding is empty"};
+        (void)set_last_error(space_, params.target_path, message);
+        return std::unexpected(make_error(message, SP::Error::Code::InvalidPath));
+    }
+
+    auto scene_absolute = SP::App::resolve_app_relative(SP::App::AppRootPathView{app_root->getPath()},
+                                                        *scene_rel);
+    if (!scene_absolute) {
+        auto message = std::string{"failed to resolve scene path '"} + *scene_rel + "'";
+        (void)set_last_error(space_, params.target_path, message);
+        return std::unexpected(scene_absolute.error());
+    }
+
+    auto scene_revision = Runtime::Scene::ReadCurrentRevision(space_, Runtime::ScenePath{scene_absolute->getPath()});
+    if (!scene_revision) {
+        auto message = std::string{"scene has no current revision"};
+        (void)set_last_error(space_, params.target_path, message);
+        return std::unexpected(scene_revision.error());
+    }
+
+    auto revision_base = std::string(scene_absolute->getPath()) + "/builds/"
+                       + format_revision(scene_revision->revision);
+    auto bucket = Scene::SceneSnapshotBuilder::decode_bucket(space_, revision_base);
+    if (!bucket) {
+        auto message = std::string{"failed to load snapshot bucket for revision "}
+                     + std::to_string(scene_revision->revision);
+        (void)set_last_error(space_, params.target_path, message);
+        return std::unexpected(bucket.error());
+    }
+
+    return render_with_bucket(bucket.operator->(), params, revision_base, scene_revision->revision);
+}
+
+auto PathRenderer2D::render_bucket(RenderParams params,
+                                   SP::UI::Scene::DrawableBucketSnapshot const* bucket,
+                                   std::string const& revision_base,
+                                   std::uint64_t revision) -> SP::Expected<RenderStats> {
+    return render_with_bucket(bucket, params, revision_base, revision);
+}
+
+auto PathRenderer2D::render_with_bucket(SP::UI::Scene::DrawableBucketSnapshot const* bucket,
+                                        RenderParams const& params,
+                                        std::string const& revision_base,
+                                        std::uint64_t revision) -> SP::Expected<RenderStats> {
     auto const start = std::chrono::steady_clock::now();
     double damage_ms = 0.0;
     double encode_ms = 0.0;
@@ -207,49 +266,11 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     double encode_stall_ms_max = 0.0;
     std::size_t encode_stall_workers = 0;
 
-    auto app_root = SP::App::derive_app_root(params.target_path);
-    if (!app_root) {
-        auto message = std::string{"unable to derive application root for target"};
+    if (bucket == nullptr) {
+        auto message = std::string{"render bucket is null"};
         (void)set_last_error(space_, params.target_path, message);
-        return std::unexpected(app_root.error());
+        return std::unexpected(make_error(message, SP::Error::Code::InvalidType));
     }
-
-    auto sceneField = std::string(params.target_path.getPath()) + "/scene";
-    auto sceneRel = space_.read<std::string, std::string>(sceneField);
-    if (!sceneRel) {
-        auto message = std::string{"target missing scene binding"};
-        (void)set_last_error(space_, params.target_path, message);
-        return std::unexpected(make_error(message, sceneRel.error().code));
-    }
-    if (sceneRel->empty()) {
-        auto message = std::string{"target scene binding is empty"};
-        (void)set_last_error(space_, params.target_path, message);
-        return std::unexpected(make_error(message, SP::Error::Code::InvalidPath));
-    }
-
-    auto sceneAbsolute = SP::App::resolve_app_relative(SP::App::AppRootPathView{app_root->getPath()},
-                                                       *sceneRel);
-    if (!sceneAbsolute) {
-        auto message = std::string{"failed to resolve scene path '"} + *sceneRel + "'";
-        (void)set_last_error(space_, params.target_path, message);
-        return std::unexpected(sceneAbsolute.error());
-    }
-
-    auto sceneRevision = Runtime::Scene::ReadCurrentRevision(space_, Runtime::ScenePath{sceneAbsolute->getPath()});
-    if (!sceneRevision) {
-        auto message = std::string{"scene has no current revision"};
-        (void)set_last_error(space_, params.target_path, message);
-        return std::unexpected(sceneRevision.error());
-    }
-
-    auto revisionBase = std::string(sceneAbsolute->getPath()) + "/builds/" + format_revision(sceneRevision->revision);
-    auto bucket = Scene::SceneSnapshotBuilder::decode_bucket(space_, revisionBase);
-    if (!bucket) {
-        auto message = std::string{"failed to load snapshot bucket for revision "} + std::to_string(sceneRevision->revision);
-        (void)set_last_error(space_, params.target_path, message);
-        return std::unexpected(bucket.error());
-    }
-
 
     auto& surface = params.surface;
     auto const& desc = surface.desc();
@@ -625,7 +646,7 @@ auto PathRenderer2D::render(RenderParams params) -> SP::Expected<RenderStats> {
     std::uint64_t text_command_count = 0;
     std::uint64_t text_fallback_count = 0;
 
-    auto image_asset_prefix = revisionBase + "/assets/images/";
+    auto image_asset_prefix = revision_base + "/assets/images/";
 
     auto process_drawable = [&](std::uint32_t drawable_index,
                                 bool alpha_pass) -> SP::Expected<void> {
@@ -1253,7 +1274,7 @@ auto const encode_srgb = needs_srgb_encode(desc);
                 .buffer = *progressive_buffer,
                 .staging = staging_const,
                 .row_stride_bytes = row_stride_bytes,
-                .revision = sceneRevision->revision,
+                .revision = revision,
             };
             try {
                 auto stats_copy = copy_progressive_tiles(progressive_dirty_tiles, ctx);
@@ -1287,7 +1308,7 @@ auto const encode_srgb = needs_srgb_encode(desc);
                                 staging_const.data() + src_offset,
                                 row_pitch);
                 }
-                writer.commit(TilePass::AlphaDone, sceneRevision->revision);
+                writer.commit(TilePass::AlphaDone, revision);
                 surface.mark_progressive_dirty(tile_index);
                 ++progressive_tiles_updated;
                 progressive_bytes_copied += row_pitch * static_cast<std::uint64_t>(tile_rows);
@@ -1311,7 +1332,7 @@ auto const encode_srgb = needs_srgb_encode(desc);
 
     PathSurfaceSoftware::FrameInfo const frame_info{
         .frame_index = params.settings.time.frame_index,
-        .revision = sceneRevision->revision,
+        .revision = revision,
         .render_ms = render_ms,
     };
     auto const publish_start = std::chrono::steady_clock::now();
@@ -1475,7 +1496,7 @@ auto const encode_srgb = needs_srgb_encode(desc);
             }
             return std::unexpected(status.error());
         }
-        if (auto status = replace_single<std::uint64_t>(space_, base + "/revision", sceneRevision->revision); !status) {
+        if (auto status = replace_single<std::uint64_t>(space_, base + "/revision", revision); !status) {
             if (clear_target_error) {
                 (void)set_last_error(space_, params.target_path, "failed to store revision");
             }
@@ -1505,7 +1526,7 @@ auto const encode_srgb = needs_srgb_encode(desc);
             if (auto status = set_last_error(space_,
                                              params.target_path,
                                              "",
-                                             sceneRevision->revision,
+                                             revision,
                                              Runtime::Diagnostics::PathSpaceError::Severity::Info); !status) {
                 return std::unexpected(status.error());
             }
@@ -1581,7 +1602,7 @@ auto const encode_srgb = needs_srgb_encode(desc);
         FontDiagnosticsRecord font_diag{};
         font_diag.target_path = params.target_path.getPath();
         font_diag.frame_index = params.settings.time.frame_index;
-        font_diag.revision = sceneRevision->revision;
+        font_diag.revision = revision;
         font_diag.font_active_count = static_cast<std::uint64_t>(active_font_assets.size());
         font_diag.font_atlas_cpu_bytes = font_atlas_cpu_bytes;
         font_diag.font_atlas_gpu_bytes = font_atlas_gpu_bytes;
@@ -1606,7 +1627,7 @@ auto const encode_srgb = needs_srgb_encode(desc);
     state.drawable_states = std::move(current_states);
     state.clear_color = current_clear;
     state.desc = desc;
-    state.last_revision = sceneRevision->revision;
+    state.last_revision = revision;
 
     if (has_focus_pulse) {
         schedule_focus_pulse_render(space_,
@@ -1618,7 +1639,7 @@ auto const encode_srgb = needs_srgb_encode(desc);
 
     RenderStats stats{};
     stats.frame_index = params.settings.time.frame_index;
-    stats.revision = sceneRevision->revision;
+    stats.revision = revision;
     stats.render_ms = render_ms;
     stats.drawable_count = drawn_total;
     stats.damage_ms = damage_ms;

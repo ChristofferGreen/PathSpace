@@ -9,7 +9,12 @@
 #include <pathspace/ui/declarative/Detail.hpp>
 #include <pathspace/ui/DetailShared.hpp>
 #include <pathspace/ui/declarative/Telemetry.hpp>
+#include <pathspace/ui/declarative/WidgetCapsule.hpp>
 #include <pathspace/ui/declarative/widgets/Common.hpp>
+#include <pathspace/ui/PathRenderer2D.hpp>
+#include <pathspace/ui/PathRenderer2DDetail.hpp>
+#include <pathspace/ui/PathSurfaceSoftware.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
 #include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/WidgetSharedTypes.hpp>
@@ -21,6 +26,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdlib>
 #include <deque>
 #include <charconv>
 #include <system_error>
@@ -47,6 +53,7 @@ namespace BuilderRenderer = SP::UI::Runtime::Renderer;
 using DirtyRectHint = SP::UI::Runtime::DirtyRectHint;
 using SP::UI::Runtime::Widgets::WidgetSpacePath;
 namespace Telemetry = SP::UI::Declarative::Telemetry;
+namespace WidgetDetail = SP::UI::Declarative::Detail;
 constexpr std::string_view kPublishAuthor = "declarative-runtime";
 
 auto to_epoch_ms(std::chrono::system_clock::time_point tp) -> std::int64_t {
@@ -207,9 +214,11 @@ struct SceneLifecycleWorker {
         , window_path_(std::move(window_path))
         , view_name_(std::move(view_name))
         , options_(options)
+        , capsules_enabled_(SP::UI::Declarative::CapsulesFeatureEnabled())
         , app_root_value_(app_root_path_)
         , scene_path_value_(scene_path_)
-        , snapshot_builder_(space_, SP::App::AppRootPathView{app_root_value_.getPath()}, scene_path_value_) {
+        , snapshot_builder_(space_, SP::App::AppRootPathView{app_root_value_.getPath()}, scene_path_value_)
+        , capsule_renderer_(space_) {
         window_widgets_root_ = window_path_ + std::string{"/views/"} + view_name_ + "/widgets";
         trellis_path_ = scene_path_ + "/runtime/lifecycle/trellis";
         trellis_enable_path_ = trellis_path_ + "/_system/enable";
@@ -725,6 +734,123 @@ private:
         write_metric("sources_active_total", active_sources_);
     }
 
+    [[nodiscard]] auto next_capsule_sequence(std::string const& widget_path) -> std::uint64_t {
+        std::lock_guard<std::mutex> guard(capsule_sequence_mutex_);
+        auto& value = capsule_sequences_[widget_path];
+        value += 1;
+        return value;
+    }
+
+    void process_capsule_render(std::string const& widget_path,
+                                WidgetDescriptor const& descriptor,
+                                SP::UI::Scene::DrawableBucketSnapshot const& bucket) {
+        if (!capsules_enabled_) {
+            return;
+        }
+
+        auto capsule = SP::UI::Declarative::LoadWidgetCapsule(space_, widget_path, descriptor.kind);
+        if (!capsule) {
+            return;
+        }
+
+        auto pending_path = WidgetSpacePath(widget_path, "/render/buffer/pendingDirty");
+        auto pending = DeclarativeDetail::read_optional<std::vector<DirtyRectHint>>(space_, pending_path);
+        std::vector<DirtyRectHint> dirty_hints;
+        if (pending && pending->has_value()) {
+            dirty_hints = **pending;
+        }
+
+        auto sequence = next_capsule_sequence(widget_path);
+        auto package = SP::UI::Declarative::BuildRenderPackageFromBucket(*capsule, bucket, dirty_hints, sequence);
+        if (!package.surfaces.empty()) {
+            auto const& surface_meta = package.surfaces.front();
+            if (surface_meta.width > 0 && surface_meta.height > 0) {
+                auto render_bucket = bucket;
+                if (surface_meta.logical_bounds[0] != 0.0f || surface_meta.logical_bounds[1] != 0.0f) {
+                    DeclarativeDetail::translate_bucket(render_bucket,
+                                                        -surface_meta.logical_bounds[0],
+                                                        -surface_meta.logical_bounds[1]);
+                }
+
+                SP::UI::Runtime::SurfaceDesc surface_desc{};
+                surface_desc.size_px.width = static_cast<int>(surface_meta.width);
+                surface_desc.size_px.height = static_cast<int>(surface_meta.height);
+                surface_desc.pixel_format = SP::UI::Runtime::PixelFormat::RGBA8Unorm;
+                surface_desc.color_space = SP::UI::Runtime::ColorSpace::sRGB;
+                surface_desc.premultiplied_alpha = (surface_meta.flags & WidgetSurfaceFlags::AlphaPremultiplied)
+                                                   != WidgetSurfaceFlags::None;
+                surface_desc.progressive_tile_size_px = 32;
+
+                SP::UI::PathSurfaceSoftware surface{
+                    surface_desc,
+                    SP::UI::PathSurfaceSoftware::Options{
+                        .enable_progressive = false,
+                        .enable_buffered = true,
+                        .progressive_tile_size_px = surface_desc.progressive_tile_size_px,
+                    },
+                };
+
+                SP::UI::Runtime::RenderSettings render_settings{};
+                render_settings.surface.size_px.width = surface_desc.size_px.width;
+                render_settings.surface.size_px.height = surface_desc.size_px.height;
+                render_settings.surface.dpi_scale = 1.0f;
+                render_settings.renderer.backend_kind = SP::UI::Runtime::RendererKind::Software2D;
+                render_settings.clear_color = {0.0f, 0.0f, 0.0f, 0.0f};
+
+                auto target_path = WidgetSpacePath(widget_path, "/capsule/render/target");
+                SP::UI::PathRenderer2D::RenderParams render_params{
+                    .target_path = SP::ConcretePathStringView{target_path},
+                    .settings = render_settings,
+                    .surface = surface,
+                    .backend_kind = SP::UI::Runtime::RendererKind::Software2D,
+                };
+
+                auto revision_base = scene_path_ + "/builds/"
+                                   + SP::UI::PathRenderer2DDetail::format_revision(last_revision_);
+                auto render_result = capsule_renderer_.render_bucket(render_params,
+                                                                     &render_bucket,
+                                                                     revision_base,
+                                                                     last_revision_);
+                if (render_result) {
+                    std::vector<std::uint8_t> buffer(surface.frame_bytes(), 0);
+                    auto copied = surface.copy_buffered_frame(buffer);
+                    if (copied) {
+                        SP::UI::Runtime::SoftwareFramebuffer framebuffer{};
+                        framebuffer.width = surface_desc.size_px.width;
+                        framebuffer.height = surface_desc.size_px.height;
+                        framebuffer.row_stride_bytes = static_cast<std::uint32_t>(surface.row_stride_bytes());
+                        framebuffer.pixel_format = surface_desc.pixel_format;
+                        framebuffer.color_space = surface_desc.color_space;
+                        framebuffer.premultiplied_alpha = surface_desc.premultiplied_alpha;
+                        framebuffer.pixels = std::move(buffer);
+
+                        auto hash_pixels = [](std::vector<std::uint8_t> const& data) {
+                            constexpr std::uint64_t kFnvOffset = 14695981039346656037ull;
+                            constexpr std::uint64_t kFnvPrime = 1099511628211ull;
+                            std::uint64_t hash = kFnvOffset;
+                            for (auto byte : data) {
+                                hash ^= static_cast<std::uint64_t>(byte);
+                                hash *= kFnvPrime;
+                            }
+                            return hash;
+                        };
+                        auto surface_hash = hash_pixels(framebuffer.pixels);
+                        package.content_hash = surface_hash;
+                        package.surfaces.front().fingerprint = surface_hash;
+
+                        (void)DeclarativeDetail::replace_single(space_,
+                                                                WidgetSpacePath(widget_path, "/capsule/render/framebuffer"),
+                                                                framebuffer);
+                    }
+                }
+            }
+        }
+
+        (void)DeclarativeDetail::replace_single(space_,
+                                                WidgetSpacePath(widget_path, "/capsule/render/package"),
+                                                package);
+    }
+
     void process_event(std::string const& widget_path) {
         auto dirty_start = std::chrono::steady_clock::now();
         SP::UI::Runtime::WidgetPath widget{widget_path};
@@ -770,6 +896,8 @@ private:
             clear_dirty();
             return;
         }
+        WidgetDetail::record_capsule_render_invocation(space_, widget_path, descriptor->kind);
+        process_capsule_render(widget_path, *descriptor, *bucket);
         auto compare_result = compare_existing_bucket(widget_path, *bucket);
         auto relative = make_relative(widget_path);
         auto structure_base = scene_path_ + "/structure/widgets" + relative;
@@ -1132,6 +1260,7 @@ private:
     SP::App::AppRootPath app_root_value_;
     SP::UI::Scene::ScenePath scene_path_value_;
     SP::UI::Scene::SceneSnapshotBuilder snapshot_builder_;
+    SP::UI::PathRenderer2D capsule_renderer_;
     std::string window_widgets_root_;
     std::string trellis_path_;
     std::string trellis_enable_path_;
@@ -1144,6 +1273,9 @@ private:
     std::atomic<bool> stop_flag_{false};
     std::mutex registration_mutex_;
     std::unordered_set<std::string> registered_sources_;
+    bool capsules_enabled_ = false;
+    std::mutex capsule_sequence_mutex_;
+    std::unordered_map<std::string, std::uint64_t> capsule_sequences_;
     std::uint64_t widgets_registered_ = 0;
     std::uint64_t events_processed_ = 0;
     std::uint64_t active_sources_ = 0;
@@ -1269,6 +1401,21 @@ auto PumpSceneOnce(PathSpace& space,
         return std::unexpected(SP::Error{SP::Error::Code::NotFound, "scene lifecycle not running"});
     }
     return worker->manual_pump(options);
+}
+
+auto WalkWidgetCapsules(PathSpace& space,
+                        SP::UI::ScenePath const& scene_path,
+                        ManualPumpOptions const& options) -> SP::Expected<CapsuleWalkResult> {
+    if (!SP::UI::Declarative::CapsulesFeatureEnabled()) {
+        return std::unexpected(SP::Error{SP::Error::Code::NotSupported,
+                                         "PATHSPACE_WIDGET_CAPSULES is not enabled"});
+    }
+
+    auto pump = PumpSceneOnce(space, scene_path, options);
+    if (!pump) {
+        return std::unexpected(pump.error());
+    }
+    return *pump;
 }
 
 auto InvalidateThemes(PathSpace& space,

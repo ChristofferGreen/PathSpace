@@ -3,6 +3,8 @@
 #include "widgets/Common.hpp"
 
 #include <pathspace/ui/declarative/HistoryBinding.hpp>
+#include <pathspace/ui/declarative/WidgetCapsule.hpp>
+#include <pathspace/ui/declarative/WidgetMailbox.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceRuntime.hpp>
 #include <pathspace/ui/declarative/Reducers.hpp>
 #include <pathspace/ui/declarative/Telemetry.hpp>
@@ -12,6 +14,8 @@
 #include <pathspace/ui/WidgetSharedTypes.hpp>
 #include <pathspace/runtime/IOPump.hpp>
 
+#include <cctype>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <exception>
@@ -22,6 +26,7 @@
 #include <string_view>
 #include <thread>
 #include <unordered_map>
+#include <span>
 #include <vector>
 
 namespace SP::UI::Declarative {
@@ -272,14 +277,22 @@ auto component_suffix(std::string_view component) -> std::string_view {
     return component.substr(pos + 1);
 }
 
-auto route_for_action(SP::UI::Runtime::Widgets::Bindings::WidgetOpKind kind)
+auto route_for_action(SP::UI::Runtime::Widgets::Bindings::WidgetOpKind kind,
+                     std::string const* widget_kind = nullptr,
+                     std::string_view target_id = {})
     -> std::optional<HandlerRoute> {
     using SP::UI::Runtime::Widgets::Bindings::WidgetOpKind;
     switch (kind) {
     case WidgetOpKind::Activate:
+        if ((widget_kind && *widget_kind == "label")
+            || (!target_id.empty() && target_id.rfind("label", 0) == 0)) {
+            return HandlerRoute{"activate", HandlerKind::LabelActivate};
+        }
         return HandlerRoute{"press", HandlerKind::ButtonPress};
     case WidgetOpKind::Toggle:
         return HandlerRoute{"toggle", HandlerKind::Toggle};
+    case WidgetOpKind::SliderBegin:
+        return HandlerRoute{"change", HandlerKind::Slider};
     case WidgetOpKind::SliderCommit:
         return HandlerRoute{"change", HandlerKind::Slider};
     case WidgetOpKind::SliderUpdate:
@@ -337,6 +350,21 @@ auto format_event_error(WidgetReducers::WidgetAction const& action,
     return oss.str();
 }
 
+auto flag_missing_mailbox(PathSpace& space, std::string const& widget_path) -> void {
+    auto flag_path = WidgetSpacePath(widget_path, "/metrics/mailbox_missing");
+    auto existing = space.read<bool, std::string>(flag_path);
+    if (existing && *existing) {
+        return;
+    }
+
+    (void)replace_single<bool>(space, flag_path, true);
+    auto message = std::string{"InputTask mailbox subscriptions missing for "}
+        .append(widget_path)
+        .append("; capsule runtime is skipping legacy reducers");
+    enqueue_error(space, message);
+    Telemetry::AppendWidgetLog(space, widget_path, message);
+}
+
 auto event_inbox_path(std::string const& widget_path) -> std::string {
     return WidgetSpacePath(widget_path, "/events/inbox/queue");
 }
@@ -346,6 +374,83 @@ auto event_specific_path(std::string const& widget_path, std::string_view event)
     path.append(event);
     path.append("/queue");
     return path;
+}
+
+auto mailbox_queue_path(std::string const& widget_path, std::string const& topic) -> std::string {
+    auto path = WidgetSpacePath(widget_path, "/capsule/mailbox/events/");
+    path.append(topic);
+    path.append("/queue");
+    return path;
+}
+
+auto mailbox_kind_supported(std::string const& kind) -> bool {
+    return kind == "button" || kind == "toggle" || kind == "label" || kind == "slider"
+        || kind == "list" || kind == "input_field" || kind == "stack" || kind == "tree"
+        || kind == "text_area" || kind == "paint_surface";
+}
+
+auto read_mailbox_topics(PathSpace& space, std::string const& widget_path)
+    -> SP::Expected<std::vector<std::string>> {
+    auto topics = read_optional<std::vector<std::string>>(space,
+                                                          WidgetSpacePath(widget_path,
+                                                                          "/capsule/mailbox/subscriptions"));
+    if (!topics) {
+        return std::unexpected(topics.error());
+    }
+    if (!topics->has_value()) {
+        return std::vector<std::string>{};
+    }
+    return **topics;
+}
+
+auto reduce_mailbox_events(PathSpace& space,
+                           std::string const& widget_path,
+                           std::span<const std::string> topics,
+                           std::size_t max_actions)
+    -> SP::Expected<std::vector<WidgetReducers::WidgetAction>> {
+    std::vector<WidgetReducers::WidgetAction> actions;
+    if (topics.empty() || max_actions == 0) {
+        return actions;
+    }
+
+    for (auto const& topic : topics) {
+        auto queue_path = mailbox_queue_path(widget_path, topic);
+        while (actions.size() < max_actions) {
+            auto taken = space.take<WidgetMailboxEvent, std::string>(queue_path);
+            if (!taken) {
+                auto const& error = taken.error();
+                if (error.code == SP::Error::Code::NoObjectFound
+                    || error.code == SP::Error::Code::NoSuchPath) {
+                    break;
+                }
+                auto message = error.message.value_or("unknown error");
+                enqueue_error(space,
+                              "InputTask mailbox read failed for " + widget_path + ": " + message);
+                break;
+            }
+
+            WidgetReducers::WidgetOp op{};
+            op.kind = taken->kind;
+            op.widget_path = taken->widget_path;
+            op.target_id = taken->target_id;
+            op.pointer = taken->pointer;
+            op.value = taken->value;
+            op.sequence = taken->sequence;
+            op.timestamp_ns = taken->timestamp_ns;
+
+            actions.push_back(WidgetReducers::MakeWidgetAction(op));
+        }
+
+        if (actions.size() >= max_actions) {
+            break;
+        }
+    }
+
+    std::sort(actions.begin(), actions.end(), [](auto const& lhs, auto const& rhs) {
+        return lhs.sequence < rhs.sequence;
+    });
+
+    return actions;
 }
 
 void enqueue_widget_event(PathSpace& space,
@@ -469,8 +574,15 @@ auto invoke_handler(PathSpace& space,
                 (*fn)(ctx);
                 return finish(std::nullopt);
             }
-        case HandlerKind::LabelActivate:
-            return finish(std::string{"handler kind not supported by InputTask"});
+        case HandlerKind::LabelActivate: {
+            auto fn = std::get_if<LabelHandler>(&handler);
+            if (!fn || !(*fn)) {
+                return finish(std::string{"label activate handler not registered"});
+            }
+            LabelContext ctx{space, SP::UI::Runtime::WidgetPath{action.widget_path}};
+            (*fn)(ctx);
+            return finish(std::nullopt);
+        }
         case HandlerKind::PaintDraw: {
             auto fn = std::get_if<PaintSurfaceHandler>(&handler);
             if (!fn || !(*fn)) {
@@ -496,12 +608,35 @@ void dispatch_action(PathSpace& space,
                      PumpStats& stats,
                      WidgetMetricsMap& widget_metrics,
                      std::chrono::nanoseconds slow_threshold) {
-    auto route = route_for_action(action.kind);
+    auto const capsule_only = SP::UI::Declarative::CapsulesOnlyRuntimeEnabled();
+    std::optional<std::string> widget_kind;
+    if (action.kind == SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Activate) {
+        auto activate_binding = space.read<HandlerBinding, std::string>(
+            handler_binding_path(action.widget_path, "activate"));
+        if (activate_binding && activate_binding->kind == HandlerKind::LabelActivate) {
+            widget_kind = std::string{"label"};
+        }
+
+        auto kind_value = space.read<std::string, std::string>(
+            WidgetSpacePath(action.widget_path, "/meta/kind"));
+        if (kind_value) {
+            widget_kind = widget_kind.value_or(*kind_value);
+            std::transform(widget_kind->begin(), widget_kind->end(), widget_kind->begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+        }
+    }
+
+    auto route = route_for_action(action.kind,
+                                  widget_kind ? &*widget_kind : nullptr,
+                                  std::string_view{action.target_id});
     if (!route) {
         return;
     }
 
-    enqueue_widget_event(space, action, *route, stats);
+    if (!capsule_only) {
+        enqueue_widget_event(space, action, *route, stats);
+    }
 
     if (route->kind == HandlerKind::PaintDraw) {
         auto binding = LookupHistoryBinding(action.widget_path);
@@ -597,25 +732,69 @@ auto pump_widget(PathSpace& space,
                  WidgetMetricsMap& widget_metrics,
                  std::chrono::nanoseconds slow_threshold) -> void {
     auto widget_path = WidgetPath{widget_root};
-    auto processed = WidgetReducers::ProcessPendingActions(space, widget_path, max_actions);
-    if (!processed) {
-        std::ostringstream oss;
-        oss << "ProcessPendingActions failed for " << widget_root << ": ";
-        if (processed.error().message) {
-            oss << *processed.error().message;
+    std::vector<WidgetReducers::WidgetAction> actions;
+    auto const capsule_only = SP::UI::Declarative::CapsulesOnlyRuntimeEnabled();
+    bool mailbox_mode = false;
+    if (SP::UI::Declarative::CapsulesFeatureEnabled()) {
+        auto kind_value = space.read<std::string, std::string>(WidgetSpacePath(widget_root, "/meta/kind"));
+        bool mailbox_capable = kind_value && mailbox_kind_supported(*kind_value);
+
+        if (!mailbox_capable) {
+            enqueue_error(space,
+                          "InputTask mailbox dispatch skipped for unsupported widget kind at "
+                              + widget_root);
+            Telemetry::AppendWidgetLog(space, widget_root, "mailbox dispatch unsupported for kind");
         } else {
-            oss << "unknown error";
+            mailbox_mode = true;
+            auto topics = read_mailbox_topics(space, widget_root);
+            if (!topics) {
+                auto const& error = topics.error();
+                auto message = error.message.value_or("unknown error");
+                enqueue_error(space,
+                              "InputTask mailbox subscriptions read failed for "
+                                  + widget_root + ": " + message);
+                Telemetry::AppendWidgetLog(space, widget_root, message);
+            } else if (topics->empty()) {
+                flag_missing_mailbox(space, widget_root);
+            } else {
+                auto reduced = reduce_mailbox_events(space,
+                                                     widget_root,
+                                                     std::span<const std::string>{topics->data(), topics->size()},
+                                                     max_actions);
+                if (!reduced) {
+                    auto const& error = reduced.error();
+                    auto message = error.message.value_or("unknown error");
+                    enqueue_error(space,
+                                  "InputTask mailbox reduce failed for " + widget_root + ": "
+                                      + message);
+                    Telemetry::AppendWidgetLog(space, widget_root, message);
+                } else {
+                    actions = std::move(*reduced);
+                }
+            }
         }
-        auto message = oss.str();
-        enqueue_error(space, message);
-        Telemetry::AppendWidgetLog(space, widget_root, message);
-        return;
     }
+
+    if (mailbox_mode && !actions.empty() && !capsule_only) {
+        auto actions_queue = WidgetReducers::DefaultActionsQueue(widget_path);
+        auto publish = WidgetReducers::PublishActions(space,
+                                                     ConcretePathView{actions_queue.getPath()},
+                                                     std::span<const WidgetReducers::WidgetAction>{actions.data(), actions.size()});
+        if (!publish) {
+            auto const& error = publish.error();
+            auto message = error.message.value_or("unknown error");
+            enqueue_error(space,
+                          "InputTask failed to publish mailbox actions for "
+                              + widget_root + ": " + message);
+            Telemetry::AppendWidgetLog(space, widget_root, message);
+        }
+    }
+
     stats.widgets_processed++;
-    if (!processed->actions.empty()) {
+    if (!actions.empty()) {
         stats.widgets_with_work++;
-        stats.actions_published += processed->actions.size();
-        for (auto const& action : processed->actions) {
+        stats.actions_published += actions.size();
+        for (auto const& action : actions) {
             dispatch_action(space, action, stats, widget_metrics, slow_threshold);
         }
     }

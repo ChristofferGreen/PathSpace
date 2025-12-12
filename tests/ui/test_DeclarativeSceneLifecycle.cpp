@@ -5,6 +5,8 @@
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
+#include <pathspace/ui/declarative/WidgetRenderPackage.hpp>
+#include <pathspace/ui/runtime/SurfaceTypes.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/WidgetSharedTypes.hpp>
 
@@ -13,6 +15,8 @@
 #include "DeclarativeTestUtils.hpp"
 
 #include <chrono>
+#include <cstdlib>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -37,6 +41,28 @@ struct RuntimeGuard {
     explicit RuntimeGuard(SP::PathSpace& s) : space(s) {}
     ~RuntimeGuard() { SP::System::ShutdownDeclarativeRuntime(space); }
     SP::PathSpace& space;
+};
+
+struct EnvGuard {
+    EnvGuard(std::string key, std::string value)
+        : key_(std::move(key)) {
+        if (auto* existing = std::getenv(key_.c_str())) {
+            previous_ = std::string(existing);
+        }
+        ::setenv(key_.c_str(), value.c_str(), 1);
+    }
+
+    ~EnvGuard() {
+        if (previous_) {
+            ::setenv(key_.c_str(), previous_->c_str(), 1);
+            return;
+        }
+        ::unsetenv(key_.c_str());
+    }
+
+private:
+    std::string key_;
+    std::optional<std::string> previous_{};
 };
 
 } // namespace
@@ -223,6 +249,114 @@ TEST_CASE("Scene lifecycle manual pump synthesizes widget buckets") {
     REQUIRE(pump_result);
     CHECK_GT(pump_result->widgets_processed, std::uint64_t{0});
     CHECK_GT(pump_result->buckets_ready, std::uint64_t{0});
+
+    REQUIRE(SP::Scene::Shutdown(space, scene->path));
+}
+
+TEST_CASE("Capsule render metrics track manual pump") {
+    PathSpace space;
+
+    SP::System::LaunchOptions launch_options{};
+    launch_options.start_input_runtime = false;
+    launch_options.start_io_pump = false;
+    launch_options.start_io_telemetry_control = false;
+    REQUIRE(SP::System::LaunchStandard(space, launch_options));
+    RuntimeGuard runtime_guard{space};
+
+    auto app_root = SP::App::Create(space, "capsule_render_metrics_app");
+    REQUIRE(app_root);
+
+    SP::Window::CreateOptions window_options;
+    window_options.name = "capsule_window";
+    auto window = SP::Window::Create(space, *app_root, window_options);
+    REQUIRE(window);
+
+    auto scene = SP::Scene::Create(space, *app_root, window->path, {});
+    REQUIRE(scene);
+
+    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view = SP::App::ConcretePathView{window_view_path};
+
+    auto button = SP::UI::Declarative::Button::Create(space,
+                                                      window_view,
+                                                      "capsule_button",
+                                                      SP::UI::Declarative::Button::Args{.label = "Capsule"});
+    REQUIRE(button);
+
+    SP::UI::Declarative::SceneLifecycle::ManualPumpOptions pump_options{};
+    pump_options.wait_timeout = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0);
+    auto pump_result = SP::UI::Declarative::SceneLifecycle::PumpSceneOnce(space,
+                                                                          scene->path,
+                                                                          pump_options);
+    REQUIRE(pump_result);
+    CHECK_GT(pump_result->buckets_ready, std::uint64_t{0});
+
+    auto invocations = space.read<std::uint64_t, std::string>(
+        widget_space(*button, "/capsule/render/metrics/invocations_total"));
+    REQUIRE(invocations);
+    CHECK_GE(*invocations, std::uint64_t{1});
+
+    auto last_kind = space.read<std::string, std::string>(
+        widget_space(*button, "/capsule/render/metrics/last_invocation/kind"));
+    REQUIRE(last_kind);
+    CHECK_EQ(*last_kind, "button");
+
+    REQUIRE(SP::Scene::Shutdown(space, scene->path));
+}
+
+TEST_CASE("Capsule walker publishes render packages") {
+    EnvGuard capsules_flag{"PATHSPACE_WIDGET_CAPSULES", "1"};
+    PathSpace space;
+
+    SP::System::LaunchOptions launch_options{};
+    launch_options.start_input_runtime = false;
+    launch_options.start_io_pump = false;
+    launch_options.start_io_telemetry_control = false;
+    REQUIRE(SP::System::LaunchStandard(space, launch_options));
+    RuntimeGuard runtime_guard{space};
+
+    auto app_root = SP::App::Create(space, "capsule_walker_app");
+    REQUIRE(app_root);
+
+    SP::Window::CreateOptions window_options;
+    window_options.name = "capsule_window";
+    auto window = SP::Window::Create(space, *app_root, window_options);
+    REQUIRE(window);
+
+    auto scene = SP::Scene::Create(space, *app_root, window->path, {});
+    REQUIRE(scene);
+
+    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view = SP::App::ConcretePathView{window_view_path};
+
+    auto button = SP::UI::Declarative::Button::Create(space,
+                                                      window_view,
+                                                      "capsule_walker_button",
+                                                      SP::UI::Declarative::Button::Args{.label = "Capsule"});
+    REQUIRE(button);
+
+    SP::UI::Declarative::SceneLifecycle::ManualPumpOptions pump_options{};
+    pump_options.wait_timeout = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0);
+    auto pump = SP::UI::Declarative::SceneLifecycle::WalkWidgetCapsules(space,
+                                                                        scene->path,
+                                                                        pump_options);
+    REQUIRE(pump);
+    CHECK_GT(pump->widgets_processed, std::uint64_t{0});
+
+    auto package = space.read<SP::UI::Declarative::WidgetRenderPackage, std::string>(
+        widget_space(*button, "/capsule/render/package"));
+    REQUIRE(package);
+    CHECK(package->render_sequence > 0);
+    CHECK(package->capsule_revision > 0);
+    CHECK_FALSE(package->command_kinds.empty());
+    REQUIRE_FALSE(package->surfaces.empty());
+
+    auto framebuffer = space.read<SP::UI::Runtime::SoftwareFramebuffer, std::string>(
+        widget_space(*button, "/capsule/render/framebuffer"));
+    REQUIRE(framebuffer);
+    CHECK_EQ(static_cast<std::uint32_t>(framebuffer->width), package->surfaces.front().width);
+    CHECK_EQ(static_cast<std::uint32_t>(framebuffer->height), package->surfaces.front().height);
+    CHECK_FALSE(framebuffer->pixels.empty());
 
     REQUIRE(SP::Scene::Shutdown(space, scene->path));
 }

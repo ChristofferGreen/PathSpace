@@ -9,40 +9,38 @@ Provide a single index of active planning documents, ordered by current priority
 
 ## Priority Ordering
 
+> **Update (December 12, 2025):** `Plan_WidgetComposableRuntime.md` is complete and archived at `docs/finished/Plan_WidgetComposableRuntime_Finished.md`; capsule-only runtime doc/test sweep finished and the plan is removed from the active queue.
 > **Update (December 11, 2025):** `Plan_PathSpaceHtmlServer.md` is complete and archived at `docs/finished/Plan_PathSpaceHtmlServer_Finished.md`; embed-first ServeHtml is now the default path with CI coverage for standalone and embedded helpers.
 > **Update (December 10, 2025):** `Plan_SceneGraph` (formerly `docs/Plan_SceneGraph.md`) is complete and archived at `docs/finished/Plan_SceneGraph_Finished.md`. Use it for the finalized scene graph/diagnostics rollout record; it no longer appears in the active list below.
 > **Update (December 6, 2025):** `Plan_Distributed_PathSpace.md` is complete and archived at `docs/finished/Plan_Distributed_PathSpace_Finished.md`. Use it as the distributed mount contract reference while the list below tracks active plans.
 > **Update (December 4, 2025):** `Plan_SceneGraph_Renderer` is complete and archived at `docs/finished/Plan_SceneGraph_Renderer_Finished.md`. Use it as the renderer/presenter contract reference while the plans below track active or ongoing work.
 
-1. **Plan_WidgetComposableRuntime.md**  
-   Active: capsule-based widget runtime (per-widget surfaces, mailboxes, HTML-compatible fragments) that consumes the renderer contracts. Lands right after the ServeHtml helper solidifies so declarative widgets can target both native and embedded contexts.
-
-2. **Plan_PathSpaceWindowManager.md**  
+1. **Plan_PathSpaceWindowManager.md**  
    Queued: NextStep-inspired window chrome/dock controller building atop the stabilized renderer/runtime stack; depends on the composable runtime landing first.
 
-3. **Plan_PathSpaceTerminal.md**  
+2. **Plan_PathSpaceTerminal.md**  
    Queued: Carta Linea-aware terminal/launcher that captures command outputs as PathSpaces; green-lit once the window manager primitives exist so terminal panes can host arbitrary viewers.
 
-4. **Plan_Surface_Ray_Cache.md** (deferred)  
+3. **Plan_Surface_Ray_Cache.md** (deferred)  
    GPU-path backlog; revisit when ray-query acceleration re-enters scope after the current HTML/runtime deliveries.
 
-5. **Plan_CartaLinea.md** (paused)  
+4. **Plan_CartaLinea.md** (paused)  
    Cross-app deck/timeline/filesystem concept; stays paused until renderer + ServeHtml milestones finish and window manager UX is validated.
 
-6. **Plan_PrimeScript.md**  
+5. **Plan_PrimeScript.md**  
    Unified scripting/shading language roadmap spanning host C++, GPU backends, and the embedded VM; follow the language spec and syntax draft in `docs/PrimeScript_SyntaxSpec.md` when prototyping.
 
 
 ## Recommended Implementation Focus (Q4 2025)
-1. **Plan_WidgetComposableRuntime.md** — land the capsule/runtime split so widgets render consistently across native, embedded ServeHtml, and future HTML-only contexts.
-2. **Plan_PathSpaceWindowManager.md** — begin chrome/dock design once the composable runtime stabilizes, enabling multi-window UX for apps that lean on the new renderer stack.
-3. **Plan_PathSpaceTerminal.md** — unblock terminal/launcher prototypes after the window manager foundation exists; keep Carta Linea integration requirements in scope during design.
-4. **Plan_SceneGraph_Finished.md** — archived; use for renderer/diagnostics history, goldens, and wrap-up notes.
-5. **Plan_PathSpaceHtmlServer_Finished.md** — archived; reference for ServeHtml embedding, CI coverage, and example migrations.
+1. **Plan_PathSpaceWindowManager.md** — begin chrome/dock design now that the composable runtime is finished, enabling multi-window UX for apps that lean on the new renderer stack.
+2. **Plan_PathSpaceTerminal.md** — unblock terminal/launcher prototypes after the window manager foundation exists; keep Carta Linea integration requirements in scope during design.
+3. **Plan_SceneGraph_Finished.md** — archived; use for renderer/diagnostics history, goldens, and wrap-up notes.
+4. **Plan_PathSpaceHtmlServer_Finished.md** — archived; reference for ServeHtml embedding, CI coverage, and example migrations.
 
 Deferred / paused tracks: **Plan_Surface_Ray_Cache.md** (GPU path) and **Plan_CartaLinea.md** (experience) stay out of the active rotation until the ServeHtml/runtime/window manager sequence is done.
 
 ## Status Snapshot — December 1, 2025
+- ✅ (December 12, 2025) `docs/finished/Plan_WidgetComposableRuntime_Finished.md` captures the completed capsule-only runtime rollout (mailboxes + primitives), doc/test sweep, and removal of legacy reducer/event inbox mirrors.
 - (December 11, 2025) Plan_PathSpaceHtmlServer completed and archived at `docs/finished/Plan_PathSpaceHtmlServer_Finished.md`: PathSpaceHtmlServer helper + builder ship with example migrations (`--html-server`), docs refreshed, and CI runs ServeHtml HTTP/SSE/Google integration plus embedded smoke (`PathSpaceHtmlServerEmbed`).
 - ✅ (December 6, 2025) `docs/Plan_Distributed_PathSpace.md` graduated to `docs/finished/Plan_Distributed_PathSpace_Finished.md`, capturing the full distributed mount implementation (phases 0–2, diagnostics, TLS, throttling) so remote web/server work references a stable contract.
 - ✅ (December 5, 2025) RemoteMountServer Phase 0 export landed (`src/pathspace/distributed/RemoteMountServer.{hpp,cpp}` + `tests/unit/distributed/test_RemoteMountServer.cpp`): server-side exports now validate aliases, stream wait notifications, publish `/inspector/metrics/remotes/<alias>/server/*`, and log `/diagnostics/web/inspector/acl/<alias>/events/*` entries so the client + diagnostics backlog can build on a working transport.

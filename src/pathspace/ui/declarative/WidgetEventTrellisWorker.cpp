@@ -3,6 +3,9 @@
 #include "WidgetStateMutators.hpp"
 #include "widgets/Common.hpp"
 
+#include <pathspace/ui/declarative/WidgetCapsule.hpp>
+#include <pathspace/ui/declarative/WidgetMailbox.hpp>
+
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/ui/WidgetSharedTypes.hpp>
 
@@ -12,6 +15,7 @@ namespace SP::UI::Declarative {
 
 namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
+namespace WidgetDetail = SP::UI::Declarative::Detail;
 using SP::UI::Runtime::Widgets::WidgetSpacePath;
 using SP::UI::ScenePath;
 
@@ -29,7 +33,8 @@ WidgetEventTrellisWorker::WidgetEventTrellisWorker(PathSpace& space,
           : options_.log_root)
     , state_path_(options_.state_path.empty()
           ? std::string{"/system/widgets/runtime/events/state/running"}
-          : options_.state_path) {}
+          : options_.state_path)
+    , capsules_enabled_(SP::UI::Declarative::CapsulesFeatureEnabled()) {}
 
 WidgetEventTrellisWorker::~WidgetEventTrellisWorker() {
     stop();
@@ -132,6 +137,8 @@ void WidgetEventTrellisWorker::run() {
 void WidgetEventTrellisWorker::refresh_bindings() {
         auto tokens = list_children(space_, windows_root_);
         std::unordered_map<std::string, WindowBinding> updated;
+
+        mailbox_subscriptions_.clear();
 
         for (auto const& token : tokens) {
             auto maybe_binding = build_binding(token);
@@ -264,6 +271,87 @@ auto WidgetEventTrellisWorker::run_hit_test(WindowBinding const& binding,
         return BuildersScene::HitTest(space_, scene_path, request);
     }
 
+auto WidgetEventTrellisWorker::mailbox_subscriptions(std::string const& widget_path)
+    -> std::unordered_set<std::string> const& {
+        auto cached = mailbox_subscriptions_.find(widget_path);
+        if (cached != mailbox_subscriptions_.end()) {
+            return cached->second;
+        }
+
+    auto subs_path = WidgetSpacePath(widget_path, "/capsule/mailbox/subscriptions");
+    auto stored = DeclarativeDetail::read_optional<std::vector<std::string>>(space_, subs_path);
+    if (!stored) {
+        enqueue_error(space_, "WidgetEventTrellis mailbox read failed: "
+                + stored.error().message.value_or("unknown error"));
+            mailbox_subscriptions_.emplace(widget_path, std::unordered_set<std::string>{});
+            return mailbox_subscriptions_.at(widget_path);
+        }
+
+        if (!stored->has_value()) {
+            mailbox_subscriptions_.emplace(widget_path, std::unordered_set<std::string>{});
+            return mailbox_subscriptions_.at(widget_path);
+        }
+
+        std::unordered_set<std::string> topics;
+        for (auto const& topic : **stored) {
+            topics.insert(topic);
+        }
+        auto [it, _] = mailbox_subscriptions_.emplace(widget_path, std::move(topics));
+        return it->second;
+    }
+
+bool WidgetEventTrellisWorker::route_mailbox_event(TargetInfo const& target,
+                             WidgetBindings::WidgetOpKind kind,
+                             float value,
+                             WidgetBindings::PointerInfo const& pointer,
+                             std::uint64_t sequence,
+                             std::uint64_t timestamp_ns) {
+        if (!capsules_enabled_) {
+            return false;
+        }
+
+        auto topic = Mailbox::TopicFor(kind);
+        if (topic.empty() || target.widget_path.empty()) {
+            WidgetDetail::record_capsule_mailbox_failure(space_, target.widget_path);
+            enqueue_error(space_,
+                          "WidgetEventTrellis missing mailbox topic for " + target.widget_path);
+            return false;
+        }
+
+        auto const& subscriptions = mailbox_subscriptions(target.widget_path);
+        auto topic_string = std::string{topic};
+        bool subscribed = subscriptions.find(topic_string) != subscriptions.end();
+        if (!subscribed) {
+            WidgetDetail::record_capsule_mailbox_failure(space_, target.widget_path);
+            enqueue_error(space_, "WidgetEventTrellis missing mailbox subscription for "
+                    + target.widget_path + " topic " + topic_string);
+        }
+
+        WidgetMailboxEvent event{};
+        event.topic = topic_string;
+        event.kind = kind;
+        event.widget_path = target.widget_path;
+        event.target_id = target.component;
+        event.pointer = pointer;
+        event.value = value;
+        event.sequence = sequence;
+        event.timestamp_ns = timestamp_ns;
+
+        auto queue_path = WidgetSpacePath(target.widget_path, "/capsule/mailbox/events/")
+            + topic_string + "/queue";
+        auto inserted = space_.insert(queue_path, event);
+        if (!inserted.errors.empty()) {
+            WidgetDetail::record_capsule_mailbox_failure(space_, target.widget_path);
+            enqueue_error(space_, "WidgetEventTrellis mailbox write failed: "
+                    + inserted.errors.front().message.value_or("unknown error"));
+            return false;
+        }
+
+        WidgetDetail::record_capsule_mailbox_event(
+            space_, target.widget_path, kind, target.component, timestamp_ns, sequence);
+        return true;
+    }
+
 auto WidgetEventTrellisWorker::pointer_state(std::string const& token) -> PointerState& {
         std::lock_guard<std::mutex> guard(pointer_mutex_);
         return pointer_states_[token];
@@ -307,16 +395,15 @@ void WidgetEventTrellisWorker::emit_widget_op(WindowBinding const& binding,
         op.sequence = DeclarativeDetail::g_widget_op_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
         op.timestamp_ns = DeclarativeDetail::to_epoch_ns(std::chrono::system_clock::now());
 
-        auto queue_path = WidgetSpacePath(target.widget_path, "/ops/inbox/queue");
-        auto inserted = space_.insert(queue_path, op);
-        if (!inserted.errors.empty()) {
-            enqueue_error(space_, "WidgetEventTrellis failed to write WidgetOp for "
-                    + target.widget_path + ": " + inserted.errors.front().message.value_or("unknown error"));
+        bool routed_mailbox = route_mailbox_event(
+            target, kind, value, pointer, op.sequence, op.timestamp_ns);
+
+        if (!routed_mailbox) {
             return;
         }
 
         ++widget_ops_total_;
-        last_dispatch_ns_ = now_ns();
+        last_dispatch_ns_ = op.timestamp_ns;
     }
 
 } // namespace SP::UI::Declarative

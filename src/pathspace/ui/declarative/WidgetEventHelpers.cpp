@@ -5,6 +5,8 @@
 
 #include "DescriptorDetail.hpp"
 
+#include <pathspace/ui/declarative/WidgetCapsule.hpp>
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -105,6 +107,13 @@ auto write_slider_state(PathSpace& space,
         enqueue_error(space,
                       "WidgetEventTrellis failed to write slider state for " + widget_path);
         return false;
+    }
+    if (SP::UI::Declarative::CapsulesFeatureEnabled()) {
+        auto updated = DeclarativeDetail::update_slider_capsule_state(space, widget_path, state);
+        if (!updated) {
+            enqueue_error(space,
+                          "WidgetEventTrellis failed to mirror slider capsule for " + widget_path);
+        }
     }
     mark_widget_dirty(space, widget_path);
     return true;
@@ -263,6 +272,13 @@ auto write_text_state(PathSpace& space,
         enqueue_error(space,
                       "WidgetEventTrellis failed to write text state for " + widget_path);
         return false;
+    }
+    if (SP::UI::Declarative::CapsulesFeatureEnabled()) {
+        auto updated = DeclarativeDetail::update_input_capsule_state(space, widget_path, state);
+        if (!updated) {
+            enqueue_error(space,
+                          "WidgetEventTrellis failed to mirror input capsule for " + widget_path);
+        }
     }
     mark_widget_dirty(space, widget_path);
     return true;
@@ -471,6 +487,9 @@ auto write_stack_active_panel(PathSpace& space,
         return false;
     }
     mark_widget_dirty(space, widget_path);
+    if (CapsulesFeatureEnabled()) {
+        (void)DeclarativeDetail::update_stack_capsule_state(space, widget_path, panel_id);
+    }
     return true;
 }
 

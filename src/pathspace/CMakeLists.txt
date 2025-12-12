@@ -101,6 +101,7 @@ add_library(PathSpace
     inspector/InspectorSnapshot.cpp
     inspector/InspectorAcl.cpp
     inspector/InspectorHttpServer.cpp
+    inspector/InspectorMailboxMetrics.cpp
     inspector/InspectorSearchMetrics.cpp
     inspector/InspectorStreamMetrics.cpp
     inspector/InspectorUsageMetrics.cpp
@@ -185,6 +186,9 @@ if(PATHSPACE_ENABLE_UI)
         ui/declarative/WidgetEventFocusHandlers.cpp
         ui/declarative/WidgetEventHelpers.cpp
         ui/declarative/WidgetStateMutators.cpp
+        ui/declarative/WidgetCapsule.cpp
+        ui/declarative/WidgetRenderPackage.cpp
+        ui/declarative/WidgetPrimitives.cpp
         ui/declarative/Widgets.cpp
         ui/declarative/widgets/Common.cpp
         ui/declarative/widgets/Button.cpp

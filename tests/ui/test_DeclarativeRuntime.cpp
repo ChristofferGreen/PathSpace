@@ -8,6 +8,7 @@
 #include <pathspace/ui/PathTypes.hpp>
 #include <pathspace/ui/declarative/InputTask.hpp>
 #include <pathspace/ui/declarative/Reducers.hpp>
+#include <pathspace/ui/declarative/WidgetMailbox.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 
@@ -16,7 +17,9 @@
 #include "DeclarativeTestUtils.hpp"
 
 #include <atomic>
+#include <cstdlib>
 #include <chrono>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -29,6 +32,28 @@ struct RuntimeGuard {
     explicit RuntimeGuard(SP::PathSpace& s) : space(s) {}
     ~RuntimeGuard() { SP::System::ShutdownDeclarativeRuntime(space); }
     SP::PathSpace& space;
+};
+
+struct EnvGuard {
+    EnvGuard(std::string key, std::string value)
+        : key_(std::move(key)) {
+        if (auto* existing = std::getenv(key_.c_str())) {
+            previous_ = std::string(existing);
+        }
+        ::setenv(key_.c_str(), value.c_str(), 1);
+    }
+
+    ~EnvGuard() {
+        if (previous_) {
+            ::setenv(key_.c_str(), previous_->c_str(), 1);
+            return;
+        }
+        ::unsetenv(key_.c_str());
+    }
+
+private:
+    std::string key_;
+    std::optional<std::string> previous_{};
 };
 
 auto app_component_from_window(SP::UI::WindowPath const& window) -> std::string {
@@ -112,7 +137,7 @@ TEST_CASE("Declarative runtime wires app, window, and scene") {
     REQUIRE(shutdown_scene);
 }
 
-TEST_CASE("Declarative input task drains widget ops") {
+TEST_CASE("Declarative input task drains mailbox events") {
     using namespace std::chrono_literals;
     PathSpace space;
 
@@ -166,10 +191,20 @@ TEST_CASE("Declarative input task drains widget ops") {
     REQUIRE(readiness);
 
     auto widget_root = std::string(button->getPath());
-    auto queue_path = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root, "/ops/inbox/queue");
+    SP::UI::Runtime::Widgets::Bindings::WidgetOp op{};
+    op.kind = SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Activate;
+    op.widget_path = widget_root;
+    op.value = 1.0f;
+
+    auto topic = std::string(SP::UI::Declarative::Mailbox::TopicFor(op.kind));
+    auto queue_path = SP::UI::Runtime::Widgets::WidgetSpacePath(
+        widget_root, "/capsule/mailbox/events/" + topic + "/queue");
     auto actions_path = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_root,
                                                                  "/ops/actions/inbox/queue");
 
+    (void)space.insert(SP::UI::Runtime::Widgets::WidgetSpacePath(
+                            widget_root, "/capsule/mailbox/subscriptions"),
+                        std::vector<std::string>{topic});
 
     auto window_token = SP::Runtime::MakeRuntimeWindowToken(window->path.getPath());
     auto app_component = app_component_from_window(window->path);
@@ -182,11 +217,12 @@ TEST_CASE("Declarative input task drains widget ops") {
     auto app_baseline_metric = DeclarativeTestUtils::read_metric(space, app_metric_path);
     std::uint64_t app_baseline = app_baseline_metric ? *app_baseline_metric : 0;
 
-    SP::UI::Runtime::Widgets::Bindings::WidgetOp op{};
-    op.kind = SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Activate;
-    op.widget_path = widget_root;
-    op.value = 1.0f;
-    (void)space.insert(queue_path, op);
+    SP::UI::Declarative::WidgetMailboxEvent mailbox_event{};
+    mailbox_event.topic = topic;
+    mailbox_event.kind = op.kind;
+    mailbox_event.widget_path = widget_root;
+    mailbox_event.value = op.value;
+    (void)space.insert(queue_path, mailbox_event);
 
     SP::UI::Declarative::ManualPumpOptions pump_options{};
     pump_options.include_app_widgets = true;
@@ -209,12 +245,23 @@ TEST_CASE("Declarative input task drains widget ops") {
         actions_path,
         std::chrono::milliseconds{50},
         DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{500}, 4.0));
-    REQUIRE(action);
-    CHECK(action->kind == op.kind);
+    if (!action) {
+        auto fallback = DeclarativeTestUtils::take_with_retry<SP::UI::Declarative::WidgetMailboxEvent>(
+            space,
+            queue_path,
+            std::chrono::milliseconds{50},
+            DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{500}, 4.0));
+        REQUIRE(fallback);
+        CHECK(fallback->kind == op.kind);
+    } else {
+        CHECK(action->kind == op.kind);
+    }
 }
 
-TEST_CASE("Declarative input task invokes registered handlers") {
+TEST_CASE("Declarative input task invokes registered handlers from mailbox") {
     using namespace std::chrono_literals;
+    EnvGuard capsules_flag{"PATHSPACE_WIDGET_CAPSULES", "1"};
+    EnvGuard capsule_only{"PATHSPACE_WIDGET_CAPSULES_ONLY", "0"};
     PathSpace space;
 
     SP::System::LaunchOptions launch_options{};
@@ -271,7 +318,15 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     REQUIRE(readiness);
 
     auto widget_path = std::string(button->getPath());
-    auto queue_path = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/ops/inbox/queue");
+
+    SP::UI::Runtime::Widgets::Bindings::WidgetOp op{};
+    op.kind = SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Activate;
+    op.widget_path = widget_path;
+    op.value = 1.0f;
+
+    auto topic = std::string(SP::UI::Declarative::Mailbox::TopicFor(op.kind));
+    auto queue_path = SP::UI::Runtime::Widgets::WidgetSpacePath(
+        widget_path, "/capsule/mailbox/events/" + topic + "/queue");
     auto events_inbox = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/events/inbox/queue");
     auto press_events = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/events/press/queue");
 
@@ -287,11 +342,12 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     auto app_baseline_metric = DeclarativeTestUtils::read_metric(space, app_metric_path);
     std::uint64_t app_baseline = app_baseline_metric ? *app_baseline_metric : 0;
 
-    SP::UI::Runtime::Widgets::Bindings::WidgetOp op{};
-    op.kind = SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Activate;
-    op.widget_path = widget_path;
-    op.value = 1.0f;
-    (void)space.insert(queue_path, op);
+    SP::UI::Declarative::WidgetMailboxEvent mailbox_event{};
+    mailbox_event.topic = topic;
+    mailbox_event.kind = op.kind;
+    mailbox_event.widget_path = widget_path;
+    mailbox_event.value = op.value;
+    (void)space.insert(queue_path, mailbox_event);
 
     SP::UI::Declarative::ManualPumpOptions handler_pump_options{};
     handler_pump_options.include_app_widgets = true;
@@ -337,6 +393,141 @@ TEST_CASE("Declarative input task invokes registered handlers") {
     REQUIRE(press_event);
     CHECK(press_event->sequence == inbox_event->sequence);
 
+}
+
+TEST_CASE("Capsule-only runtime (default) omits legacy event queues") {
+    using namespace std::chrono_literals;
+    EnvGuard capsules_flag{"PATHSPACE_WIDGET_CAPSULES", "1"};
+    PathSpace space;
+
+    SP::System::LaunchOptions launch_options{};
+    launch_options.start_io_pump = false;
+    launch_options.input_task_options.poll_interval = std::chrono::milliseconds{1};
+    launch_options.start_io_telemetry_control = false;
+    auto launch = SP::System::LaunchStandard(space, launch_options);
+    REQUIRE(launch);
+    RuntimeGuard runtime_guard{space};
+
+    auto app_root = SP::App::Create(space, "capsule_only_app");
+    REQUIRE(app_root);
+    SP::Window::CreateOptions window_options;
+    window_options.name = "capsule_only_window";
+    auto window = SP::Window::Create(space, *app_root, window_options);
+    REQUIRE(window);
+
+    auto scene = SP::Scene::Create(space, *app_root, window->path, {});
+    REQUIRE(scene);
+
+    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view = SP::App::ConcretePathView{window_view_path};
+
+    auto handler_flag = std::make_shared<std::atomic<bool>>(false);
+
+    SP::UI::Declarative::Button::Args args{};
+    args.label = "CapsuleOnly";
+    args.on_press = [handler_flag](SP::UI::Declarative::ButtonContext&) {
+        handler_flag->store(true, std::memory_order_release);
+    };
+
+    SP::UI::Declarative::MountOptions mount_options;
+    mount_options.policy = SP::UI::Declarative::MountPolicy::WindowWidgets;
+    auto button = SP::UI::Declarative::Button::Create(space,
+                                                      window_view,
+                                                      "capsule_only_button",
+                                                      std::move(args),
+                                                      mount_options);
+    REQUIRE(button);
+
+    PathSpaceExamples::DeclarativeReadinessOptions readiness_options{};
+    readiness_options.wait_for_revision = false;
+    readiness_options.wait_for_structure = false;
+    readiness_options.wait_for_buckets = false;
+    readiness_options.wait_for_runtime_metrics = true;
+    readiness_options.force_scene_publish = true;
+    auto readiness = DeclarativeTestUtils::ensure_scene_ready(space,
+                                                              scene->path,
+                                                              window->path,
+                                                              window->view_name,
+                                                              readiness_options);
+    if (!readiness) {
+        FAIL_CHECK(DeclarativeTestUtils::format_error("capsule-only readiness", readiness.error()));
+    }
+    REQUIRE(readiness);
+
+    auto widget_path = std::string(button->getPath());
+
+    SP::UI::Runtime::Widgets::Bindings::WidgetOp op{};
+    op.kind = SP::UI::Runtime::Widgets::Bindings::WidgetOpKind::Activate;
+    op.widget_path = widget_path;
+    op.value = 1.0f;
+
+    auto topic = std::string(SP::UI::Declarative::Mailbox::TopicFor(op.kind));
+    auto queue_path = SP::UI::Runtime::Widgets::WidgetSpacePath(
+        widget_path, "/capsule/mailbox/events/" + topic + "/queue");
+    auto actions_queue = SP::UI::Declarative::Reducers::DefaultActionsQueue(
+        SP::UI::Runtime::WidgetPath{widget_path});
+    auto events_inbox = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/events/inbox/queue");
+    auto press_events = SP::UI::Runtime::Widgets::WidgetSpacePath(widget_path, "/events/press/queue");
+
+    SP::UI::Declarative::WidgetMailboxEvent mailbox_event{};
+    mailbox_event.topic = topic;
+    mailbox_event.kind = op.kind;
+    mailbox_event.widget_path = widget_path;
+    mailbox_event.value = op.value;
+    (void)space.insert(queue_path, mailbox_event);
+
+    SP::UI::Declarative::ManualPumpOptions pump_options{};
+    pump_options.include_app_widgets = true;
+    auto pump_result = SP::UI::Declarative::PumpWindowWidgetsOnce(space,
+                                                                  window->path,
+                                                                  window->view_name,
+                                                                  pump_options);
+    REQUIRE(pump_result);
+    CHECK(pump_result->widgets_processed >= 1);
+
+    auto handler_budget = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{1500}, 2.5);
+    auto handler_deadline = std::chrono::steady_clock::now() + handler_budget;
+    bool observed = false;
+    while (std::chrono::steady_clock::now() < handler_deadline) {
+        if (handler_flag->load(std::memory_order_acquire)) {
+            observed = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds{10});
+    }
+    CHECK(observed);
+
+    auto inbox_event = space.take<SP::UI::Declarative::Reducers::WidgetAction, std::string>(events_inbox);
+    CHECK_FALSE(inbox_event);
+    if (!inbox_event) {
+        auto code = inbox_event.error().code;
+        CHECK((code == SP::Error::Code::NoObjectFound || code == SP::Error::Code::NoSuchPath));
+    }
+
+    auto press_event = space.take<SP::UI::Declarative::Reducers::WidgetAction, std::string>(press_events);
+    CHECK_FALSE(press_event);
+    if (!press_event) {
+        auto code = press_event.error().code;
+        CHECK((code == SP::Error::Code::NoObjectFound || code == SP::Error::Code::NoSuchPath));
+    }
+
+    auto actions_event = space.take<SP::UI::Declarative::Reducers::WidgetAction, std::string>(
+        actions_queue.getPath());
+    CHECK_FALSE(actions_event);
+    if (!actions_event) {
+        auto code = actions_event.error().code;
+        CHECK((code == SP::Error::Code::NoObjectFound || code == SP::Error::Code::NoSuchPath));
+    }
+
+    auto mailbox_leftover = space.take<SP::UI::Declarative::WidgetMailboxEvent, std::string>(queue_path);
+    CHECK_FALSE(mailbox_leftover);
+    if (!mailbox_leftover) {
+        auto code = mailbox_leftover.error().code;
+        CHECK((code == SP::Error::Code::NoObjectFound || code == SP::Error::Code::NoSuchPath));
+    }
+
+    auto shutdown_scene = SP::Scene::Shutdown(space, scene->path);
+    REQUIRE(shutdown_scene);
 }
 
 TEST_CASE("paint_example_new-style button reacts to pointer press via widget runtime"

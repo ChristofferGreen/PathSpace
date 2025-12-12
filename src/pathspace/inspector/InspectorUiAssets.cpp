@@ -526,6 +526,45 @@ constexpr char kEmbeddedIndexHtml[] = R"HTML(<!DOCTYPE html>
       opacity: 0.75;
       margin-top: 0.75rem;
     }
+    .mailbox-table {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .mailbox-header,
+    .mailbox-row {
+      display: grid;
+      grid-template-columns: 1.6fr 0.8fr 0.8fr 0.8fr 1.2fr;
+      gap: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      align-items: center;
+    }
+    .mailbox-header {
+      background: rgba(255,255,255,0.05);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      font-weight: 700;
+    }
+    .mailbox-row:nth-child(odd) {
+      background: rgba(255,255,255,0.02);
+    }
+    .mailbox-path {
+      word-break: break-all;
+      font-size: 0.85rem;
+    }
+    .mailbox-topics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+    .pill {
+      border-radius: 999px;
+      padding: 0.2rem 0.5rem;
+      background: rgba(255,255,255,0.08);
+      font-size: 0.75rem;
+      white-space: nowrap;
+    }
     @media (max-width: 900px) {
       .layout {
         grid-template-columns: 1fr;
@@ -640,6 +679,43 @@ constexpr char kEmbeddedIndexHtml[] = R"HTML(<!DOCTYPE html>
         </div>
         <p class="metric-note" id="metric-limit-note">Queue cap — · idle timeout —</p>
         <p class="metric-note" id="metric-disconnect-note">No disconnects recorded.</p>
+      </section>
+      <section class="panel" data-panel-id="mailbox">
+        <h2>Capsule mailboxes</h2>
+        <div class="metrics-grid">
+          <div class="metric">
+            <div class="metric-label">Widgets</div>
+            <div class="metric-value" id="mailbox-widget-count">0</div>
+            <span class="badge muted" id="mailbox-widget-badge">No mailboxes</span>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Events</div>
+            <div class="metric-value" id="mailbox-events-total">0</div>
+            <span class="badge muted" id="mailbox-events-badge">Idle</span>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Dispatch failures</div>
+            <div class="metric-value" id="mailbox-failures-total">0</div>
+            <span class="badge muted" id="mailbox-failures-badge">Clean</span>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Last event</div>
+            <div class="metric-value" id="mailbox-last-event">—</div>
+            <span class="badge muted" id="mailbox-last-kind">None</span>
+          </div>
+        </div>
+        <p class="metric-note" id="mailbox-summary-note">No mailbox metrics loaded.</p>
+        <div class="mailbox-table" aria-live="polite">
+          <div class="mailbox-header">
+            <span>Widget path</span>
+            <span>Kind</span>
+            <span>Events</span>
+            <span>Failures</span>
+            <span>Topics</span>
+          </div>
+          <div id="mailbox-rows"></div>
+        </div>
+        <p id="mailbox-empty" class="empty-state">No capsule mailboxes found.</p>
       </section>
       <section class="panel" data-panel-id="search">
         <h2>Search</h2>
@@ -787,6 +863,7 @@ constexpr char kEmbeddedIndexHtml[] = R"HTML(<!DOCTYPE html>
         ? window.requestAnimationFrame.bind(window)
         : (fn) => setTimeout(fn, 16);
       const METRICS_REFRESH_MS = 5000;
+      const MAILBOX_METRICS_ENDPOINT = "/inspector/metrics/mailbox";
       const SEARCH_METRICS_ENDPOINT = "/inspector/metrics/search";
       const REMOTE_STATUS_ENDPOINT = "/inspector/remotes";
       const REMOTE_STATUS_REFRESH_MS = 15000;
@@ -909,6 +986,17 @@ constexpr char kEmbeddedIndexHtml[] = R"HTML(<!DOCTYPE html>
         metricDisconnectBadge: document.getElementById("metric-disconnect-badge"),
         metricDisconnectNote: document.getElementById("metric-disconnect-note"),
         metricLimitNote: document.getElementById("metric-limit-note"),
+        mailboxWidgetCount: document.getElementById("mailbox-widget-count"),
+        mailboxWidgetBadge: document.getElementById("mailbox-widget-badge"),
+        mailboxEventsTotal: document.getElementById("mailbox-events-total"),
+        mailboxEventsBadge: document.getElementById("mailbox-events-badge"),
+        mailboxFailuresTotal: document.getElementById("mailbox-failures-total"),
+        mailboxFailuresBadge: document.getElementById("mailbox-failures-badge"),
+        mailboxLastEvent: document.getElementById("mailbox-last-event"),
+        mailboxLastKind: document.getElementById("mailbox-last-kind"),
+        mailboxSummaryNote: document.getElementById("mailbox-summary-note"),
+        mailboxRows: document.getElementById("mailbox-rows"),
+        mailboxEmpty: document.getElementById("mailbox-empty"),
         writePanel: document.querySelector('[data-panel-id="write"]'),
         writeToggleList: document.getElementById("write-toggle-list"),
         writeWarning: document.getElementById("write-warning"),
@@ -1300,6 +1388,131 @@ constexpr char kEmbeddedIndexHtml[] = R"HTML(<!DOCTYPE html>
         }
       }
 
+      function renderMailboxRows(widgets) {
+        if (!elements.mailboxRows || !elements.mailboxEmpty) {
+          return;
+        }
+
+        elements.mailboxRows.innerHTML = "";
+        if (!widgets || !widgets.length) {
+          elements.mailboxEmpty.style.display = "block";
+          return;
+        }
+
+        elements.mailboxEmpty.style.display = "none";
+        widgets.forEach(widget => {
+          const row = document.createElement("div");
+          row.className = "mailbox-row";
+
+          const pathSpan = document.createElement("span");
+          pathSpan.className = "mailbox-path";
+          pathSpan.textContent = widget.path || "—";
+
+          const kindSpan = document.createElement("span");
+          kindSpan.textContent = widget.kind || "—";
+
+          const eventsSpan = document.createElement("span");
+          eventsSpan.textContent = String(widget.events_total ?? 0);
+
+          const failuresSpan = document.createElement("span");
+          failuresSpan.textContent = String(widget.dispatch_failures_total ?? 0);
+
+          const topicsContainer = document.createElement("div");
+          topicsContainer.className = "mailbox-topics";
+          const topics = Array.isArray(widget.topics) ? widget.topics : [];
+          if (!topics.length) {
+            const pill = document.createElement("span");
+            pill.className = "pill";
+            pill.textContent = "—";
+            topicsContainer.appendChild(pill);
+          } else {
+            topics.forEach(topic => {
+              const pill = document.createElement("span");
+              pill.className = "pill";
+              const topicName = topic.topic || "";
+              const topicTotal = Number(topic.total ?? 0);
+              pill.textContent = `${topicName}: ${topicTotal}`;
+              topicsContainer.appendChild(pill);
+            });
+          }
+
+          row.appendChild(pathSpan);
+          row.appendChild(kindSpan);
+          row.appendChild(eventsSpan);
+          row.appendChild(failuresSpan);
+          row.appendChild(topicsContainer);
+
+          elements.mailboxRows.appendChild(row);
+        });
+      }
+
+      async function refreshMailboxMetrics() {
+        if (!elements.mailboxWidgetCount) {
+          return;
+        }
+
+        try {
+          const data = await fetchJson(MAILBOX_METRICS_ENDPOINT);
+          const summary = data.summary || {};
+          const widgets = Array.isArray(data.widgets) ? data.widgets : [];
+
+          const widgetCount = Number(summary.widgets_with_mailbox ?? 0);
+          elements.mailboxWidgetCount.textContent = widgetCount.toString();
+          setBadge(elements.mailboxWidgetBadge,
+                   widgetCount > 0 ? "info" : "muted",
+                   widgetCount > 0 ? "Active" : "No mailboxes");
+
+          const eventsTotal = Number(summary.total_events ?? 0);
+          elements.mailboxEventsTotal.textContent = eventsTotal.toString();
+          setBadge(elements.mailboxEventsBadge,
+                   eventsTotal > 0 ? "info" : "muted",
+                   eventsTotal > 0 ? "Recorded" : "Idle");
+
+          const failuresTotal = Number(summary.total_failures ?? 0);
+          elements.mailboxFailuresTotal.textContent = failuresTotal.toString();
+          setBadge(elements.mailboxFailuresBadge,
+                   failuresTotal > 0 ? "warn" : "ok",
+                   failuresTotal > 0 ? "Failures" : "Clean");
+
+          const lastKind = summary.last_event_kind || null;
+          const lastWidget = summary.last_event_widget || null;
+          const lastNs = summary.last_event_ns || null;
+
+          elements.mailboxLastEvent.textContent = lastNs ? String(lastNs) : "—";
+          setBadge(elements.mailboxLastKind,
+                   lastKind ? "info" : "muted",
+                   lastKind || "None");
+
+          if (elements.mailboxSummaryNote) {
+            if (!widgetCount) {
+              elements.mailboxSummaryNote.textContent = "No mailbox metrics loaded.";
+            } else if (lastKind) {
+              const target = lastWidget ? ` @ ${lastWidget}` : "";
+              elements.mailboxSummaryNote.textContent = `Last ${lastKind}${target}`;
+            } else {
+              elements.mailboxSummaryNote.textContent = "Mailboxes have no recent events.";
+            }
+          }
+
+          renderMailboxRows(widgets);
+        } catch (error) {
+          console.warn("Failed to load mailbox metrics", error);
+          if (elements.mailboxSummaryNote) {
+            elements.mailboxSummaryNote.textContent = "Failed to load mailbox metrics.";
+          }
+          if (elements.mailboxWidgetBadge) {
+            setBadge(elements.mailboxWidgetBadge, "warn", "Error");
+          }
+        }
+      }
+
+      async function refreshMetrics() {
+        await Promise.allSettled([
+          refreshStreamMetrics(),
+          refreshMailboxMetrics(),
+        ]);
+      }
+
       async function refreshSearchDiagnostics() {
         if (!elements.searchQueryBadge) {
           return;
@@ -1602,12 +1815,12 @@ constexpr char kEmbeddedIndexHtml[] = R"HTML(<!DOCTYPE html>
       }
 
       function startMetricsPolling() {
-        refreshStreamMetrics();
+        refreshMetrics();
         refreshSearchDiagnostics();
         if (state.metricsTimer) {
           clearInterval(state.metricsTimer);
         }
-        state.metricsTimer = setInterval(refreshStreamMetrics, METRICS_REFRESH_MS);
+        state.metricsTimer = setInterval(refreshMetrics, METRICS_REFRESH_MS);
         if (state.searchMetricsTimer) {
           clearInterval(state.searchMetricsTimer);
         }

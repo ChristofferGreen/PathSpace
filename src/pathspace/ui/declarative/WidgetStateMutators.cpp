@@ -2,12 +2,14 @@
 
 #include "WidgetEventCommon.hpp"
 #include <pathspace/ui/declarative/Detail.hpp>
+#include <pathspace/ui/declarative/widgets/Common.hpp>
 
 #include <pathspace/ui/runtime/UIRuntime.hpp>
 
 #include <algorithm>
 #include <optional>
 #include <string>
+#include <type_traits>
 
 namespace SP::UI::Declarative::Detail {
 
@@ -15,6 +17,36 @@ namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 using SP::UI::Runtime::Widgets::WidgetSpacePath;
 
 namespace {
+
+template <typename State>
+auto mirror_capsule_state(PathSpace& space,
+                          std::string const& widget_path,
+                          State const& state) -> void {
+    if constexpr (std::is_same_v<State, BuilderWidgets::ButtonState>
+                  || std::is_same_v<State, BuilderWidgets::ToggleState>) {
+        auto capsule_path = WidgetSpacePath(widget_path, "/capsule/state");
+        auto status = replace_single<State>(space, capsule_path, state);
+        if (!status) {
+            enqueue_error(space,
+                          "WidgetEventTrellis failed to mirror capsule state for "
+                              + widget_path);
+        }
+    } else if constexpr (std::is_same_v<State, BuilderWidgets::ListState>) {
+        auto status = update_list_capsule_state(space, widget_path, state);
+        if (!status) {
+            enqueue_error(space,
+                          "WidgetEventTrellis failed to mirror capsule state for "
+                              + widget_path);
+        }
+    } else if constexpr (std::is_same_v<State, BuilderWidgets::TreeState>) {
+        auto status = update_tree_capsule_state(space, widget_path, state);
+        if (!status) {
+            enqueue_error(space,
+                          "WidgetEventTrellis failed to mirror capsule state for "
+                              + widget_path);
+        }
+    }
+}
 
 template <typename State, typename MutateFn>
 auto mutate_widget_state(PathSpace& space,
@@ -49,6 +81,8 @@ auto mutate_widget_state(PathSpace& space,
                           + std::string(state_name) + " for " + widget_path);
         return false;
     }
+
+    mirror_capsule_state(space, widget_path, updated);
 
     mark_widget_dirty(space, widget_path);
     return true;

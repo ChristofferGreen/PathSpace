@@ -8,6 +8,7 @@
 #include <pathspace/ui/MaterialDescriptor.hpp>
 #include <pathspace/ui/MaterialShaderKey.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
+#include <pathspace/ui/SceneSnapshotBuilder.hpp>
 #include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
@@ -103,6 +104,11 @@ public:
 
     auto render(RenderParams params) -> SP::Expected<RenderStats>;
 
+    auto render_bucket(RenderParams params,
+                       SP::UI::Scene::DrawableBucketSnapshot const* bucket,
+                       std::string const& revision_base,
+                       std::uint64_t revision) -> SP::Expected<RenderStats>;
+
 private:
     using MaterialDescriptorMap = phmap::flat_hash_map<std::uint32_t, MaterialDescriptor>;
 
@@ -132,6 +138,11 @@ private:
     PathSpace& space_;
     ImageCache image_cache_;
     FontAtlasCache font_atlas_cache_;
+
+    auto render_with_bucket(SP::UI::Scene::DrawableBucketSnapshot const* bucket,
+                            RenderParams const& params,
+                            std::string const& revision_base,
+                            std::uint64_t revision) -> SP::Expected<RenderStats>;
 
     static auto target_cache() -> TargetCache&;
 };
