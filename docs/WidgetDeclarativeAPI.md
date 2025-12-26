@@ -91,58 +91,50 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 
 ### Declarative Screenshot Helper
 
-Call `SP::UI::Screenshot::CaptureDeclarative(space, scene_path, window_path, options)`
-to capture a declarative scene without writing 100+ lines of readiness and
-force-publish code. `DeclarativeScreenshotOptions` accepts window/view sizing,
-output/baseline/diff/metrics paths, telemetry overrides, `force_software`, and
-an optional `ScreenshotRequest::Hooks` bundle for post-processing (paint
-overlays, software fallback writers, etc.). The helper:
+Use `SP::UI::Screenshot::CaptureDeclarativeSimple(space, scene, window, output_png [,width,height])`
+for the common path. The wrapper keeps the slot/token protocol internal while
+pinning the defaults to the one-present happy path: `capture_mode=next_present`,
+`require_present=true`, `present_before_capture=true`, and
+`allow_software_fallback=true` (software is not forced). Width/height are
+optional; when omitted the helper reads the surface descriptor to size the
+capture.
 
-1. Ensures the window/view widgets exist via
-   `PathSpaceExamples::ensure_declarative_scene_ready` with overridable
-   `DeclarativeReadinessOptions`.
-2. Optionally marks the scene dirty, forces a publish, and waits for the next
-   revision before invoking `ScreenshotService::Capture`.
-3. Infers width/height from the bound surface when the caller leaves them unset
-   and auto-derives the telemetry namespace from the owning app.
+`SP::UI::Screenshot::CaptureDeclarative` now drives a tokenized screenshot slot
+per window/view instead of calling `ScreenshotService::Capture` directly. The
+protocol lives at `ui/screenshot/<window>/<view>`:
 
-Advanced callers (paint example, CLI harnesses) pass `hooks` for overlays and
-baseline diffs, but simple demos only need:
+- `token` (bool) is taken before writing a request and released automatically.
+- Request lanes: `output_png`, optional `baseline_png`/`diff_png`/`metrics_json`,
+  `capture_mode` (`next_present` | `frame_index` | `deadline_ns`), optional
+  `frame_index`/`deadline_ns`, dimensions, `force_software`,
+  `allow_software_fallback`, `present_when_force_software`, `require_present`,
+  `verify_output_matches_framebuffer`, `verify_max_mean_error`, `max_mean_error`,
+  and `armed` (set last).
+- Result lanes: `status` (`captured`/`match`/`error`/`timeout`), `artifact`,
+  optional `mean_error`, `backend`, `completed_at_ns`, and `error`.
 
-```cpp
-SP::UI::Screenshot::DeclarativeScreenshotOptions screenshot{};
-screenshot.output_png = "build/artifacts/example.png";
-screenshot.baseline_png = "docs/images/example_baseline.png";
-screenshot.view_name = window.view_name;
-auto result = SP::UI::Screenshot::CaptureDeclarative(space, scene.path, window.path, screenshot);
-```
+Flow: the caller acquires `token`, writes request lanes, sets `armed=true`, then
+runs `PresentWindowFrame` once (default) so the presenter sees the armed slot.
+`PresentWindowFrame` captures the current framebuffer via
+`ScreenshotService::Capture` using the supplied lanes plus ephemeral metadata
+(baseline tags, postprocess hooks, verification tolerances). It writes result
+lanes and clears `armed`; the token releases on scope exit.
 
-The helper enforces the same `SceneLifecycle` contract as the compile-loop
-tests, so new demos inherit deterministic screenshot behaviour automatically.
+`DeclarativeScreenshotOptions` gained `capture_mode`, optional
+`capture_frame_index`/`capture_deadline`, and per-request `slot_timeout` /
+`token_timeout`. The defaults preserve the existing behaviour: `next_present`
+with one present, framebuffer capture enabled, and software fallback allowed
+when requested.
 
-When wiring CLIs, include `<pathspace/ui/screenshot/DeclarativeScreenshotCli.hpp>`:
-`SP::UI::Screenshot::DeclarativeScreenshotCliOptions` captures the common
-`--screenshot*` flags, `RegisterDeclarativeScreenshotCliOptions` wires them into
-`SP::Examples::CLI::ExampleCli`, `ApplyDeclarativeScreenshotEnvOverrides`
-honors `PATHSPACE_SCREENSHOT_FORCE_SOFTWARE`, and
-`CaptureDeclarativeScreenshotIfRequested` bridges the parsed flags into
-`CaptureDeclarative`. The widgets and devices demos share this helper, so future
-samples can expose the same headless capture workflow with only a few lines of
-code. `examples/declarative_hello_example` still skips the CLI helper so the
-source stays identical to the onboarding quickstart, but it now honors the
-environment variable `PATHSPACE_HELLO_SCREENSHOT=<png>` (and optional
-`PATHSPACE_HELLO_SCREENSHOT_FORCE_SOFTWARE=1`) to call
-`SP::UI::Screenshot::CaptureDeclarative` once the scene is ready. When
-`Window::Present` never yields a framebuffer (common on headless hosts), the
-env hook falls back to a deterministic reference render so onboarding docs
-retain a screenshot without extra CLI plumbing.
+The button sample (`examples/declarative_button_example.cpp`) now exercises the
+one-liner. It parses `--screenshot <png>` and routes the call through
+`CaptureDeclarativeSimple`, exiting early when `--screenshot_exit` is present.
+The slot/token machinery remains internal to the helper.
 
-`PresentWindowFrame` once again consumes `/present/params/capture_framebuffer`,
-and `ScreenshotService::Capture` now always runs a present pass even when the
-caller sets `force_software`, so headless/CI runs that export
-`PATHSPACE_SCREENSHOT_FORCE_SOFTWARE=1` still dump the real declarative UI. The
-deterministic fallback writer remains as the last resort when both hardware and
-software readbacks fail.
+CLI helpers continue to live in
+`<pathspace/ui/screenshot/DeclarativeScreenshotCli.hpp>`; they now exercise the
+slot/token path automatically so examples stay in sync with the presenter hook.
+
 
 7. Include `<pathspace/ui/declarative/ThemeConfig.hpp>` whenever you need to
    provision, load, or switch themes outside the higher-level

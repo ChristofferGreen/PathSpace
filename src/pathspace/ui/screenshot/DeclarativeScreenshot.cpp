@@ -1,4 +1,5 @@
 #include <pathspace/ui/screenshot/DeclarativeScreenshot.hpp>
+#include <pathspace/ui/screenshot/ScreenshotSlot.hpp>
 
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/core/Error.hpp>
@@ -409,94 +410,192 @@ auto CaptureDeclarative(SP::PathSpace& space,
         require_present = true;
     }
 
-    std::vector<std::uint8_t> prerender_framebuffer;
-    bool prerender_is_hardware = false;
-    if (options.present_before_capture) {
-        auto handles = build_present_handles_for_window(space, window, *view_name);
-        if (!handles) {
-            return std::unexpected(handles.error());
+    auto slot_paths = MakeScreenshotSlotPaths(window, *view_name);
+    struct SlotArmedGuard {
+        SP::PathSpace* space = nullptr;
+        std::string path;
+        ~SlotArmedGuard() {
+            if (space && !path.empty()) {
+                while (true) {
+                    auto removed = space->take<bool>(path, SP::Pop{});
+                    if (!removed) {
+                        auto const& error = removed.error();
+                        if (error.code == SP::Error::Code::NoSuchPath
+                            || error.code == SP::Error::Code::NoObjectFound
+                            || error.code == SP::Error::Code::InvalidType) {
+                            break;
+                        }
+                        break;
+                    }
+                }
+                (void)space->insert(path, false);
+            }
         }
+    } armed_guard{&space, slot_paths.armed};
+
+    SlotEphemeralData ephemeral{};
+    ephemeral.baseline_metadata = options.baseline_metadata;
+    ephemeral.postprocess_png = options.postprocess_png;
+    ephemeral.verify_output_matches_framebuffer = options.verify_output_matches_framebuffer;
+    ephemeral.verify_max_mean_error = options.verify_max_mean_error;
+    RegisterSlotEphemeral(slot_paths.base, std::move(ephemeral));
+
+    ScreenshotSlotRequest slot_request{};
+    slot_request.output_png = *options.output_png;
+    slot_request.baseline_png = options.baseline_png;
+    slot_request.diff_png = options.diff_png;
+    slot_request.metrics_json = options.metrics_json;
+    slot_request.capture_mode = options.capture_mode.empty() ? std::string{"next_present"} : options.capture_mode;
+    slot_request.frame_index = options.capture_frame_index;
+    if (options.capture_deadline) {
+        auto now = std::chrono::steady_clock::now().time_since_epoch();
+        slot_request.deadline_ns =
+            static_cast<std::uint64_t>((now + *options.capture_deadline).count());
+    }
+    slot_request.width = width;
+    slot_request.height = height;
+    slot_request.force_software = options.force_software;
+    slot_request.allow_software_fallback = options.allow_software_fallback;
+    slot_request.present_when_force_software = options.present_when_force_software;
+    slot_request.require_present = require_present;
+    slot_request.verify_output_matches_framebuffer = options.verify_output_matches_framebuffer;
+    slot_request.max_mean_error = options.max_mean_error.value_or(0.0015);
+    slot_request.verify_max_mean_error = options.verify_max_mean_error;
+
+    auto token = AcquireScreenshotToken(space, slot_paths.token, options.token_timeout);
+    if (!token) {
+        return std::unexpected(token.error());
+    }
+
+    auto write_request = WriteScreenshotSlotRequest(space, slot_paths, slot_request);
+    if (!write_request) {
+        return std::unexpected(write_request.error());
+    }
+
+    auto handles = build_present_handles_for_window(space, window, *view_name);
+    if (!handles) {
+        return std::unexpected(handles.error());
+    }
+
+    std::optional<SP::UI::Declarative::PresentFrame> present_frame;
+    if (options.present_before_capture) {
         auto const present_start = std::chrono::steady_clock::now();
-        auto present_frame = SP::UI::Declarative::PresentWindowFrame(space, *handles);
+        auto present_frame_result = SP::UI::Declarative::PresentWindowFrame(space, *handles);
         auto const present_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - present_start);
-        if (!present_frame) {
+        if (!present_frame_result) {
             if (const char* debug_present = std::getenv("PATHSPACE_SCREENSHOT_DEBUG_PRESENT")) {
                 (void)debug_present;
                 std::fprintf(stderr,
                              "CaptureDeclarative: present failed present_ms=%lld error=%s\n",
                              static_cast<long long>(present_ms.count()),
-                             describeError(present_frame.error()).c_str());
+                             describeError(present_frame_result.error()).c_str());
             }
-            return std::unexpected(present_frame.error());
+            return std::unexpected(present_frame_result.error());
         }
         if (const char* debug_present = std::getenv("PATHSPACE_SCREENSHOT_DEBUG_PRESENT")) {
             (void)debug_present;
             std::fprintf(stderr,
                          "CaptureDeclarative: present stats drawables=%llu skipped=%d backend=%s framebuffer=%zu bytes present_ms=%lld\n",
-                         static_cast<unsigned long long>(present_frame->stats.drawable_count),
-                         present_frame->stats.skipped ? 1 : 0,
-                         present_frame->stats.backend_kind.c_str(),
-                         present_frame->framebuffer.size(),
+                         static_cast<unsigned long long>(present_frame_result->stats.drawable_count),
+                         present_frame_result->stats.skipped ? 1 : 0,
+                         present_frame_result->stats.backend_kind.c_str(),
+                         present_frame_result->framebuffer.size(),
                          static_cast<long long>(present_ms.count()));
         }
-        if (require_present && present_frame->stats.drawable_count == 0
-            && present_frame->framebuffer.empty()) {
+        if (require_present && present_frame_result->stats.drawable_count == 0
+            && present_frame_result->framebuffer.empty()) {
             return std::unexpected(make_invalid_argument_error("present produced no drawables for screenshot"));
         }
-        if (!present_frame->framebuffer.empty()) {
-            prerender_is_hardware = present_frame->stats.backend_kind != "software2d";
-            prerender_framebuffer = std::move(present_frame->framebuffer);
-        } else {
-            auto recorded = read_presented_framebuffer(space, *handles, width, height);
-            if (!recorded) {
-                return std::unexpected(recorded.error());
+        present_frame = std::move(*present_frame_result);
+    }
+
+    auto slot_result = WaitForScreenshotSlotResult(space, slot_paths, options.slot_timeout);
+    if (!slot_result) {
+        if (slot_result.error().code == SP::Error::Code::Timeout) {
+            (void)WriteScreenshotSlotTimeout(space,
+                                             slot_paths,
+                                             std::string_view{"unknown"},
+                                             std::string_view{"screenshot slot wait timed out"});
+            if (present_frame) {
+                ScreenshotRequest fallback{
+                    .space = space,
+                    .window_path = window,
+                    .view_name = *view_name,
+                    .width = width,
+                    .height = height,
+                    .output_png = *options.output_png,
+                    .baseline_png = options.baseline_png,
+                    .diff_png = options.diff_png,
+                    .metrics_json = options.metrics_json,
+                    .max_mean_error = options.max_mean_error.value_or(0.0015),
+                    .require_present = require_present,
+                    .present_timeout = options.present_timeout,
+                    .baseline_metadata = options.baseline_metadata,
+                    .force_software = options.force_software,
+                    .allow_software_fallback = options.allow_software_fallback,
+                    .present_when_force_software = options.present_when_force_software,
+                    .verify_output_matches_framebuffer = options.verify_output_matches_framebuffer,
+                    .verify_max_mean_error = options.verify_max_mean_error,
+                    .postprocess_png = options.postprocess_png,
+                };
+                if (present_frame && !present_frame->framebuffer.empty()) {
+                    fallback.provided_framebuffer = std::span<std::uint8_t>(present_frame->framebuffer.data(),
+                                                                            present_frame->framebuffer.size());
+                    fallback.provided_framebuffer_is_hardware = !options.force_software
+                        && present_frame->stats.backend_kind != "software2d";
+                    if (!fallback.verify_max_mean_error) {
+                        fallback.verify_max_mean_error = options.max_mean_error.value_or(0.0);
+                    }
+                }
+                if (applied_theme) {
+                    fallback.theme_override = applied_theme;
+                }
+                auto capture_fallback = ScreenshotService::Capture(fallback);
+                if (capture_fallback) {
+                    (void)WriteScreenshotSlotResult(space,
+                                                    slot_paths,
+                                                    *capture_fallback,
+                                                    capture_fallback->status,
+                                                    present_frame->stats.backend_kind,
+                                                    std::nullopt);
+                    return capture_fallback;
+                }
             }
-            prerender_is_hardware = present_frame->stats.backend_kind != "software2d";
-            prerender_framebuffer = std::move(*recorded);
         }
-    }
-
-    ScreenshotRequest request{
-        .space = space,
-        .window_path = window,
-        .view_name = *view_name,
-        .width = width,
-        .height = height,
-        .output_png = *options.output_png,
-        .baseline_png = options.baseline_png,
-        .diff_png = options.diff_png,
-        .metrics_json = options.metrics_json,
-        .max_mean_error = options.max_mean_error.value_or(0.0015),
-        .require_present = require_present,
-        .present_timeout = options.present_timeout,
-        .baseline_metadata = options.baseline_metadata,
-        .force_software = options.force_software,
-        .allow_software_fallback = options.allow_software_fallback,
-        .present_when_force_software = options.present_when_force_software,
-        .verify_output_matches_framebuffer = options.verify_output_matches_framebuffer,
-        .verify_max_mean_error = options.verify_max_mean_error,
-        .postprocess_png = options.postprocess_png,
-    };
-
-    if (!prerender_framebuffer.empty()) {
-        request.provided_framebuffer = std::span<std::uint8_t>(prerender_framebuffer.data(), prerender_framebuffer.size());
-        request.provided_framebuffer_is_hardware = !options.force_software && prerender_is_hardware;
-        request.verify_output_matches_framebuffer =
-            options.verify_output_matches_framebuffer && options.present_before_capture;
-        if (!request.verify_max_mean_error) {
-            request.verify_max_mean_error = options.max_mean_error.value_or(0.0);
+        if (screenshot_trace_enabled()) {
+            auto message = std::string{"CaptureDeclarative: slot wait failed "} + describeError(slot_result.error());
+            screenshot_trace(message.c_str());
         }
-    }
-    if (applied_theme) {
-        request.theme_override = applied_theme;
+        return std::unexpected(slot_result.error());
     }
 
-    auto capture_result = ScreenshotService::Capture(request);
-    if (!capture_result) {
-        return capture_result;
-    }
-    return capture_result;
+    ScreenshotResult result{};
+    result.artifact = slot_result->artifact;
+    result.mean_error = slot_result->mean_error;
+    result.hardware_capture = slot_result->backend.value_or("") != "software2d";
+    result.matched_baseline = slot_result->status == "match";
+    result.status = slot_result->status;
+    return result;
+}
+
+auto CaptureDeclarativeSimple(SP::PathSpace& space,
+                              SP::UI::ScenePath const& scene,
+                              SP::UI::WindowPath const& window,
+                              std::filesystem::path const& output_png,
+                              std::optional<int> width,
+                              std::optional<int> height)
+    -> SP::Expected<ScreenshotResult> {
+    DeclarativeScreenshotOptions options{};
+    options.output_png = output_png;
+    options.width = width;
+    options.height = height;
+    options.capture_mode = "next_present";
+    options.require_present = true;
+    options.present_before_capture = true;
+    options.allow_software_fallback = true;
+    options.force_software = false;
+    return CaptureDeclarative(space, scene, window, options);
 }
 
 } // namespace SP::UI::Screenshot

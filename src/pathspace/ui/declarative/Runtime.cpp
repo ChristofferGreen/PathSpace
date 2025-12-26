@@ -11,6 +11,8 @@
 #include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
+#include <pathspace/ui/screenshot/ScreenshotSlot.hpp>
+#include <pathspace/ui/screenshot/ScreenshotService.hpp>
 #include <pathspace/io/IoTrellis.hpp>
 #include <pathspace/layer/io/PathIOMouse.hpp>
 #include <pathspace/layer/io/PathIOKeyboard.hpp>
@@ -997,6 +999,100 @@ auto PresentWindowFrame(SP::PathSpace& space,
             return std::unexpected(cleared.error());
         }
         frame.framebuffer = std::move(framebuffer);
+    }
+
+    // Screenshot slot hook: if armed, capture using the framebuffer we just produced.
+    auto slot_paths = SP::UI::Screenshot::MakeScreenshotSlotPaths(handles.window, handles.view_name);
+    auto slot_request = SP::UI::Screenshot::ReadScreenshotSlotRequest(space,
+                                                                      slot_paths,
+                                                                      context->target_desc.size_px.width,
+                                                                      context->target_desc.size_px.height);
+    if (!slot_request) {
+        return std::unexpected(slot_request.error());
+    }
+    if (slot_request && slot_request->has_value()) {
+        auto const& req = **slot_request;
+        auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch());
+
+        bool triggered = false;
+        if (req.capture_mode == "next_present") {
+            triggered = true;
+        } else if (req.capture_mode == "frame_index") {
+            triggered = req.frame_index && frame.stats.frame.frame_index >= *req.frame_index;
+        } else if (req.capture_mode == "deadline_ns") {
+            triggered = req.deadline_ns && now_ns.count() >= static_cast<std::int64_t>(*req.deadline_ns);
+        } else {
+            auto write = SP::UI::Screenshot::WriteScreenshotSlotResult(space,
+                                                                       slot_paths,
+                                                                       {},
+                                                                       "error",
+                                                                       frame.stats.backend_kind,
+                                                                       std::string{"unknown capture_mode"});
+            if (!write) {
+                return std::unexpected(write.error());
+            }
+            return frame;
+        }
+
+        if (!triggered) {
+            return frame;
+        }
+
+        SP::UI::Screenshot::ScreenshotRequest capture_request{
+            .space = space,
+            .window_path = handles.window,
+            .view_name = handles.view_name,
+            .width = req.width,
+            .height = req.height,
+            .output_png = req.output_png,
+            .baseline_png = req.baseline_png,
+            .diff_png = req.diff_png,
+            .metrics_json = req.metrics_json,
+            .max_mean_error = req.max_mean_error,
+            .require_present = req.require_present,
+            .present_timeout = std::chrono::milliseconds{1500},
+            .baseline_metadata = {},
+            .force_software = req.force_software,
+            .allow_software_fallback = req.allow_software_fallback,
+            .present_when_force_software = req.present_when_force_software,
+            .provided_framebuffer = std::span<std::uint8_t>(frame.framebuffer.data(), frame.framebuffer.size()),
+            .provided_framebuffer_is_hardware = frame.stats.backend_kind != "software2d",
+            .verify_output_matches_framebuffer = req.verify_output_matches_framebuffer,
+            .verify_max_mean_error = req.verify_max_mean_error,
+        };
+
+        if (auto ephemeral = SP::UI::Screenshot::ConsumeSlotEphemeral(slot_paths.base)) {
+            capture_request.baseline_metadata = ephemeral->baseline_metadata;
+            capture_request.postprocess_png = std::move(ephemeral->postprocess_png);
+            capture_request.verify_output_matches_framebuffer = ephemeral->verify_output_matches_framebuffer;
+            if (ephemeral->verify_max_mean_error) {
+                capture_request.verify_max_mean_error = ephemeral->verify_max_mean_error;
+            }
+        }
+
+        auto capture_result = SP::UI::Screenshot::ScreenshotService::Capture(capture_request);
+        if (capture_result) {
+            auto write = SP::UI::Screenshot::WriteScreenshotSlotResult(space,
+                                                                       slot_paths,
+                                                                       *capture_result,
+                                                                       capture_result->status,
+                                                                       frame.stats.backend_kind,
+                                                                       std::nullopt);
+            if (!write) {
+                return std::unexpected(write.error());
+            }
+        } else {
+            auto write = SP::UI::Screenshot::WriteScreenshotSlotResult(space,
+                                                                       slot_paths,
+                                                                       {},
+                                                                       "error",
+                                                                       frame.stats.backend_kind,
+                                                                       SP::describeError(capture_result.error()));
+            if (!write) {
+                return std::unexpected(write.error());
+            }
+        }
     }
 
     return frame;

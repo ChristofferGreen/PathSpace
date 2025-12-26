@@ -5,9 +5,9 @@
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
-#include <pathspace/ui/declarative/SceneLifecycle.hpp>
 #include <pathspace/ui/screenshot/DeclarativeScreenshot.hpp>
 
+#include <cstdio>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -25,8 +25,7 @@ int main(int argc, char** argv) {
         std::string_view arg{argv[i]};
         if (arg == "--screenshot" && i + 1 < argc) {
             screenshot_path = std::filesystem::path{argv[++i]};
-        }
-        if (arg == "--screenshot_exit") {
+        } else if (arg == "--screenshot_exit") {
             screenshot_exit = true;
         }
     }
@@ -70,34 +69,22 @@ int main(int argc, char** argv) {
                                             {.id = "goodbye_button", .fragment = Button::Fragment(Button::Args{.label = "Say Goodbye"})},
                                        }}).value();
 
-    // Ensure drawables exist before any screenshot.
-    SP::UI::Declarative::SceneLifecycle::MarkDirty(space,
-                                                   scene.path,
-                                                   SP::UI::Runtime::Scene::DirtyKind::All)
-        .value();
-    SP::UI::Declarative::SceneLifecycle::ForcePublishOptions publish_opts{};
-    publish_opts.wait_timeout = std::chrono::milliseconds{2000};
-    SP::UI::Declarative::SceneLifecycle::ForcePublish(space,
-                                                      scene.path,
-                                                      publish_opts)
-        .value();
-
     if (screenshot_path) {
-        SP::UI::Screenshot::DeclarativeScreenshotOptions screenshot_options{
-            .width = window_width,
-            .height = window_height,
-            .output_png = *screenshot_path,
-            .view_name = window.view_name,
-            .require_present = true,
-            .present_before_capture = true,
-            .allow_software_fallback = true,
-            .force_software = false,
-        };
-        SP::UI::Screenshot::CaptureDeclarative(space,
-                                               scene.path,
-                                               window.path,
-                                               screenshot_options)
-            .value();
+        auto capture = SP::UI::Screenshot::CaptureDeclarativeSimple(space,
+                                                                    scene.path,
+                                                                    window.path,
+                                                                    *screenshot_path,
+                                                                    window_width,
+                                                                    window_height);
+        if (!capture) {
+            std::fprintf(stderr, "screenshot failed: %s\n",
+                         SP::describeError(capture.error()).c_str());
+            return 1;
+        }
+        std::printf("screenshot status=%s artifact=%s hardware=%d\n",
+                    capture->status.c_str(),
+                    capture->artifact.string().c_str(),
+                    capture->hardware_capture ? 1 : 0);
     }
     if (screenshot_exit) {
         SP::System::ShutdownDeclarativeRuntime(space);
