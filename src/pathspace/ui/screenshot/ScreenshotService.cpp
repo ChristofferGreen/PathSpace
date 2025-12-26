@@ -34,6 +34,12 @@ struct DiffStats {
     std::uint32_t max_channel_delta = 0;
 };
 
+struct DiffComputation {
+    DiffStats stats;
+    bool success = false;
+    std::string error;
+};
+
 struct RunMetrics {
     std::string status;
     std::uint64_t timestamp_ns = 0;
@@ -117,6 +123,40 @@ auto pack_framebuffer(std::vector<std::uint8_t> const& framebuffer,
         std::memcpy(dst, src, row_pixels);
     }
     return packed;
+}
+
+auto compute_diff(std::span<const std::uint8_t> lhs,
+                  std::span<const std::uint8_t> rhs,
+                  int width,
+                  int height) -> DiffComputation {
+    DiffComputation computation{};
+
+    auto const channel_count = static_cast<std::size_t>(std::max(width, 0))
+                               * static_cast<std::size_t>(std::max(height, 0)) * 4u;
+    if (channel_count == 0) {
+        computation.error = "diff requested with zero dimensions";
+        return computation;
+    }
+    if (lhs.size() != channel_count || rhs.size() != channel_count) {
+        computation.error = "diff buffers have mismatched lengths";
+        return computation;
+    }
+
+    double total_error = 0.0;
+    DiffStats stats{};
+    for (std::size_t offset = 0; offset < channel_count; offset += 4) {
+        for (int channel = 0; channel < 4; ++channel) {
+            auto delta = static_cast<std::uint8_t>(
+                std::abs(static_cast<int>(lhs[offset + channel])
+                         - static_cast<int>(rhs[offset + channel])));
+            stats.max_channel_delta = std::max<std::uint32_t>(stats.max_channel_delta, delta);
+            total_error += static_cast<double>(delta) / 255.0;
+        }
+    }
+    stats.mean_error = total_error / static_cast<double>(channel_count);
+    computation.stats = stats;
+    computation.success = true;
+    return computation;
 }
 
 auto pack_software_framebuffer(SP::UI::Runtime::SoftwareFramebuffer const& framebuffer,
@@ -239,10 +279,19 @@ auto compare_png(std::filesystem::path const& baseline_path,
         return std::nullopt;
     }
 
-    DiffStats stats{};
     auto channel_count = static_cast<std::size_t>(baseline->width)
                          * static_cast<std::size_t>(baseline->height) * 4u;
-    double total_error = 0.0;
+
+    auto diff_stats = compute_diff(
+        std::span<const std::uint8_t>(baseline->pixels.data(), baseline->pixels.size()),
+        std::span<const std::uint8_t>(capture->pixels.data(), capture->pixels.size()),
+        baseline->width,
+        baseline->height);
+
+    if (!diff_stats.success) {
+        std::cerr << "ScreenshotService: " << diff_stats.error << "\n";
+        return std::nullopt;
+    }
 
     std::vector<std::uint8_t> diff_pixels;
     auto write_diff = diff_path.has_value() && channel_count > 0;
@@ -256,8 +305,6 @@ auto compare_png(std::filesystem::path const& baseline_path,
             auto delta = static_cast<std::uint8_t>(
                 std::abs(static_cast<int>(baseline->pixels[offset + channel])
                          - static_cast<int>(capture->pixels[offset + channel])));
-            stats.max_channel_delta = std::max<std::uint32_t>(stats.max_channel_delta, delta);
-            total_error += static_cast<double>(delta) / 255.0;
             pixel_delta = std::max(pixel_delta, delta);
         }
         if (write_diff) {
@@ -268,14 +315,8 @@ auto compare_png(std::filesystem::path const& baseline_path,
         }
     }
 
-    if (channel_count == 0) {
-        stats.mean_error = 0.0;
-    } else {
-        stats.mean_error = total_error / static_cast<double>(channel_count);
-    }
-
     if (write_diff) {
-        if (stats.max_channel_delta == 0) {
+        if (diff_stats.stats.max_channel_delta == 0) {
             std::error_code ec;
             std::filesystem::remove(*diff_path, ec);
         } else {
@@ -286,7 +327,7 @@ auto compare_png(std::filesystem::path const& baseline_path,
         }
     }
 
-    return stats;
+    return diff_stats.stats;
 }
 
 void write_metrics_snapshot(std::filesystem::path const& path,
@@ -515,6 +556,38 @@ auto ScreenshotService::Capture(ScreenshotRequest const& request) -> SP::Expecte
         if (!write_status) {
             emit_metrics("write_failed");
             return std::unexpected(write_status.error());
+        }
+
+        if (request.verify_output_matches_framebuffer) {
+            auto decoded = load_png_rgba(request.output_png);
+            if (!decoded) {
+                emit_metrics("verify_load_failed");
+                return unexpected_capture_failure("failed to load written screenshot for verification");
+            }
+            if (decoded->width != view.width || decoded->height != view.height) {
+                emit_metrics("verify_size_mismatch");
+                return unexpected_capture_failure("written screenshot dimensions differ from framebuffer");
+            }
+            auto verify = compute_diff(
+                std::span<const std::uint8_t>(view.pixels.data(), view.pixels.size()),
+                std::span<const std::uint8_t>(decoded->pixels.data(), decoded->pixels.size()),
+                view.width,
+                view.height);
+            if (!verify.success) {
+                emit_metrics("verify_failed");
+                return unexpected_capture_failure("failed to diff framebuffer against written screenshot");
+            }
+            auto tolerance = request.verify_max_mean_error.value_or(0.0);
+            auto mismatch = verify.stats.mean_error > tolerance;
+            if (!mismatch && tolerance == 0.0) {
+                mismatch = verify.stats.max_channel_delta > 0;
+            }
+            if (mismatch) {
+                result.mean_error = verify.stats.mean_error;
+                result.max_channel_delta = verify.stats.max_channel_delta;
+                emit_metrics("verify_mismatch");
+                return unexpected_capture_failure("screenshot does not match captured framebuffer");
+            }
         }
     } else {
         if (request.require_present) {

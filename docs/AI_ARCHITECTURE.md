@@ -346,7 +346,8 @@ Testing guidance:
 Wait/notify:
 - Waiters are stored in a trie-backed registry keyed by concrete paths, with a separate registry for glob-pattern waiters.
 - Concrete notifications traverse the trie along the path (O(depth)), while glob notifications filter and match registered patterns.
-- All operations are synchronized with internal mutexes; waiter CVs are attached to nodes to minimize contention.
+- Registry structure is guarded by a timed mutex so notify can log if it blocks; each waiter CV now owns its own mutex to reduce contention between notification scans and threads that are waiting.
+- `PATHSPACE_DEBUG_WAITMAP=1` logs wait/notify events with the path, thread id, registry lock wait, and wait duration; a watchdog message is emitted if notify needs more than 100ms to acquire the registry lock.
 
 Additional note:
 - Task completion notifications are lifetime-safe via a NotificationSink token. Each `PathSpaceBase` owns a `shared_ptr<NotificationSink>` that forwards to its `notify(path)`; `Task` objects capture a `weak_ptr<NotificationSink>`. During shutdown, the `PathSpace` resets the `shared_ptr` so late notifications are dropped cleanly without dereferencing stale pointers.

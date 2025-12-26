@@ -96,6 +96,7 @@ if(PATHSPACE_ENABLE_UI)
   ui/test_PaintExampleNew.cpp
   ui/test_BackendAdapters.cpp
   ui/test_DeclarativeRuntime.cpp
+  ui/test_DeclarativeScreenshot.cpp
   ui/test_DiagnosticsRuntime.cpp
   ui/test_WidgetGallery.cpp
   ui/test_SurfaceDescValidation.cpp

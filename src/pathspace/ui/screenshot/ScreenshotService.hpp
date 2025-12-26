@@ -64,6 +64,8 @@ struct ScreenshotRequest {
     bool present_when_force_software = false;
     std::span<std::uint8_t> provided_framebuffer;
     bool provided_framebuffer_is_hardware = false;
+    bool verify_output_matches_framebuffer = false;
+    std::optional<double> verify_max_mean_error;
     std::optional<std::string> theme_override;
     std::function<SP::Expected<void>(std::filesystem::path const& output_png,
                                      std::optional<std::filesystem::path> const& baseline_png)> postprocess_png;

@@ -5,6 +5,7 @@
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
+#include <pathspace/ui/declarative/SceneLifecycle.hpp>
 #include <pathspace/ui/screenshot/DeclarativeScreenshot.hpp>
 
 #include <filesystem>
@@ -69,8 +70,29 @@ int main(int argc, char** argv) {
                                             {.id = "goodbye_button", .fragment = Button::Fragment(Button::Args{.label = "Say Goodbye"})},
                                        }}).value();
 
+    // Ensure drawables exist before any screenshot.
+    SP::UI::Declarative::SceneLifecycle::MarkDirty(space,
+                                                   scene.path,
+                                                   SP::UI::Runtime::Scene::DirtyKind::All)
+        .value();
+    SP::UI::Declarative::SceneLifecycle::ForcePublishOptions publish_opts{};
+    publish_opts.wait_timeout = std::chrono::milliseconds{2000};
+    SP::UI::Declarative::SceneLifecycle::ForcePublish(space,
+                                                      scene.path,
+                                                      publish_opts)
+        .value();
+
     if (screenshot_path) {
-        SP::UI::Screenshot::DeclarativeScreenshotOptions screenshot_options{.output_png = *screenshot_path, .view_name = window.view_name, .width = window_width, .height = window_height};
+        SP::UI::Screenshot::DeclarativeScreenshotOptions screenshot_options{
+            .width = window_width,
+            .height = window_height,
+            .output_png = *screenshot_path,
+            .view_name = window.view_name,
+            .require_present = true,
+            .present_before_capture = true,
+            .allow_software_fallback = true,
+            .force_software = false,
+        };
         SP::UI::Screenshot::CaptureDeclarative(space,
                                                scene.path,
                                                window.path,

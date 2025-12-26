@@ -273,6 +273,38 @@ TEST_SUITE("WaitMap") {
         }
     }
 
+    TEST_CASE("Notify returns promptly under contention") {
+        WaitMap waitMap;
+        std::atomic<bool> ready{false};
+        std::atomic<bool> stop{false};
+        std::string       path_str = "/hot/path";
+        std::string_view  path(path_str);
+
+        // Single waiter holds a long wait to simulate contention on the entry mutex.
+        std::thread waiter([&]() {
+            auto guard = waitMap.wait(path);
+            ready      = true;
+            guard.wait_until(std::chrono::system_clock::now() + 2s, [&] { return stop.load(); });
+        });
+
+        // Ensure waiter is parked.
+        while (!ready.load()) {
+            std::this_thread::yield();
+        }
+        std::this_thread::sleep_for(20ms);
+
+        auto start = std::chrono::steady_clock::now();
+        waitMap.notify(path);
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start);
+
+        stop = true;
+        waitMap.notify(path); // wake waiter
+        waiter.join();
+
+        CHECK_MESSAGE(elapsed < 200ms, "notify should not block even when a waiter holds the entry mutex");
+    }
+
     TEST_CASE("Edge Cases") {
         WaitMap waitMap;
 

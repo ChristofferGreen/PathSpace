@@ -12,6 +12,7 @@
 #include <pathspace/ui/runtime/UIRuntime.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -20,7 +21,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include <thread>
 
 using SP::UI::Screenshot::DeclarativeScreenshotOptions;
 namespace DeclarativeDetail = SP::UI::Declarative::Detail;
@@ -115,37 +115,6 @@ auto read_presented_framebuffer(SP::PathSpace& space,
         return std::unexpected(framebuffer.error());
     }
     return copy_software_framebuffer(*framebuffer, width, height);
-}
-
-auto present_until_drawables(SP::PathSpace& space,
-                             SP::UI::Declarative::PresentHandles const& handles,
-                             std::chrono::milliseconds timeout)
-    -> SP::Expected<SP::UI::Declarative::PresentFrame> {
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    SP::Expected<SP::UI::Declarative::PresentFrame> last_error = std::unexpected(SP::Error{SP::Error::Code::UnknownError, "present failed"});
-    while (std::chrono::steady_clock::now() < deadline) {
-        auto frame = SP::UI::Declarative::PresentWindowFrame(space, handles);
-        if (!frame) {
-            last_error = std::unexpected(frame.error());
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            continue;
-        }
-        if (const char* debug_present = std::getenv("PATHSPACE_SCREENSHOT_DEBUG_PRESENT")) {
-            (void)debug_present;
-            std::fprintf(stderr,
-                         "CaptureDeclarative: present stats drawables=%llu skipped=%d backend=%s framebuffer=%zu bytes\n",
-                         static_cast<unsigned long long>(frame->stats.drawable_count),
-                         frame->stats.skipped ? 1 : 0,
-                         frame->stats.backend_kind.c_str(),
-                         frame->framebuffer.size());
-        }
-        if (frame->stats.drawable_count > 0) {
-            return frame;
-        }
-        last_error = frame;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    return last_error;
 }
 
 auto build_present_handles_for_window(SP::PathSpace& space,
@@ -291,6 +260,21 @@ auto build_readiness_options(DeclarativeScreenshotOptions const& options,
     return readiness;
 }
 
+auto ensure_capture_runtimes(SP::PathSpace& space) -> SP::Expected<void> {
+    SP::System::LaunchOptions launch{};
+    launch.start_input_runtime = true;
+    launch.start_widget_event_trellis = true;
+    launch.start_io_trellis = false;
+    launch.start_io_pump = false;
+    launch.start_io_telemetry_control = false;
+    launch.start_paint_gpu_uploader = false;
+    auto started = SP::System::LaunchStandard(space, launch);
+    if (!started) {
+        return std::unexpected(started.error());
+    }
+    return {};
+}
+
 } // namespace
 
 namespace SP::UI::Screenshot {
@@ -300,13 +284,19 @@ auto CaptureDeclarative(SP::PathSpace& space,
                         SP::UI::WindowPath const& window,
                         DeclarativeScreenshotOptions const& options)
     -> SP::Expected<ScreenshotResult> {
+    auto runtimes = ensure_capture_runtimes(space);
+    if (!runtimes) {
+        return std::unexpected(runtimes.error());
+    }
+
     auto view_name = resolve_view_name(space, window, options.view_name);
     if (!view_name) {
         return std::unexpected(view_name.error());
     }
 
     if (!options.output_png) {
-        return std::unexpected(make_invalid_argument_error("Declarative screenshot requires an output_png"));
+        return std::unexpected(SP::Error{SP::Error::Code::InvalidPath,
+                                         "Declarative screenshot requires an output_png"});
     }
 
     std::optional<std::string> theme_override = options.theme_override;
@@ -414,6 +404,11 @@ auto CaptureDeclarative(SP::PathSpace& space,
         }
     }
 
+    bool require_present = options.require_present;
+    if (!require_present && options.baseline_png && !options.force_software) {
+        require_present = true;
+    }
+
     std::vector<std::uint8_t> prerender_framebuffer;
     bool prerender_is_hardware = false;
     if (options.present_before_capture) {
@@ -421,19 +416,38 @@ auto CaptureDeclarative(SP::PathSpace& space,
         if (!handles) {
             return std::unexpected(handles.error());
         }
-        auto present_frame = present_until_drawables(space, *handles, options.present_timeout.count() > 0
-                                                                            ? options.present_timeout
-                                                                            : std::chrono::milliseconds{500});
+        auto const present_start = std::chrono::steady_clock::now();
+        auto present_frame = SP::UI::Declarative::PresentWindowFrame(space, *handles);
+        auto const present_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - present_start);
         if (!present_frame) {
+            if (const char* debug_present = std::getenv("PATHSPACE_SCREENSHOT_DEBUG_PRESENT")) {
+                (void)debug_present;
+                std::fprintf(stderr,
+                             "CaptureDeclarative: present failed present_ms=%lld error=%s\n",
+                             static_cast<long long>(present_ms.count()),
+                             describeError(present_frame.error()).c_str());
+            }
             return std::unexpected(present_frame.error());
         }
-        bool captured_from_present = false;
+        if (const char* debug_present = std::getenv("PATHSPACE_SCREENSHOT_DEBUG_PRESENT")) {
+            (void)debug_present;
+            std::fprintf(stderr,
+                         "CaptureDeclarative: present stats drawables=%llu skipped=%d backend=%s framebuffer=%zu bytes present_ms=%lld\n",
+                         static_cast<unsigned long long>(present_frame->stats.drawable_count),
+                         present_frame->stats.skipped ? 1 : 0,
+                         present_frame->stats.backend_kind.c_str(),
+                         present_frame->framebuffer.size(),
+                         static_cast<long long>(present_ms.count()));
+        }
+        if (require_present && present_frame->stats.drawable_count == 0
+            && present_frame->framebuffer.empty()) {
+            return std::unexpected(make_invalid_argument_error("present produced no drawables for screenshot"));
+        }
         if (!present_frame->framebuffer.empty()) {
             prerender_is_hardware = present_frame->stats.backend_kind != "software2d";
             prerender_framebuffer = std::move(present_frame->framebuffer);
-            captured_from_present = true;
-        }
-        if (!captured_from_present) {
+        } else {
             auto recorded = read_presented_framebuffer(space, *handles, width, height);
             if (!recorded) {
                 return std::unexpected(recorded.error());
@@ -441,11 +455,6 @@ auto CaptureDeclarative(SP::PathSpace& space,
             prerender_is_hardware = present_frame->stats.backend_kind != "software2d";
             prerender_framebuffer = std::move(*recorded);
         }
-    }
-
-    bool require_present = options.require_present;
-    if (!require_present && options.baseline_png && !options.force_software) {
-        require_present = true;
     }
 
     ScreenshotRequest request{
@@ -465,12 +474,19 @@ auto CaptureDeclarative(SP::PathSpace& space,
         .force_software = options.force_software,
         .allow_software_fallback = options.allow_software_fallback,
         .present_when_force_software = options.present_when_force_software,
+        .verify_output_matches_framebuffer = options.verify_output_matches_framebuffer,
+        .verify_max_mean_error = options.verify_max_mean_error,
         .postprocess_png = options.postprocess_png,
     };
 
     if (!prerender_framebuffer.empty()) {
         request.provided_framebuffer = std::span<std::uint8_t>(prerender_framebuffer.data(), prerender_framebuffer.size());
         request.provided_framebuffer_is_hardware = !options.force_software && prerender_is_hardware;
+        request.verify_output_matches_framebuffer =
+            options.verify_output_matches_framebuffer && options.present_before_capture;
+        if (!request.verify_max_mean_error) {
+            request.verify_max_mean_error = options.max_mean_error.value_or(0.0);
+        }
     }
     if (applied_theme) {
         request.theme_override = applied_theme;
