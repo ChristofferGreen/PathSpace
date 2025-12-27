@@ -24,7 +24,8 @@ auto Resolve(SP::App::AppRootPathView app_root,
 auto Ensure(PathSpace& space,
             SP::App::AppRootPathView app_root,
             std::string_view theme_name,
-            WidgetTheme const& defaults) -> SP::Expected<ThemePaths>;
+            WidgetTheme const& defaults,
+            bool store_value = true) -> SP::Expected<ThemePaths>;
 
 auto Load(PathSpace& space,
           ThemePaths const& paths) -> SP::Expected<WidgetTheme>;

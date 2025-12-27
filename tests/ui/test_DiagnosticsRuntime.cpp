@@ -3,11 +3,26 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/runtime/UIRuntime.hpp>
 
+#include <cstdlib>
+
+namespace {
+struct ScopedEnv {
+    explicit ScopedEnv(char const* key, char const* value) : key_(key) {
+        setenv(key_, value, 1);
+    }
+    ~ScopedEnv() {
+        unsetenv(key_);
+    }
+    char const* key_;
+};
+} // namespace
+
 using namespace SP;
 using namespace SP::UI;
 using namespace SP::UI::Runtime;
 
 TEST_CASE("Diagnostics error stats track severity and clears") {
+    ScopedEnv enable_debug{"PATHSPACE_UI_DEBUG_TREE", "1"};
     PathSpace space;
     ConcretePathString target{"/renderers/test/targets/main"};
     auto targetView = ConcretePathStringView{target.getPath()};

@@ -3119,12 +3119,18 @@ auto InspectorHttpServer::configure_routes(httplib::Server& server) -> void {
                     }
 
                     PathSpaceJsonOptions exporter_options;
+                    exporter_options.mode = PathSpaceJsonOptions::Mode::Debug;
                     exporter_options.visit.root          = snapshot_options.root;
                     exporter_options.visit.maxDepth      = snapshot_options.max_depth;
                     exporter_options.visit.maxChildren   = snapshot_options.max_children == 0
                                                                ? VisitOptions::kUnlimitedChildren
                                                                : snapshot_options.max_children;
                     exporter_options.visit.includeValues = snapshot_options.include_values;
+                    exporter_options.visit.includeNestedSpaces = true;
+                    exporter_options.includeStructureFields    = true;
+                    exporter_options.includeDiagnostics        = true;
+                    exporter_options.includeOpaquePlaceholders = true;
+                    exporter_options.maxQueueEntries           = 4;
                     auto export_payload = PathSpaceJsonExporter::Export(space_, exporter_options);
                     if (!export_payload) {
                         auto [status, json_payload] = make_error(describeError(export_payload.error()), 500);

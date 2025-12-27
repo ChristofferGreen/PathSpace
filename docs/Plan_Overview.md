@@ -9,6 +9,7 @@ Provide a single index of active planning documents, ordered by current priority
 
 ## Priority Ordering
 
+> **Update (December 27, 2025):** `Plan_PathSpaceMinimalCore.md` is complete and archived at `docs/finished/Plan_PathSpaceMinimalCore_Finished.md`; minimal default runtime/exporter/theme writes are now the baseline.
 > **Update (December 12, 2025):** `Plan_WidgetComposableRuntime.md` is complete and archived at `docs/finished/Plan_WidgetComposableRuntime_Finished.md`; capsule-only runtime doc/test sweep finished and the plan is removed from the active queue.
 > **Update (December 11, 2025):** `Plan_PathSpaceHtmlServer.md` is complete and archived at `docs/finished/Plan_PathSpaceHtmlServer_Finished.md`; embed-first ServeHtml is now the default path with CI coverage for standalone and embedded helpers.
 > **Update (December 10, 2025):** `Plan_SceneGraph` (formerly `docs/Plan_SceneGraph.md`) is complete and archived at `docs/finished/Plan_SceneGraph_Finished.md`. Use it for the finalized scene graph/diagnostics rollout record; it no longer appears in the active list below.

@@ -318,7 +318,7 @@ struct BootstrapParams {
     WindowParams window{};
     std::string view_name;
     PathWindowView::PresentPolicy present_policy{};
-    bool configure_present_policy = true;
+    bool configure_present_policy = false;
     bool configure_renderer_settings = true;
     std::optional<RenderSettings> renderer_settings_override;
     bool submit_initial_dirty_rect = true;

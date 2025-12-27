@@ -1,0 +1,981 @@
+{
+  "/system/applications/declarative_button_example": {
+    "children": {
+      "config": {
+        "children": {
+          "renderer": {
+            "children": {
+              "default": {
+                "children": {},
+                "values": [
+                  {
+                    "category": "SerializedData",
+                    "index": 0,
+                    "type": "std::string",
+                    "value": "renderers/widgets_declarative_renderer"
+                  }
+                ]
+              }
+            },
+            "values": []
+          },
+          "theme": {
+            "children": {
+              "active": {
+                "children": {},
+                "values": [
+                  {
+                    "category": "SerializedData",
+                    "index": 0,
+                    "type": "std::string",
+                    "value": "sunset"
+                  }
+                ]
+              }
+            },
+            "values": []
+          }
+        },
+        "values": []
+      },
+      "renderers": {
+        "children": {
+          "widgets_declarative_renderer": {
+            "children": {
+              "meta": {
+                "children": {
+                  "description": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "SerializedData",
+                        "index": 0,
+                        "type": "std::string",
+                        "value": "Declarative widget renderer"
+                      }
+                    ]
+                  },
+                  "kind": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "SerializationLibraryCompatible",
+                        "index": 0,
+                        "type": "N2SP2UI7Runtime12RendererKindE"
+                      }
+                    ]
+                  },
+                  "name": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "SerializedData",
+                        "index": 0,
+                        "type": "std::string",
+                        "value": "widgets_declarative_renderer"
+                      }
+                    ]
+                  }
+                },
+                "values": []
+              },
+              "targets": {
+                "children": {
+                  "surfaces": {
+                    "children": {
+                      "widgets_surface_declarative_button_main": {
+                        "children": {
+                          "desc": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "N2SP2UI7Runtime11SurfaceDescE"
+                              }
+                            ]
+                          },
+                          "diagnostics": {
+                            "children": {
+                              "cacheWatch": {
+                                "children": {},
+                                "values": [
+                                  {
+                                    "category": "Fundamental",
+                                    "index": 0,
+                                    "type": "bool",
+                                    "value": true
+                                  }
+                                ]
+                              }
+                            },
+                            "values": []
+                          },
+                          "scene": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializedData",
+                                "index": 0,
+                                "type": "std::string",
+                                "value": "scenes/button_scene"
+                              }
+                            ]
+                          },
+                          "settings": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "N2SP2UI7Runtime14RenderSettingsE"
+                              }
+                            ]
+                          }
+                        },
+                        "values": []
+                      }
+                    },
+                    "values": []
+                  }
+                },
+                "values": []
+              }
+            },
+            "values": []
+          }
+        },
+        "values": []
+      },
+      "scenes": {
+        "children": {
+          "button_scene": {
+            "children": {
+              "builds": {
+                "children": {
+                  "0000000000000001": {
+                    "children": {
+                      "bucket": {
+                        "children": {
+                          "authoring-map.bin": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
+                              }
+                            ]
+                          },
+                          "bounds.bin": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
+                              }
+                            ]
+                          },
+                          "clip-heads.bin": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
+                              }
+                            ]
+                          },
+                          "clip-nodes.bin": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
+                              }
+                            ]
+                          },
+                          "cmd-buffer.bin": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
+                              }
+                            ]
+                          },
+                          "drawables.bin": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
+                              }
+                            ]
+                          },
+                          "fingerprints.bin": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
+                              }
+                            ]
+                          },
+                          "font-assets.bin": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
+                              }
+                            ]
+                          },
+                          "glyph-vertices.bin": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
+                              }
+                            ]
+                          },
+                          "indices": {
+                            "children": {
+                              "alpha.bin": {
+                                "children": {},
+                                "values": [
+                                  {
+                                    "category": "SerializationLibraryCompatible",
+                                    "index": 0,
+                                    "type": "NSt3__16vectorIjNS_9allocatorIjEEEE"
+                                  }
+                                ]
+                              },
+                              "opaque.bin": {
+                                "children": {},
+                                "values": [
+                                  {
+                                    "category": "SerializationLibraryCompatible",
+                                    "index": 0,
+                                    "type": "NSt3__16vectorIjNS_9allocatorIjEEEE"
+                                  }
+                                ]
+                              }
+                            },
+                            "values": []
+                          },
+                          "meta.json": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializedData",
+                                "index": 0,
+                                "type": "std::string",
+                                "value": "{\"revision\":1,\"created_at_ms\":1766875045848,\"author\":\"declarative-runtime\",\"tool_version\":\"declarative-runtime\",\"drawable_count\":7,\"command_count\":184,\"fingerprint_count\":0,\"font_asset_count\":0,\"authoring_map_entries\":7,\"unique_authoring_nodes\":7}"
+                              }
+                            ]
+                          },
+                          "state.bin": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
+                              }
+                            ]
+                          },
+                          "strokes.bin": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
+                              }
+                            ]
+                          },
+                          "summary": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "N2SP2UI5Scene15SnapshotSummaryE"
+                              }
+                            ]
+                          },
+                          "transforms.bin": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializationLibraryCompatible",
+                                "index": 0,
+                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
+                              }
+                            ]
+                          }
+                        },
+                        "values": []
+                      },
+                      "desc": {
+                        "children": {},
+                        "values": [
+                          {
+                            "category": "SerializationLibraryCompatible",
+                            "index": 0,
+                            "type": "N2SP2UI7Runtime6Detail19SceneRevisionRecordE"
+                          }
+                        ]
+                      },
+                      "drawable_bucket": {
+                        "children": {},
+                        "values": [
+                          {
+                            "category": "SerializationLibraryCompatible",
+                            "index": 0,
+                            "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
+                          }
+                        ]
+                      },
+                      "metadata": {
+                        "children": {},
+                        "values": [
+                          {
+                            "category": "SerializationLibraryCompatible",
+                            "index": 0,
+                            "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
+                          }
+                        ]
+                      }
+                    },
+                    "values": []
+                  }
+                },
+                "values": []
+              },
+              "current_revision": {
+                "children": {},
+                "values": [
+                  {
+                    "category": "Fundamental",
+                    "index": 0,
+                    "type": "uint64_t",
+                    "value": 1
+                  }
+                ]
+              },
+              "meta": {
+                "children": {
+                  "description": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "SerializedData",
+                        "index": 0,
+                        "type": "std::string",
+                        "value": "button_scene scene"
+                      }
+                    ]
+                  },
+                  "name": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "SerializedData",
+                        "index": 0,
+                        "type": "std::string",
+                        "value": "button_scene"
+                      }
+                    ]
+                  },
+                  "snapshots": {
+                    "children": {
+                      "index": {
+                        "children": {},
+                        "values": [
+                          {
+                            "category": "SerializationLibraryCompatible",
+                            "index": 0,
+                            "type": "NSt3__16vectorIN2SP2UI5Scene14SnapshotRecordENS_9allocatorIS4_EEEE"
+                          }
+                        ]
+                      }
+                    },
+                    "values": []
+                  }
+                },
+                "values": []
+              },
+              "metrics": {
+                "children": {
+                  "snapshots": {
+                    "children": {
+                      "state": {
+                        "children": {},
+                        "values": [
+                          {
+                            "category": "SerializationLibraryCompatible",
+                            "index": 0,
+                            "type": "N2SP2UI5Scene17SnapshotGcMetricsE"
+                          }
+                        ]
+                      }
+                    },
+                    "values": []
+                  }
+                },
+                "values": []
+              },
+              "render": {
+                "children": {
+                  "dirty": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "Fundamental",
+                        "index": 0,
+                        "type": "bool",
+                        "value": false
+                      }
+                    ]
+                  }
+                },
+                "values": []
+              },
+              "runtime": {
+                "children": {
+                  "lifecycle": {
+                    "children": {
+                      "control": {
+                        "children": {},
+                        "values": [
+                          {
+                            "category": "SerializedData",
+                            "index": 0,
+                            "type": "std::string",
+                            "value": "/system/applications/declarative_button_example/scenes/button_scene/runtime/lifecycle/control"
+                          }
+                        ]
+                      },
+                      "metrics": {
+                        "children": {
+                          "last_published_widget": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializedData",
+                                "index": 0,
+                                "type": "std::string",
+                                "value": "/system/applications/declarative_button_example/scenes/button_scene"
+                              }
+                            ]
+                          }
+                        },
+                        "values": []
+                      },
+                      "state": {
+                        "children": {
+                          "running": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "Fundamental",
+                                "index": 0,
+                                "type": "bool",
+                                "value": false
+                              }
+                            ]
+                          }
+                        },
+                        "values": []
+                      },
+                      "trellis": {
+                        "children": {},
+                        "values": []
+                      }
+                    },
+                    "values": []
+                  }
+                },
+                "values": []
+              },
+              "state": {
+                "children": {
+                  "attached": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "Fundamental",
+                        "index": 0,
+                        "type": "bool",
+                        "value": true
+                      }
+                    ]
+                  }
+                },
+                "values": []
+              },
+              "structure": {
+                "children": {
+                  "widgets": {
+                    "children": {
+                      "windows": {
+                        "children": {
+                          "declarative_button": {
+                            "children": {
+                              "views": {
+                                "children": {
+                                  "main": {
+                                    "children": {
+                                      "widgets": {
+                                        "children": {
+                                          "button_column": {
+                                            "children": {},
+                                            "values": []
+                                          }
+                                        },
+                                        "values": []
+                                      }
+                                    },
+                                    "values": []
+                                  }
+                                },
+                                "values": []
+                              }
+                            },
+                            "values": []
+                          }
+                        },
+                        "values": []
+                      }
+                    },
+                    "values": []
+                  },
+                  "window": {
+                    "children": {
+                      "declarative_button": {
+                        "children": {
+                          "focus": {
+                            "children": {
+                              "current": {
+                                "children": {},
+                                "values": [
+                                  {
+                                    "category": "SerializedData",
+                                    "index": 0,
+                                    "type": "std::string",
+                                    "value": ""
+                                  }
+                                ]
+                              }
+                            },
+                            "values": []
+                          },
+                          "metrics": {
+                            "children": {
+                              "dpi": {
+                                "children": {},
+                                "values": [
+                                  {
+                                    "category": "Fundamental",
+                                    "index": 0,
+                                    "type": "double",
+                                    "value": 1.0
+                                  }
+                                ]
+                              }
+                            },
+                            "values": []
+                          },
+                          "present": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializedData",
+                                "index": 0,
+                                "type": "std::string",
+                                "value": "windows/declarative_button/views/main/present"
+                              }
+                            ]
+                          },
+                          "surface": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializedData",
+                                "index": 0,
+                                "type": "std::string",
+                                "value": "surfaces/widgets_surface_declarative_button_main"
+                              }
+                            ]
+                          },
+                          "view": {
+                            "children": {},
+                            "values": [
+                              {
+                                "category": "SerializedData",
+                                "index": 0,
+                                "type": "std::string",
+                                "value": "main"
+                              }
+                            ]
+                          }
+                        },
+                        "values": []
+                      }
+                    },
+                    "values": []
+                  }
+                },
+                "values": []
+              }
+            },
+            "values": []
+          }
+        },
+        "values": []
+      },
+      "state": {
+        "children": {
+          "title": {
+            "children": {},
+            "values": [
+              {
+                "category": "SerializedData",
+                "index": 0,
+                "type": "std::string",
+                "value": "Declarative Button"
+              }
+            ]
+          }
+        },
+        "values": []
+      },
+      "surfaces": {
+        "children": {
+          "widgets_surface_declarative_button_main": {
+            "children": {
+              "desc": {
+                "children": {},
+                "values": [
+                  {
+                    "category": "SerializationLibraryCompatible",
+                    "index": 0,
+                    "type": "N2SP2UI7Runtime11SurfaceDescE"
+                  }
+                ]
+              },
+              "meta": {
+                "children": {
+                  "name": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "SerializedData",
+                        "index": 0,
+                        "type": "std::string",
+                        "value": "widgets_surface_declarative_button_main"
+                      }
+                    ]
+                  }
+                },
+                "values": []
+              },
+              "renderer": {
+                "children": {},
+                "values": [
+                  {
+                    "category": "SerializedData",
+                    "index": 0,
+                    "type": "std::string",
+                    "value": "renderers/widgets_declarative_renderer"
+                  }
+                ]
+              },
+              "scene": {
+                "children": {},
+                "values": [
+                  {
+                    "category": "SerializedData",
+                    "index": 0,
+                    "type": "std::string",
+                    "value": "scenes/button_scene"
+                  }
+                ]
+              },
+              "target": {
+                "children": {},
+                "values": [
+                  {
+                    "category": "SerializedData",
+                    "index": 0,
+                    "type": "std::string",
+                    "value": "renderers/widgets_declarative_renderer/targets/surfaces/widgets_surface_declarative_button_main"
+                  }
+                ]
+              }
+            },
+            "values": []
+          }
+        },
+        "values": []
+      },
+      "themes": {
+        "children": {
+          "default": {
+            "children": {},
+            "values": [
+              {
+                "category": "SerializedData",
+                "index": 0,
+                "type": "std::string",
+                "value": "sunset"
+              }
+            ]
+          }
+        },
+        "values": []
+      },
+      "windows": {
+        "children": {
+          "declarative_button": {
+            "children": {
+              "meta": {
+                "children": {
+                  "background": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "SerializedData",
+                        "index": 0,
+                        "type": "std::string",
+                        "value": "#101218"
+                      }
+                    ]
+                  },
+                  "height": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "Fundamental",
+                        "index": 0,
+                        "type": "int32_t",
+                        "value": 360
+                      }
+                    ]
+                  },
+                  "name": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "SerializedData",
+                        "index": 0,
+                        "type": "std::string",
+                        "value": "declarative_button"
+                      }
+                    ]
+                  },
+                  "scale": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "Fundamental",
+                        "index": 0,
+                        "type": "float",
+                        "value": 1.0
+                      }
+                    ]
+                  },
+                  "title": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "SerializedData",
+                        "index": 0,
+                        "type": "std::string",
+                        "value": "Declarative Button"
+                      }
+                    ]
+                  },
+                  "width": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "Fundamental",
+                        "index": 0,
+                        "type": "int32_t",
+                        "value": 640
+                      }
+                    ]
+                  }
+                },
+                "values": []
+              },
+              "render": {
+                "children": {
+                  "dirty": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "Fundamental",
+                        "index": 0,
+                        "type": "bool",
+                        "value": false
+                      }
+                    ]
+                  }
+                },
+                "values": []
+              },
+              "state": {
+                "children": {
+                  "visible": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "Fundamental",
+                        "index": 0,
+                        "type": "bool",
+                        "value": true
+                      }
+                    ]
+                  }
+                },
+                "values": []
+              },
+              "style": {
+                "children": {
+                  "theme": {
+                    "children": {},
+                    "values": [
+                      {
+                        "category": "SerializedData",
+                        "index": 0,
+                        "type": "std::string",
+                        "value": "sunset"
+                      }
+                    ]
+                  }
+                },
+                "values": []
+              },
+              "views": {
+                "children": {
+                  "main": {
+                    "children": {
+                      "scene": {
+                        "children": {},
+                        "values": [
+                          {
+                            "category": "SerializedData",
+                            "index": 0,
+                            "type": "std::string",
+                            "value": "scenes/button_scene"
+                          }
+                        ]
+                      },
+                      "surface": {
+                        "children": {},
+                        "values": [
+                          {
+                            "category": "SerializedData",
+                            "index": 0,
+                            "type": "std::string",
+                            "value": "surfaces/widgets_surface_declarative_button_main"
+                          }
+                        ]
+                      },
+                      "widgets": {
+                        "children": {
+                          "button_column": {
+                            "children": {
+                              "children": {
+                                "children": {
+                                  "goodbye_button": {
+                                    "children": {
+                                      "meta": {
+                                        "children": {
+                                          "label": {
+                                            "children": {},
+                                            "values": [
+                                              {
+                                                "category": "SerializedData",
+                                                "index": 0,
+                                                "type": "std::string",
+                                                "value": "Say Goodbye"
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "values": []
+                                      },
+                                      "space": {
+                                        "children": {},
+                                        "values": []
+                                      }
+                                    },
+                                    "values": []
+                                  },
+                                  "hello_button": {
+                                    "children": {
+                                      "meta": {
+                                        "children": {
+                                          "label": {
+                                            "children": {},
+                                            "values": [
+                                              {
+                                                "category": "SerializedData",
+                                                "index": 0,
+                                                "type": "std::string",
+                                                "value": "Say Hello"
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "values": []
+                                      },
+                                      "space": {
+                                        "children": {},
+                                        "values": []
+                                      }
+                                    },
+                                    "values": []
+                                  }
+                                },
+                                "values": []
+                              },
+                              "space": {
+                                "children": {},
+                                "values": []
+                              }
+                            },
+                            "values": []
+                          }
+                        },
+                        "values": []
+                      }
+                    },
+                    "values": []
+                  }
+                },
+                "values": []
+              }
+            },
+            "values": []
+          }
+        },
+        "values": []
+      }
+    },
+    "values": []
+  }
+}

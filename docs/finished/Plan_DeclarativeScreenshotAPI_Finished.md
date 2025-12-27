@@ -143,6 +143,11 @@ auto CaptureDeclarative(SP::PathSpace& space,
   pixels directly into `ScreenshotService`. This removes the redundant second
   render path, so screenshot PNGs represent the exact “next” frame that the UI
   would show instead of diverging in theme or state.
+- ✅ 2025-12-26 update: the default helper path no longer forces a present;
+  with `present_before_capture=false` it reuses the latest cached framebuffer
+  (and errors clearly when none is available) while callers can still opt into
+  the warm-up-present flow when they need a fresh frame.
+- See also: `docs/finished/Plan_DeclarativeScreenshot_NoPresent_Finished.md` for the cached-frame default follow-up.
 - ✅ Helper test suite landed: `tests/ui/test_DeclarativeScreenshotHelper.cpp` covers
   live framebuffer captures (unique color threshold), readiness timeouts via
   bogus window-component overrides, and force-publish failures after shutting

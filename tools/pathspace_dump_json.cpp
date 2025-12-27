@@ -15,13 +15,15 @@ namespace {
 
 struct DumpJsonOptions {
     std::string              root            = "/";
-    std::size_t              maxDepth        = 2;
-    std::size_t              maxChildren     = 32;
-    std::size_t              maxQueueEntries = 4;
+    std::size_t              maxDepth        = 6;
+    std::size_t              maxChildren     = 64;
+    std::size_t              maxQueueEntries = 2;
     bool                     includeValues   = true;
-    bool                     includeNested   = true;
-    bool                     includePlaceholders = true;
-    bool                     includeDiagnostics = true;
+    bool                     includeNested   = false;
+    bool                     includePlaceholders = false;
+    bool                     includeDiagnostics = false;
+    bool                     debug           = false;
+    bool                     includeMeta     = false;
     int                      indent          = 2;
     std::optional<std::filesystem::path> outputPath;
     bool                     demo            = false;
@@ -31,15 +33,18 @@ void print_usage() {
     std::cout << "Usage: pathspace_dump_json [options]\n"
                  "Options:\n"
                  "  --root <path>              Root path to export (default /)\n"
-                 "  --max-depth <n>            Maximum depth relative to root (default 2)\n"
-                 "  --max-children <n>         Maximum children per node (default 32, 0 = unlimited)\n"
-                 "  --max-queue-entries <n>    Maximum queue entries per node (default 4)\n"
+                 "  --max-depth <n>            Maximum depth relative to root (default 6)\n"
+                 "  --max-children <n>         Maximum children per node (default 64, 0 = unlimited)\n"
+                 "  --max-queue-entries <n>    Maximum queue entries per node (default 2)\n"
                  "  --indent <n>               JSON indent (default 2, -1 for compact)\n"
                  "  --output <file>            Write JSON to file instead of stdout\n"
                  "  --no-values                Skip value sampling (structure only)\n"
+                 "  --include-nested           Traverse nested spaces (disabled by default)\n"
                  "  --no-nested                Do not traverse nested spaces\n"
-                 "  --no-placeholders          Omit opaque placeholders for unsupported values\n"
-                 "  --no-diagnostics           Omit per-node diagnostics block\n"
+                 "  --no-placeholders          Omit opaque placeholders for unsupported values (default)\n"
+                 "  --no-diagnostics           Omit per-node diagnostics block (default)\n"
+                 "  --include-meta             Add exporter metadata (_meta) to the output\n"
+                 "  --debug                    Enable debug mode (structure fields, diagnostics, placeholders, metadata)\n"
                  "  --demo                     Seed the demo inspector tree before dumping\n"
                  "  --help                     Show this message\n";
 }
@@ -140,10 +145,18 @@ auto parse_cli(int argc, char** argv) -> std::optional<DumpJsonOptions> {
     };
     cli.add_value("--output", std::move(outputOption));
 
+    cli.add_flag("--include-nested", {.on_set = [&] { options.includeNested = true; }});
     cli.add_flag("--no-values", {.on_set = [&] { options.includeValues = false; }});
     cli.add_flag("--no-nested", {.on_set = [&] { options.includeNested = false; }});
     cli.add_flag("--no-placeholders", {.on_set = [&] { options.includePlaceholders = false; }});
     cli.add_flag("--no-diagnostics", {.on_set = [&] { options.includeDiagnostics = false; }});
+    cli.add_flag("--include-meta", {.on_set = [&] { options.includeMeta = true; }});
+    cli.add_flag("--debug", {.on_set = [&] {
+                     options.debug               = true;
+                     options.includeDiagnostics  = true;
+                     options.includePlaceholders = true;
+                     options.includeMeta         = true;
+                 }});
     cli.add_flag("--demo", {.on_set = [&] { options.demo = true; }});
 
     auto helpHandler = [] {
@@ -198,6 +211,11 @@ int main(int argc, char** argv) {
     }
 
     SP::PathSpaceJsonOptions jsonOptions;
+    if (cliOptions->debug) {
+        jsonOptions.mode = SP::PathSpaceJsonOptions::Mode::Debug;
+    } else {
+        jsonOptions.mode = SP::PathSpaceJsonOptions::Mode::Minimal;
+    }
     jsonOptions.visit.root                = cliOptions->root;
     jsonOptions.visit.maxDepth            = cliOptions->maxDepth;
     jsonOptions.visit.maxChildren         = cliOptions->maxChildren;
@@ -206,6 +224,8 @@ int main(int argc, char** argv) {
     jsonOptions.maxQueueEntries           = cliOptions->maxQueueEntries;
     jsonOptions.includeOpaquePlaceholders = cliOptions->includePlaceholders;
     jsonOptions.includeDiagnostics        = cliOptions->includeDiagnostics;
+    jsonOptions.includeStructureFields    = cliOptions->debug;
+    jsonOptions.includeMetadata           = cliOptions->includeMeta;
     jsonOptions.dumpIndent                = cliOptions->indent;
 
     auto jsonString = space.toJSON(jsonOptions);

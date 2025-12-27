@@ -74,6 +74,7 @@ auto app_component_from_window(SP::UI::WindowPath const& window) -> std::string 
 
 TEST_CASE("Declarative runtime wires app, window, and scene") {
     PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
@@ -118,14 +119,22 @@ TEST_CASE("Declarative runtime wires app, window, and scene") {
 
     auto view_renderer_path = std::string(window->path.getPath()) + "/views/" + window->view_name + "/renderer";
     auto renderer_relative = space.read<std::string, std::string>(view_renderer_path);
-    REQUIRE(renderer_relative);
-    CHECK_FALSE(renderer_relative->empty());
+    CHECK_FALSE(renderer_relative);
+    auto renderer_err = renderer_relative.error().code;
+    bool renderer_missing = renderer_err == SP::Error::Code::NoObjectFound
+                            || renderer_err == SP::Error::Code::NoSuchPath;
+    CHECK(renderer_missing);
 
-    auto structure_renderer_path = std::string(scene->path.getPath())
-                                   + "/structure/window/main_window/renderer";
-    auto stored_renderer = space.read<std::string, std::string>(structure_renderer_path);
-    REQUIRE(stored_renderer);
-    CHECK(*stored_renderer == *renderer_relative);
+    auto view_surface_path = std::string(window->path.getPath()) + "/views/" + window->view_name + "/surface";
+    auto surface_relative = space.read<std::string, std::string>(view_surface_path);
+    REQUIRE(surface_relative);
+    auto surface_abs = SP::App::resolve_app_relative(SP::App::AppRootPathView{app_root->getPath()},
+                                                     *surface_relative);
+    REQUIRE(surface_abs);
+    auto surface_renderer_path = std::string(surface_abs->getPath()) + "/renderer";
+    auto surface_renderer = space.read<std::string, std::string>(surface_renderer_path);
+    REQUIRE(surface_renderer);
+    CHECK_FALSE(surface_renderer->empty());
 
     auto structure_surface_path = std::string(scene->path.getPath())
                                   + "/structure/window/main_window/surface";
@@ -140,6 +149,7 @@ TEST_CASE("Declarative runtime wires app, window, and scene") {
 TEST_CASE("Declarative input task drains mailbox events") {
     using namespace std::chrono_literals;
     PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
 
     SP::System::LaunchOptions launch_options{};
     launch_options.input_task_options.poll_interval = std::chrono::milliseconds{1};
@@ -263,6 +273,7 @@ TEST_CASE("Declarative input task invokes registered handlers from mailbox") {
     EnvGuard capsules_flag{"PATHSPACE_WIDGET_CAPSULES", "1"};
     EnvGuard capsule_only{"PATHSPACE_WIDGET_CAPSULES_ONLY", "0"};
     PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_io_pump = false;
@@ -399,6 +410,7 @@ TEST_CASE("Capsule-only runtime (default) omits legacy event queues") {
     using namespace std::chrono_literals;
     EnvGuard capsules_flag{"PATHSPACE_WIDGET_CAPSULES", "1"};
     PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_io_pump = false;
@@ -534,6 +546,7 @@ TEST_CASE("paint_example_new-style button reacts to pointer press via widget run
           * doctest::test_suite("DeclarativeRuntimePointer")) {
     using namespace std::chrono_literals;
     PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
 
     auto target_widget = std::make_shared<std::string>();
     auto target_authoring = std::make_shared<std::string>();

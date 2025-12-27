@@ -434,7 +434,7 @@ auto ensure_theme(PathSpace& space,
 
     auto set_active = [&](std::string const& name) -> SP::Expected<std::string> {
         auto defaults = theme_defaults_for(name);
-        auto ensured = ThemeConfig::Ensure(space, app_root, name, defaults);
+        auto ensured = ThemeConfig::Ensure(space, app_root, name, defaults, /*store_value=*/false);
         if (!ensured) {
             return std::unexpected(ensured.error());
         }
@@ -447,7 +447,7 @@ auto ensure_theme(PathSpace& space,
     if (sanitized_requested) {
         if (sanitized_active && *sanitized_active == *sanitized_requested) {
             auto defaults = theme_defaults_for(*sanitized_active);
-            auto ensured = ThemeConfig::Ensure(space, app_root, *sanitized_active, defaults);
+            auto ensured = ThemeConfig::Ensure(space, app_root, *sanitized_active, defaults, /*store_value=*/false);
             if (!ensured) {
                 return std::unexpected(ensured.error());
             }
@@ -458,7 +458,7 @@ auto ensure_theme(PathSpace& space,
 
     if (sanitized_active) {
         auto defaults = theme_defaults_for(*sanitized_active);
-        auto ensured = ThemeConfig::Ensure(space, app_root, *sanitized_active, defaults);
+        auto ensured = ThemeConfig::Ensure(space, app_root, *sanitized_active, defaults, /*store_value=*/false);
         if (!ensured) {
             return std::unexpected(ensured.error());
         }
@@ -628,16 +628,6 @@ auto build_present_handles(SP::PathSpace& space,
                            SP::App::AppRootPathView app_root,
                            SP::UI::WindowPath const& window,
                            std::string const& view_name) -> SP::Expected<SP::UI::Declarative::PresentHandles> {
-    auto renderer_rel = space.read<std::string, std::string>(std::string(window.getPath())
-                                                             + "/views/" + view_name + "/renderer");
-    if (!renderer_rel) {
-        return std::unexpected(renderer_rel.error());
-    }
-    auto renderer_abs = SP::App::resolve_app_relative(app_root, *renderer_rel);
-    if (!renderer_abs) {
-        return std::unexpected(renderer_abs.error());
-    }
-
     auto surface_rel = space.read<std::string, std::string>(std::string(window.getPath())
                                                             + "/views/" + view_name + "/surface");
     if (!surface_rel) {
@@ -662,7 +652,7 @@ auto build_present_handles(SP::PathSpace& space,
         .window = window,
         .view_name = view_name,
         .surface = SP::UI::SurfacePath{surface_abs->getPath()},
-        .renderer = SP::UI::RendererPath{renderer_abs->getPath()},
+        .renderer = SP::UI::RendererPath{target_abs->getPath()},
         .target = SP::ConcretePath{target_abs->getPath()},
     };
     return handles;
@@ -981,6 +971,15 @@ auto PresentWindowFrame(SP::PathSpace& space,
     PresentFrame frame{};
     frame.stats = present_stats;
     if (present_policy.capture_framebuffer) {
+        if (framebuffer.empty()) {
+            auto existing = read_optional<SoftwareFramebuffer>(space, framebuffer_path);
+            if (!existing) {
+                return std::unexpected(existing.error());
+            }
+            if (existing->has_value()) {
+                framebuffer = (*existing)->pixels;
+            }
+        }
         SoftwareFramebuffer stored_framebuffer{};
         stored_framebuffer.width = context->target_desc.size_px.width;
         stored_framebuffer.height = context->target_desc.size_px.height;
@@ -1195,9 +1194,16 @@ auto LaunchStandard(PathSpace& space, LaunchOptions const& options) -> SP::Expec
         }
     }
 
-    auto theme_name = options.default_theme_name.empty()
-        ? std::string{"sunset"}
-        : options.default_theme_name;
+    constexpr std::string_view kSystemActiveThemePath = "/system/themes/_active";
+    std::string theme_name;
+    auto existing_active = read_optional<std::string>(space, std::string{kSystemActiveThemePath});
+    if (!options.default_theme_name.empty()) {
+        theme_name = options.default_theme_name;
+    } else if (existing_active && existing_active->has_value() && !existing_active->value().empty()) {
+        theme_name = SP::UI::Declarative::ThemeConfig::SanitizeName(existing_active->value());
+    } else {
+        theme_name = "sunset";
+    }
     result.default_theme_path = std::string{"/system/themes/"} + theme_name;
     auto name_path = result.default_theme_path + "/name";
     if (auto status = ensure_value<std::string>(space, name_path, theme_name); !status) {
@@ -1207,8 +1213,14 @@ auto LaunchStandard(PathSpace& space, LaunchOptions const& options) -> SP::Expec
     if (auto status = ensure_value<bool>(space, active_path, true); !status) {
         return std::unexpected(status.error());
     }
-    if (auto status = replace_single<std::string>(space, "/system/themes/_active", theme_name); !status) {
-        return std::unexpected(status.error());
+    bool need_set_active = true;
+    if (existing_active && existing_active->has_value() && !existing_active->value().empty()) {
+        need_set_active = SP::UI::Declarative::ThemeConfig::SanitizeName(existing_active->value()) != theme_name;
+    }
+    if (need_set_active) {
+        if (auto status = replace_single<std::string>(space, std::string{kSystemActiveThemePath}, theme_name); !status) {
+            return std::unexpected(status.error());
+        }
     }
 
     if (options.start_input_runtime) {
@@ -1391,12 +1403,6 @@ auto Create(PathSpace& space,
     if (auto status = ensure_value<std::string>(space, view_base + "/scene", std::string{}); !status) {
         return std::unexpected(status.error());
     }
-    if (auto status = ensure_value<std::string>(space, view_base + "/surface", std::string{}); !status) {
-        return std::unexpected(status.error());
-    }
-    if (auto status = ensure_value<std::string>(space, view_base + "/htmlTarget", std::string{}); !status) {
-        return std::unexpected(status.error());
-    }
 
     auto renderer_relative = read_renderer_relative(space, app_root);
     if (!renderer_relative) {
@@ -1415,12 +1421,6 @@ auto Create(PathSpace& space,
     if (auto status = replace_single<std::string>(space,
                                                   view_base + "/surface",
                                                   binding->surface_relative);
-        !status) {
-        return std::unexpected(status.error());
-    }
-    if (auto status = replace_single<std::string>(space,
-                                                  view_base + "/renderer",
-                                                  binding->renderer_relative);
         !status) {
         return std::unexpected(status.error());
     }
@@ -1633,6 +1633,7 @@ auto RunUI(SP::PathSpace& space,
 
     SP::UI::InitLocalWindowWithSize(window_width, window_height, title.c_str());
     auto last_frame = std::chrono::steady_clock::now();
+    std::uint64_t frames_rendered = 0;
     while (true) {
         SP::UI::PollLocalWindow();
         if (SP::UI::LocalWindowQuitRequested()) {
@@ -1658,6 +1659,10 @@ auto RunUI(SP::PathSpace& space,
                                                                              window_width,
                                                                              window_height);
         (void)present_status;
+        ++frames_rendered;
+        if (options.run_once && frames_rendered >= 1) {
+            break;
+        }
 
         auto now = std::chrono::steady_clock::now();
         auto elapsed = now - last_frame;

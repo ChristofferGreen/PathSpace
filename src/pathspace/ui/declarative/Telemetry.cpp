@@ -1,5 +1,6 @@
 #include <pathspace/ui/declarative/Telemetry.hpp>
 #include <pathspace/ui/declarative/Detail.hpp>
+#include <pathspace/ui/DebugFlags.hpp>
 
 #include <chrono>
 #include <sstream>
@@ -13,6 +14,10 @@ constexpr std::string_view kSchemaMetricsBase = "/system/widgets/runtime/schema/
 constexpr std::string_view kSchemaLogPath = "/system/widgets/runtime/schema/log/events";
 constexpr std::string_view kInputLatencyPath = "/system/widgets/runtime/input/metrics/actions_latency_ns";
 constexpr std::string_view kInputBacklogPath = "/system/widgets/runtime/input/metrics/ops_backlog";
+
+auto telemetry_enabled() -> bool {
+    return SP::UI::DebugTreeWritesEnabled();
+}
 
 auto now_ms() -> std::uint64_t {
     auto now = std::chrono::system_clock::now().time_since_epoch();
@@ -69,6 +74,9 @@ std::string widget_focus_metrics(std::string const& widget_path) {
 } // namespace
 
 void RecordSchemaSample(PathSpace& space, SchemaSample const& sample) {
+    if (!telemetry_enabled()) {
+        return;
+    }
     auto base = std::string{kSchemaMetricsBase};
     increment<std::uint64_t>(space, base + "/loads_total", static_cast<std::uint64_t>(1));
     assign<std::uint64_t>(space, base + "/last_load_ns", sample.duration_ns);
@@ -81,6 +89,9 @@ void RecordSchemaSample(PathSpace& space, SchemaSample const& sample) {
 }
 
 void RecordFocusTransition(PathSpace& space, FocusTransitionSample const& sample) {
+    if (!telemetry_enabled()) {
+        return;
+    }
     auto metrics = focus_metrics_base(sample.scene_path);
     increment<std::uint64_t>(space, metrics + "/transitions_total", static_cast<std::uint64_t>(1));
     if (sample.wrapped) {
@@ -97,11 +108,17 @@ void RecordFocusTransition(PathSpace& space, FocusTransitionSample const& sample
 }
 
 void RecordFocusDisabledSkip(PathSpace& space, std::string const& scene_path) {
+    if (!telemetry_enabled()) {
+        return;
+    }
     auto metrics = focus_metrics_base(scene_path);
     increment<std::uint64_t>(space, metrics + "/disabled_skips_total", static_cast<std::uint64_t>(1));
 }
 
 void IncrementFocusOwnership(PathSpace& space, std::string const& widget_path, bool acquired) {
+    if (!telemetry_enabled()) {
+        return;
+    }
     auto base = widget_focus_metrics(widget_path);
     if (acquired) {
         increment<std::uint64_t>(space, base + "/acquired_total", static_cast<std::uint64_t>(1));
@@ -111,28 +128,43 @@ void IncrementFocusOwnership(PathSpace& space, std::string const& widget_path, b
 }
 
 void RecordInputLatency(PathSpace& space, InputLatencySample const& sample) {
+    if (!telemetry_enabled()) {
+        return;
+    }
     assign<std::uint64_t>(space, std::string{kInputLatencyPath}, sample.latency_ns);
     assign<std::uint64_t>(space, std::string{kInputBacklogPath}, static_cast<std::uint64_t>(sample.backlog));
 }
 
 void AppendWidgetLog(PathSpace& space, std::string const& widget_path, std::string const& message) {
+    if (!telemetry_enabled()) {
+        return;
+    }
     std::string path = widget_path;
     path.append("/log/events");
     append_log(space, path, message);
 }
 
 void RecordRenderDirtySample(PathSpace& space, RenderDirtySample const& sample) {
+    if (!telemetry_enabled()) {
+        return;
+    }
     auto base = lifecycle_metrics_base(sample.scene_path);
     assign<std::uint64_t>(space, base + "/dirty_batch_ns", sample.duration_ns);
     assign<std::string>(space, base + "/last_dirty_widget", sample.widget_path);
 }
 
 void RecordRenderPublishSample(PathSpace& space, RenderPublishSample const& sample) {
+    if (!telemetry_enabled()) {
+        return;
+    }
     auto base = lifecycle_metrics_base(sample.scene_path);
     assign<std::uint64_t>(space, base + "/publish_ns", sample.duration_ns);
 }
 
 void RecordRenderCompareSample(PathSpace& space, RenderCompareSample const& sample) {
+    if (!telemetry_enabled()) {
+        return;
+    }
     auto base = lifecycle_metrics_base(sample.scene_path);
     assign<bool>(space, base + "/legacy_parity_ok", sample.parity_ok);
     if (sample.diff_percent.has_value()) {
@@ -143,6 +175,9 @@ void RecordRenderCompareSample(PathSpace& space, RenderCompareSample const& samp
 void AppendRenderCompareLog(PathSpace& space,
                             std::string const& scene_path,
                             std::string const& message) {
+    if (!telemetry_enabled()) {
+        return;
+    }
     append_log(space, lifecycle_compare_log(scene_path), message);
 }
 

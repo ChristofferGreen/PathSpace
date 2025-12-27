@@ -138,6 +138,7 @@ struct TrellisGuard {
 
 TEST_CASE("WidgetEventTrellis routes pointer and button events to WidgetOps") {
     PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
 
     std::string window_path = "/system/applications/test_app/windows/main";
     auto token = SP::Runtime::MakeRuntimeWindowToken(window_path);
@@ -467,6 +468,7 @@ TEST_CASE("WidgetEventTrellis routes label capsule mailboxes") {
 TEST_CASE("Capsule mailbox metrics count dispatched ops") {
     EnvGuard capsules_flag{"PATHSPACE_WIDGET_CAPSULES", "1"};
     PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;

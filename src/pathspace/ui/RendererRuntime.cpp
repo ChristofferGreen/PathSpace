@@ -1,4 +1,5 @@
 #include "RuntimeDetail.hpp"
+#include <pathspace/ui/DebugFlags.hpp>
 
 namespace SP::UI::Runtime::Renderer {
 
@@ -285,6 +286,9 @@ auto snap_hint_to_tiles(DirtyRectHint hint, float tile_size) -> DirtyRectHint {
 auto SubmitDirtyRects(PathSpace& space,
                       ConcretePathView targetPath,
                       std::span<DirtyRectHint const> rects) -> SP::Expected<void> {
+    if (!SP::UI::DebugTreeWritesEnabled()) {
+        return SP::Expected<void>{};
+    }
     if (rects.empty()) {
         return SP::Expected<void>{};
     }

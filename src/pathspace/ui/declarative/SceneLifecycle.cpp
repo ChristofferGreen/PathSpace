@@ -11,6 +11,7 @@
 #include <pathspace/ui/declarative/Telemetry.hpp>
 #include <pathspace/ui/declarative/WidgetCapsule.hpp>
 #include <pathspace/ui/declarative/widgets/Common.hpp>
+#include <pathspace/ui/DebugFlags.hpp>
 #include <pathspace/ui/PathRenderer2D.hpp>
 #include <pathspace/ui/PathRenderer2DDetail.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
@@ -226,14 +227,21 @@ struct SceneLifecycleWorker {
         control_queue_path_ = scene_path_ + "/runtime/lifecycle/control";
         theme_invalidate_command_ = control_queue_path_ + ":invalidate_theme";
         metrics_base_ = scene_path_ + "/runtime/lifecycle/metrics";
-        auto renderer_leaf = window_path_ + "/views/" + view_name_ + "/renderer";
-        auto renderer_relative = space_.read<std::string, std::string>(renderer_leaf);
-        if (renderer_relative) {
-            auto resolved = SP::App::resolve_app_relative(SP::App::AppRootPathView{app_root_value_.getPath()},
-                                                          *renderer_relative);
-            if (resolved) {
-                renderer_target_path_ = resolved->getPath();
-                has_renderer_target_ = true;
+        auto surface_leaf = window_path_ + "/views/" + view_name_ + "/surface";
+        auto surface_relative = space_.read<std::string, std::string>(surface_leaf);
+        if (surface_relative) {
+            auto surface_abs = SP::App::resolve_app_relative(SP::App::AppRootPathView{app_root_value_.getPath()},
+                                                             *surface_relative);
+            if (surface_abs) {
+                auto target_rel = space_.read<std::string, std::string>(std::string(surface_abs->getPath()) + "/target");
+                if (target_rel) {
+                    auto target_abs = SP::App::resolve_app_relative(SP::App::AppRootPathView{app_root_value_.getPath()},
+                                                                    *target_rel);
+                    if (target_abs) {
+                        renderer_target_path_ = target_abs->getPath();
+                        has_renderer_target_ = true;
+                    }
+                }
             }
         }
     }
@@ -1227,6 +1235,9 @@ private:
 
     template <typename T>
     void write_metric(std::string const& leaf, T const& value) {
+        if (!SP::UI::DebugTreeWritesEnabled()) {
+            return;
+        }
         (void)DeclarativeDetail::replace_single<T>(space_, metrics_base_ + "/" + leaf, value);
     }
 

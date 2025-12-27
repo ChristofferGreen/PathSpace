@@ -1,4 +1,5 @@
 #include "RuntimeDetail.hpp"
+#include <pathspace/ui/DebugFlags.hpp>
 
 #include <algorithm>
 #include <cstdlib>
@@ -238,6 +239,9 @@ auto load_error_stats(PathSpace const& space,
 auto update_error_stats(PathSpace& space,
                         ConcretePathView targetPath,
                         std::optional<PathSpaceError> const& error) -> SP::Expected<void> {
+    if (!SP::UI::DebugTreeWritesEnabled()) {
+        return {};
+    }
     if (!error_stats_enabled()) {
         return {};
     }
@@ -371,6 +375,9 @@ auto write_contention_metrics_to_base(PathSpace& space,
 auto write_contention_metrics(PathSpace& space,
                               ConcretePathView targetPath,
                               PathWindowPresentStats const& stats) -> SP::Expected<void> {
+    if (!SP::UI::DebugTreeWritesEnabled()) {
+        return {};
+    }
     auto compat_base = std::string(targetPath.getPath()) + "/output/v1/diagnostics/metrics";
     if (auto status = write_contention_metrics_to_base(space, compat_base, stats); !status) {
         return status;
@@ -1148,6 +1155,9 @@ auto ReadTargetMetrics(PathSpace const& space,
 
 auto ClearTargetError(PathSpace& space,
                        ConcretePathView targetPath) -> SP::Expected<void> {
+    if (!SP::UI::DebugTreeWritesEnabled()) {
+        return {};
+    }
     auto livePath = std::string(targetPath.getPath()) + "/diagnostics/errors/live";
     PathSpaceError cleared{};
     if (auto status = replace_single<PathSpaceError>(space, livePath, cleared); !status) {
@@ -1185,6 +1195,9 @@ auto ClearTargetError(PathSpace& space,
 auto WriteTargetError(PathSpace& space,
                        ConcretePathView targetPath,
                        PathSpaceError const& error) -> SP::Expected<void> {
+    if (!SP::UI::DebugTreeWritesEnabled()) {
+        return {};
+    }
     if (error.message.empty()) {
         return ClearTargetError(space, targetPath);
     }
@@ -1436,6 +1449,9 @@ auto WritePresentMetrics(PathSpace& space,
                           ConcretePathView targetPath,
                           PathWindowPresentStats const& stats,
                           PathWindowPresentPolicy const& policy) -> SP::Expected<void> {
+    if (!SP::UI::DebugTreeWritesEnabled()) {
+        return {};
+    }
     auto base = std::string(targetPath.getPath()) + "/output/v1/common";
     if (auto status = write_present_metrics_to_base(space, base, stats, policy); !status) {
         return status;
@@ -1471,6 +1487,9 @@ auto WriteWindowPresentMetrics(PathSpace& space,
                                std::string_view viewName,
                                PathWindowPresentStats const& stats,
                                PathWindowPresentPolicy const& policy) -> SP::Expected<void> {
+    if (!SP::UI::DebugTreeWritesEnabled()) {
+        return {};
+    }
     std::string base = std::string(windowPath.getPath()) + "/diagnostics/metrics/live/views/";
     base.append(viewName);
     base.append("/present");
@@ -1508,6 +1527,9 @@ auto WriteResidencyMetrics(PathSpace& space,
                            std::uint64_t cpu_hard_bytes,
                            std::uint64_t gpu_soft_bytes,
                            std::uint64_t gpu_hard_bytes) -> SP::Expected<void> {
+    if (!SP::UI::DebugTreeWritesEnabled()) {
+        return {};
+    }
     auto base = std::string(targetPath.getPath()) + "/diagnostics/metrics/residency";
     if (auto status = replace_single<std::uint64_t>(space, base + "/cpuBytes", cpu_bytes); !status) {
         return status;
@@ -1664,6 +1686,9 @@ auto parse_target_base(std::string const& path) -> std::optional<TargetBase> {
 auto CollectTargetDiagnostics(PathSpace& space,
                               std::string_view renderers_root)
     -> SP::Expected<std::vector<TargetDiagnosticsSummary>> {
+    if (!SP::UI::DebugTreeWritesEnabled()) {
+        return std::vector<TargetDiagnosticsSummary>{};
+    }
     std::string root = renderers_root.empty() ? std::string{"/renderers"}
                                               : std::string{renderers_root};
 

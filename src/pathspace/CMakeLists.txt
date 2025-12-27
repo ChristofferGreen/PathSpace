@@ -151,6 +151,7 @@ if(PATHSPACE_ENABLE_UI)
 
     target_sources(PathSpace PRIVATE
         ui/Helpers.cpp
+        ui/DebugFlags.cpp
         ui/SceneRuntime.cpp
         ui/RuntimeAPI.cpp
         ui/RendererRuntime.cpp

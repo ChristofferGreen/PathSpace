@@ -4,6 +4,8 @@
 #include <pathspace/core/Error.hpp>
 #include <pathspace/ui/declarative/SceneLifecycle.hpp>
 
+#include <pathspace/ui/WidgetSharedTypes.hpp>
+
 #include <algorithm>
 #include <cctype>
 #include <optional>
@@ -14,12 +16,23 @@
 namespace SP::UI::Declarative::ThemeConfig {
 
 using namespace SP::UI::Declarative::Detail;
+namespace Widgets = SP::UI::Runtime::Widgets;
 
 namespace {
 
 constexpr std::string_view kThemeSegment = "/config/theme/";
 constexpr std::string_view kSystemActiveThemePath = "/system/themes/_active";
 constexpr std::size_t kMaxThemeInheritanceDepth = 16;
+
+auto default_theme_for(std::string const& sanitized) -> Widgets::WidgetTheme {
+    if (sanitized == "sunset") {
+        return Widgets::MakeSunsetWidgetTheme();
+    }
+    if (sanitized == "sunrise") {
+        return Widgets::MakeSunriseWidgetTheme();
+    }
+    return Widgets::MakeDefaultWidgetTheme();
+}
 
 auto extract_app_root(std::string const& theme_root) -> SP::Expected<std::string> {
     auto pos = theme_root.find(kThemeSegment);
@@ -105,21 +118,24 @@ auto Resolve(SP::App::AppRootPathView app_root,
 auto Ensure(PathSpace& space,
             SP::App::AppRootPathView app_root,
             std::string_view theme_name,
-            WidgetTheme const& defaults) -> SP::Expected<ThemePaths> {
+            WidgetTheme const& defaults,
+            bool store_value) -> SP::Expected<ThemePaths> {
     auto sanitized = SanitizeName(theme_name);
     auto paths = make_paths(app_root, sanitized);
     if (!paths) {
         return paths;
     }
 
-    auto existing = space.read<WidgetTheme, std::string>(paths->value.getPath());
-    if (!existing) {
-        auto const code = existing.error().code;
-        if (code != SP::Error::Code::NoSuchPath && code != SP::Error::Code::NoObjectFound) {
-            return std::unexpected(existing.error());
-        }
-        if (auto status = replace_single<WidgetTheme>(space, paths->value.getPath(), defaults); !status) {
-            return std::unexpected(status.error());
+    if (store_value) {
+        auto existing = space.read<WidgetTheme, std::string>(paths->value.getPath());
+        if (!existing) {
+            auto const code = existing.error().code;
+            if (code != SP::Error::Code::NoSuchPath && code != SP::Error::Code::NoObjectFound) {
+                return std::unexpected(existing.error());
+            }
+            if (auto status = replace_single<WidgetTheme>(space, paths->value.getPath(), defaults); !status) {
+                return std::unexpected(status.error());
+            }
         }
     }
 
@@ -140,8 +156,11 @@ auto Load(PathSpace& space,
     std::unordered_set<std::string> visited;
     visited.reserve(4);
     std::optional<WidgetTheme> resolved;
+    bool resolved_is_real = false;
 
     std::string current = SanitizeName(*initial_theme);
+    WidgetTheme fallback = default_theme_for(current);
+
     for (std::size_t depth = 0; depth < kMaxThemeInheritanceDepth; ++depth) {
         if (!visited.insert(current).second) {
             return std::unexpected(make_error("theme inheritance cycle detected at '" + current + "'",
@@ -152,12 +171,18 @@ auto Load(PathSpace& space,
         auto value_path = theme_root + "/value";
         auto loaded = space.read<WidgetTheme, std::string>(value_path);
         if (loaded) {
-            if (!resolved) {
+            if (!resolved || !resolved_is_real) {
                 resolved = *loaded;
+                resolved_is_real = true;
             }
         } else {
             auto const code = loaded.error().code;
-            if (code != SP::Error::Code::NoSuchPath && code != SP::Error::Code::NoObjectFound) {
+            if (code == SP::Error::Code::NoSuchPath || code == SP::Error::Code::NoObjectFound) {
+                if (!resolved) {
+                    resolved = default_theme_for(current);
+                    resolved_is_real = false;
+                }
+            } else {
                 return std::unexpected(loaded.error());
             }
         }
@@ -170,8 +195,7 @@ auto Load(PathSpace& space,
                 if (resolved) {
                     return *resolved;
                 }
-                return std::unexpected(make_error("theme '" + current + "' missing value and inherits",
-                                                  SP::Error::Code::NoSuchPath));
+                return fallback;
             }
             return std::unexpected(inherits.error());
         }

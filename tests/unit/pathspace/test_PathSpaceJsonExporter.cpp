@@ -2,6 +2,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/tools/PathSpaceJsonConverters.hpp>
 
@@ -16,19 +17,41 @@ auto dump(PathSpace& space, PathSpaceJsonOptions options) -> Json {
     return Json::parse(*result);
 }
 
-auto findNode(Json const& doc, std::string const& path) -> Json {
-    for (auto const& node : doc.at("nodes")) {
-        if (node.at("path") == path) {
-            return node;
-        }
+auto split_path(std::string const& path) -> std::vector<std::string> {
+    std::vector<std::string> parts;
+    std::size_t pos = 0;
+    while (pos < path.size() && path[pos] == '/') {
+        ++pos;
     }
-    FAIL_CHECK("Node " << path << " not found");
-    return Json::object();
+    while (pos < path.size()) {
+        auto next = path.find('/', pos);
+        auto end  = next == std::string::npos ? path.size() : next;
+        parts.emplace_back(path.substr(pos, end - pos));
+        if (next == std::string::npos) {
+            break;
+        }
+        pos = next + 1;
+    }
+    return parts;
+}
+
+auto findNode(Json const& doc, std::string const& rootPath, std::string const& path) -> Json {
+    REQUIRE(doc.contains(rootPath));
+    auto rootParts   = split_path(rootPath);
+    auto targetParts = split_path(path);
+    REQUIRE(targetParts.size() >= rootParts.size());
+    REQUIRE(std::equal(rootParts.begin(), rootParts.end(), targetParts.begin()));
+
+    Json node = doc.at(rootPath);
+    for (std::size_t idx = rootParts.size(); idx < targetParts.size(); ++idx) {
+        node = node.at("children").at(targetParts[idx]);
+    }
+    return node;
 }
 
 } // namespace
 
-TEST_CASE("PathSpace JSON exporter serializes primitive values") {
+TEST_CASE("PathSpace JSON exporter serializes primitive values (minimal)") {
     PathSpace space;
     REQUIRE(space.insert("/alpha/int", 42).nbrValuesInserted == 1);
     REQUIRE(space.insert("/alpha/name", std::string{"Ada"}).nbrValuesInserted == 1);
@@ -37,14 +60,38 @@ TEST_CASE("PathSpace JSON exporter serializes primitive values") {
     options.visit.root = "/alpha";
 
     auto doc      = dump(space, options);
-    auto intNode  = findNode(doc, "/alpha/int");
-    auto nameNode = findNode(doc, "/alpha/name");
+    auto rootNode = findNode(doc, "/alpha", "/alpha");
+    CHECK_FALSE(rootNode.contains("child_count"));
+    CHECK(rootNode.at("children").contains("int"));
+    CHECK(rootNode.at("children").contains("name"));
+
+    auto intNode  = findNode(doc, "/alpha", "/alpha/int");
+    auto nameNode = findNode(doc, "/alpha", "/alpha/name");
 
     REQUIRE(intNode.at("values").size() == 1);
     CHECK(intNode.at("values")[0].at("value") == 42);
 
     REQUIRE(nameNode.at("values").size() == 1);
     CHECK(nameNode.at("values")[0].at("value") == "Ada");
+}
+
+TEST_CASE("PathSpace JSON exporter exposes structure and diagnostics in debug mode") {
+    PathSpace space;
+    REQUIRE(space.insert("/alpha/int", 1).nbrValuesInserted == 1);
+
+    PathSpaceJsonOptions options;
+    options.mode                   = PathSpaceJsonOptions::Mode::Debug;
+    options.includeStructureFields = true;
+    options.visit.root             = "/alpha";
+
+    auto doc      = dump(space, options);
+    auto rootNode = findNode(doc, "/alpha", "/alpha");
+    CHECK(rootNode.at("child_count") == 1);
+    CHECK(rootNode.at("children").contains("int"));
+    auto valueNode = findNode(doc, "/alpha", "/alpha/int");
+    CHECK(valueNode.at("values").size() == 1);
+    CHECK(valueNode.contains("values_truncated"));
+    CHECK(valueNode.contains("values_sampled"));
 }
 
 TEST_CASE("PathSpace JSON exporter enforces queue limits") {
@@ -67,18 +114,22 @@ TEST_CASE("PathSpace JSON exporter enforces queue limits") {
     INFO("queue depth=" << queueDepth);
 
     PathSpaceJsonOptions fullOptions;
+    fullOptions.mode                 = PathSpaceJsonOptions::Mode::Debug;
+    fullOptions.includeStructureFields = true;
     fullOptions.maxQueueEntries = queueDepth == 0 ? 1 : queueDepth;
 
     auto fullDoc   = dump(space, fullOptions);
-    auto fullNode  = findNode(fullDoc, "/queue");
+    auto fullNode  = findNode(fullDoc, "/", "/queue");
     INFO("queue depth=" << queueDepth);
     CHECK(fullNode.at("values").size() == queueDepth);
     CHECK_FALSE(fullNode.at("values_truncated").get<bool>());
 
     PathSpaceJsonOptions truncatedOptions;
+    truncatedOptions.mode                 = PathSpaceJsonOptions::Mode::Debug;
+    truncatedOptions.includeStructureFields = true;
     truncatedOptions.maxQueueEntries = 0;
     auto truncatedDoc   = dump(space, truncatedOptions);
-    auto truncatedNode  = findNode(truncatedDoc, "/queue");
+    auto truncatedNode  = findNode(truncatedDoc, "/", "/queue");
     CHECK(truncatedNode.at("values").empty());
     CHECK(truncatedNode.at("values_truncated").get<bool>() == (queueDepth > 0));
 }
@@ -89,8 +140,10 @@ TEST_CASE("PathSpace JSON exporter adds execution placeholders") {
     REQUIRE(result.errors.empty());
 
     PathSpaceJsonOptions options;
+    options.mode                 = PathSpaceJsonOptions::Mode::Debug;
+    options.includeStructureFields = true;
     auto doc     = dump(space, options);
-    auto jobNode = findNode(doc, "/jobs/task");
+    auto jobNode = findNode(doc, "/", "/jobs/task");
 
     REQUIRE(jobNode.at("values").size() == 1);
     auto entry = jobNode.at("values")[0];
@@ -102,10 +155,12 @@ TEST_CASE("PathSpace JSON exporter honors includeValues toggle") {
     REQUIRE(space.insert("/alpha/value", 9).nbrValuesInserted == 1);
 
     PathSpaceJsonOptions options;
+    options.mode                 = PathSpaceJsonOptions::Mode::Debug;
+    options.includeStructureFields = true;
     options.visit.includeValues = false;
 
     auto doc    = dump(space, options);
-    auto node   = findNode(doc, "/alpha/value");
+    auto node   = findNode(doc, "/", "/alpha/value");
     auto values = node.at("values");
     CHECK(values.empty());
     CHECK_FALSE(node.at("values_truncated").get<bool>());
@@ -119,14 +174,16 @@ TEST_CASE("PathSpace JSON exporter reports unlimited child limit") {
     REQUIRE(space.insert("/root/c", 3).nbrValuesInserted == 1);
 
     PathSpaceJsonOptions options;
+    options.mode                 = PathSpaceJsonOptions::Mode::Debug;
+    options.includeStructureFields = true;
     options.visit.root        = "/root";
     options.visit.maxChildren = VisitOptions::kUnlimitedChildren;
 
     auto doc        = dump(space, options);
-    auto limits     = doc.at("limits");
+    auto limits     = doc.at("_meta").at("limits");
     CHECK(limits.at("max_children") == "unlimited");
 
-    auto rootNode = findNode(doc, "/root");
+    auto rootNode = findNode(doc, "/root", "/root");
     CHECK_FALSE(rootNode.at("children_truncated").get<bool>());
 }
 
@@ -146,12 +203,33 @@ TEST_CASE("PathSpace JSON exporter honors friendly converter aliases") {
     FriendlyStruct payload{.a = 7, .b = 9};
     REQUIRE(space.insert("/custom/value", payload).nbrValuesInserted == 1);
 
-    auto doc    = dump(space, PathSpaceJsonOptions{});
-    auto node   = findNode(doc, "/custom/value");
+    PathSpaceJsonOptions options;
+    options.mode                 = PathSpaceJsonOptions::Mode::Debug;
+    options.includeStructureFields = true;
+    auto doc    = dump(space, options);
+    auto node   = findNode(doc, "/", "/custom/value");
     auto values = node.at("values");
     REQUIRE(values.size() == 1);
     auto entry = values[0];
     CHECK(entry.at("type") == "FriendlyStruct");
     CHECK(entry.at("value").at("a") == 7);
     CHECK(entry.at("value").at("b") == 9);
+}
+
+TEST_CASE("PathSpace JSON exporter metadata is opt-in") {
+    PathSpace space;
+    REQUIRE(space.insert("/meta/value", 7).nbrValuesInserted == 1);
+
+    PathSpaceJsonOptions options;
+    options.visit.root = "/";
+
+    auto minimalDoc = dump(space, options);
+    CHECK_FALSE(minimalDoc.contains("_meta"));
+
+    options.includeMetadata = true;
+    auto metaDoc            = dump(space, options);
+    REQUIRE(metaDoc.contains("_meta"));
+    auto meta = metaDoc.at("_meta");
+    CHECK(meta.at("root") == "/");
+    CHECK(meta.at("flags").at("include_metadata").get<bool>());
 }

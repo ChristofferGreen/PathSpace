@@ -115,6 +115,8 @@ struct ScopedEnv {
     }
 };
 
+static ScopedEnv g_debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
+
 struct RendererFixture {
     PathSpace   space;
     AppRootPath app_root{"/system/applications/test_app"};

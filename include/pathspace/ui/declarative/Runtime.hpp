@@ -184,6 +184,7 @@ struct RunOptions {
     int window_width = 1280;
     int window_height = 720;
     std::string window_title;
+    bool run_once = false;
 };
 
 [[nodiscard]] auto RunUI(PathSpace& space,

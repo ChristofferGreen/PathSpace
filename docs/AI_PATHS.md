@@ -108,7 +108,7 @@ The following subtrees are standardized within each application root (one of the
 | **Application** | `/system/applications/<app>` | `state/title`, `windows/<windowId>`, `scenes/<sceneId>`, `themes/<name>`, `events/lifecycle/handler` | Created by `SP::App::Create`; also seeds renderer + theme defaults referenced by declarative helpers. |
 | **Window** | `<app>/windows/<windowId>` | `state/title`, `state/visible`, `style/theme`, `views/<viewId>/{scene,surface,renderer,present}`, `widgets/<widgetName>`, `events/{close,focus}/handler`, `render/dirty` | `SP::Window::Create` mounts this subtree, registers `/system/widgets/runtime/windows/<token>` subscriptions, and becomes the parent for declarative widget roots. |
 | **Scene** | `<app>/scenes/<sceneId>` | `structure/widgets/<widgetPath>`, `structure/window/<windowId>/{focus,current,metrics/dpi}`, `views/<viewId>/dirty`, `snapshot/<rev>`, `metrics/*`, `events/present/handler`, `state/attached`, `render/dirty` | `SP::Scene::Create` spawns the lifecycle worker and wires the window view bindings; `SceneLifecycle::PumpSceneOnce` lives under this namespace. |
-| **Theme** | `<app>/themes/<name>` | `colors/<token>`, `typography/<token>`, `spacing/<token>`, `style/inherits`, compiled mirror at `config/theme/<name>/value` | Declarative widgets inherit `style/theme` from the widget → parent → window → application (`themes/default`) chain. |
+| **Theme** | `<app>/themes/<name>` | `colors/<token>`, `typography/<token>`, `spacing/<token>`, `style/inherits`, optional compiled mirror at `config/theme/<name>/value` | Declarative widgets inherit `style/theme` from the widget → parent → window → application (`themes/default`) chain. Defaults now omit the compiled mirror; it is written only when callers persist overrides. |
 | **Widget root** | `<app>/windows/<windowId>/widgets/<widgetId>` | `/space/{meta,state,render,focus,events,panels}`, `children/*`, `layout/*`, `ops/{inbox,actions}/queue`, `metrics/*`, `log/events` | All widget metadata/state/render/focus/event bindings now live under `/space`; only structural children remain at `/children`. See `docs/Widget_Schema_Reference.md` for the `/space` contract and handler binding layout. |
 
 Keep this table in sync with `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md` (“Canonical Path Schema”) and `docs/Widget_Schema_Reference.md`. Whenever you add or retire leaves under any of these anchors, update all three references in the same change so authors never have to reconcile conflicting schemas.
@@ -202,10 +202,9 @@ For schema tables, handler metadata, theme resolution rules, and per-widget spec
     - `window` — platform-native window shell
     - `views/<view-id>/`
       - `scene` — app-relative pointer to the bound scene (`scenes/...`)
-      - `surface` — app-relative reference to a surface
-      - `renderer` — app-relative renderer target path (e.g., `renderers/.../targets/surfaces/...`)
-      - `htmlTarget` — app-relative reference to an HTML renderer target
-      - `present` — execution to present the surface to the window
+      - `surface` — app-relative reference to a surface (renderer binding is derived from the surface target)
+      - `htmlTarget` — app-relative reference to an HTML renderer target (only present when attached)
+      - `present` — execution to present the surface to the window (opt-in; absent by default)
       - `present/policy` — optional string selector (`AlwaysFresh`, `PreferLatestCompleteWithBudget`, `AlwaysLatestComplete`)
       - `present/params/` — optional tuning overrides
         - `staleness_budget_ms` — float, default 8.0
@@ -264,12 +263,12 @@ For schema tables, handler metadata, theme resolution rules, and per-widget spec
     - `prefetch/<fingerprint>` — optional hint to warm a backend-specific binary
 - `config/theme/`
     - `active` — string canonical name of the active widget theme
-    - `theme/<name>/value` — stored `WidgetTheme` struct describing colors, typography, and widget styles
+    - `theme/<name>/value` — stored `WidgetTheme` struct describing colors, typography, and widget styles (omitted by default; written when callers persist themes)
     - `theme/<name>/style/inherits` — optional canonical parent name; theme resolver walks up to 16 ancestors, errors on cycles, and treats an empty or missing node as “no parent”
 - `/system/applications/<app>/themes/<name>/`
     - `colors/<token>` — RGBA arrays written by `Theme::SetColor` (`button/background`, `slider/thumb`, `text_field/caret`, `palette/text_on_light`, `palette/text_on_dark`, etc.)
     - `style/inherits` — human-edited inheritance chain mirrored into `config/theme/<name>/style/inherits`
-    - Declarative helpers compile these editable leaves back into `config/theme/<name>/value` so descriptors can hydrate styles without reading user-authored blobs directly.
+    - Declarative helpers compile these editable leaves back into `config/theme/<name>/value` when persistence is requested so descriptors can hydrate styles without reading user-authored blobs directly.
 - `config/renderer/default` — app-relative renderer root (e.g., `renderers/widgets_declarative_renderer`), written by `SP::App::Create`.
 
 - IO logging (app-local)

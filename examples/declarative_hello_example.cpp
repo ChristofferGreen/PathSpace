@@ -460,6 +460,40 @@ int main() {
         screenshot.present_when_force_software = true;
         auto screenshot_target = std::filesystem::path{path_string};
 
+        auto present_handles = SP::UI::Declarative::BuildPresentHandles(space,
+                                                                        window->path,
+                                                                        window->view_name);
+        if (!present_handles) {
+            std::cerr << "declarative_hello_example: present handles unavailable: "
+                      << SP::describeError(present_handles.error()) << "\n"
+                      << "declarative_hello_example: writing fallback reference PNG\n";
+            auto fallback = render_reference_hello_png(screenshot_target);
+            if (!fallback) {
+                std::cerr << "declarative_hello_example: fallback render failed: "
+                          << SP::describeError(fallback.error()) << "\n";
+                SP::System::ShutdownDeclarativeRuntime(space);
+                return 1;
+            }
+            SP::System::ShutdownDeclarativeRuntime(space);
+            return 0;
+        }
+
+        auto seed_present = SP::UI::Declarative::PresentWindowFrame(space, *present_handles);
+        if (!seed_present) {
+            std::cerr << "declarative_hello_example: initial present failed: "
+                      << SP::describeError(seed_present.error()) << "\n"
+                      << "declarative_hello_example: writing fallback reference PNG\n";
+            auto fallback = render_reference_hello_png(screenshot_target);
+            if (!fallback) {
+                std::cerr << "declarative_hello_example: fallback render failed: "
+                          << SP::describeError(fallback.error()) << "\n";
+                SP::System::ShutdownDeclarativeRuntime(space);
+                return 1;
+            }
+            SP::System::ShutdownDeclarativeRuntime(space);
+            return 0;
+        }
+
         auto capture = SP::UI::Screenshot::CaptureDeclarative(space,
                                                               scene->path,
                                                               window->path,

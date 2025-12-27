@@ -61,11 +61,24 @@ struct VisitOptions {
 };
 
 struct PathSpaceJsonOptions {
+    enum class Mode { Minimal, Debug };
+
+    PathSpaceJsonOptions() {
+        // Hierarchical exports default to the local tree; nested spaces opt in.
+        visit.includeNestedSpaces = false;
+        // Keep defaults compact for human-friendly dumps.
+        visit.maxDepth    = 6;
+        visit.maxChildren = 64;
+    }
+
     VisitOptions visit{};
-    std::size_t maxQueueEntries      = 4;
-    bool        includeOpaquePlaceholders = true;
-    bool        includeDiagnostics   = true;
-    int         dumpIndent           = 2;
+    std::size_t  maxQueueEntries           = 2;
+    bool         includeOpaquePlaceholders = false;
+    bool         includeDiagnostics        = false;
+    bool         includeStructureFields    = false;
+    bool         includeMetadata           = false;
+    Mode         mode                      = Mode::Minimal;
+    int          dumpIndent                = 2;
 };
 
 enum class VisitControl { Continue, SkipChildren, Stop };

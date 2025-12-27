@@ -132,7 +132,7 @@ if(PATHSPACE_ENABLE_UI)
       COMMAND ${CMAKE_COMMAND} -E echo "Skipping HTML canvas verification (node not found)")
     set_tests_properties(HtmlCanvasVerify PROPERTIES LABELS html)
     add_test(NAME HtmlAssetInspect
-      COMMAND ${CMAKE_COMMAND} -E echo "Skipping HSAT inspection verification (node not found)")
+  COMMAND ${CMAKE_COMMAND} -E echo "Skipping HSAT inspection verification (node not found)")
     set_tests_properties(HtmlAssetInspect PROPERTIES LABELS html)
   endif()
 endif()
@@ -298,6 +298,20 @@ if(PATHSPACE_ENABLE_UI)
 
   pathspace_add_ui_test("PathSpaceUITests_All" TIMEOUT 0)
   set_tests_properties(PathSpaceUITests_All PROPERTIES LABELS ui)
+
+  add_test(NAME DeclarativeButtonJsonDump
+    COMMAND "${PATHSPACE_TEST_RUNNER}"
+            --label DeclarativeButtonJsonDump
+            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+            --timeout 20
+            --env PATHSPACE_LOG=1
+            --env PATHSPACE_TEST_TIMEOUT=1
+            --env MallocNanoZone=0
+            --
+            python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_declarative_button_dump.py"
+                    --binary "$<TARGET_FILE:declarative_button_example>"
+  )
+  set_tests_properties(DeclarativeButtonJsonDump PROPERTIES LABELS ui)
 
   if(APPLE)
     # PixelNoise perf harness removed until the ServeHtml/example rewrite reinstates it.

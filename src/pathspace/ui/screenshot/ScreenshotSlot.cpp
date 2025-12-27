@@ -288,6 +288,10 @@ auto WaitForScreenshotSlotResult(PathSpace& space,
     while (true) {
         auto now = std::chrono::steady_clock::now();
         if (now >= deadline) {
+            (void)WriteScreenshotSlotTimeout(space,
+                                             paths,
+                                             std::string_view{"unknown"},
+                                             std::string_view{"screenshot request timed out"});
             return std::unexpected(make_error("screenshot request timed out", SP::Error::Code::Timeout));
         }
         auto status_value = space.read<std::string, std::string>(paths.status);

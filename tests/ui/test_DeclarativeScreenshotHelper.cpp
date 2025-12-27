@@ -149,6 +149,17 @@ struct DeclarativeScreenshotHarness {
         auto render_future = SP::UI::Runtime::Surface::RenderOnce(space, surface_path, std::nullopt);
         REQUIRE(render_future);
         CHECK(render_future->ready());
+
+        auto capture_flag_path = std::string(window_path.getPath()) + "/views/" + view_name
+            + "/present/params/capture_framebuffer";
+        auto capture_flag = space.insert(capture_flag_path, true);
+        REQUIRE(capture_flag.errors.empty());
+
+        auto handles = SP::UI::Declarative::BuildPresentHandles(space, window_path, view_name);
+        REQUIRE(handles);
+
+        auto present_frame = SP::UI::Declarative::PresentWindowFrame(space, *handles);
+        REQUIRE(present_frame);
     }
 
     ~DeclarativeScreenshotHarness() { SP::System::ShutdownDeclarativeRuntime(space); }

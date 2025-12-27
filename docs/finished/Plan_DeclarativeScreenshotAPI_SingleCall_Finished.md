@@ -11,7 +11,7 @@ Expose declarative screenshots as a single public call while keeping the slot/to
 ## Work items
 1) API: Add `CaptureDeclarativeSimple` (or similar) in `DeclarativeScreenshot.hpp/.cpp`:
    - Params: `PathSpace&`, `ScenePath`, `WindowPath`, `std::filesystem::path output_png`, optional `width/height`.
-   - Defaults: `capture_mode=next_present`, `require_present=true`, `present_before_capture=true`, `allow_software_fallback=true`, `force_software=false`, token/slot timeouts as today.
+   - Defaults: `capture_mode=next_present`, `require_present=true`, `present_before_capture=false` (reuse cached framebuffer, no implicit present), `allow_software_fallback=true`, `force_software=false`, token/slot timeouts as today.
    - Returns `Expected<ScreenshotResult>`.
 2) Button example: rewrite to call the simple API; drop bespoke CLI flag parsing and manual option setup. Keep `--screenshot` path + `--screenshot_exit`, but route through the one-liner.
 3) Docs: update `WidgetDeclarativeAPI.md` to mention the simple call and clarify that the slot/token path is internal.

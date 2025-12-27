@@ -1,6 +1,7 @@
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
 
 #include <pathspace/ui/runtime/UIRuntime.hpp>
+#include <pathspace/ui/DebugFlags.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 
 #include "SceneSnapshotBuilderDetail.hpp"
@@ -196,6 +197,10 @@ SceneSnapshotBuilder::SceneSnapshotBuilder(PathSpace& space,
     , app_root_(appRoot)
     , scene_path_(std::move(scenePath))
     , policy_(policy) {
+    if (!SP::UI::DebugTreeWritesEnabled()) {
+        policy_.min_revisions = 1;
+        policy_.min_duration = std::chrono::milliseconds{-1};
+    }
 }
 
 auto SceneSnapshotBuilder::publish(SnapshotPublishOptions const& options,
@@ -268,6 +273,9 @@ auto SceneSnapshotBuilder::snapshot_records() -> Expected<std::vector<SnapshotRe
 auto SceneSnapshotBuilder::next_revision(std::optional<std::uint64_t> requested) -> Expected<std::uint64_t> {
     if (requested.has_value()) {
         return *requested;
+    }
+    if (!SP::UI::DebugTreeWritesEnabled()) {
+        return std::uint64_t{1};
     }
     auto current = space_.read<std::uint64_t>(std::string(scene_path_.getPath()) + "/current_revision");
     if (!current) {
@@ -559,23 +567,28 @@ auto SceneSnapshotBuilder::prune_impl(std::vector<SnapshotRecord>& records, Snap
     std::vector<std::uint64_t> retain;
     retain.reserve(records.size());
 
-    std::size_t count = 0;
-    for (auto const& record : records) {
-        bool keep = false;
-        if (record.revision == current) {
-            keep = true;
+    auto debug_tree = SP::UI::DebugTreeWritesEnabled();
+    if (!debug_tree) {
+        retain.push_back(records.front().revision);
+    } else {
+        std::size_t count = 0;
+        for (auto const& record : records) {
+            bool keep = false;
+            if (record.revision == current) {
+                keep = true;
+            }
+            if (count < policy_.min_revisions) {
+                keep = true;
+            }
+            auto age = std::chrono::milliseconds{now_ms - record.created_at_ms};
+            if (age <= policy_.min_duration) {
+                keep = true;
+            }
+            if (keep && std::find(retain.begin(), retain.end(), record.revision) == retain.end()) {
+                retain.push_back(record.revision);
+            }
+            ++count;
         }
-        if (count < policy_.min_revisions) {
-            keep = true;
-        }
-        auto age = std::chrono::milliseconds{now_ms - record.created_at_ms};
-        if (age <= policy_.min_duration) {
-            keep = true;
-        }
-        if (keep && std::find(retain.begin(), retain.end(), record.revision) == retain.end()) {
-            retain.push_back(record.revision);
-        }
-        ++count;
     }
 
     auto should_keep = [retain = std::move(retain)](std::uint64_t revision) {

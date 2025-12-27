@@ -9,6 +9,7 @@
 #include <pathspace/ui/declarative/Reducers.hpp>
 #include <pathspace/ui/declarative/Telemetry.hpp>
 
+#include <pathspace/ui/DebugFlags.hpp>
 #include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
 #include <pathspace/ui/WidgetSharedTypes.hpp>
@@ -68,6 +69,10 @@ constexpr std::string_view kLogErrors = "/system/widgets/runtime/input/log/error
 constexpr std::string_view kWindowMetricsBase = "/system/widgets/runtime/input/windows";
 constexpr std::string_view kAppMetricsBase = "/system/widgets/runtime/input/apps";
 
+auto runtime_metrics_enabled() -> bool {
+    return SP::UI::DebugTreeWritesEnabled();
+}
+
 auto now_ns() -> std::uint64_t;
 
 template <typename T>
@@ -85,6 +90,9 @@ auto ensure_value(PathSpace& space,
 }
 
 auto ensure_runtime_roots(PathSpace& space) -> SP::Expected<void> {
+    if (!runtime_metrics_enabled()) {
+        return {};
+    }
     if (auto status = ensure_value<bool>(space, std::string{kStateRunning}, false); !status) {
         return status;
     }
@@ -122,6 +130,9 @@ auto ensure_runtime_roots(PathSpace& space) -> SP::Expected<void> {
 }
 
 auto enqueue_error(PathSpace& space, std::string message) -> void {
+    if (!runtime_metrics_enabled()) {
+        return;
+    }
     auto inserted = space.insert(std::string{kLogErrors}, std::move(message));
     (void)inserted;
 }
@@ -158,6 +169,9 @@ auto make_window_widgets_root(std::string const& window_path, std::string_view v
 auto ensure_metric_counter(PathSpace& space,
                            std::string const& path,
                            std::uint64_t delta) -> void {
+    if (!runtime_metrics_enabled()) {
+        return;
+    }
     auto current = space.read<std::uint64_t, std::string>(path);
     std::uint64_t value = 0;
     if (current) {
@@ -170,6 +184,9 @@ auto ensure_metric_counter(PathSpace& space,
 auto ensure_metric_flag(PathSpace& space,
                         std::string const& path,
                         std::uint64_t value) -> void {
+    if (!runtime_metrics_enabled()) {
+        return;
+    }
     (void)replace_single<std::uint64_t>(space, path, value);
 }
 
@@ -191,6 +208,9 @@ void publish_manual_metrics(PathSpace& space,
                             std::string const& window_token,
                             std::string const& app_component,
                             PumpStats const& stats) {
+    if (!runtime_metrics_enabled()) {
+        return;
+    }
     auto window_base = std::string(kWindowMetricsBase) + "/" + window_token + "/metrics";
     auto app_base = std::string(kAppMetricsBase) + "/" + app_component + "/metrics";
 
@@ -238,6 +258,9 @@ enum class HandlerMetricKind {
 auto record_handler_metric(WidgetMetricsMap& metrics,
                            std::string const& widget_path,
                            HandlerMetricKind kind) -> void {
+    if (!runtime_metrics_enabled()) {
+        return;
+    }
     if (widget_path.empty()) {
         return;
     }
@@ -351,6 +374,9 @@ auto format_event_error(WidgetReducers::WidgetAction const& action,
 }
 
 auto flag_missing_mailbox(PathSpace& space, std::string const& widget_path) -> void {
+    if (!runtime_metrics_enabled()) {
+        return;
+    }
     auto flag_path = WidgetSpacePath(widget_path, "/metrics/mailbox_missing");
     auto existing = space.read<bool, std::string>(flag_path);
     if (existing && *existing) {
@@ -894,12 +920,16 @@ public:
         if (worker_.joinable()) {
             worker_.join();
         }
-        (void)replace_single<bool>(space_, std::string{kStateRunning}, false);
+        if (runtime_metrics_enabled()) {
+            (void)replace_single<bool>(space_, std::string{kStateRunning}, false);
+        }
     }
 
 private:
     void run() {
-        (void)replace_single<bool>(space_, std::string{kStateRunning}, true);
+        if (runtime_metrics_enabled()) {
+            (void)replace_single<bool>(space_, std::string{kStateRunning}, true);
+        }
         auto sleep_interval = options_.poll_interval.count() <= 0
             ? std::chrono::milliseconds{1}
             : options_.poll_interval;

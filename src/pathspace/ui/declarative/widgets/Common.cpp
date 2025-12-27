@@ -6,6 +6,7 @@
 #include <pathspace/ui/declarative/WidgetPrimitives.hpp>
 #include <pathspace/ui/declarative/WidgetEventCommon.hpp>
 #include <pathspace/ui/runtime/UIRuntime.hpp>
+#include <pathspace/ui/DebugFlags.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -25,6 +26,10 @@ using SP::UI::Runtime::Widgets::WidgetSpaceRoot;
 namespace Primitives = SP::UI::Declarative::Primitives;
 
 namespace {
+
+auto debug_tree_enabled() -> bool {
+    return SP::UI::DebugTreeWritesEnabled();
+}
 
 class CallbackRegistry {
 public:
@@ -2208,6 +2213,9 @@ auto update_input_capsule_state(PathSpace& space,
 void record_capsule_render_invocation(PathSpace& space,
                                       std::string const& widget_root,
                                       WidgetKind kind) {
+    if (!debug_tree_enabled()) {
+        return;
+    }
     auto meta_kind = space.read<std::string, std::string>(WidgetSpacePath(widget_root, "/meta/kind"));
     if (!meta_kind
         || (*meta_kind != "button" && *meta_kind != "label" && *meta_kind != "toggle"
@@ -2236,6 +2244,9 @@ void record_capsule_mailbox_event(PathSpace& space,
                                   std::string_view target_id,
                                   std::uint64_t dispatch_ns,
                                   std::uint64_t sequence) {
+    if (!debug_tree_enabled()) {
+        return;
+    }
     auto op_name = op_kind_name(op_kind);
     auto events_root = WidgetSpacePath(widget_root, "/capsule/mailbox/metrics");
     bump_counter(space, events_root + "/events_total");
@@ -2285,6 +2296,9 @@ void record_capsule_mailbox_event(PathSpace& space,
 }
 
 void record_capsule_mailbox_failure(PathSpace& space, std::string const& widget_root) {
+    if (!debug_tree_enabled()) {
+        return;
+    }
     auto metrics_root = WidgetSpacePath(widget_root, "/capsule/mailbox/metrics");
     bump_counter(space, metrics_root + "/dispatch_failures_total");
     auto timestamp = DeclarativeDetail::to_epoch_ns(std::chrono::system_clock::now());

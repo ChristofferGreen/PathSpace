@@ -76,9 +76,7 @@ auto AttachSurface(PathSpace& space,
     if (auto status = replace_single<std::string>(space, viewBase + "/surface", *surfaceRelative); !status) {
         return status;
     }
-    if (auto status = replace_single<std::string>(space, viewBase + "/htmlTarget", std::string{}); !status) {
-        return status;
-    }
+    (void)drain_queue<std::string>(space, viewBase + "/htmlTarget");
     (void)drain_queue<std::string>(space, viewBase + "/windowTarget");
     return {};
 }
@@ -120,9 +118,7 @@ auto AttachHtmlTarget(PathSpace& space,
     if (auto status = replace_single<std::string>(space, viewBase + "/htmlTarget", *targetRelative); !status) {
         return status;
     }
-    if (auto status = replace_single<std::string>(space, viewBase + "/surface", std::string{}); !status) {
-        return status;
-    }
+    (void)drain_queue<std::string>(space, viewBase + "/surface");
     (void)drain_queue<std::string>(space, viewBase + "/windowTarget");
     return {};
 }

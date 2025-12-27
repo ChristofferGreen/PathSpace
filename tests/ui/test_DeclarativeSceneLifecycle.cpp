@@ -69,6 +69,7 @@ private:
 
 TEST_CASE("Scene lifecycle exposes dirty event queues") {
     PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
@@ -122,6 +123,7 @@ TEST_CASE("Scene lifecycle exposes dirty event queues") {
 
 TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
     PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
     launch_options.start_io_pump = false;
@@ -214,6 +216,7 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
 
 TEST_CASE("Scene lifecycle manual pump synthesizes widget buckets") {
     PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
     launch_options.start_io_pump = false;
@@ -255,6 +258,7 @@ TEST_CASE("Scene lifecycle manual pump synthesizes widget buckets") {
 
 TEST_CASE("Capsule render metrics track manual pump") {
     PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
@@ -307,6 +311,7 @@ TEST_CASE("Capsule render metrics track manual pump") {
 TEST_CASE("Capsule walker publishes render packages") {
     EnvGuard capsules_flag{"PATHSPACE_WIDGET_CAPSULES", "1"};
     PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
@@ -363,6 +368,7 @@ TEST_CASE("Capsule walker publishes render packages") {
 
 TEST_CASE("Scene lifecycle force publish reports missing worker") {
     PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;
@@ -390,6 +396,7 @@ TEST_CASE("Scene lifecycle force publish reports missing worker") {
 
 TEST_CASE("Focus and theme changes invalidate declarative widgets") {
     PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
 
     SP::System::LaunchOptions launch_options{};
     launch_options.start_input_runtime = false;

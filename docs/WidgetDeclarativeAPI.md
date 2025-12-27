@@ -92,16 +92,15 @@ plus tests in sync. Read it before touching declarative UI code or examples.
 ### Declarative Screenshot Helper
 
 Use `SP::UI::Screenshot::CaptureDeclarativeSimple(space, scene, window, output_png [,width,height])`
-for the common path. The wrapper keeps the slot/token protocol internal while
-pinning the defaults to the one-present happy path: `capture_mode=next_present`,
-`require_present=true`, `present_before_capture=true`, and
-`allow_software_fallback=true` (software is not forced). Width/height are
-optional; when omitted the helper reads the surface descriptor to size the
-capture.
+for the common path. The helper is fire-and-forget: it acquires the slot token,
+arms `capture_mode=next_present` with `require_present=true` and
+`allow_software_fallback=true`, enables framebuffer capture, and returns `void`.
+Callers must drive at least one frame (e.g., `SP::App::RunUI(..., {.run_once =
+true})`) to let the presenter hook write `status`/`artifact`/`error` lanes. Use
+`CaptureDeclarative` when you need synchronous results or explicit presents.
 
-`SP::UI::Screenshot::CaptureDeclarative` now drives a tokenized screenshot slot
-per window/view instead of calling `ScreenshotService::Capture` directly. The
-protocol lives at `ui/screenshot/<window>/<view>`:
+`CaptureDeclarative` still drives a tokenized screenshot slot per window/view.
+The protocol lives at `ui/screenshot/<window>/<view>`:
 
 - `token` (bool) is taken before writing a request and released automatically.
 - Request lanes: `output_png`, optional `baseline_png`/`diff_png`/`metrics_json`,
@@ -111,25 +110,39 @@ protocol lives at `ui/screenshot/<window>/<view>`:
   `verify_output_matches_framebuffer`, `verify_max_mean_error`, `max_mean_error`,
   and `armed` (set last).
 - Result lanes: `status` (`captured`/`match`/`error`/`timeout`), `artifact`,
-  optional `mean_error`, `backend`, `completed_at_ns`, and `error`.
+  optional `mean_error`, `backend`, `completed_at_ns`, and `error`. Timeouts can
+  be recorded by waiting on the slot (`WaitForScreenshotSlotResult`) even when
+  no presents run.
 
-Flow: the caller acquires `token`, writes request lanes, sets `armed=true`, then
-runs `PresentWindowFrame` once (default) so the presenter sees the armed slot.
-`PresentWindowFrame` captures the current framebuffer via
-`ScreenshotService::Capture` using the supplied lanes plus ephemeral metadata
-(baseline tags, postprocess hooks, verification tolerances). It writes result
-lanes and clears `armed`; the token releases on scope exit.
+Flow: the caller acquires `token`, writes request lanes, and sets `armed=true`.
+The presenter hook consumes armed requests on the next `PresentWindowFrame`,
+runs `ScreenshotService::Capture`, and clears `armed` while updating result
+lanes. `ScreenshotService::Capture` consumes the supplied lanes plus ephemeral
+metadata (baseline tags, postprocess hooks, verification tolerances); results
+clear `armed` and the token re-inserts on scope exit.
 
 `DeclarativeScreenshotOptions` gained `capture_mode`, optional
 `capture_frame_index`/`capture_deadline`, and per-request `slot_timeout` /
 `token_timeout`. The defaults preserve the existing behaviour: `next_present`
-with one present, framebuffer capture enabled, and software fallback allowed
-when requested.
+with framebuffer reuse, capture enabled, and software fallback allowed when
+requested. Set `present_before_capture=true` when you need a fresh present.
 
-The button sample (`examples/declarative_button_example.cpp`) now exercises the
-one-liner. It parses `--screenshot <png>` and routes the call through
-`CaptureDeclarativeSimple`, exiting early when `--screenshot_exit` is present.
-The slot/token machinery remains internal to the helper.
+The button sample (`examples/declarative_button_example.cpp`) now schedules the
+screenshot in one line and then calls `RunUI`. When `--screenshot_exit` is
+present it sets `RunOptions::run_once = true` so the loop renders a single frame
+to satisfy the armed slot before exiting. The slot/token machinery remains
+internal to the helper.
+
+For JSON snapshots, `./build/declarative_button_example --dump_json` now takes a
+single present (to materialize drawables), shuts down the declarative runtimes,
+and exports the full app tree with no exporter-side filters: values on,
+`include_nested_spaces=false`, diagnostics/structure/opaque placeholders off,
+`max_depth=10` so widget labels stay visible, and metadata omitted (`_meta` is
+opt-in). The resulting dump stays small because the runtime no longer writes
+renderer/presenter/trellis noise by default.
+Pass `--dump_json_debug` to re-enable structure flags, diagnostics, opaque
+placeholders, and metadata for deeper inspection. Any setup or present failure
+logs a clear error and exits non-zero before exporting.
 
 CLI helpers continue to live in
 `<pathspace/ui/screenshot/DeclarativeScreenshotCli.hpp>`; they now exercise the

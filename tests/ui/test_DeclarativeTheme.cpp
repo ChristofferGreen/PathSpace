@@ -71,8 +71,7 @@ auto LoadCompiledTheme(SP::PathSpace& space, SP::App::AppRootPathView app_root)
     auto sanitized = ThemeConfig::SanitizeName(name);
     auto resolved = ThemeConfig::Resolve(app_root, sanitized);
     REQUIRE(resolved.has_value());
-    auto compiled =
-        space.read<BuilderWidgets::WidgetTheme, std::string>(resolved->value.getPath());
+    auto compiled = ThemeConfig::Load(space, *resolved);
     REQUIRE(compiled.has_value());
     return *compiled;
 }

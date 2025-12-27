@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -117,6 +118,7 @@ struct ExportStats {
     std::size_t valuesExported        = 0;
     std::size_t childrenTruncated     = 0;
     std::size_t valuesTruncated       = 0;
+    std::size_t depthLimited          = 0;
 };
 
 auto visitLimit(std::size_t limit) -> Json {
@@ -205,31 +207,71 @@ auto buildValueEntry(ElementType const* element,
     return value;
 }
 
+struct TreeNode {
+    Json data = Json::object();
+    std::map<std::string, std::unique_ptr<TreeNode>> children;
+};
+
+auto splitComponents(std::string const& path) -> Expected<std::vector<std::string>> {
+    ConcretePathStringView view{path};
+    auto                   components = view.components();
+    if (!components) {
+        return std::unexpected(components.error());
+    }
+    return components.value();
+}
+
+auto ensureTreeNode(TreeNode& root,
+                    std::vector<std::string> const& rootComponents,
+                    std::vector<std::string> const& pathComponents) -> Expected<TreeNode*> {
+    if (pathComponents.size() < rootComponents.size()) {
+        return std::unexpected(Error{Error::Code::InvalidPath, "entry path outside export root"});
+    }
+    for (std::size_t idx = 0; idx < rootComponents.size(); ++idx) {
+        if (pathComponents[idx] != rootComponents[idx]) {
+            return std::unexpected(Error{Error::Code::InvalidPath, "entry path outside export root"});
+        }
+    }
+
+    TreeNode* current = &root;
+    for (std::size_t idx = rootComponents.size(); idx < pathComponents.size(); ++idx) {
+        auto const& name = pathComponents[idx];
+        auto        it   = current->children.find(name);
+        if (it == current->children.end()) {
+            it = current->children.emplace(name, std::make_unique<TreeNode>()).first;
+        }
+        current = it->second.get();
+    }
+    return current;
+}
+
 auto buildNode(PathEntry const& entry,
                ValueHandle&        handle,
+               std::size_t         relativeDepth,
                PathSpaceJsonOptions const& options,
                ExportStats&               stats) -> Json {
     Json node = Json::object();
-    node["path"]             = entry.path;
-    node["has_value"]        = entry.hasValue;
-    node["has_children"]     = entry.hasChildren;
-    node["has_nested_space"] = entry.hasNestedSpace;
-    node["child_count"]      = entry.approxChildCount;
-    node["front_category"]   = dataCategoryToString(entry.frontCategory);
-    bool childrenTruncated    = entry.hasChildren && options.visit.childLimitEnabled()
-                             && entry.approxChildCount > options.visit.maxChildren;
-    node["children_truncated"] = childrenTruncated;
+    bool includeStructure = options.includeStructureFields || options.includeDiagnostics;
+    bool childLimitHit = entry.hasChildren && options.visit.childLimitEnabled()
+                      && entry.approxChildCount > options.visit.maxChildren;
+    bool depthLimited  = entry.hasChildren
+                      && options.visit.maxDepth != VisitOptions::kUnlimitedDepth
+                      && relativeDepth == options.visit.maxDepth;
+    bool childrenTruncated = childLimitHit || depthLimited;
     if (childrenTruncated) {
         ++stats.childrenTruncated;
     }
+    if (depthLimited) {
+        ++stats.depthLimited;
+    }
 
-    node["values_sampled"] = options.visit.includeValues;
-    node["values"]         = Json::array();
-    node["values_truncated"] = false;
+    node["values"] = Json::array();
 
     auto snapshot = handle.snapshot();
     if (!snapshot) {
-        node["value_error"] = describeError(snapshot.error());
+        if (includeStructure) {
+            node["value_error"] = describeError(snapshot.error());
+        }
         return node;
     }
 
@@ -238,36 +280,65 @@ auto buildNode(PathEntry const& entry,
     auto reader = makeReader(handle);
     auto readerQueueSize = reader ? reader->queueTypes().size() : static_cast<std::size_t>(snapshot->queueDepth);
 
-    if (!entry.hasValue || !options.visit.includeValues || options.maxQueueEntries == 0) {
-        bool truncated = entry.hasValue && options.visit.includeValues && readerQueueSize > 0
-                         && options.maxQueueEntries == 0;
-        node["values_truncated"] = truncated;
+    if (!options.visit.includeValues || options.maxQueueEntries == 0) {
+        bool truncated = entry.hasValue && readerQueueSize > 0 && options.maxQueueEntries == 0;
         if (truncated) {
             ++stats.valuesTruncated;
         }
-        return node;
-    }
-
-    auto limit = std::min(readerQueueSize, options.maxQueueEntries);
-    bool valuesTruncated = readerQueueSize > limit;
-    node["values_truncated"] = valuesTruncated;
-    if (valuesTruncated) {
-        ++stats.valuesTruncated;
-    }
-
-    for (std::size_t idx = 0; idx < limit; ++idx) {
-        ElementType const* element = nullptr;
-        if (reader && idx < reader->queueTypes().size()) {
-            element = &reader->queueTypes()[idx];
-        } else if (idx < snapshot->types.size()) {
-            element = &snapshot->types[idx];
+        if (includeStructure) {
+            node["values_truncated"] = truncated;
+            node["values_sampled"]   = options.visit.includeValues;
+        }
+    } else if (entry.hasValue) {
+        auto limit = std::min(readerQueueSize, options.maxQueueEntries);
+        bool valuesTruncated = readerQueueSize > limit;
+        if (valuesTruncated) {
+            ++stats.valuesTruncated;
+        }
+        if (includeStructure) {
+            node["values_truncated"] = valuesTruncated;
+            node["values_sampled"]   = options.visit.includeValues;
         }
 
-        auto valueEntry = buildValueEntry(element, idx, reader.get(), options, stats);
-        node["values"].push_back(std::move(valueEntry));
+        for (std::size_t idx = 0; idx < limit; ++idx) {
+            ElementType const* element = nullptr;
+            if (reader && idx < reader->queueTypes().size()) {
+                element = &reader->queueTypes()[idx];
+            } else if (idx < snapshot->types.size()) {
+                element = &snapshot->types[idx];
+            }
+
+            auto valueEntry = buildValueEntry(element, idx, reader.get(), options, stats);
+            node["values"].push_back(std::move(valueEntry));
+        }
+    } else {
+        if (includeStructure) {
+            node["values_truncated"] = false;
+            node["values_sampled"]   = options.visit.includeValues;
+        }
+    }
+
+    if (includeStructure) {
+        node["has_value"]        = entry.hasValue;
+        node["has_children"]     = entry.hasChildren;
+        node["has_nested_space"] = entry.hasNestedSpace;
+        node["child_count"]      = entry.approxChildCount;
+        node["category"]         = dataCategoryToString(entry.frontCategory);
+        node["children_truncated"] = childrenTruncated;
+        node["depth_truncated"]    = depthLimited;
     }
 
     return node;
+}
+
+auto emitTree(TreeNode const& node) -> Json {
+    Json out = node.data.is_object() ? node.data : Json::object();
+    Json children = Json::object();
+    for (auto const& [name, child] : node.children) {
+        children[name] = emitTree(*child);
+    }
+    out["children"] = std::move(children);
+    return out;
 }
 
 } // namespace
@@ -310,49 +381,94 @@ auto PathSpaceJsonExporter::Export(PathSpaceBase& space, PathSpaceJsonOptions co
     -> Expected<std::string> {
     registerDefaultConverters();
 
-    Json nodes = Json::array();
+    PathSpaceJsonOptions opts = options;
+    if (opts.mode == PathSpaceJsonOptions::Mode::Debug) {
+        opts.includeDiagnostics        = true;
+        opts.includeOpaquePlaceholders = true;
+        opts.includeStructureFields    = true;
+        opts.includeMetadata           = true;
+    } else {
+        opts.includeDiagnostics        = false;
+        opts.includeOpaquePlaceholders = false;
+        opts.mode                      = PathSpaceJsonOptions::Mode::Minimal;
+    }
+
+    auto rootComponents = splitComponents(opts.visit.root);
+    if (!rootComponents) {
+        return std::unexpected(rootComponents.error());
+    }
+
+    TreeNode    rootNode;
     ExportStats stats{};
+    std::optional<Error> visitError;
 
     auto visitResult = space.visit(
         [&](PathEntry const& entry, ValueHandle& handle) {
-            auto node = buildNode(entry, handle, options, stats);
-            nodes.push_back(std::move(node));
+            auto entryComponents = splitComponents(entry.path);
+            if (!entryComponents) {
+                visitError = entryComponents.error();
+                return VisitControl::Stop;
+            }
+
+            auto nodePtr = ensureTreeNode(rootNode, *rootComponents, *entryComponents);
+            if (!nodePtr) {
+                visitError = nodePtr.error();
+                return VisitControl::Stop;
+            }
+
+            auto relativeDepth = entryComponents->size() >= rootComponents->size()
+                                      ? entryComponents->size() - rootComponents->size()
+                                      : 0;
+            nodePtr.value()->data = buildNode(entry, handle, relativeDepth, opts, stats);
             ++stats.nodeCount;
             return VisitControl::Continue;
         },
-        options.visit);
+        opts.visit);
 
     if (!visitResult) {
         return std::unexpected(visitResult.error());
     }
+    if (visitError) {
+        return std::unexpected(*visitError);
+    }
 
     Json limits = Json::object();
-    limits["max_depth"]        = visitLimit(options.visit.maxDepth);
-    limits["max_children"]     = VisitOptions::isUnlimitedChildren(options.visit.maxChildren)
-                                      ? Json("unlimited")
-                                      : Json(options.visit.maxChildren);
-    limits["max_queue_entries"] = options.maxQueueEntries;
+    limits["max_depth"]         = visitLimit(opts.visit.maxDepth);
+    limits["max_children"]      = VisitOptions::isUnlimitedChildren(opts.visit.maxChildren)
+                                       ? Json("unlimited")
+                                       : Json(opts.visit.maxChildren);
+    limits["max_queue_entries"] = opts.maxQueueEntries;
 
     Json flags = Json::object();
-    flags["include_nested_spaces"]     = options.visit.includeNestedSpaces;
-    flags["include_values"]            = options.visit.includeValues;
-    flags["include_opaque_placeholders"] = options.includeOpaquePlaceholders;
-    flags["include_diagnostics"]       = options.includeDiagnostics;
+    flags["include_nested_spaces"]       = opts.visit.includeNestedSpaces;
+    flags["include_values"]              = opts.visit.includeValues;
+    flags["include_opaque_placeholders"] = opts.includeOpaquePlaceholders;
+    flags["include_diagnostics"]         = opts.includeDiagnostics;
+    flags["include_structure_fields"]    = opts.includeStructureFields;
+    flags["include_metadata"]            = opts.includeMetadata;
+    std::string modeLabel = opts.mode == PathSpaceJsonOptions::Mode::Debug ? "debug" : "minimal";
+    flags["mode"] = std::move(modeLabel);
 
     Json statsJson = Json::object();
-    statsJson["node_count"]        = stats.nodeCount;
-    statsJson["value_entries"]     = stats.valuesExported;
+    statsJson["node_count"]         = stats.nodeCount;
+    statsJson["value_entries"]      = stats.valuesExported;
     statsJson["children_truncated"] = stats.childrenTruncated;
+    statsJson["depth_truncated"]    = stats.depthLimited;
     statsJson["values_truncated"]   = stats.valuesTruncated;
 
     Json root = Json::object();
-    root["root"]   = options.visit.root;
-    root["nodes"]  = std::move(nodes);
-    root["limits"] = std::move(limits);
-    root["flags"]  = std::move(flags);
-    root["stats"]  = std::move(statsJson);
+    if (opts.includeMetadata) {
+        Json meta = Json::object();
+        meta["schema"] = "hierarchical";
+        meta["root"]   = opts.visit.root;
+        meta["limits"] = std::move(limits);
+        meta["flags"]  = std::move(flags);
+        meta["stats"]  = std::move(statsJson);
+        root["_meta"]  = std::move(meta);
+    }
+    root[opts.visit.root] = emitTree(rootNode);
 
-    auto indent = options.dumpIndent;
+    auto indent = opts.dumpIndent;
     if (indent < 0) {
         return root.dump();
     }

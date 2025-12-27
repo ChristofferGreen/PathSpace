@@ -318,21 +318,30 @@ inline auto force_window_software_renderer(SP::PathSpace& space,
                                            SP::UI::WindowPath const& window,
                                            std::string const& view_name) -> SP::Expected<void> {
     auto view_base = std::string(window.getPath()) + "/views/" + view_name;
-    auto renderer_rel = space.read<std::string, std::string>(view_base + "/renderer");
-    if (!renderer_rel) {
-        return std::unexpected(renderer_rel.error());
+    auto surface_rel = space.read<std::string, std::string>(view_base + "/surface");
+    if (!surface_rel) {
+        return std::unexpected(surface_rel.error());
     }
-    if (renderer_rel->empty()) {
+    if (surface_rel->empty()) {
         return {};
     }
     auto app_root = app_root_from_window(window);
     if (app_root.empty()) {
         return std::unexpected(SP::Error{SP::Error::Code::InvalidPath, "window missing app root"});
     }
-    std::string renderer_abs = app_root;
-    renderer_abs.push_back('/');
-    renderer_abs.append(*renderer_rel);
-    auto renderer_view = SP::ConcretePathStringView{renderer_abs};
+    auto surface_abs = SP::App::resolve_app_relative(SP::App::AppRootPathView{app_root}, *surface_rel);
+    if (!surface_abs) {
+        return std::unexpected(surface_abs.error());
+    }
+    auto target_rel = space.read<std::string, std::string>(std::string(surface_abs->getPath()) + "/target");
+    if (!target_rel) {
+        return std::unexpected(target_rel.error());
+    }
+    auto target_abs = SP::App::resolve_app_relative(SP::App::AppRootPathView{app_root}, *target_rel);
+    if (!target_abs) {
+        return std::unexpected(target_abs.error());
+    }
+    auto renderer_view = SP::ConcretePathStringView{target_abs->getPath()};
     auto settings = SP::UI::Runtime::Renderer::ReadSettings(space, renderer_view);
     if (!settings) {
         return std::unexpected(settings.error());

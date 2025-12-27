@@ -1,6 +1,7 @@
 # Handoff Notice
 
 > **Drafted:** November 30, 2025 — plan for exposing a public PathSpace visitor API and JSON exporter.
+> **Update (December 27, 2025):** Flat `"nodes"` output has been replaced by the hierarchical `_meta` + root-path tree described in `docs/Plan_PathSpaceJsonHierarchy.md`. Use that plan/doc for the current schema and defaults.
 
 # Plan: PathSpace JSON Export & Visitor API
 

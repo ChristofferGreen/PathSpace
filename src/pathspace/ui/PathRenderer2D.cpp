@@ -3,6 +3,7 @@
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/PipelineFlags.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/DebugFlags.hpp>
 #include <pathspace/ui/PathSurfaceMetal.hpp>
 #include "PathRenderer2DInternal.hpp"
 #include "PathRenderer2DDetail.hpp"
@@ -1453,6 +1454,8 @@ auto const encode_srgb = needs_srgb_encode(desc);
     }
 #endif
 
+    bool debug_tree_writes = SP::UI::DebugTreeWritesEnabled();
+
     auto metricsBase = std::string(params.target_path.getPath()) + "/output/v1/common";
     auto diagnosticsBase = std::string(params.target_path.getPath()) + "/diagnostics/metrics/render";
     std::uint64_t font_registered_fonts = 0;
@@ -1490,6 +1493,9 @@ auto const encode_srgb = needs_srgb_encode(desc);
         read_font_metric("/shapedRunApproxBytes", font_shaped_run_approx_bytes);
     }
     auto write_metrics_to_base = [&](std::string const& base, bool clear_target_error) -> SP::Expected<void> {
+        if (!debug_tree_writes) {
+            return {};
+        }
         if (auto status = replace_single<std::uint64_t>(space_, base + "/frameIndex", params.settings.time.frame_index); !status) {
             if (clear_target_error) {
                 (void)set_last_error(space_, params.target_path, "failed to store frame index");
@@ -1591,14 +1597,16 @@ auto const encode_srgb = needs_srgb_encode(desc);
         return {};
     };
 
-    if (auto status = write_metrics_to_base(metricsBase, true); !status) {
-        return std::unexpected(status.error());
-    }
-    if (auto status = write_metrics_to_base(diagnosticsBase, false); !status) {
-        return std::unexpected(status.error());
+    if (debug_tree_writes) {
+        if (auto status = write_metrics_to_base(metricsBase, true); !status) {
+            return std::unexpected(status.error());
+        }
+        if (auto status = write_metrics_to_base(diagnosticsBase, false); !status) {
+            return std::unexpected(status.error());
+        }
     }
 
-    if (font_diagnostics_file()) {
+    if (debug_tree_writes && font_diagnostics_file()) {
         FontDiagnosticsRecord font_diag{};
         font_diag.target_path = params.target_path.getPath();
         font_diag.frame_index = params.settings.time.frame_index;
@@ -1681,9 +1689,11 @@ auto const encode_srgb = needs_srgb_encode(desc);
     state.last_approx_area_opaque = approx_area_opaque;
     state.last_approx_area_alpha = approx_area_alpha;
 
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/resourceCpuBytes", stats.resource_cpu_bytes);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/resourceGpuBytes", stats.resource_gpu_bytes);
-    (void)replace_single<std::uint64_t>(space_, metricsBase + "/textureGpuBytes", reported_texture_bytes);
+    if (debug_tree_writes) {
+        (void)replace_single<std::uint64_t>(space_, metricsBase + "/resourceCpuBytes", stats.resource_cpu_bytes);
+        (void)replace_single<std::uint64_t>(space_, metricsBase + "/resourceGpuBytes", stats.resource_gpu_bytes);
+        (void)replace_single<std::uint64_t>(space_, metricsBase + "/textureGpuBytes", reported_texture_bytes);
+    }
 
     return stats;
 }

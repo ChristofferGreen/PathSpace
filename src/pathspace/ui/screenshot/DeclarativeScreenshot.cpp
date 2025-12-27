@@ -118,6 +118,45 @@ auto read_presented_framebuffer(SP::PathSpace& space,
     return copy_software_framebuffer(*framebuffer, width, height);
 }
 
+struct CachedFramebuffer {
+    std::vector<std::uint8_t> pixels;
+    std::string backend_kind = "software2d";
+    bool hardware_capture = false;
+};
+
+auto read_cached_framebuffer(SP::PathSpace& space,
+                             SP::UI::Declarative::PresentHandles const& handles,
+                             int width,
+                             int height) -> SP::Expected<std::optional<CachedFramebuffer>> {
+    auto framebuffer = read_presented_framebuffer(space, handles, width, height);
+    if (!framebuffer) {
+        auto const& error = framebuffer.error();
+        if (error.code == SP::Error::Code::NoSuchPath || error.code == SP::Error::Code::NoObjectFound) {
+            return std::optional<CachedFramebuffer>{};
+        }
+        return std::unexpected(error);
+    }
+
+    CachedFramebuffer cached{};
+    cached.pixels = std::move(*framebuffer);
+
+    auto metrics = SP::UI::Runtime::Diagnostics::ReadTargetMetrics(space,
+                                                                   SP::App::ConcretePathView{handles.target.getPath()});
+    if (metrics) {
+        if (!metrics->backend_kind.empty()) {
+            cached.backend_kind = metrics->backend_kind;
+        }
+        cached.hardware_capture = cached.backend_kind != "software2d";
+    } else {
+        auto const code = metrics.error().code;
+        if (code != SP::Error::Code::NoSuchPath && code != SP::Error::Code::NoObjectFound) {
+            return std::unexpected(metrics.error());
+        }
+    }
+
+    return cached;
+}
+
 auto build_present_handles_for_window(SP::PathSpace& space,
                                       SP::UI::WindowPath const& window,
                                       std::string const& view_name)
@@ -274,6 +313,24 @@ auto ensure_capture_runtimes(SP::PathSpace& space) -> SP::Expected<void> {
         return std::unexpected(started.error());
     }
     return {};
+}
+
+void write_slot_error(SP::PathSpace& space,
+                      SP::UI::Screenshot::ScreenshotSlotPaths const& slot_paths,
+                      std::string const& message) {
+    SP::UI::Screenshot::ScreenshotResult empty{};
+    empty.artifact = std::filesystem::path{};
+    auto write = SP::UI::Screenshot::WriteScreenshotSlotResult(space,
+                                                               slot_paths,
+                                                               empty,
+                                                               "error",
+                                                               "unknown",
+                                                               message);
+    (void)write;
+    if (screenshot_trace_enabled()) {
+        auto traced = std::string{"CaptureDeclarativeSimple error: "} + message;
+        screenshot_trace(traced.c_str());
+    }
 }
 
 } // namespace
@@ -477,6 +534,104 @@ auto CaptureDeclarative(SP::PathSpace& space,
         return std::unexpected(handles.error());
     }
 
+    std::optional<CachedFramebuffer> cached_framebuffer;
+    if (!options.present_before_capture) {
+        auto cached = read_cached_framebuffer(space, *handles, width, height);
+        if (!cached) {
+            return std::unexpected(cached.error());
+        }
+        cached_framebuffer = std::move(*cached);
+        if (!cached_framebuffer) {
+            auto message = std::string{"no framebuffer available for screenshot"};
+            ScreenshotResult empty{};
+            empty.artifact = *options.output_png;
+            auto backend_kind = std::string{"unknown"};
+            if (auto metrics = SP::UI::Runtime::Diagnostics::ReadTargetMetrics(space,
+                                                                               SP::App::ConcretePathView{handles->target.getPath()})) {
+                if (!metrics->backend_kind.empty()) {
+                    backend_kind = metrics->backend_kind;
+                }
+            }
+            if (auto write_error = WriteScreenshotSlotResult(space,
+                                                             slot_paths,
+                                                             empty,
+                                                             "error",
+                                                             backend_kind,
+                                                             message);
+                !write_error) {
+                return std::unexpected(write_error.error());
+            }
+            return std::unexpected(SP::Error{SP::Error::Code::NoObjectFound, std::move(message)});
+        }
+    }
+
+    if (cached_framebuffer) {
+        ScreenshotRequest capture_request{
+            .space = space,
+            .window_path = window,
+            .view_name = *view_name,
+            .width = width,
+            .height = height,
+            .output_png = *options.output_png,
+            .baseline_png = options.baseline_png,
+            .diff_png = options.diff_png,
+            .metrics_json = options.metrics_json,
+            .max_mean_error = options.max_mean_error.value_or(0.0015),
+            .require_present = options.require_present,
+            .present_timeout = options.present_timeout,
+            .baseline_metadata = options.baseline_metadata,
+            .force_software = options.force_software,
+            .allow_software_fallback = options.allow_software_fallback,
+            .present_when_force_software = options.present_when_force_software,
+            .provided_framebuffer = std::span<std::uint8_t>(cached_framebuffer->pixels.data(),
+                                                            cached_framebuffer->pixels.size()),
+            .provided_framebuffer_is_hardware = cached_framebuffer->hardware_capture,
+            .verify_output_matches_framebuffer = options.verify_output_matches_framebuffer,
+            .verify_max_mean_error = options.verify_max_mean_error,
+        };
+        if (applied_theme) {
+            capture_request.theme_override = applied_theme;
+        }
+        if (!capture_request.verify_max_mean_error && capture_request.verify_output_matches_framebuffer) {
+            capture_request.verify_max_mean_error = options.max_mean_error.value_or(0.0);
+        }
+        if (auto ephemeral = ConsumeSlotEphemeral(slot_paths.base)) {
+            capture_request.baseline_metadata = ephemeral->baseline_metadata;
+            capture_request.postprocess_png = std::move(ephemeral->postprocess_png);
+            capture_request.verify_output_matches_framebuffer = ephemeral->verify_output_matches_framebuffer;
+            if (ephemeral->verify_max_mean_error) {
+                capture_request.verify_max_mean_error = ephemeral->verify_max_mean_error;
+            }
+        }
+
+        auto capture_result = ScreenshotService::Capture(capture_request);
+        if (capture_result) {
+            auto write = WriteScreenshotSlotResult(space,
+                                                   slot_paths,
+                                                   *capture_result,
+                                                   capture_result->status,
+                                                   cached_framebuffer->backend_kind,
+                                                   std::nullopt);
+            if (!write) {
+                return std::unexpected(write.error());
+            }
+            return capture_result;
+        }
+
+        ScreenshotResult empty{};
+        empty.artifact = *options.output_png;
+        auto write_error = WriteScreenshotSlotResult(space,
+                                                     slot_paths,
+                                                     empty,
+                                                     "error",
+                                                     cached_framebuffer->backend_kind,
+                                                     SP::describeError(capture_result.error()));
+        if (!write_error) {
+            return std::unexpected(write_error.error());
+        }
+        return std::unexpected(capture_result.error());
+    }
+
     std::optional<SP::UI::Declarative::PresentFrame> present_frame;
     if (options.present_before_capture) {
         auto const present_start = std::chrono::steady_clock::now();
@@ -585,17 +740,73 @@ auto CaptureDeclarativeSimple(SP::PathSpace& space,
                               std::filesystem::path const& output_png,
                               std::optional<int> width,
                               std::optional<int> height)
-    -> SP::Expected<ScreenshotResult> {
-    DeclarativeScreenshotOptions options{};
-    options.output_png = output_png;
-    options.width = width;
-    options.height = height;
-    options.capture_mode = "next_present";
-    options.require_present = true;
-    options.present_before_capture = true;
-    options.allow_software_fallback = true;
-    options.force_software = false;
-    return CaptureDeclarative(space, scene, window, options);
+    -> void {
+    (void)scene; // scene path retained for parity with advanced helper signature.
+
+    auto view_name = resolve_view_name(space, window, std::nullopt);
+    if (!view_name) {
+        if (screenshot_trace_enabled()) {
+            auto traced = std::string{"CaptureDeclarativeSimple view resolution failed: "}
+                + SP::describeError(view_name.error());
+            screenshot_trace(traced.c_str());
+        }
+        return;
+    }
+
+    auto slot_paths = MakeScreenshotSlotPaths(window, *view_name);
+
+    auto dimensions = derive_surface_dimensions(space, window, *view_name);
+    if (!dimensions) {
+        write_slot_error(space, slot_paths, SP::describeError(dimensions.error()));
+        return;
+    }
+    auto resolved_width = width.value_or(dimensions->first);
+    auto resolved_height = height.value_or(dimensions->second);
+    if (resolved_width <= 0 || resolved_height <= 0) {
+        write_slot_error(space, slot_paths, "screenshot dimensions must be positive");
+        return;
+    }
+
+    auto capture_flag = enable_capture_framebuffer(space, window, *view_name, true);
+    if (!capture_flag) {
+        write_slot_error(space, slot_paths, SP::describeError(capture_flag.error()));
+        return;
+    }
+
+    ScreenshotSlotRequest slot_request{};
+    slot_request.output_png = output_png;
+    slot_request.capture_mode = "next_present";
+    slot_request.width = resolved_width;
+    slot_request.height = resolved_height;
+    slot_request.force_software = false;
+    slot_request.allow_software_fallback = true;
+    slot_request.present_when_force_software = false;
+    slot_request.require_present = true;
+    slot_request.verify_output_matches_framebuffer = true;
+    slot_request.max_mean_error = 0.0015;
+
+    auto token = AcquireScreenshotToken(space, slot_paths.token, std::chrono::milliseconds{500});
+    if (!token) {
+        if (screenshot_trace_enabled()) {
+            auto traced = std::string{"CaptureDeclarativeSimple token contention: "}
+                + SP::describeError(token.error());
+            screenshot_trace(traced.c_str());
+        }
+        return;
+    }
+
+    SlotEphemeralData ephemeral{};
+    ephemeral.baseline_metadata = {};
+    ephemeral.verify_output_matches_framebuffer = true;
+    RegisterSlotEphemeral(slot_paths.base, std::move(ephemeral));
+
+    auto write_request = WriteScreenshotSlotRequest(space, slot_paths, slot_request);
+    if (!write_request) {
+        write_slot_error(space, slot_paths, SP::describeError(write_request.error()));
+        return;
+    }
+
+    token->release();
 }
 
 } // namespace SP::UI::Screenshot
