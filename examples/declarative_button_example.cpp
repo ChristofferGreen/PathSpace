@@ -173,23 +173,45 @@ int main(int argc, char** argv) {
         return previous_status;
     };
 
+    bool needs_delayed_capture = screenshot2_path.has_value();
+    bool needs_single_capture = screenshot_path.has_value();
+
     SP::App::RunOptions run_options{
         .window_width = window_width,
         .window_height = window_height,
         .window_title = "Declarative Button",
-        .run_once = screenshot_exit || dump_json,
+        .run_once = dump_json || screenshot_exit || (needs_single_capture && !needs_delayed_capture),
     };
+
+    // Arm primary screenshot (next present) with error reporting.
+    if (screenshot_path) {
+        SP::UI::Screenshot::DeclarativeScreenshotOptions opts{};
+        opts.output_png = screenshot_path;
+        opts.width = window_width;
+        opts.height = window_height;
+        auto capture1 = SP::UI::Screenshot::CaptureDeclarative(space, scene->path, window->path, opts);
+        if (!capture1) {
+            std::fprintf(stderr,
+                         "screenshot capture failed: %s\n",
+                         SP::describeError(capture1.error()).c_str());
+        }
+    }
 
     if (screenshot2_path) {
         run_options.run_once = false; // keep presenting until we request quit
         std::thread capture_thread([&, screenshot2_path] {
             std::this_thread::sleep_for(std::chrono::seconds{1});
-            SP::UI::Screenshot::CaptureDeclarativeSimple(space,
-                                                         scene->path,
-                                                         window->path,
-                                                         *screenshot2_path,
-                                                         window_width,
-                                                         window_height);
+            SP::UI::Screenshot::DeclarativeScreenshotOptions opts{};
+            opts.output_png = screenshot2_path;
+            opts.capture_mode = "next_present";
+            opts.width = window_width;
+            opts.height = window_height;
+            auto capture2 = SP::UI::Screenshot::CaptureDeclarative(space, scene->path, window->path, opts);
+            if (!capture2) {
+                std::fprintf(stderr,
+                             "screenshot2 capture failed: %s\n",
+                             SP::describeError(capture2.error()).c_str());
+            }
             SP::UI::RequestLocalWindowQuit();
         });
         capture_thread.detach();
