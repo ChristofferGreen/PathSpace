@@ -1035,6 +1035,36 @@ auto SaveLocalWindowScreenshot(char const* path) -> bool {
     }
     @autoreleasepool {
         WindowState& state = window_state();
+        if (state.window) {
+            CGRect bounds = [state.window frame];
+            CGImageRef image = CGWindowListCreateImage(bounds,
+                                                       kCGWindowListOptionIncludingWindow,
+                                                       static_cast<CGWindowID>([state.window windowNumber]),
+                                                       kCGWindowImageBoundsIgnoreFraming | kCGWindowImageNominalResolution);
+            if (image) {
+                CFStringRef type = CFSTR("public.png");
+                CFURLRef url = CFURLCreateFromFileSystemRepresentation(kCFAllocatorDefault,
+                                                                       reinterpret_cast<const UInt8*>(path),
+                                                                       static_cast<CFIndex>(std::strlen(path)),
+                                                                       false);
+                if (url) {
+                    CGImageDestinationRef dest = CGImageDestinationCreateWithURL(url, type, 1, nullptr);
+                    if (dest) {
+                        CGImageDestinationAddImage(dest, image, nullptr);
+                        bool ok = CGImageDestinationFinalize(dest);
+                        CFRelease(dest);
+                        CFRelease(url);
+                        CGImageRelease(image);
+                        return ok;
+                    }
+                    CFRelease(url);
+                }
+                CGImageRelease(image);
+            }
+        }
+    }
+    @autoreleasepool {
+        WindowState& state = window_state();
         std::vector<std::uint8_t> raster;
         int width = 0;
         int height = 0;
