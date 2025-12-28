@@ -202,9 +202,9 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    SP::UI::LocalInputBridge bridge{};
+    PathSpaceExamples::LocalInputBridge bridge{};
     bridge.space = &space;
-    SP::UI::install_local_window_bridge(bridge);
+    PathSpaceExamples::install_local_window_bridge(bridge);
 
     auto surface_desc =
         space.read<SP::UI::Runtime::SurfaceDesc, std::string>(std::string(present_handles->surface.getPath()) + "/desc");
@@ -244,9 +244,9 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "PresentWindowFrame failed: %s\n", SP::describeError(present_frame.error()).c_str());
             break;
         }
-        (void)SP::UI::Declarative::PresentFrameToLocalWindow(*present_frame,
-                                                             window_width_run,
-                                                             window_height_run);
+        auto presented = SP::UI::Declarative::PresentFrameToLocalWindow(*present_frame,
+                                                                        window_width_run,
+                                                                        window_height_run);
         ++frames_rendered;
 
         // Capture after presents so framebuffer matches the window.

@@ -1035,6 +1035,7 @@ auto SaveLocalWindowScreenshot(char const* path) -> bool {
     }
     @autoreleasepool {
         WindowState& state = window_state();
+#if defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && __MAC_OS_X_VERSION_MIN_REQUIRED < 150000
         if (state.window) {
             CGRect bounds = [state.window frame];
             CGImageRef image = CGWindowListCreateImage(bounds,
@@ -1062,6 +1063,7 @@ auto SaveLocalWindowScreenshot(char const* path) -> bool {
                 CGImageRelease(image);
             }
         }
+#endif
     }
     @autoreleasepool {
         WindowState& state = window_state();
