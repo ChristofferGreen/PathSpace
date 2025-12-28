@@ -16,6 +16,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
+#include <chrono>
 
 constexpr int window_width = 640;
 constexpr int window_height = 360;
@@ -24,6 +26,7 @@ using namespace SP::UI::Declarative;
 
 int main(int argc, char** argv) {
     std::optional<std::filesystem::path> screenshot_path;
+    std::optional<std::filesystem::path> screenshot2_path;
     bool screenshot_exit = false;
     bool dump_json = false;
     bool dump_json_debug = false;
@@ -31,6 +34,10 @@ int main(int argc, char** argv) {
         std::string_view arg{argv[i]};
         if (arg == "--screenshot" && i + 1 < argc) {
             screenshot_path = std::filesystem::path{argv[++i]};
+        } else if (arg == "--screenshot2" && i + 1 < argc) {
+            screenshot2_path = std::filesystem::path{argv[++i]};
+            // ensure we exit after capturing the second screenshot
+            screenshot_exit = true;
         } else if (arg == "--screenshot_exit") {
             screenshot_exit = true;
         } else if (arg == "--dump_json") {
@@ -181,6 +188,16 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "RunUI failed: %s\n", SP::describeError(run_ui.error()).c_str());
         shutdown_runtime();
         return 1;
+    }
+
+    if (screenshot2_path) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        SP::UI::Screenshot::CaptureDeclarativeSimple(space,
+                                                     scene->path,
+                                                     window->path,
+                                                     *screenshot2_path,
+                                                     window_width,
+                                                     window_height);
     }
     shutdown_runtime();
 
