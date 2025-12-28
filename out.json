@@ -85,20 +85,6 @@
                               }
                             ]
                           },
-                          "diagnostics": {
-                            "children": {
-                              "cacheWatch": {
-                                "values": [
-                                  {
-                                    "category": "Fundamental",
-                                    "index": 0,
-                                    "type": "bool",
-                                    "value": true
-                                  }
-                                ]
-                              }
-                            }
-                          },
                           "scene": {
                             "values": [
                               {
@@ -175,23 +161,6 @@
                   }
                 }
               },
-              "metrics": {
-                "children": {
-                  "snapshots": {
-                    "children": {
-                      "state": {
-                        "values": [
-                          {
-                            "category": "SerializationLibraryCompatible",
-                            "index": 0,
-                            "type": "N2SP2UI5Scene17SnapshotGcMetricsE"
-                          }
-                        ]
-                      }
-                    }
-                  }
-                }
-              },
               "render": {
                 "children": {
                   "dirty": {
@@ -219,20 +188,6 @@
                             "value": "/system/applications/declarative_button_example/scenes/button_scene/runtime/lifecycle/control"
                           }
                         ]
-                      },
-                      "metrics": {
-                        "children": {
-                          "last_published_widget": {
-                            "values": [
-                              {
-                                "category": "SerializedData",
-                                "index": 0,
-                                "type": "std::string",
-                                "value": "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column/children/goodbye_button"
-                              }
-                            ]
-                          }
-                        }
                       },
                       "state": {
                         "children": {

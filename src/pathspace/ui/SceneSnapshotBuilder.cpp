@@ -297,9 +297,10 @@ auto SceneSnapshotBuilder::prune_impl(std::vector<SnapshotRecord>& records, Snap
     return {};
 }
 
-auto SceneSnapshotBuilder::record_metrics(SnapshotGcMetrics const& metrics) -> Expected<void> {
-    auto path = std::string(scene_path_.getPath()) + "/metrics/snapshots/state";
-    return replace_single<SnapshotGcMetrics>(space_, path, metrics);
+auto SceneSnapshotBuilder::record_metrics(SnapshotGcMetrics const& /*metrics*/) -> Expected<void> {
+    // Renderer-only: keep GC metrics in the renderer cache; avoid writing
+    // snapshot metrics into PathSpace.
+    return {};
 }
 
 } // namespace SP::UI::Scene

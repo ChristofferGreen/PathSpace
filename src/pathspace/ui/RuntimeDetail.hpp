@@ -264,44 +264,8 @@ inline void run_surface_cache_watch(SurfaceCacheWatchEntry* entry) {
 
 inline void activate_surface_cache_watch(PathSpace& space,
                                   std::string const& target_key) {
-    auto context = space.sharedContext();
-    if (!context) {
-        return;
-    }
-
-    register_surface_cache_watch_shutdown_hook();
-
-    std::vector<std::unique_ptr<SurfaceCacheWatchEntry>> finished;
-    std::unique_ptr<SurfaceCacheWatchEntry>               replaced;
-
-    {
-        std::lock_guard<std::mutex> guard(surface_cache_watch_mutex());
-        auto&                       entries = surface_cache_watch_entries();
-        finished = collect_finished_surface_cache_watches_locked();
-        auto it = entries.find(target_key);
-        if (it != entries.end()) {
-            if (!it->second->finished.load(std::memory_order_acquire)) {
-                return;
-            }
-            replaced = std::move(it->second);
-            entries.erase(it);
-        }
-
-        auto entry = std::make_unique<SurfaceCacheWatchEntry>();
-        entry->target_key = target_key;
-        entry->watch_path = target_key + std::string{"/diagnostics/cacheWatch"};
-        entry->context    = context;
-        entry->space      = &space;
-        entry->worker     = std::thread(run_surface_cache_watch, entry.get());
-        entries.emplace(target_key, std::move(entry));
-    }
-
-    for (auto& entry : finished) {
-        stop_and_join_surface_cache_watch(std::move(entry));
-    }
-    if (replaced) {
-        stop_and_join_surface_cache_watch(std::move(replaced));
-    }
+    (void)space;
+    (void)target_key;
 }
 
 inline auto before_present_hook_mutex() -> std::mutex& {
@@ -662,23 +626,8 @@ inline auto replace_single(PathSpace& space,
 
 inline auto ensure_surface_cache_watch(PathSpace& space,
                                 std::string const& target_key) -> SP::Expected<void> {
-    if (auto* disable = std::getenv("PATHSPACE_DISABLE_SURFACE_CACHE_WATCH")) {
-        if (*disable != '\0' && std::strcmp(disable, "0") != 0) {
-            return {};
-        }
-    }
-    prune_surface_cache_watches();
-    auto watch_path = target_key + std::string{"/diagnostics/cacheWatch"};
-    auto marker     = read_optional<bool>(space, watch_path);
-    if (!marker) {
-        return std::unexpected(marker.error());
-    }
-    if (!marker->has_value()) {
-        if (auto status = replace_single<bool>(space, watch_path, true); !status) {
-            return status;
-        }
-    }
-    activate_surface_cache_watch(space, target_key);
+    (void)space;
+    (void)target_key;
     return {};
 }
 
