@@ -16,8 +16,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <thread>
-#include <chrono>
 
 constexpr int window_width = 640;
 constexpr int window_height = 360;
@@ -36,7 +34,6 @@ int main(int argc, char** argv) {
             screenshot_path = std::filesystem::path{argv[++i]};
         } else if (arg == "--screenshot2" && i + 1 < argc) {
             screenshot2_path = std::filesystem::path{argv[++i]};
-            // ensure we exit after capturing the second screenshot
             screenshot_exit = true;
         } else if (arg == "--screenshot_exit") {
             screenshot_exit = true;
@@ -183,21 +180,26 @@ int main(int argc, char** argv) {
         .run_once = screenshot_exit || dump_json,
     };
 
+    if (screenshot2_path) {
+        SP::UI::Screenshot::DeclarativeScreenshotOptions opts{};
+        opts.output_png = screenshot2_path;
+        opts.capture_mode = "deadline_ns";
+        opts.capture_deadline = std::chrono::seconds{1};
+        opts.width = window_width;
+        opts.height = window_height;
+        auto capture2 = SP::UI::Screenshot::CaptureDeclarative(space, scene->path, window->path, opts);
+        if (!capture2) {
+            std::fprintf(stderr,
+                         "screenshot2 capture failed: %s\n",
+                         SP::describeError(capture2.error()).c_str());
+        }
+    }
+
     auto run_ui = SP::App::RunUI(space, *scene, *window, run_options);
     if (!run_ui) {
         std::fprintf(stderr, "RunUI failed: %s\n", SP::describeError(run_ui.error()).c_str());
         shutdown_runtime();
         return 1;
-    }
-
-    if (screenshot2_path) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        SP::UI::Screenshot::CaptureDeclarativeSimple(space,
-                                                     scene->path,
-                                                     window->path,
-                                                     *screenshot2_path,
-                                                     window_width,
-                                                     window_height);
     }
     shutdown_runtime();
 
