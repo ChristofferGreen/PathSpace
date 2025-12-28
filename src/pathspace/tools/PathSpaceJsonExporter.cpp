@@ -337,10 +337,6 @@ auto emitTree(TreeNode const& node) -> Json {
     for (auto const& [name, child] : node.children) {
         children[name] = emitTree(*child);
     }
-    // Drop empty values/children to keep dumps concise, but keep present/empty strings.
-    if (out.contains("values") && out["values"].is_array() && out["values"].empty()) {
-        out.erase("values");
-    }
     if (!children.empty()) {
         out["children"] = std::move(children);
     }
@@ -392,7 +388,6 @@ auto PathSpaceJsonExporter::Export(PathSpaceBase& space, PathSpaceJsonOptions co
         opts.includeDiagnostics        = true;
         opts.includeOpaquePlaceholders = true;
         opts.includeStructureFields    = true;
-        opts.includeMetadata           = true;
     } else {
         opts.includeDiagnostics        = false;
         opts.includeOpaquePlaceholders = false;
@@ -438,40 +433,7 @@ auto PathSpaceJsonExporter::Export(PathSpaceBase& space, PathSpaceJsonOptions co
         return std::unexpected(*visitError);
     }
 
-    Json limits = Json::object();
-    limits["max_depth"]         = visitLimit(opts.visit.maxDepth);
-    limits["max_children"]      = VisitOptions::isUnlimitedChildren(opts.visit.maxChildren)
-                                       ? Json("unlimited")
-                                       : Json(opts.visit.maxChildren);
-    limits["max_queue_entries"] = opts.maxQueueEntries;
-
-    Json flags = Json::object();
-    flags["include_nested_spaces"]       = opts.visit.includeNestedSpaces;
-    flags["include_values"]              = opts.visit.includeValues;
-    flags["include_opaque_placeholders"] = opts.includeOpaquePlaceholders;
-    flags["include_diagnostics"]         = opts.includeDiagnostics;
-    flags["include_structure_fields"]    = opts.includeStructureFields;
-    flags["include_metadata"]            = opts.includeMetadata;
-    std::string modeLabel = opts.mode == PathSpaceJsonOptions::Mode::Debug ? "debug" : "minimal";
-    flags["mode"] = std::move(modeLabel);
-
-    Json statsJson = Json::object();
-    statsJson["node_count"]         = stats.nodeCount;
-    statsJson["value_entries"]      = stats.valuesExported;
-    statsJson["children_truncated"] = stats.childrenTruncated;
-    statsJson["depth_truncated"]    = stats.depthLimited;
-    statsJson["values_truncated"]   = stats.valuesTruncated;
-
     Json root = Json::object();
-    if (opts.includeMetadata) {
-        Json meta = Json::object();
-        meta["schema"] = "hierarchical";
-        meta["root"]   = opts.visit.root;
-        meta["limits"] = std::move(limits);
-        meta["flags"]  = std::move(flags);
-        meta["stats"]  = std::move(statsJson);
-        root["_meta"]  = std::move(meta);
-    }
     root[opts.visit.root] = emitTree(rootNode);
 
     auto indent = opts.dumpIndent;

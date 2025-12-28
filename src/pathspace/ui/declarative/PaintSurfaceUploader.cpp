@@ -1,5 +1,6 @@
 #include <pathspace/ui/declarative/PaintSurfaceUploader.hpp>
 #include <pathspace/ui/declarative/Detail.hpp>
+#include <pathspace/ui/declarative/widgets/Common.hpp>
 
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/core/Out.hpp>
@@ -43,6 +44,10 @@ auto ensure_value(PathSpace& space, std::string const& path, T const& value) -> 
     }
     if (existing->has_value()) {
         return {};
+    }
+    if (auto ensured = SP::UI::Declarative::Detail::ensure_widget_space_root(space, path);
+        !ensured) {
+        return std::unexpected(ensured.error());
     }
     return Detail::replace_single(space, path, value);
 }

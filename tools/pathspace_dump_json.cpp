@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -15,9 +16,9 @@ namespace {
 
 struct DumpJsonOptions {
     std::string              root            = "/";
-    std::size_t              maxDepth        = 6;
-    std::size_t              maxChildren     = 64;
-    std::size_t              maxQueueEntries = 2;
+    std::size_t              maxDepth        = SP::VisitOptions::kUnlimitedDepth;
+    std::size_t              maxChildren     = SP::VisitOptions::kUnlimitedChildren;
+    std::size_t              maxQueueEntries = std::numeric_limits<std::size_t>::max();
     bool                     includeValues   = true;
     bool                     includeNested   = false;
     bool                     includePlaceholders = false;
@@ -33,9 +34,9 @@ void print_usage() {
     std::cout << "Usage: pathspace_dump_json [options]\n"
                  "Options:\n"
                  "  --root <path>              Root path to export (default /)\n"
-                 "  --max-depth <n>            Maximum depth relative to root (default 6)\n"
-                 "  --max-children <n>         Maximum children per node (default 64, 0 = unlimited)\n"
-                 "  --max-queue-entries <n>    Maximum queue entries per node (default 2)\n"
+                 "  --max-depth <n>            Maximum depth relative to root (default unlimited)\n"
+                 "  --max-children <n>         Maximum children per node (default unlimited; 0 = unlimited)\n"
+                 "  --max-queue-entries <n>    Maximum queue entries per node (default unlimited; 0 = none)\n"
                  "  --indent <n>               JSON indent (default 2, -1 for compact)\n"
                  "  --output <file>            Write JSON to file instead of stdout\n"
                  "  --no-values                Skip value sampling (structure only)\n"

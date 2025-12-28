@@ -198,6 +198,15 @@ def main() -> int:
         )
         if first_string_value(goodbye_label, "goodbye label") != "Say Goodbye":
             raise AssertionError("goodbye button label missing or incorrect")
+        children_node = require_path(
+            payload,
+            root_path,
+            "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column/children",
+            "button children",
+        )
+        child_keys = set(children_node.get("children", {}).keys())
+        if child_keys != {"hello_button", "goodbye_button"}:
+            raise AssertionError(f"unexpected children under button_column: {sorted(child_keys)}")
     except AssertionError as exc:
         print(str(exc), file=sys.stderr)
         return 1

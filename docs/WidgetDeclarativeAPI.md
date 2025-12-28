@@ -135,11 +135,11 @@ internal to the helper.
 
 For JSON snapshots, `./build/declarative_button_example --dump_json` now takes a
 single present (to materialize drawables), shuts down the declarative runtimes,
-and exports the full app tree with no exporter-side filters: values on,
+and exports the full app tree with no exporter-side filters or caps: values on,
 `include_nested_spaces=false`, diagnostics/structure/opaque placeholders off,
-`max_depth=10` so widget labels stay visible, and metadata omitted (`_meta` is
-opt-in). The resulting dump stays small because the runtime no longer writes
-renderer/presenter/trellis noise by default.
+unbounded depth/children/queue sampling, and metadata omitted (`_meta` is
+opt-in). The resulting dump stays manageable because the runtime no longer
+writes renderer/presenter/trellis noise by default.
 Pass `--dump_json_debug` to re-enable structure flags, diagnostics, opaque
 placeholders, and metadata for deeper inspection. Any setup or present failure
 logs a clear error and exits non-zero before exporting.

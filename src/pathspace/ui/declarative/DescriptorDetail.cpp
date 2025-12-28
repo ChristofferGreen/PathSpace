@@ -521,7 +521,8 @@ auto ReadStackDescriptor(PathSpace& space, std::string const& root)
             if (target_path && target_path->has_value()) {
                 panel.target = **target_path;
             } else {
-                auto child_root = SP::UI::Runtime::Widgets::WidgetChildRoot(root, panel_name);
+                auto child_root =
+                    SP::UI::Runtime::Widgets::WidgetChildRoot(space, root, panel_name);
                 panel.target = SP::UI::Runtime::Widgets::WidgetSpaceRoot(child_root);
             }
             panel.visible = panel_name == descriptor.active_panel;

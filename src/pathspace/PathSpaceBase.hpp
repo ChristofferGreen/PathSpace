@@ -66,17 +66,16 @@ struct PathSpaceJsonOptions {
     PathSpaceJsonOptions() {
         // Hierarchical exports default to the local tree; nested spaces opt in.
         visit.includeNestedSpaces = false;
-        // Keep defaults compact for human-friendly dumps.
-        visit.maxDepth    = 6;
-        visit.maxChildren = 64;
+        // Defaults are unbounded so callers opt into any truncation explicitly.
+        visit.maxDepth    = VisitOptions::kUnlimitedDepth;
+        visit.maxChildren = VisitOptions::kUnlimitedChildren;
     }
 
     VisitOptions visit{};
-    std::size_t  maxQueueEntries           = 2;
+    std::size_t  maxQueueEntries           = std::numeric_limits<std::size_t>::max();
     bool         includeOpaquePlaceholders = false;
     bool         includeDiagnostics        = false;
     bool         includeStructureFields    = false;
-    bool         includeMetadata           = false;
     Mode         mode                      = Mode::Minimal;
     int          dumpIndent                = 2;
 };

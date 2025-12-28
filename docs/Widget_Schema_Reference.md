@@ -3,6 +3,8 @@
 > **Update (November 15, 2025):** First publication of the declarative widget schema reference.
 > Source of truth: `include/pathspace/ui/declarative/Schema.hpp` and `Descriptor.hpp`.
 > **Update (December 7, 2025):** Widget metadata, state, render, event, ops, layout, and metrics nodes now live exclusively under `<widget>/space`. Use `SP::UI::Runtime::Widgets::WidgetSpacePath(...)` (or `WidgetSpaceRoot`) whenever reading or writing the `state/*`, `meta/*`, `render/*`, `events/*`, `ops/*`, `layout/*`, or `metrics/*` leaves listed below so tests and runtime code always hit the canonical namespace.
+> **Update (December 28, 2025):** Widget `space/log/metrics` subtrees are created lazily—runtime helpers materialize `<widget>/space` only when a value is written. Expect absent nodes (not empty placeholders) when diagnostics or metrics are unused.
+> **Update (December 28, 2025):** Canonical child map is `<widget>/children/<child>`. Runtime helpers read/write the flattened map and treat `/space/children` or nested `children/children` capsules as compatibility-only; housekeeping nodes (`space`, `log`, `metrics`, `runtime`) are filtered from legacy dumps and are no longer written into the child map.
 
 This appendix summarizes the canonical nodes, handlers, and runtime-managed leaves that declarative widgets rely on. Use it alongside `docs/AI_PATHS.md` when authoring widgets, debugging schema issues, or reviewing plan milestones.
 

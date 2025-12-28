@@ -156,8 +156,6 @@ int main(int argc, char** argv) {
     auto export_json = [&](int previous_status) -> int {
         SP::PathSpaceJsonOptions options{};
         options.visit.root = app->getPath();
-        options.visit.maxDepth = 10;
-        options.maxQueueEntries = 4;
         if (dump_json_debug) {
             options.mode = SP::PathSpaceJsonOptions::Mode::Debug;
         }

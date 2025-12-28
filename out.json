@@ -15,7 +15,8 @@
                   }
                 ]
               }
-            }
+            },
+            "values": []
           },
           "theme": {
             "children": {
@@ -29,9 +30,11 @@
                   }
                 ]
               }
-            }
+            },
+            "values": []
           }
-        }
+        },
+        "values": []
       },
       "renderers": {
         "children": {
@@ -68,7 +71,8 @@
                       }
                     ]
                   }
-                }
+                },
+                "values": []
               },
               "targets": {
                 "children": {
@@ -97,7 +101,8 @@
                                   }
                                 ]
                               }
-                            }
+                            },
+                            "values": []
                           },
                           "scene": {
                             "values": [
@@ -118,15 +123,20 @@
                               }
                             ]
                           }
-                        }
+                        },
+                        "values": []
                       }
-                    }
+                    },
+                    "values": []
                   }
-                }
+                },
+                "values": []
               }
-            }
+            },
+            "values": []
           }
-        }
+        },
+        "values": []
       },
       "scenes": {
         "children": {
@@ -145,9 +155,11 @@
                           }
                         ]
                       }
-                    }
+                    },
+                    "values": []
                   }
-                }
+                },
+                "values": []
               },
               "current_revision": {
                 "values": [
@@ -181,7 +193,8 @@
                       }
                     ]
                   }
-                }
+                },
+                "values": []
               },
               "metrics": {
                 "children": {
@@ -196,9 +209,11 @@
                           }
                         ]
                       }
-                    }
+                    },
+                    "values": []
                   }
-                }
+                },
+                "values": []
               },
               "render": {
                 "children": {
@@ -212,7 +227,8 @@
                       }
                     ]
                   }
-                }
+                },
+                "values": []
               },
               "runtime": {
                 "children": {
@@ -236,11 +252,12 @@
                                 "category": "SerializedData",
                                 "index": 0,
                                 "type": "std::string",
-                                "value": "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column/children/hello_button"
+                                "value": "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column/children/goodbye_button"
                               }
                             ]
                           }
-                        }
+                        },
+                        "values": []
                       },
                       "state": {
                         "children": {
@@ -254,11 +271,14 @@
                               }
                             ]
                           }
-                        }
+                        },
+                        "values": []
                       }
-                    }
+                    },
+                    "values": []
                   }
-                }
+                },
+                "values": []
               },
               "state": {
                 "children": {
@@ -272,7 +292,8 @@
                       }
                     ]
                   }
-                }
+                },
+                "values": []
               },
               "structure": {
                 "children": {
@@ -292,7 +313,8 @@
                                   }
                                 ]
                               }
-                            }
+                            },
+                            "values": []
                           },
                           "metrics": {
                             "children": {
@@ -306,7 +328,8 @@
                                   }
                                 ]
                               }
-                            }
+                            },
+                            "values": []
                           },
                           "present": {
                             "values": [
@@ -338,15 +361,20 @@
                               }
                             ]
                           }
-                        }
+                        },
+                        "values": []
                       }
-                    }
+                    },
+                    "values": []
                   }
-                }
+                },
+                "values": []
               }
-            }
+            },
+            "values": []
           }
-        }
+        },
+        "values": []
       },
       "state": {
         "children": {
@@ -360,7 +388,8 @@
               }
             ]
           }
-        }
+        },
+        "values": []
       },
       "surfaces": {
         "children": {
@@ -387,7 +416,8 @@
                       }
                     ]
                   }
-                }
+                },
+                "values": []
               },
               "renderer": {
                 "values": [
@@ -419,9 +449,11 @@
                   }
                 ]
               }
-            }
+            },
+            "values": []
           }
-        }
+        },
+        "values": []
       },
       "themes": {
         "children": {
@@ -435,7 +467,8 @@
               }
             ]
           }
-        }
+        },
+        "values": []
       },
       "windows": {
         "children": {
@@ -503,7 +536,8 @@
                       }
                     ]
                   }
-                }
+                },
+                "values": []
               },
               "render": {
                 "children": {
@@ -517,7 +551,8 @@
                       }
                     ]
                   }
-                }
+                },
+                "values": []
               },
               "state": {
                 "children": {
@@ -531,7 +566,8 @@
                       }
                     ]
                   }
-                }
+                },
+                "values": []
               },
               "style": {
                 "children": {
@@ -545,7 +581,8 @@
                       }
                     ]
                   }
-                }
+                },
+                "values": []
               },
               "views": {
                 "children": {
@@ -591,10 +628,14 @@
                                               }
                                             ]
                                           }
-                                        }
+                                        },
+                                        "values": []
                                       },
-                                      "space": {}
-                                    }
+                                      "space": {
+                                        "values": []
+                                      }
+                                    },
+                                    "values": []
                                   },
                                   "hello_button": {
                                     "children": {
@@ -610,26 +651,40 @@
                                               }
                                             ]
                                           }
-                                        }
+                                        },
+                                        "values": []
                                       },
-                                      "space": {}
-                                    }
+                                      "space": {
+                                        "values": []
+                                      }
+                                    },
+                                    "values": []
                                   }
-                                }
+                                },
+                                "values": []
                               },
-                              "space": {}
-                            }
+                              "space": {
+                                "values": []
+                              }
+                            },
+                            "values": []
                           }
-                        }
+                        },
+                        "values": []
                       }
-                    }
+                    },
+                    "values": []
                   }
-                }
+                },
+                "values": []
               }
-            }
+            },
+            "values": []
           }
-        }
+        },
+        "values": []
       }
-    }
+    },
+    "values": []
   }
 }

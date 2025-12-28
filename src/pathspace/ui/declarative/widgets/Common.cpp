@@ -215,6 +215,32 @@ auto handler_binding_path(std::string const& root, std::string_view event) -> st
     return make_path(std::move(path), "handler");
 }
 
+auto ensure_widget_space_root(PathSpaceBase& space,
+                              std::string const& path) -> SP::Expected<void> {
+    auto pos = path.find("/space");
+    if (pos == std::string::npos) {
+        return {};
+    }
+    pos += std::string_view{"/space"}.size();
+    auto space_root = path.substr(0, pos);
+
+    // Avoid clobbering an existing widget subtree. Only create the nested
+    // PathSpace when the root path is genuinely absent (i.e., parent lacks a
+    // "space" child).
+    auto parent_root = space_root.substr(0, space_root.rfind('/'));
+    auto siblings = space.listChildren(SP::ConcretePathStringView{parent_root});
+    auto found = std::find(siblings.begin(), siblings.end(), std::string{"space"});
+    if (found != siblings.end()) {
+        return {};
+    }
+
+    auto inserted = space.insert(space_root, std::make_unique<PathSpace>());
+    if (inserted.errors.empty()) {
+        return {};
+    }
+    return std::unexpected(inserted.errors.front());
+}
+
 auto mount_base(std::string_view parent,
                 MountOptions const& options) -> std::string {
     if (!options.slot_override.empty()) {
@@ -290,11 +316,6 @@ auto reset_widget_space(PathSpace& space,
         }
     }
 
-    auto nested = std::make_unique<PathSpace>();
-    auto inserted = space.insert(space_root, std::move(nested));
-    if (!inserted.errors.empty()) {
-        return std::unexpected(inserted.errors.front());
-    }
     return {};
 }
 

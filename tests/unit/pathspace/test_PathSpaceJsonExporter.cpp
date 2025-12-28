@@ -134,6 +134,29 @@ TEST_CASE("PathSpace JSON exporter enforces queue limits") {
     CHECK(truncatedNode.at("values_truncated").get<bool>() == (queueDepth > 0));
 }
 
+TEST_CASE("PathSpace JSON exporter honors explicit maxDepth truncation") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/child/value", 1).nbrValuesInserted == 1);
+    REQUIRE(space.insert("/root/child/grand/value", 2).nbrValuesInserted == 1);
+
+    PathSpaceJsonOptions options;
+    options.mode                   = PathSpaceJsonOptions::Mode::Debug;
+    options.includeStructureFields = true;
+    options.visit.root             = "/root";
+    options.visit.maxDepth         = 1;
+
+    auto doc       = dump(space, options);
+    auto meta      = doc.at("_meta").at("limits");
+    CHECK(meta.at("max_depth") == 1);
+
+    auto childNode = findNode(doc, "/root", "/root/child");
+    CHECK(childNode.at("children_truncated").get<bool>());
+    CHECK(childNode.at("depth_truncated").get<bool>());
+    bool hasGrandChild = childNode.contains("children")
+                      && childNode.at("children").contains("grand");
+    CHECK_FALSE(hasGrandChild);
+}
+
 TEST_CASE("PathSpace JSON exporter adds execution placeholders") {
     PathSpace space;
     auto result = space.insert("/jobs/task", [] { return 7; });

@@ -31,7 +31,7 @@ auto write_panel_metadata(PathSpace& space,
     if (auto status = WidgetDetail::write_value(space, panel_root + "/visible", visible); !status) {
         return status;
     }
-    auto target = WidgetSpacePath(root, std::string{"/children/"} + panel_id);
+    auto target = BuilderWidgets::WidgetChildRoot(space, root, panel_id);
     return WidgetDetail::write_value(space, panel_root + "/target", target);
 }
 
@@ -69,7 +69,7 @@ auto sorted_child_specs(PathSpace& space,
     for (auto const& name : names) {
         BuilderWidgets::StackChildSpec spec{};
         spec.id = name;
-        auto child_root = BuilderWidgets::WidgetChildRoot(root, name);
+        auto child_root = BuilderWidgets::WidgetChildRoot(space, root, name);
         auto canonical_child = BuilderWidgets::WidgetSpaceRoot(child_root);
         spec.widget_path = canonical_child;
         spec.scene_path = canonical_child;

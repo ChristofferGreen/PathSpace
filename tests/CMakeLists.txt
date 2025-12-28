@@ -101,6 +101,7 @@ if(PATHSPACE_ENABLE_UI)
   ui/test_WidgetGallery.cpp
   ui/test_SurfaceDescValidation.cpp
   ui/test_WidgetRenderPackage.cpp
+  ui/test_WidgetEmptyNodes.cpp
   test_main.cpp
 )
   if(APPLE AND PATHSPACE_UI_METAL)

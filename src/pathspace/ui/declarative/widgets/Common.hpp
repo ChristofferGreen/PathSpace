@@ -259,10 +259,16 @@ inline auto prepare_style_for_serialization(BuilderWidgets::TextAreaStyle const&
     return prepared;
 }
 
+auto ensure_widget_space_root(PathSpaceBase& space, std::string const& path)
+    -> SP::Expected<void>;
+
 template <typename T>
 inline auto write_value(PathSpaceBase& space,
                         std::string const& path,
                         T const& value) -> SP::Expected<void> {
+    if (auto ensured = ensure_widget_space_root(space, path); !ensured) {
+        return std::unexpected(ensured.error());
+    }
     if (auto status = DeclarativeDetail::replace_single<T>(space, path, value); !status) {
         return std::unexpected(status.error());
     }

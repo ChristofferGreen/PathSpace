@@ -1,5 +1,7 @@
 # Plan: PathSpace JSON Exact Dump (no filters)
 
+> **Status (December 28, 2025):** Completed. Export defaults are now unbounded (depth/children/queue), metadata is opt-in, `pathspace_dump_json` advertises the simplified options, the declarative button example uses the unfiltered defaults, and a maxDepth truncation doctest guards explicit caps. Five-loop release run succeeded after the changes.
+
 ## Goal
 Emit a hierarchical JSON that is an exact representation of PathSpace, with no implicit include/exclude filters. The current `out.json` (258 lines) still has `_meta` filters that drop renderers, scenes, surfaces, widget subpaths, etc. Remove that filtering so the dump reflects all paths (subject only to explicit depth/child limits if the caller sets them).
 

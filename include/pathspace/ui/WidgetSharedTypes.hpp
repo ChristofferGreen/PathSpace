@@ -192,40 +192,107 @@ template <typename Root, detail::EnableStringLike<Root> = 0>
     return detail::WidgetChildrenLegacyRoot(widget_root);
 }
 
-[[nodiscard]] inline auto WidgetChildRoot(std::string_view widget_root, std::string_view child_name)
+struct WidgetChildrenView {
+    std::string root;
+    std::vector<std::string> names;
+};
+
+namespace detail {
+
+[[nodiscard]] inline auto AppendPathComponent(std::string base, std::string_view component)
     -> std::string {
-    auto base = detail::WidgetChildrenLegacyRoot(widget_root);
-    if (base.back() != '/') {
+    if (!base.empty() && base.back() != '/') {
         base.push_back('/');
     }
-    base.append(child_name.begin(), child_name.end());
+    base.append(component.begin(), component.end());
     return base;
+}
+
+[[nodiscard]] inline auto FilterHousekeeping(std::vector<std::string> names)
+    -> std::vector<std::string> {
+    auto is_housekeeping = [](std::string const& name) {
+        return name == "space" || name == "log" || name == "metrics" || name == "runtime";
+    };
+    names.erase(std::remove_if(names.begin(), names.end(), is_housekeeping), names.end());
+    return names;
+}
+
+[[nodiscard]] inline auto ResolveChildrenView(PathSpace& space,
+                                              std::string const& widget_root) -> WidgetChildrenView {
+    auto flattened_root = WidgetChildrenPath(widget_root);
+    auto flattened_names =
+        FilterHousekeeping(space.listChildren(SP::ConcretePathStringView{flattened_root}));
+    if (!flattened_names.empty()) {
+        return {.root = flattened_root, .names = std::move(flattened_names)};
+    }
+
+    // Legacy nested capsule: <widget>/children/children/<child>
+    auto nested_flattened_root = AppendPathComponent(flattened_root, "children");
+    auto nested_flattened_names =
+        FilterHousekeeping(space.listChildren(SP::ConcretePathStringView{nested_flattened_root}));
+    if (!nested_flattened_names.empty()) {
+        return {.root = std::move(nested_flattened_root), .names = std::move(nested_flattened_names)};
+    }
+
+    auto legacy_root = WidgetSpacePath(widget_root, "/children");
+    auto legacy_names =
+        FilterHousekeeping(space.listChildren(SP::ConcretePathStringView{legacy_root}));
+
+    // Legacy nested capsule: <widget>/children/children/<child>
+    if (legacy_names.size() == 1 && legacy_names.front() == "children") {
+        auto nested_root = AppendPathComponent(legacy_root, "children");
+        auto nested_names =
+            FilterHousekeeping(space.listChildren(SP::ConcretePathStringView{nested_root}));
+        if (!nested_names.empty()) {
+            return {.root = std::move(nested_root), .names = std::move(nested_names)};
+        }
+    }
+
+    if (!legacy_names.empty()) {
+        return {.root = legacy_root, .names = std::move(legacy_names)};
+    }
+
+    return {.root = flattened_root, .names = {}};
+}
+
+} // namespace detail
+
+[[nodiscard]] inline auto WidgetChildren(PathSpace& space,
+                                         std::string const& widget_root) -> WidgetChildrenView {
+    return detail::ResolveChildrenView(space, widget_root);
+}
+
+[[nodiscard]] inline auto WidgetChildRoot(std::string_view widget_root, std::string_view child_name)
+    -> std::string {
+    auto base = WidgetChildrenPath(widget_root);
+    return detail::AppendPathComponent(std::move(base), child_name);
+}
+
+[[nodiscard]] inline auto WidgetChildRoot(PathSpace& space,
+                                          std::string const& widget_root,
+                                          std::string_view child_name) -> std::string {
+    auto view = WidgetChildren(space, widget_root);
+    // Prefer the active root when the child already exists; otherwise flatten to the legacy root.
+    auto found = std::find(view.names.begin(), view.names.end(), child_name);
+    auto base = (found != view.names.end() && !view.root.empty())
+                    ? view.root
+                    : WidgetChildrenPath(widget_root);
+    return detail::AppendPathComponent(std::move(base), child_name);
 }
 
 [[nodiscard]] inline auto WidgetChildNames(PathSpace& space,
                                            std::string const& widget_root) -> std::vector<std::string> {
-    auto canonical_root = WidgetSpacePath(widget_root, "/children");
-    auto names = space.listChildren(SP::ConcretePathStringView{canonical_root});
-    if (!names.empty()) {
-        return names;
-    }
-    auto legacy_root = detail::WidgetChildrenLegacyRoot(widget_root);
-    return space.listChildren(SP::ConcretePathStringView{legacy_root});
+    return WidgetChildren(space, widget_root).names;
 }
 
 [[nodiscard]] inline auto WidgetChildRoots(PathSpace& space,
                                            std::string const& widget_root) -> std::vector<std::string> {
-    auto names = WidgetChildNames(space, widget_root);
+    auto view = WidgetChildren(space, widget_root);
+    auto const& names = view.names;
     std::vector<std::string> roots;
     roots.reserve(names.size());
-    auto prefix = detail::WidgetChildrenLegacyRoot(widget_root);
-    if (prefix.back() != '/') {
-        prefix.push_back('/');
-    }
     for (auto const& name : names) {
-        auto child = prefix;
-        child.append(name);
-        roots.push_back(std::move(child));
+        roots.push_back(detail::AppendPathComponent(view.root, name));
     }
     return roots;
 }
