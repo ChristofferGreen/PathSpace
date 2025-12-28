@@ -1163,6 +1163,27 @@ auto PresentFrameToLocalWindow(PresentFrame const& frame,
     return dispatched;
 }
 
+auto ReadbackPresentedFramebuffer(PresentToLocalWindowResult const& presented,
+                                  PresentFrame const& frame) -> std::optional<std::vector<std::uint8_t>> {
+#if defined(__APPLE__)
+    if (presented.used_iosurface && frame.stats.iosurface && frame.stats.iosurface->valid()) {
+        auto ref = frame.stats.iosurface->retain_for_external_use();
+        if (ref) {
+            auto pixels = copy_pixels_from_iosurface(ref,
+                                                     static_cast<int>(frame.stats.iosurface->width()),
+                                                     static_cast<int>(frame.stats.iosurface->height()),
+                                                     static_cast<int>(frame.stats.iosurface->row_bytes()));
+            CFRelease(ref);
+            return pixels;
+        }
+    }
+#endif
+    if (presented.used_framebuffer && !frame.framebuffer.empty()) {
+        return frame.framebuffer;
+    }
+    return std::nullopt;
+}
+
 } // namespace SP::UI::Declarative
 
 namespace SP::System {

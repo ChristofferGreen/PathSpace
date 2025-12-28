@@ -239,12 +239,13 @@ int main(int argc, char** argv) {
                                                             window_height_run);
         }
 
-        auto present_frame = SP::UI::Declarative::PresentWindowFrame(space, *present_handles);
-        if (!present_frame) {
-            std::fprintf(stderr, "PresentWindowFrame failed: %s\n", SP::describeError(present_frame.error()).c_str());
+        auto present_frame_expected = SP::UI::Declarative::PresentWindowFrame(space, *present_handles);
+        if (!present_frame_expected) {
+            std::fprintf(stderr, "PresentWindowFrame failed: %s\n", SP::describeError(present_frame_expected.error()).c_str());
             break;
         }
-        auto presented = SP::UI::Declarative::PresentFrameToLocalWindow(*present_frame,
+        auto const& present_frame = *present_frame_expected;
+        auto presented = SP::UI::Declarative::PresentFrameToLocalWindow(present_frame,
                                                                         window_width_run,
                                                                         window_height_run);
         ++frames_rendered;
