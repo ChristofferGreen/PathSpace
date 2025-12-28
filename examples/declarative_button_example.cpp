@@ -190,7 +190,9 @@ int main(int argc, char** argv) {
                 SP::UI::Screenshot::DeclarativeScreenshotOptions opts{};
                 opts.output_png = screenshot_path;
                 opts.capture_mode = "next_present";
-                opts.force_publish = true;
+                opts.force_publish = false;
+                opts.mark_dirty_before_publish = false;
+                opts.readiness_options.wait_for_revision = false;
                 opts.force_software = true;
                 opts.present_when_force_software = true;
                 opts.verify_output_matches_framebuffer = false;
@@ -209,7 +211,9 @@ int main(int argc, char** argv) {
                 SP::UI::Screenshot::DeclarativeScreenshotOptions opts{};
                 opts.output_png = screenshot2_path;
                 opts.capture_mode = "next_present";
-                opts.force_publish = true;
+                opts.force_publish = false;
+                opts.mark_dirty_before_publish = false;
+                opts.readiness_options.wait_for_revision = false;
                 opts.force_software = true;
                 opts.present_when_force_software = true;
                 opts.verify_output_matches_framebuffer = false;
