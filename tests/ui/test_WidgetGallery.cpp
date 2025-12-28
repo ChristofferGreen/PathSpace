@@ -120,22 +120,6 @@ TEST_CASE("widget gallery snapshot persists font assets") {
     auto revision_base = std::string(scene->path.getPath()) + "/builds/"
                        + format_revision(*published);
 
-    auto font_assets_bytes = space.read<std::vector<std::uint8_t>>(
-        revision_base + "/bucket/font-assets.bin");
-    REQUIRE(font_assets_bytes);
-    CHECK_FALSE(font_assets_bytes->empty());
-
-    if (auto* artifact_dir = std::getenv("PATHSPACE_TEST_ARTIFACT_DIR")) {
-        std::error_code ec;
-        std::filesystem::create_directories(artifact_dir, ec);
-        auto artifact_path = std::filesystem::path(artifact_dir) / "widget_gallery_font_assets.bin";
-        std::ofstream out(artifact_path, std::ios::binary | std::ios::trunc);
-        if (out) {
-            out.write(reinterpret_cast<char const*>(font_assets_bytes->data()),
-                      static_cast<std::streamsize>(font_assets_bytes->size()));
-        }
-    }
-
     auto decoded = SP::UI::Scene::SceneSnapshotBuilder::decode_bucket(space, revision_base);
     REQUIRE(decoded);
     REQUIRE_FALSE(decoded->font_assets.empty());

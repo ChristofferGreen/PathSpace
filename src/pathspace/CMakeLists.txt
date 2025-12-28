@@ -206,6 +206,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/ThemeResources.cpp
         ui/FontManager.cpp
         ui/DiagnosticsRuntime.cpp
+        ui/RendererSnapshotStore.cpp
         ui/SceneSnapshotBuilder.cpp
         ui/SceneSnapshotBuilderDecode.cpp
         ui/SceneSnapshotBuilderFingerprint.cpp

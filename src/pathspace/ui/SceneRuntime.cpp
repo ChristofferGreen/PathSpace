@@ -51,29 +51,22 @@ auto EnsureAuthoringRoot(PathSpace& space,
 }
 
 auto PublishRevision(PathSpace& space,
-                      ScenePath const& scenePath,
-                      SceneRevisionDesc const& revision,
-                      std::span<std::byte const> drawableBucket,
-                      std::span<std::byte const> metadata) -> SP::Expected<void> {
+                     ScenePath const& scenePath,
+                     SceneRevisionDesc const& revision,
+                     std::span<std::byte const> drawableBucket,
+                     std::span<std::byte const> metadata) -> SP::Expected<void> {
     if (auto status = EnsureAuthoringRoot(space, scenePath); !status) {
         return status;
     }
+
+    (void)drawableBucket;
+    (void)metadata;
 
     auto record = to_record(revision);
     auto revisionStr = format_revision(revision.revision);
     auto revisionBase = make_revision_base(scenePath, revisionStr);
 
     if (auto status = replace_single<SceneRevisionRecord>(space, revisionBase + "/desc", record); !status) {
-        return status;
-    }
-    if (auto status = replace_single<std::vector<std::uint8_t>>(space,
-                                                                revisionBase + "/drawable_bucket",
-                                                                bytes_from_span(drawableBucket)); !status) {
-        return status;
-    }
-    if (auto status = replace_single<std::vector<std::uint8_t>>(space,
-                                                                revisionBase + "/metadata",
-                                                                bytes_from_span(metadata)); !status) {
         return status;
     }
 

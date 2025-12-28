@@ -15,8 +15,9 @@ namespace SP::UI::Declarative {
 struct DeclarativeReadinessOptions {
     std::chrono::milliseconds widget_timeout{std::chrono::milliseconds(5000)};
     std::chrono::milliseconds revision_timeout{std::chrono::milliseconds(3000)};
-    bool wait_for_structure = true;
-    bool wait_for_buckets = true;
+    // Renderer snapshots now live outside PathSpace; default waits skip structure/bucket mirrors.
+    bool wait_for_structure = false;
+    bool wait_for_buckets = false;
     bool wait_for_revision = true;
     bool wait_for_runtime_metrics = false;
     std::chrono::milliseconds runtime_metrics_timeout{std::chrono::milliseconds(2000)};
@@ -76,4 +77,3 @@ auto EnsureDeclarativeSceneReady(SP::PathSpace& space,
     -> SP::Expected<DeclarativeReadinessResult>;
 
 } // namespace SP::UI::Declarative
-

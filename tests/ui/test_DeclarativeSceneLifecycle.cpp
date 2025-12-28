@@ -214,6 +214,120 @@ TEST_CASE("Scene lifecycle publishes scene snapshots and tracks metrics") {
     REQUIRE(SP::Scene::Shutdown(space, scene->path));
 }
 
+TEST_CASE("Scene dirty events rebuild snapshots (diff vs full)") {
+    PathSpace space;
+    EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};
+    SP::System::LaunchOptions launch_options{};
+    launch_options.start_input_runtime = false;
+    launch_options.start_io_pump = false;
+    launch_options.start_io_telemetry_control = false;
+    REQUIRE(SP::System::LaunchStandard(space, launch_options));
+    RuntimeGuard runtime_guard{space};
+
+    auto app_root = SP::App::Create(space, "scene_lifecycle_dirty_rebuild");
+    REQUIRE(app_root);
+
+    SP::Window::CreateOptions window_options;
+    window_options.name = "dirty_window";
+    auto window = SP::Window::Create(space, *app_root, window_options);
+    REQUIRE(window);
+
+    auto scene = SP::Scene::Create(space, *app_root, window->path, {});
+    REQUIRE(scene);
+
+    auto window_view_path = std::string(window->path.getPath()) + "/views/" + window->view_name;
+    auto window_view = SP::App::ConcretePathView{window_view_path};
+
+    auto button = SP::UI::Declarative::Button::Create(space,
+                                                      window_view,
+                                                      "dirty_button",
+                                                      {});
+    REQUIRE(button);
+
+    auto metrics_base = std::string(scene->path.getPath()) + "/runtime/lifecycle/metrics";
+    auto buckets_path = metrics_base + "/widgets_with_buckets";
+    auto last_revision_path = metrics_base + "/last_revision";
+
+    PathSpaceExamples::DeclarativeReadinessOptions readiness_options{};
+    readiness_options.widget_timeout = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2500}, 3.0);
+    readiness_options.revision_timeout = DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0);
+    readiness_options.min_revision = std::uint64_t{0};
+    readiness_options.scene_window_component_override = PathSpaceExamples::window_component_name(
+        std::string(window->path.getPath()));
+    readiness_options.scene_view_override = window->view_name;
+    readiness_options.ensure_scene_window_mirror = true;
+    readiness_options.wait_for_buckets = false;
+    readiness_options.wait_for_structure = false;
+    readiness_options.force_scene_publish = true;
+    auto readiness = DeclarativeTestUtils::ensure_scene_ready(space,
+                                                              scene->path,
+                                                              window->path,
+                                                              window->view_name,
+                                                              readiness_options);
+    if (!readiness) {
+        FAIL_CHECK(DeclarativeTestUtils::format_error("scene lifecycle readiness", readiness.error()));
+    }
+    REQUIRE(readiness);
+
+    auto first_revision_ready = DeclarativeTestUtils::wait_for_metric_at_least(
+        space,
+        last_revision_path,
+        std::uint64_t{1},
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0));
+    REQUIRE(first_revision_ready);
+    auto initial_revision = space.read<std::uint64_t, std::string>(last_revision_path);
+    REQUIRE(initial_revision);
+
+    auto initial_buckets = DeclarativeTestUtils::wait_for_metric_at_least(
+        space,
+        buckets_path,
+        std::uint64_t{1},
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0));
+    REQUIRE(initial_buckets);
+
+    auto visual_mark = SP::UI::Declarative::SceneLifecycle::MarkDirty(
+        space,
+        scene->path,
+        SP::UI::Runtime::Scene::DirtyKind::Visual);
+    REQUIRE(visual_mark);
+
+    auto visual_revision_ready = DeclarativeTestUtils::wait_for_metric_at_least(
+        space,
+        last_revision_path,
+        *initial_revision + 1,
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0));
+    REQUIRE(visual_revision_ready);
+
+    auto buckets_after_visual = space.read<std::uint64_t, std::string>(buckets_path);
+    REQUIRE(buckets_after_visual);
+    CHECK_GT(*buckets_after_visual, std::uint64_t{0});
+
+    auto visual_revision = space.read<std::uint64_t, std::string>(last_revision_path);
+    REQUIRE(visual_revision);
+
+    auto structure_mark = SP::UI::Declarative::SceneLifecycle::MarkDirty(
+        space,
+        scene->path,
+        SP::UI::Runtime::Scene::DirtyKind::Structure);
+    REQUIRE(structure_mark);
+
+    auto structure_revision_ready = DeclarativeTestUtils::wait_for_metric_at_least(
+        space,
+        last_revision_path,
+        *visual_revision + 1,
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2500}, 3.0));
+    REQUIRE(structure_revision_ready);
+
+    auto buckets_rebuilt = DeclarativeTestUtils::wait_for_metric_at_least(
+        space,
+        buckets_path,
+        std::uint64_t{1},
+        DeclarativeTestUtils::scaled_timeout(std::chrono::milliseconds{2000}, 3.0));
+    REQUIRE(buckets_rebuilt);
+
+    REQUIRE(SP::Scene::Shutdown(space, scene->path));
+}
+
 TEST_CASE("Scene lifecycle manual pump synthesizes widget buckets") {
     PathSpace space;
     EnvGuard debug_tree{"PATHSPACE_UI_DEBUG_TREE", "1"};

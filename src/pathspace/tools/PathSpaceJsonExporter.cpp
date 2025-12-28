@@ -337,7 +337,13 @@ auto emitTree(TreeNode const& node) -> Json {
     for (auto const& [name, child] : node.children) {
         children[name] = emitTree(*child);
     }
-    out["children"] = std::move(children);
+    // Drop empty values/children to keep dumps concise, but keep present/empty strings.
+    if (out.contains("values") && out["values"].is_array() && out["values"].empty()) {
+        out.erase("values");
+    }
+    if (!children.empty()) {
+        out["children"] = std::move(children);
+    }
     return out;
 }
 

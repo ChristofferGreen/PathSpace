@@ -221,9 +221,6 @@ struct SceneLifecycleWorker {
         , snapshot_builder_(space_, SP::App::AppRootPathView{app_root_value_.getPath()}, scene_path_value_)
         , capsule_renderer_(space_) {
         window_widgets_root_ = window_path_ + std::string{"/views/"} + view_name_ + "/widgets";
-        trellis_path_ = scene_path_ + "/runtime/lifecycle/trellis";
-        trellis_enable_path_ = trellis_path_ + "/_system/enable";
-        trellis_disable_path_ = trellis_path_ + "/_system/disable";
         control_queue_path_ = scene_path_ + "/runtime/lifecycle/control";
         theme_invalidate_command_ = control_queue_path_ + ":invalidate_theme";
         metrics_base_ = scene_path_ + "/runtime/lifecycle/metrics";
@@ -264,6 +261,9 @@ struct SceneLifecycleWorker {
         bool expected = false;
         if (!stop_flag_.compare_exchange_strong(expected, true)) {
             return;
+        }
+        if (trellis_) {
+            trellis_->shutdown();
         }
         (void)space_.insert(control_queue_path_, control_queue_path_);
         if (worker_.joinable()) {
@@ -574,11 +574,8 @@ private:
     }
     auto mount_trellis() -> SP::Expected<void> {
         auto alias = std::shared_ptr<PathSpaceBase>(&space_, [](PathSpaceBase*) {});
-        auto trellis = std::make_unique<PathSpaceTrellis>(alias);
-        auto inserted = space_.insert(trellis_path_, std::move(trellis));
-        if (!inserted.errors.empty()) {
-            return std::unexpected(inserted.errors.front());
-        }
+        trellis_ = std::make_unique<PathSpaceTrellis>(alias);
+        trellis_->adoptContextAndPrefix(space_.sharedContext(), std::string{});
         write_metric("widgets_registered_total", widgets_registered_);
         write_metric("events_processed_total", events_processed_);
         write_metric("widgets_with_buckets", bucket_cache_size_);
@@ -595,12 +592,15 @@ private:
         try {
             while (!stop_flag_.load(std::memory_order_acquire)) {
                 register_widget_sources();
+                drain_scene_dirty_events();
                 scan_dirty_widgets();
                 flush_pending_publish();
                 drain_manual_pump_requests();
 
-                auto result = space_.take<std::string>(trellis_path_,
-                                                       SP::Out{} & SP::Block{options_.trellis_wait});
+                auto result = trellis_ ? trellis_->take<std::string>("/",
+                                                                     SP::Out{} & SP::Block{options_.trellis_wait})
+                                       : std::unexpected(SP::Error{SP::Error::Code::InvalidPath,
+                                                                   "trellis not initialized"});
                 if (!result) {
                     auto const& error = result.error();
                     if (error.code == Error::Code::NoObjectFound || error.code == Error::Code::Timeout) {
@@ -621,6 +621,47 @@ private:
         } catch (...) {
             handle_worker_exception("scene lifecycle worker terminated due to unknown exception");
         }
+    }
+
+    void drain_scene_dirty_events() {
+        using DirtyState = SP::UI::Runtime::Scene::DirtyState;
+        auto state = SP::UI::Declarative::SceneLifecycle::ReadDirtyState(
+            space_,
+            SP::UI::ScenePath{scene_path_});
+        if (!state) {
+            auto const code = state.error().code;
+            if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
+                return;
+            }
+            write_metric("dirty_queue_error", state.error().message.value_or("dirty state error"));
+            return;
+        }
+        handle_scene_dirty_state(*state);
+    }
+
+    void handle_scene_dirty_state(SP::UI::Runtime::Scene::DirtyState const& state) {
+        if (state.pending == SP::UI::Runtime::Scene::DirtyKind::None) {
+            return;
+        }
+        if (state.sequence != 0 && state.sequence <= last_dirty_sequence_) {
+            return;
+        }
+        last_dirty_sequence_ = state.sequence;
+        auto kinds = state.pending;
+        bool require_full_rebuild = (kinds & SP::UI::Runtime::Scene::DirtyKind::Structure)
+                                    != SP::UI::Runtime::Scene::DirtyKind::None;
+        if (require_full_rebuild) {
+            drop_missing_widget_buckets();
+            mark_all_widgets_dirty();
+        } else {
+            mark_cached_widgets_dirty();
+        }
+        {
+            std::lock_guard<std::mutex> guard(pending_mutex_);
+            pending_publish_reason_ = scene_path_ + "/dirty";
+        }
+        pending_publish_.store(true, std::memory_order_release);
+        write_metric("pending_publish", true);
     }
 
     void register_widget_sources() {
@@ -653,6 +694,28 @@ private:
         mark_root(app_widgets_root);
     }
 
+    void mark_cached_widgets_dirty() {
+        std::vector<std::string> cached;
+        {
+            std::lock_guard<std::mutex> guard(bucket_mutex_);
+            cached.reserve(bucket_cache_.size());
+            for (auto const& [widget_root, _] : bucket_cache_) {
+                cached.push_back(widget_root);
+            }
+        }
+        if (cached.empty()) {
+            mark_all_widgets_dirty();
+            return;
+        }
+        for (auto const& widget_root : cached) {
+            auto already_dirty = space_.read<bool, std::string>(WidgetSpacePath(widget_root, "/render/dirty"));
+            if (already_dirty && *already_dirty) {
+                continue;
+            }
+            enqueue_widget_subtree(widget_root);
+        }
+    }
+
     void enqueue_widget_subtree(std::string const& widget_root) {
         if (is_widget_removed(widget_root)) {
             cleanup_widget(widget_root);
@@ -663,6 +726,10 @@ private:
                                                       true);
         auto event_path = WidgetSpacePath(widget_root, "/render/events/dirty");
         (void)space_.insert(event_path, widget_root);
+        auto version_path = WidgetSpacePath(widget_root, "/render/dirty_version");
+        auto current_version = space_.read<std::uint64_t, std::string>(version_path);
+        std::uint64_t next_version = current_version ? (*current_version + 1) : 1;
+        (void)DeclarativeDetail::replace_single<std::uint64_t>(space_, version_path, next_version);
         auto children = SP::UI::Runtime::Widgets::WidgetChildRoots(space_, widget_root);
         for (auto const& child_root : children) {
             enqueue_widget_subtree(child_root);
@@ -715,10 +782,12 @@ private:
         if (!inserted) {
             return false;
         }
-        auto ret = space_.insert(trellis_enable_path_, queue_path);
-        if (!ret.errors.empty()) {
-            registered_sources_.erase(queue_path);
-            return false;
+        if (trellis_) {
+            auto ret = trellis_->insert("/_system/enable", queue_path);
+            if (!ret.errors.empty()) {
+                registered_sources_.erase(queue_path);
+                return false;
+            }
         }
         ++widgets_registered_;
         ++active_sources_;
@@ -732,9 +801,8 @@ private:
         if (!registered_sources_.erase(queue_path)) {
             return;
         }
-        auto ret = space_.insert(trellis_disable_path_, queue_path);
-        if (!ret.errors.empty()) {
-            return;
+        if (trellis_) {
+            (void)trellis_->insert("/_system/disable", queue_path);
         }
         if (active_sources_ > 0) {
             --active_sources_;
@@ -907,13 +975,6 @@ private:
         WidgetDetail::record_capsule_render_invocation(space_, widget_path, descriptor->kind);
         process_capsule_render(widget_path, *descriptor, *bucket);
         auto compare_result = compare_existing_bucket(widget_path, *bucket);
-        auto relative = make_relative(widget_path);
-        auto structure_base = scene_path_ + "/structure/widgets" + relative;
-        auto bucket_path = structure_base + "/render/bucket";
-        if (auto stored = DeclarativeDetail::replace_single(space_, bucket_path, *bucket); !stored) {
-            clear_dirty();
-            return;
-        }
         store_widget_bucket(widget_path, std::move(*bucket));
         submit_dirty_hints(widget_path);
         schedule_publish(widget_path);
@@ -1139,6 +1200,36 @@ private:
         }
     }
 
+    void clear_bucket_cache() {
+        {
+            std::lock_guard<std::mutex> guard(bucket_mutex_);
+            bucket_cache_.clear();
+            bucket_cache_size_ = 0;
+        }
+        write_metric("widgets_with_buckets", bucket_cache_size_);
+    }
+
+    void drop_missing_widget_buckets() {
+        std::vector<std::string> cached;
+        {
+            std::lock_guard<std::mutex> guard(bucket_mutex_);
+            cached.reserve(bucket_cache_.size());
+            for (auto const& [widget_root, _] : bucket_cache_) {
+                cached.push_back(widget_root);
+            }
+        }
+        for (auto const& widget_root : cached) {
+            auto meta = space_.read<std::string, std::string>(WidgetSpacePath(widget_root, "/meta/kind"));
+            if (meta) {
+                continue;
+            }
+            auto const code = meta.error().code;
+            if (code == Error::Code::NoObjectFound || code == Error::Code::NoSuchPath) {
+                remove_widget_bucket(widget_root);
+            }
+        }
+    }
+
     auto compare_existing_bucket(std::string const& widget_path,
                                  SP::UI::Scene::DrawableBucketSnapshot const& bucket) -> BucketCompareResult {
         std::shared_ptr<SP::UI::Scene::DrawableBucketSnapshot> previous;
@@ -1192,11 +1283,6 @@ private:
     void cleanup_widget(std::string const& widget_root) {
         cleanup_widget_subtree(widget_root);
         remove_widget_bucket(widget_root);
-
-        auto relative = make_relative(widget_root);
-        auto structure_base = scene_path_ + "/structure/widgets" + relative;
-        auto bucket_path = structure_base + "/render/bucket";
-        (void)DeclarativeDetail::replace_single(space_, bucket_path, SP::UI::Scene::DrawableBucketSnapshot{});
     }
 
     void cleanup_widget_subtree(std::string const& widget_root) {
@@ -1217,20 +1303,6 @@ private:
             return false;
         }
         return *removed;
-    }
-
-    auto make_relative(std::string const& absolute) const -> std::string {
-        if (absolute.rfind(app_root_path_, 0) != 0) {
-            return absolute;
-        }
-        auto relative = absolute.substr(app_root_path_.size());
-        if (relative.empty()) {
-            return "/";
-        }
-        if (relative.front() != '/') {
-            relative.insert(relative.begin(), '/');
-        }
-        return relative;
     }
 
     template <typename T>
@@ -1273,9 +1345,7 @@ private:
     SP::UI::Scene::SceneSnapshotBuilder snapshot_builder_;
     SP::UI::PathRenderer2D capsule_renderer_;
     std::string window_widgets_root_;
-    std::string trellis_path_;
-    std::string trellis_enable_path_;
-    std::string trellis_disable_path_;
+    std::unique_ptr<PathSpaceTrellis> trellis_;
     std::string control_queue_path_;
     std::string theme_invalidate_command_;
     std::string metrics_base_;
@@ -1292,6 +1362,7 @@ private:
     std::uint64_t active_sources_ = 0;
     std::uint64_t bucket_cache_size_ = 0;
     std::uint64_t last_revision_ = 0;
+    std::uint64_t last_dirty_sequence_ = 0;
     bool have_published_ = false;
     std::atomic<bool> pending_publish_{false};
     std::mutex pending_mutex_;

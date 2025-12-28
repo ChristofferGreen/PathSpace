@@ -3,11 +3,11 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/runtime/UIRuntime.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/RendererSnapshotStore.hpp>
 #include <pathspace/ui/DrawCommands.hpp>
 
 #include <atomic>
 #include <chrono>
-#include <span>
 #include <string>
 #include <thread>
 #include <vector>
@@ -30,12 +30,6 @@ struct SnapshotFixture {
         return SP::App::AppRootPathView{app_root.getPath()};
     }
 };
-
-template <typename T>
-auto read_value(PathSpace const& space, std::string const& path) -> SP::Expected<T> {
-    auto const& base = static_cast<SP::PathSpaceBase const&>(space);
-    return base.template read<T, std::string>(path);
-}
 
 auto make_bucket(std::size_t drawables, std::size_t commands) -> DrawableBucketSnapshot {
     DrawableBucketSnapshot bucket{};
@@ -129,51 +123,6 @@ auto make_bucket(std::size_t drawables, std::size_t commands) -> DrawableBucketS
     return bucket;
 }
 
-constexpr std::size_t kBucketHeaderSize = 32;
-
-auto read_le32(std::span<const std::uint8_t> bytes, std::size_t offset) -> std::uint32_t {
-    return static_cast<std::uint32_t>(bytes[offset])
-        | (static_cast<std::uint32_t>(bytes[offset + 1]) << 8u)
-        | (static_cast<std::uint32_t>(bytes[offset + 2]) << 16u)
-        | (static_cast<std::uint32_t>(bytes[offset + 3]) << 24u);
-}
-
-auto read_le64(std::span<const std::uint8_t> bytes, std::size_t offset) -> std::uint64_t {
-    auto lower = read_le32(bytes, offset);
-    auto upper = read_le32(bytes, offset + 4);
-    return (static_cast<std::uint64_t>(upper) << 32u) | static_cast<std::uint64_t>(lower);
-}
-
-auto fnv1a64(std::span<const std::uint8_t> bytes) -> std::uint64_t {
-    constexpr std::uint64_t kOffsetBasis = 14695981039346656037ull;
-    constexpr std::uint64_t kPrime = 1099511628211ull;
-    std::uint64_t hash = kOffsetBasis;
-    for (auto byte : bytes) {
-        hash ^= static_cast<std::uint64_t>(byte);
-        hash *= kPrime;
-    }
-    return hash;
-}
-
-auto replace_bytes(PathSpace& space,
-                   std::string const& path,
-                   std::vector<std::uint8_t> const& value) -> void {
-    while (true) {
-        auto taken = space.take<std::vector<std::uint8_t>>(path);
-        if (taken) {
-            continue;
-        }
-        auto const& error = taken.error();
-        if (error.code == Error::Code::NoObjectFound
-            || error.code == Error::Code::NoSuchPath) {
-            break;
-        }
-        REQUIRE_MESSAGE(false, error.message.value_or("unexpected error while draining bucket path"));
-    }
-    auto result = space.insert(path, value);
-    REQUIRE_MESSAGE(result.errors.empty(), "failed to write bucket bytes");
-}
-
 } // namespace
 
 TEST_SUITE("SceneSnapshotBuilder") {
@@ -230,64 +179,25 @@ TEST_CASE("publish snapshot encodes bucket and metadata") {
         CHECK(fingerprint != 0);
     }
 
-    auto rawMeta = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/metadata");
-    REQUIRE(rawMeta);
-    auto metaSpan = std::span<const std::byte>{reinterpret_cast<const std::byte*>(rawMeta->data()), rawMeta->size()};
-    auto decodedMeta = SceneSnapshotBuilder::decode_metadata(metaSpan);
-    REQUIRE(decodedMeta);
-    CHECK(decodedMeta->author == "tester");
-    CHECK(decodedMeta->tool_version == "unit-test");
-    CHECK(decodedMeta->drawable_count == bucket.drawable_ids.size());
-    CHECK(decodedMeta->command_count == bucket.command_kinds.size());
-    CHECK(decodedMeta->fingerprint_digests == opts.metadata.fingerprint_digests);
+    auto storedMeta = RendererSnapshotStore::instance().get_metadata(scene->getPath(), *revision);
+    REQUIRE(storedMeta);
+    CHECK(storedMeta->author == "tester");
+    CHECK(storedMeta->tool_version == "unit-test");
+    CHECK(storedMeta->drawable_count == bucket.drawable_ids.size());
+    CHECK(storedMeta->command_count == bucket.command_kinds.size());
+    CHECK(storedMeta->fingerprint_digests == opts.metadata.fingerprint_digests);
 
-    auto bucketMetaJson = read_value<std::string>(fx.space, revisionBase + "/bucket/meta.json");
-    REQUIRE(bucketMetaJson);
-    CHECK(bucketMetaJson->find("\"author\":\"tester\"") != std::string::npos);
-    CHECK(bucketMetaJson->find("\"authoring_map_entries\":2") != std::string::npos);
+    auto storedBucket = RendererSnapshotStore::instance().get_bucket(scene->getPath(), *revision);
+    REQUIRE(storedBucket);
+    CHECK(storedBucket->drawable_fingerprints.size() == bucket.drawable_ids.size());
 
+    // Renderer snapshots are no longer mirrored into PathSpace.
     auto storedDrawables = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/drawables.bin");
-    REQUIRE(storedDrawables);
-    CHECK_FALSE(storedDrawables->empty());
-
-    auto storedFingerprints = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/bucket/fingerprints.bin");
-    REQUIRE(storedFingerprints);
-    CHECK_FALSE(storedFingerprints->empty());
-
-    REQUIRE(storedDrawables->size() > kBucketHeaderSize);
-    std::span<const std::uint8_t> drawable_bytes{*storedDrawables};
-    CHECK(drawable_bytes[0] == static_cast<std::uint8_t>('D'));
-    CHECK(drawable_bytes[1] == static_cast<std::uint8_t>('B'));
-    CHECK(drawable_bytes[2] == static_cast<std::uint8_t>('K'));
-    CHECK(drawable_bytes[3] == static_cast<std::uint8_t>('T'));
-
-    auto version = read_le32(drawable_bytes, 4);
-    CHECK(version == 1u);
-    CHECK(drawable_bytes[8] == 0u);
-
-    auto payload_size = read_le32(drawable_bytes, 12);
-    auto checksum     = read_le64(drawable_bytes, 16);
-    auto reserved     = read_le64(drawable_bytes, 24);
-    CHECK(reserved == 0u);
-
-    auto payload_and_padding = storedDrawables->size() - kBucketHeaderSize;
-    REQUIRE(payload_size <= payload_and_padding);
-    auto padding = payload_and_padding - payload_size;
-    CHECK(padding <= 7u);
-
-    std::span<const std::uint8_t> payload_span{storedDrawables->data() + kBucketHeaderSize,
-                                               static_cast<std::size_t>(payload_size)};
-    CHECK(fnv1a64(payload_span) == checksum);
-
-    if (payload_size > 0) {
-        auto corrupted = *storedDrawables;
-        corrupted[kBucketHeaderSize] ^= 0x1u;
-        replace_bytes(fx.space, revisionBase + "/bucket/drawables.bin", corrupted);
-
-        auto corrupted_decode = SceneSnapshotBuilder::decode_bucket(fx.space, revisionBase);
-        REQUIRE_FALSE(corrupted_decode);
-        CHECK(corrupted_decode.error().code == Error::Code::InvalidType);
-    }
+    CHECK_FALSE(storedDrawables);
+    auto storedManifest = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/drawable_bucket");
+    CHECK_FALSE(storedManifest);
+    auto storedMetadata = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/metadata");
+    CHECK_FALSE(storedMetadata);
 }
 
 TEST_CASE("drawable fingerprints remain stable when drawable id changes") {
@@ -382,9 +292,8 @@ TEST_CASE("publish enforces retention policy") {
 
     auto bucketRev1 = fx.space.read<std::vector<std::uint8_t>>(std::string(scene->getPath()) + "/builds/0000000000000001/drawable_bucket");
     CHECK_FALSE(bucketRev1);
-
-    auto descRev2 = fx.space.read<std::vector<std::uint8_t>>(std::string(scene->getPath()) + "/builds/0000000000000002/drawable_bucket");
-    REQUIRE(descRev2);
+    auto bucketRev2 = fx.space.read<std::vector<std::uint8_t>>(std::string(scene->getPath()) + "/builds/0000000000000002/drawable_bucket");
+    CHECK_FALSE(bucketRev2);
 
     auto records = builder.snapshot_records();
     REQUIRE(records);
@@ -482,7 +391,8 @@ TEST_CASE("rapid publishes maintain retention and latest revision") {
     REQUIRE(metrics);
     CHECK(metrics->retained == 3);
     CHECK(metrics->last_revision == kThreads * kPublishesPerThread);
-    CHECK(metrics->total_fingerprint_count == 0);
+    CHECK(metrics->total_fingerprint_count >= metrics->retained);
+    CHECK(metrics->total_fingerprint_count <= metrics->retained * 4);
 }
 
 TEST_CASE("long running publishes keep metrics stable over time") {

@@ -49,6 +49,14 @@ void screenshot_trace(char const* message) {
     std::fprintf(stderr, "CaptureDeclarative: %s\n", message);
 }
 
+void trace_error(char const* stage, SP::Error const& error) {
+    if (!screenshot_trace_enabled()) {
+        return;
+    }
+    auto desc = SP::describeError(error);
+    std::fprintf(stderr, "CaptureDeclarative[%s] error: %s\n", stage, desc.c_str());
+}
+
 auto resolve_view_name(SP::PathSpace& space,
                        SP::UI::WindowPath const& window,
                        std::optional<std::string> const& override_name)
@@ -344,11 +352,13 @@ auto CaptureDeclarative(SP::PathSpace& space,
     -> SP::Expected<ScreenshotResult> {
     auto runtimes = ensure_capture_runtimes(space);
     if (!runtimes) {
+        trace_error("runtimes", runtimes.error());
         return std::unexpected(runtimes.error());
     }
 
     auto view_name = resolve_view_name(space, window, options.view_name);
     if (!view_name) {
+        trace_error("view_name", view_name.error());
         return std::unexpected(view_name.error());
     }
 
@@ -366,6 +376,7 @@ auto CaptureDeclarative(SP::PathSpace& space,
                                                                              *view_name,
                                                                              readiness);
     if (!readiness_result) {
+        trace_error("readiness", readiness_result.error());
         return std::unexpected(readiness_result.error());
     }
 
@@ -374,6 +385,7 @@ auto CaptureDeclarative(SP::PathSpace& space,
     if (theme_override && !theme_override->empty()) {
         auto applied = apply_theme_override(space, window, *theme_override);
         if (!applied) {
+            trace_error("theme_override", applied.error());
             return std::unexpected(applied.error());
         }
         applied_theme = *applied;
@@ -421,6 +433,7 @@ auto CaptureDeclarative(SP::PathSpace& space,
                                                                         scene,
                                                                         publish_options);
         if (!forced) {
+            trace_error("force_publish", forced.error());
             return std::unexpected(forced.error());
         }
         forced_revision = *forced;
@@ -441,12 +454,14 @@ auto CaptureDeclarative(SP::PathSpace& space,
                                                                                   revision_timeout,
                                                                                   wait_floor);
         if (!ready_revision) {
+            trace_error("wait_revision", ready_revision.error());
             return std::unexpected(ready_revision.error());
         }
     }
 
     auto dimensions = derive_surface_dimensions(space, window, *view_name);
     if (!dimensions) {
+        trace_error("dimensions", dimensions.error());
         return std::unexpected(dimensions.error());
     }
     auto width = options.width.value_or(dimensions->first);
@@ -458,6 +473,7 @@ auto CaptureDeclarative(SP::PathSpace& space,
     if (options.enable_capture_framebuffer) {
         auto capture_flag = enable_capture_framebuffer(space, window, *view_name, true);
         if (!capture_flag) {
+            trace_error("capture_flag", capture_flag.error());
             return std::unexpected(capture_flag.error());
         }
     }
@@ -521,16 +537,19 @@ auto CaptureDeclarative(SP::PathSpace& space,
 
     auto token = AcquireScreenshotToken(space, slot_paths.token, options.token_timeout);
     if (!token) {
+        trace_error("token", token.error());
         return std::unexpected(token.error());
     }
 
     auto write_request = WriteScreenshotSlotRequest(space, slot_paths, slot_request);
     if (!write_request) {
+        trace_error("slot_request", write_request.error());
         return std::unexpected(write_request.error());
     }
 
     auto handles = build_present_handles_for_window(space, window, *view_name);
     if (!handles) {
+        trace_error("handles", handles.error());
         return std::unexpected(handles.error());
     }
 

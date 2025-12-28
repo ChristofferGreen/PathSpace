@@ -6,7 +6,6 @@
           "renderer": {
             "children": {
               "default": {
-                "children": {},
                 "values": [
                   {
                     "category": "SerializedData",
@@ -16,13 +15,11 @@
                   }
                 ]
               }
-            },
-            "values": []
+            }
           },
           "theme": {
             "children": {
               "active": {
-                "children": {},
                 "values": [
                   {
                     "category": "SerializedData",
@@ -32,11 +29,9 @@
                   }
                 ]
               }
-            },
-            "values": []
+            }
           }
-        },
-        "values": []
+        }
       },
       "renderers": {
         "children": {
@@ -45,7 +40,6 @@
               "meta": {
                 "children": {
                   "description": {
-                    "children": {},
                     "values": [
                       {
                         "category": "SerializedData",
@@ -56,7 +50,6 @@
                     ]
                   },
                   "kind": {
-                    "children": {},
                     "values": [
                       {
                         "category": "SerializationLibraryCompatible",
@@ -66,7 +59,6 @@
                     ]
                   },
                   "name": {
-                    "children": {},
                     "values": [
                       {
                         "category": "SerializedData",
@@ -76,8 +68,7 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "targets": {
                 "children": {
@@ -86,7 +77,6 @@
                       "widgets_surface_declarative_button_main": {
                         "children": {
                           "desc": {
-                            "children": {},
                             "values": [
                               {
                                 "category": "SerializationLibraryCompatible",
@@ -98,7 +88,6 @@
                           "diagnostics": {
                             "children": {
                               "cacheWatch": {
-                                "children": {},
                                 "values": [
                                   {
                                     "category": "Fundamental",
@@ -108,11 +97,9 @@
                                   }
                                 ]
                               }
-                            },
-                            "values": []
+                            }
                           },
                           "scene": {
-                            "children": {},
                             "values": [
                               {
                                 "category": "SerializedData",
@@ -123,7 +110,6 @@
                             ]
                           },
                           "settings": {
-                            "children": {},
                             "values": [
                               {
                                 "category": "SerializationLibraryCompatible",
@@ -132,20 +118,15 @@
                               }
                             ]
                           }
-                        },
-                        "values": []
+                        }
                       }
-                    },
-                    "values": []
+                    }
                   }
-                },
-                "values": []
+                }
               }
-            },
-            "values": []
+            }
           }
-        },
-        "values": []
+        }
       },
       "scenes": {
         "children": {
@@ -155,179 +136,7 @@
                 "children": {
                   "0000000000000001": {
                     "children": {
-                      "bucket": {
-                        "children": {
-                          "authoring-map.bin": {
-                            "children": {},
-                            "values": [
-                              {
-                                "category": "SerializationLibraryCompatible",
-                                "index": 0,
-                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
-                              }
-                            ]
-                          },
-                          "bounds.bin": {
-                            "children": {},
-                            "values": [
-                              {
-                                "category": "SerializationLibraryCompatible",
-                                "index": 0,
-                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
-                              }
-                            ]
-                          },
-                          "clip-heads.bin": {
-                            "children": {},
-                            "values": [
-                              {
-                                "category": "SerializationLibraryCompatible",
-                                "index": 0,
-                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
-                              }
-                            ]
-                          },
-                          "clip-nodes.bin": {
-                            "children": {},
-                            "values": [
-                              {
-                                "category": "SerializationLibraryCompatible",
-                                "index": 0,
-                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
-                              }
-                            ]
-                          },
-                          "cmd-buffer.bin": {
-                            "children": {},
-                            "values": [
-                              {
-                                "category": "SerializationLibraryCompatible",
-                                "index": 0,
-                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
-                              }
-                            ]
-                          },
-                          "drawables.bin": {
-                            "children": {},
-                            "values": [
-                              {
-                                "category": "SerializationLibraryCompatible",
-                                "index": 0,
-                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
-                              }
-                            ]
-                          },
-                          "fingerprints.bin": {
-                            "children": {},
-                            "values": [
-                              {
-                                "category": "SerializationLibraryCompatible",
-                                "index": 0,
-                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
-                              }
-                            ]
-                          },
-                          "font-assets.bin": {
-                            "children": {},
-                            "values": [
-                              {
-                                "category": "SerializationLibraryCompatible",
-                                "index": 0,
-                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
-                              }
-                            ]
-                          },
-                          "glyph-vertices.bin": {
-                            "children": {},
-                            "values": [
-                              {
-                                "category": "SerializationLibraryCompatible",
-                                "index": 0,
-                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
-                              }
-                            ]
-                          },
-                          "indices": {
-                            "children": {
-                              "alpha.bin": {
-                                "children": {},
-                                "values": [
-                                  {
-                                    "category": "SerializationLibraryCompatible",
-                                    "index": 0,
-                                    "type": "NSt3__16vectorIjNS_9allocatorIjEEEE"
-                                  }
-                                ]
-                              },
-                              "opaque.bin": {
-                                "children": {},
-                                "values": [
-                                  {
-                                    "category": "SerializationLibraryCompatible",
-                                    "index": 0,
-                                    "type": "NSt3__16vectorIjNS_9allocatorIjEEEE"
-                                  }
-                                ]
-                              }
-                            },
-                            "values": []
-                          },
-                          "meta.json": {
-                            "children": {},
-                            "values": [
-                              {
-                                "category": "SerializedData",
-                                "index": 0,
-                                "type": "std::string",
-                                "value": "{\"revision\":1,\"created_at_ms\":1766875045848,\"author\":\"declarative-runtime\",\"tool_version\":\"declarative-runtime\",\"drawable_count\":7,\"command_count\":184,\"fingerprint_count\":0,\"font_asset_count\":0,\"authoring_map_entries\":7,\"unique_authoring_nodes\":7}"
-                              }
-                            ]
-                          },
-                          "state.bin": {
-                            "children": {},
-                            "values": [
-                              {
-                                "category": "SerializationLibraryCompatible",
-                                "index": 0,
-                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
-                              }
-                            ]
-                          },
-                          "strokes.bin": {
-                            "children": {},
-                            "values": [
-                              {
-                                "category": "SerializationLibraryCompatible",
-                                "index": 0,
-                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
-                              }
-                            ]
-                          },
-                          "summary": {
-                            "children": {},
-                            "values": [
-                              {
-                                "category": "SerializationLibraryCompatible",
-                                "index": 0,
-                                "type": "N2SP2UI5Scene15SnapshotSummaryE"
-                              }
-                            ]
-                          },
-                          "transforms.bin": {
-                            "children": {},
-                            "values": [
-                              {
-                                "category": "SerializationLibraryCompatible",
-                                "index": 0,
-                                "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
-                              }
-                            ]
-                          }
-                        },
-                        "values": []
-                      },
                       "desc": {
-                        "children": {},
                         "values": [
                           {
                             "category": "SerializationLibraryCompatible",
@@ -335,35 +144,12 @@
                             "type": "N2SP2UI7Runtime6Detail19SceneRevisionRecordE"
                           }
                         ]
-                      },
-                      "drawable_bucket": {
-                        "children": {},
-                        "values": [
-                          {
-                            "category": "SerializationLibraryCompatible",
-                            "index": 0,
-                            "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
-                          }
-                        ]
-                      },
-                      "metadata": {
-                        "children": {},
-                        "values": [
-                          {
-                            "category": "SerializationLibraryCompatible",
-                            "index": 0,
-                            "type": "NSt3__16vectorIhNS_9allocatorIhEEEE"
-                          }
-                        ]
                       }
-                    },
-                    "values": []
+                    }
                   }
-                },
-                "values": []
+                }
               },
               "current_revision": {
-                "children": {},
                 "values": [
                   {
                     "category": "Fundamental",
@@ -376,7 +162,6 @@
               "meta": {
                 "children": {
                   "description": {
-                    "children": {},
                     "values": [
                       {
                         "category": "SerializedData",
@@ -387,7 +172,6 @@
                     ]
                   },
                   "name": {
-                    "children": {},
                     "values": [
                       {
                         "category": "SerializedData",
@@ -396,31 +180,14 @@
                         "value": "button_scene"
                       }
                     ]
-                  },
-                  "snapshots": {
-                    "children": {
-                      "index": {
-                        "children": {},
-                        "values": [
-                          {
-                            "category": "SerializationLibraryCompatible",
-                            "index": 0,
-                            "type": "NSt3__16vectorIN2SP2UI5Scene14SnapshotRecordENS_9allocatorIS4_EEEE"
-                          }
-                        ]
-                      }
-                    },
-                    "values": []
                   }
-                },
-                "values": []
+                }
               },
               "metrics": {
                 "children": {
                   "snapshots": {
                     "children": {
                       "state": {
-                        "children": {},
                         "values": [
                           {
                             "category": "SerializationLibraryCompatible",
@@ -429,16 +196,13 @@
                           }
                         ]
                       }
-                    },
-                    "values": []
+                    }
                   }
-                },
-                "values": []
+                }
               },
               "render": {
                 "children": {
                   "dirty": {
-                    "children": {},
                     "values": [
                       {
                         "category": "Fundamental",
@@ -448,15 +212,13 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "runtime": {
                 "children": {
                   "lifecycle": {
                     "children": {
                       "control": {
-                        "children": {},
                         "values": [
                           {
                             "category": "SerializedData",
@@ -469,23 +231,20 @@
                       "metrics": {
                         "children": {
                           "last_published_widget": {
-                            "children": {},
                             "values": [
                               {
                                 "category": "SerializedData",
                                 "index": 0,
                                 "type": "std::string",
-                                "value": "/system/applications/declarative_button_example/scenes/button_scene"
+                                "value": "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column/children/hello_button"
                               }
                             ]
                           }
-                        },
-                        "values": []
+                        }
                       },
                       "state": {
                         "children": {
                           "running": {
-                            "children": {},
                             "values": [
                               {
                                 "category": "Fundamental",
@@ -495,23 +254,15 @@
                               }
                             ]
                           }
-                        },
-                        "values": []
-                      },
-                      "trellis": {
-                        "children": {},
-                        "values": []
+                        }
                       }
-                    },
-                    "values": []
+                    }
                   }
-                },
-                "values": []
+                }
               },
               "state": {
                 "children": {
                   "attached": {
-                    "children": {},
                     "values": [
                       {
                         "category": "Fundamental",
@@ -521,45 +272,10 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "structure": {
                 "children": {
-                  "widgets": {
-                    "children": {
-                      "windows": {
-                        "children": {
-                          "declarative_button": {
-                            "children": {
-                              "views": {
-                                "children": {
-                                  "main": {
-                                    "children": {
-                                      "widgets": {
-                                        "children": {
-                                          "button_column": {
-                                            "children": {},
-                                            "values": []
-                                          }
-                                        },
-                                        "values": []
-                                      }
-                                    },
-                                    "values": []
-                                  }
-                                },
-                                "values": []
-                              }
-                            },
-                            "values": []
-                          }
-                        },
-                        "values": []
-                      }
-                    },
-                    "values": []
-                  },
                   "window": {
                     "children": {
                       "declarative_button": {
@@ -567,7 +283,6 @@
                           "focus": {
                             "children": {
                               "current": {
-                                "children": {},
                                 "values": [
                                   {
                                     "category": "SerializedData",
@@ -577,13 +292,11 @@
                                   }
                                 ]
                               }
-                            },
-                            "values": []
+                            }
                           },
                           "metrics": {
                             "children": {
                               "dpi": {
-                                "children": {},
                                 "values": [
                                   {
                                     "category": "Fundamental",
@@ -593,11 +306,9 @@
                                   }
                                 ]
                               }
-                            },
-                            "values": []
+                            }
                           },
                           "present": {
-                            "children": {},
                             "values": [
                               {
                                 "category": "SerializedData",
@@ -608,7 +319,6 @@
                             ]
                           },
                           "surface": {
-                            "children": {},
                             "values": [
                               {
                                 "category": "SerializedData",
@@ -619,7 +329,6 @@
                             ]
                           },
                           "view": {
-                            "children": {},
                             "values": [
                               {
                                 "category": "SerializedData",
@@ -629,25 +338,19 @@
                               }
                             ]
                           }
-                        },
-                        "values": []
+                        }
                       }
-                    },
-                    "values": []
+                    }
                   }
-                },
-                "values": []
+                }
               }
-            },
-            "values": []
+            }
           }
-        },
-        "values": []
+        }
       },
       "state": {
         "children": {
           "title": {
-            "children": {},
             "values": [
               {
                 "category": "SerializedData",
@@ -657,15 +360,13 @@
               }
             ]
           }
-        },
-        "values": []
+        }
       },
       "surfaces": {
         "children": {
           "widgets_surface_declarative_button_main": {
             "children": {
               "desc": {
-                "children": {},
                 "values": [
                   {
                     "category": "SerializationLibraryCompatible",
@@ -677,7 +378,6 @@
               "meta": {
                 "children": {
                   "name": {
-                    "children": {},
                     "values": [
                       {
                         "category": "SerializedData",
@@ -687,11 +387,9 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "renderer": {
-                "children": {},
                 "values": [
                   {
                     "category": "SerializedData",
@@ -702,7 +400,6 @@
                 ]
               },
               "scene": {
-                "children": {},
                 "values": [
                   {
                     "category": "SerializedData",
@@ -713,7 +410,6 @@
                 ]
               },
               "target": {
-                "children": {},
                 "values": [
                   {
                     "category": "SerializedData",
@@ -723,16 +419,13 @@
                   }
                 ]
               }
-            },
-            "values": []
+            }
           }
-        },
-        "values": []
+        }
       },
       "themes": {
         "children": {
           "default": {
-            "children": {},
             "values": [
               {
                 "category": "SerializedData",
@@ -742,8 +435,7 @@
               }
             ]
           }
-        },
-        "values": []
+        }
       },
       "windows": {
         "children": {
@@ -752,7 +444,6 @@
               "meta": {
                 "children": {
                   "background": {
-                    "children": {},
                     "values": [
                       {
                         "category": "SerializedData",
@@ -763,7 +454,6 @@
                     ]
                   },
                   "height": {
-                    "children": {},
                     "values": [
                       {
                         "category": "Fundamental",
@@ -774,7 +464,6 @@
                     ]
                   },
                   "name": {
-                    "children": {},
                     "values": [
                       {
                         "category": "SerializedData",
@@ -785,7 +474,6 @@
                     ]
                   },
                   "scale": {
-                    "children": {},
                     "values": [
                       {
                         "category": "Fundamental",
@@ -796,7 +484,6 @@
                     ]
                   },
                   "title": {
-                    "children": {},
                     "values": [
                       {
                         "category": "SerializedData",
@@ -807,7 +494,6 @@
                     ]
                   },
                   "width": {
-                    "children": {},
                     "values": [
                       {
                         "category": "Fundamental",
@@ -817,13 +503,11 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "render": {
                 "children": {
                   "dirty": {
-                    "children": {},
                     "values": [
                       {
                         "category": "Fundamental",
@@ -833,13 +517,11 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "state": {
                 "children": {
                   "visible": {
-                    "children": {},
                     "values": [
                       {
                         "category": "Fundamental",
@@ -849,13 +531,11 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "style": {
                 "children": {
                   "theme": {
-                    "children": {},
                     "values": [
                       {
                         "category": "SerializedData",
@@ -865,15 +545,13 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "views": {
                 "children": {
                   "main": {
                     "children": {
                       "scene": {
-                        "children": {},
                         "values": [
                           {
                             "category": "SerializedData",
@@ -884,7 +562,6 @@
                         ]
                       },
                       "surface": {
-                        "children": {},
                         "values": [
                           {
                             "category": "SerializedData",
@@ -905,7 +582,6 @@
                                       "meta": {
                                         "children": {
                                           "label": {
-                                            "children": {},
                                             "values": [
                                               {
                                                 "category": "SerializedData",
@@ -915,22 +591,16 @@
                                               }
                                             ]
                                           }
-                                        },
-                                        "values": []
+                                        }
                                       },
-                                      "space": {
-                                        "children": {},
-                                        "values": []
-                                      }
-                                    },
-                                    "values": []
+                                      "space": {}
+                                    }
                                   },
                                   "hello_button": {
                                     "children": {
                                       "meta": {
                                         "children": {
                                           "label": {
-                                            "children": {},
                                             "values": [
                                               {
                                                 "category": "SerializedData",
@@ -940,42 +610,26 @@
                                               }
                                             ]
                                           }
-                                        },
-                                        "values": []
+                                        }
                                       },
-                                      "space": {
-                                        "children": {},
-                                        "values": []
-                                      }
-                                    },
-                                    "values": []
+                                      "space": {}
+                                    }
                                   }
-                                },
-                                "values": []
+                                }
                               },
-                              "space": {
-                                "children": {},
-                                "values": []
-                              }
-                            },
-                            "values": []
+                              "space": {}
+                            }
                           }
-                        },
-                        "values": []
+                        }
                       }
-                    },
-                    "values": []
+                    }
                   }
-                },
-                "values": []
+                }
               }
-            },
-            "values": []
+            }
           }
-        },
-        "values": []
+        }
       }
-    },
-    "values": []
+    }
   }
 }

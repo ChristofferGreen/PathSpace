@@ -3,6 +3,7 @@
 #include <pathspace/app/AppPaths.hpp>
 #include <pathspace/core/Error.hpp>
 #include <pathspace/path/ConcretePath.hpp>
+#include <pathspace/ui/RendererSnapshotStore.hpp>
 #include <pathspace/runtime/IOPump.hpp>
 
 #include <algorithm>
@@ -216,13 +217,20 @@ auto WaitForDeclarativeWidgetBuckets(SP::PathSpace& space,
                                      SP::UI::ScenePath const& scene,
                                      std::size_t expected_widgets,
                                      std::chrono::milliseconds timeout) -> SP::Expected<void> {
-    if (expected_widgets == 0) {
-        return {};
-    }
-    auto metrics_base = std::string(scene.getPath()) + "/runtime/lifecycle/metrics";
+    auto scene_key = std::string(scene.getPath());
+    auto metrics_base = scene_key + "/runtime/lifecycle/metrics";
     auto widgets_path = metrics_base + "/widgets_with_buckets";
+    auto& snapshot_store = SP::UI::Scene::RendererSnapshotStore::instance();
+
     auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline) {
+        auto records = snapshot_store.records(scene_key);
+        if (!records.empty()) {
+            auto const& latest = records.back();
+            if (expected_widgets == 0 || latest.drawable_count >= expected_widgets) {
+                return {};
+            }
+        }
         auto buckets = space.read<std::uint64_t, std::string>(widgets_path);
         if (buckets && *buckets >= expected_widgets) {
             return {};
@@ -242,11 +250,6 @@ auto WaitForDeclarativeSceneRevision(SP::PathSpace& space,
                                      std::optional<std::uint64_t> min_revision)
     -> SP::Expected<std::uint64_t> {
     auto revision_path = std::string(scene.getPath()) + "/current_revision";
-    auto format_revision = [](std::uint64_t revision) {
-        std::ostringstream oss;
-        oss << std::setw(16) << std::setfill('0') << revision;
-        return oss.str();
-    };
     std::optional<std::uint64_t> ready_revision;
     auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline) {
@@ -270,18 +273,12 @@ auto WaitForDeclarativeSceneRevision(SP::PathSpace& space,
         return std::unexpected(SP::Error{SP::Error::Code::Timeout,
                                          "scene revision did not publish"});
     }
-    auto revision_str = format_revision(*ready_revision);
-    auto bucket_path = std::string(scene.getPath()) + "/builds/" + revision_str + "/bucket/drawables.bin";
     auto bucket_deadline = std::chrono::steady_clock::now() + timeout;
+    auto& snapshot_store = SP::UI::Scene::RendererSnapshotStore::instance();
     while (std::chrono::steady_clock::now() < bucket_deadline) {
-        auto drawables = space.read<std::vector<std::uint8_t>, std::string>(bucket_path);
-        if (drawables) {
+        auto bucket = snapshot_store.get_bucket(scene.getPath(), *ready_revision);
+        if (bucket) {
             return *ready_revision;
-        }
-        auto const& error = drawables.error();
-        if (error.code != SP::Error::Code::NoSuchPath
-            && error.code != SP::Error::Code::NoObjectFound) {
-            return std::unexpected(error);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }

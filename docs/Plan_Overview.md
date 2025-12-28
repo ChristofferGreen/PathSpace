@@ -9,6 +9,7 @@ Provide a single index of active planning documents, ordered by current priority
 
 ## Priority Ordering
 
+> **Update (December 29, 2025):** `Plan_RendererSnapshot_NoPathSpaceMirror.md` is complete and archived at `docs/finished/Plan_RendererSnapshot_NoPathSpaceMirror_Finished.md`; the renderer now rebuilds snapshots from dirty markers without PathSpace runtime mirrors.
 > **Update (December 27, 2025):** `Plan_PathSpaceMinimalCore.md` is complete and archived at `docs/finished/Plan_PathSpaceMinimalCore_Finished.md`; minimal default runtime/exporter/theme writes are now the baseline.
 > **Update (December 12, 2025):** `Plan_WidgetComposableRuntime.md` is complete and archived at `docs/finished/Plan_WidgetComposableRuntime_Finished.md`; capsule-only runtime doc/test sweep finished and the plan is removed from the active queue.
 > **Update (December 11, 2025):** `Plan_PathSpaceHtmlServer.md` is complete and archived at `docs/finished/Plan_PathSpaceHtmlServer_Finished.md`; embed-first ServeHtml is now the default path with CI coverage for standalone and embedded helpers.
