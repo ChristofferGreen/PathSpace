@@ -192,9 +192,11 @@ int main(int argc, char** argv) {
                 }
             }
             if (screenshot2_path) {
-                std::this_thread::sleep_for(std::chrono::milliseconds{1500});
+                std::this_thread::sleep_for(std::chrono::milliseconds{1800});
                 if (!SP::UI::SaveLocalWindowScreenshot(screenshot2_path->c_str())) {
                     std::fprintf(stderr, "screenshot2 capture failed (SaveLocalWindowScreenshot)\n");
+                } else {
+                    std::fprintf(stderr, "screenshot2 saved to %s\n", screenshot2_path->c_str());
                 }
             }
             SP::UI::RequestLocalWindowQuit();
