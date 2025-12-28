@@ -186,13 +186,13 @@ int main(int argc, char** argv) {
         std::thread capture_thread([&, screenshot_path, screenshot2_path] {
             // First capture shortly after startup to allow the scene to publish.
             if (screenshot_path) {
-                std::this_thread::sleep_for(std::chrono::milliseconds{500});
+                std::this_thread::sleep_for(std::chrono::milliseconds{1000});
                 if (!SP::UI::SaveLocalWindowScreenshot(screenshot_path->c_str())) {
                     std::fprintf(stderr, "screenshot capture failed (SaveLocalWindowScreenshot)\n");
                 }
             }
             if (screenshot2_path) {
-                std::this_thread::sleep_for(std::chrono::milliseconds{1800});
+                std::this_thread::sleep_for(std::chrono::milliseconds{2000});
                 if (!SP::UI::SaveLocalWindowScreenshot(screenshot2_path->c_str())) {
                     std::fprintf(stderr, "screenshot2 capture failed (SaveLocalWindowScreenshot)\n");
                 } else {
