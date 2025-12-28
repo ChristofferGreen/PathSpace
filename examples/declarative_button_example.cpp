@@ -193,8 +193,8 @@ int main(int argc, char** argv) {
                 opts.force_publish = false;
                 opts.mark_dirty_before_publish = false;
                 opts.readiness_options.wait_for_revision = false;
-                opts.force_software = true;
-                opts.present_when_force_software = true;
+                opts.force_software = false;
+                opts.present_when_force_software = false;
                 opts.verify_output_matches_framebuffer = false;
                 auto capture1 = SP::UI::Screenshot::CaptureDeclarative(space,
                                                                        scene->path,
@@ -214,8 +214,8 @@ int main(int argc, char** argv) {
                 opts.force_publish = false;
                 opts.mark_dirty_before_publish = false;
                 opts.readiness_options.wait_for_revision = false;
-                opts.force_software = true;
-                opts.present_when_force_software = true;
+                opts.force_software = false;
+                opts.present_when_force_software = false;
                 opts.verify_output_matches_framebuffer = false;
                 auto capture2 = SP::UI::Screenshot::CaptureDeclarative(space,
                                                                        scene->path,
