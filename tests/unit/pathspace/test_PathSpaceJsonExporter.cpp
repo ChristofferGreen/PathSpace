@@ -184,8 +184,10 @@ TEST_CASE("PathSpace JSON exporter honors includeValues toggle") {
 
     auto doc    = dump(space, options);
     auto node   = findNode(doc, "/", "/alpha/value");
-    auto values = node.at("values");
-    CHECK(values.empty());
+    auto it = node.find("values");
+    if (it != node.end()) {
+        CHECK(it->empty());
+    }
     CHECK_FALSE(node.at("values_truncated").get<bool>());
     CHECK_FALSE(node.at("values_sampled").get<bool>());
 }

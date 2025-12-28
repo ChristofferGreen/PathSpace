@@ -15,8 +15,7 @@
                   }
                 ]
               }
-            },
-            "values": []
+            }
           },
           "theme": {
             "children": {
@@ -30,11 +29,9 @@
                   }
                 ]
               }
-            },
-            "values": []
+            }
           }
-        },
-        "values": []
+        }
       },
       "renderers": {
         "children": {
@@ -71,8 +68,7 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "targets": {
                 "children": {
@@ -101,8 +97,7 @@
                                   }
                                 ]
                               }
-                            },
-                            "values": []
+                            }
                           },
                           "scene": {
                             "values": [
@@ -123,20 +118,15 @@
                               }
                             ]
                           }
-                        },
-                        "values": []
+                        }
                       }
-                    },
-                    "values": []
+                    }
                   }
-                },
-                "values": []
+                }
               }
-            },
-            "values": []
+            }
           }
-        },
-        "values": []
+        }
       },
       "scenes": {
         "children": {
@@ -155,11 +145,9 @@
                           }
                         ]
                       }
-                    },
-                    "values": []
+                    }
                   }
-                },
-                "values": []
+                }
               },
               "current_revision": {
                 "values": [
@@ -193,8 +181,7 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "metrics": {
                 "children": {
@@ -209,11 +196,9 @@
                           }
                         ]
                       }
-                    },
-                    "values": []
+                    }
                   }
-                },
-                "values": []
+                }
               },
               "render": {
                 "children": {
@@ -227,23 +212,13 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "runtime": {
                 "children": {
                   "lifecycle": {
                     "children": {
-                      "control": {
-                        "values": [
-                          {
-                            "category": "SerializedData",
-                            "index": 0,
-                            "type": "std::string",
-                            "value": "/system/applications/declarative_button_example/scenes/button_scene/runtime/lifecycle/control"
-                          }
-                        ]
-                      },
+                      "control": {},
                       "metrics": {
                         "children": {
                           "last_published_widget": {
@@ -256,8 +231,7 @@
                               }
                             ]
                           }
-                        },
-                        "values": []
+                        }
                       },
                       "state": {
                         "children": {
@@ -271,14 +245,11 @@
                               }
                             ]
                           }
-                        },
-                        "values": []
+                        }
                       }
-                    },
-                    "values": []
+                    }
                   }
-                },
-                "values": []
+                }
               },
               "state": {
                 "children": {
@@ -292,8 +263,7 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "structure": {
                 "children": {
@@ -313,8 +283,7 @@
                                   }
                                 ]
                               }
-                            },
-                            "values": []
+                            }
                           },
                           "metrics": {
                             "children": {
@@ -328,8 +297,7 @@
                                   }
                                 ]
                               }
-                            },
-                            "values": []
+                            }
                           },
                           "present": {
                             "values": [
@@ -361,20 +329,15 @@
                               }
                             ]
                           }
-                        },
-                        "values": []
+                        }
                       }
-                    },
-                    "values": []
+                    }
                   }
-                },
-                "values": []
+                }
               }
-            },
-            "values": []
+            }
           }
-        },
-        "values": []
+        }
       },
       "state": {
         "children": {
@@ -388,8 +351,7 @@
               }
             ]
           }
-        },
-        "values": []
+        }
       },
       "surfaces": {
         "children": {
@@ -416,8 +378,7 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "renderer": {
                 "values": [
@@ -449,11 +410,9 @@
                   }
                 ]
               }
-            },
-            "values": []
+            }
           }
-        },
-        "values": []
+        }
       },
       "themes": {
         "children": {
@@ -467,8 +426,7 @@
               }
             ]
           }
-        },
-        "values": []
+        }
       },
       "windows": {
         "children": {
@@ -536,8 +494,7 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "render": {
                 "children": {
@@ -551,8 +508,7 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "state": {
                 "children": {
@@ -566,8 +522,7 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "style": {
                 "children": {
@@ -581,8 +536,7 @@
                       }
                     ]
                   }
-                },
-                "values": []
+                }
               },
               "views": {
                 "children": {
@@ -612,79 +566,54 @@
                         "children": {
                           "button_column": {
                             "children": {
-                              "children": {
+                              "goodbye_button": {
                                 "children": {
-                                  "goodbye_button": {
+                                  "meta": {
                                     "children": {
-                                      "meta": {
-                                        "children": {
-                                          "label": {
-                                            "values": [
-                                              {
-                                                "category": "SerializedData",
-                                                "index": 0,
-                                                "type": "std::string",
-                                                "value": "Say Goodbye"
-                                              }
-                                            ]
+                                      "label": {
+                                        "values": [
+                                          {
+                                            "category": "SerializedData",
+                                            "index": 0,
+                                            "type": "std::string",
+                                            "value": "Say Goodbye"
                                           }
-                                        },
-                                        "values": []
-                                      },
-                                      "space": {
-                                        "values": []
+                                        ]
                                       }
-                                    },
-                                    "values": []
-                                  },
-                                  "hello_button": {
-                                    "children": {
-                                      "meta": {
-                                        "children": {
-                                          "label": {
-                                            "values": [
-                                              {
-                                                "category": "SerializedData",
-                                                "index": 0,
-                                                "type": "std::string",
-                                                "value": "Say Hello"
-                                              }
-                                            ]
-                                          }
-                                        },
-                                        "values": []
-                                      },
-                                      "space": {
-                                        "values": []
-                                      }
-                                    },
-                                    "values": []
+                                    }
                                   }
-                                },
-                                "values": []
+                                }
                               },
-                              "space": {
-                                "values": []
+                              "hello_button": {
+                                "children": {
+                                  "meta": {
+                                    "children": {
+                                      "label": {
+                                        "values": [
+                                          {
+                                            "category": "SerializedData",
+                                            "index": 0,
+                                            "type": "std::string",
+                                            "value": "Say Hello"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
                               }
-                            },
-                            "values": []
+                            }
                           }
-                        },
-                        "values": []
+                        }
                       }
-                    },
-                    "values": []
+                    }
                   }
-                },
-                "values": []
+                }
               }
-            },
-            "values": []
+            }
           }
-        },
-        "values": []
+        }
       }
-    },
-    "values": []
+    }
   }
 }

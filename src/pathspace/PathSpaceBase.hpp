@@ -73,6 +73,7 @@ struct PathSpaceJsonOptions {
 
     VisitOptions visit{};
     std::size_t  maxQueueEntries           = std::numeric_limits<std::size_t>::max();
+    bool         includeMetadata           = false;
     bool         includeOpaquePlaceholders = false;
     bool         includeDiagnostics        = false;
     bool         includeStructureFields    = false;

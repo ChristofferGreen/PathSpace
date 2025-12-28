@@ -222,7 +222,17 @@ namespace detail {
     auto flattened_root = WidgetChildrenPath(widget_root);
     auto flattened_names =
         FilterHousekeeping(space.listChildren(SP::ConcretePathStringView{flattened_root}));
-    if (!flattened_names.empty()) {
+    // Legacy dumps sometimes wrap the actual children map under an extra "children" capsule.
+    if (flattened_names.size() == 1 && flattened_names.front() == "children") {
+        auto nested_flattened_root = AppendPathComponent(flattened_root, "children");
+        auto nested_flattened_names = FilterHousekeeping(
+            space.listChildren(SP::ConcretePathStringView{nested_flattened_root}));
+        if (!nested_flattened_names.empty()) {
+            return {.root = std::move(nested_flattened_root),
+                    .names = std::move(nested_flattened_names)};
+        }
+        // Fall through to legacy checks if the nested capsule is empty.
+    } else if (!flattened_names.empty()) {
         return {.root = flattened_root, .names = std::move(flattened_names)};
     }
 

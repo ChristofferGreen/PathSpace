@@ -224,18 +224,30 @@ auto splitComponents(std::string const& path) -> Expected<std::vector<std::strin
 auto ensureTreeNode(TreeNode& root,
                     std::vector<std::string> const& rootComponents,
                     std::vector<std::string> const& pathComponents) -> Expected<TreeNode*> {
-    if (pathComponents.size() < rootComponents.size()) {
+    // Normalize legacy repeated "children/children" capsules by collapsing
+    // consecutive "children" components. This keeps old dumps readable while
+    // preferring the flattened schema.
+    std::vector<std::string> normalized;
+    normalized.reserve(pathComponents.size());
+    for (auto const& part : pathComponents) {
+        if (!normalized.empty() && normalized.back() == "children" && part == "children") {
+            continue; // skip duplicate
+        }
+        normalized.push_back(part);
+    }
+
+    if (normalized.size() < rootComponents.size()) {
         return std::unexpected(Error{Error::Code::InvalidPath, "entry path outside export root"});
     }
     for (std::size_t idx = 0; idx < rootComponents.size(); ++idx) {
-        if (pathComponents[idx] != rootComponents[idx]) {
+        if (normalized[idx] != rootComponents[idx]) {
             return std::unexpected(Error{Error::Code::InvalidPath, "entry path outside export root"});
         }
     }
 
     TreeNode* current = &root;
-    for (std::size_t idx = rootComponents.size(); idx < pathComponents.size(); ++idx) {
-        auto const& name = pathComponents[idx];
+    for (std::size_t idx = rootComponents.size(); idx < normalized.size(); ++idx) {
+        auto const& name = normalized[idx];
         auto        it   = current->children.find(name);
         if (it == current->children.end()) {
             it = current->children.emplace(name, std::make_unique<TreeNode>()).first;
@@ -265,8 +277,7 @@ auto buildNode(PathEntry const& entry,
         ++stats.depthLimited;
     }
 
-    node["values"] = Json::array();
-
+    Json values = Json::array();
     auto snapshot = handle.snapshot();
     if (!snapshot) {
         if (includeStructure) {
@@ -280,16 +291,16 @@ auto buildNode(PathEntry const& entry,
     auto reader = makeReader(handle);
     auto readerQueueSize = reader ? reader->queueTypes().size() : static_cast<std::size_t>(snapshot->queueDepth);
 
-    if (!options.visit.includeValues || options.maxQueueEntries == 0) {
-        bool truncated = entry.hasValue && readerQueueSize > 0 && options.maxQueueEntries == 0;
-        if (truncated) {
-            ++stats.valuesTruncated;
-        }
-        if (includeStructure) {
-            node["values_truncated"] = truncated;
-            node["values_sampled"]   = options.visit.includeValues;
-        }
-    } else if (entry.hasValue) {
+        if (!options.visit.includeValues || options.maxQueueEntries == 0) {
+            bool truncated = entry.hasValue && readerQueueSize > 0 && options.maxQueueEntries == 0;
+            if (truncated) {
+                ++stats.valuesTruncated;
+            }
+            if (includeStructure) {
+                node["values_truncated"] = truncated;
+                node["values_sampled"]   = options.visit.includeValues;
+            }
+        } else if (entry.hasValue) {
         auto limit = std::min(readerQueueSize, options.maxQueueEntries);
         bool valuesTruncated = readerQueueSize > limit;
         if (valuesTruncated) {
@@ -309,13 +320,17 @@ auto buildNode(PathEntry const& entry,
             }
 
             auto valueEntry = buildValueEntry(element, idx, reader.get(), options, stats);
-            node["values"].push_back(std::move(valueEntry));
+            values.push_back(std::move(valueEntry));
         }
     } else {
         if (includeStructure) {
             node["values_truncated"] = false;
             node["values_sampled"]   = options.visit.includeValues;
         }
+    }
+
+    if (!values.empty()) {
+        node["values"] = std::move(values);
     }
 
     if (includeStructure) {
@@ -341,6 +356,43 @@ auto emitTree(TreeNode const& node) -> Json {
         out["children"] = std::move(children);
     }
     return out;
+}
+
+void flattenChildCapsules(Json& node) {
+    if (!node.is_object()) {
+        return;
+    }
+    auto it = node.find("children");
+    if (it != node.end() && it->is_object()) {
+        auto& children = *it;
+        // Drop empty housekeeping nodes under children maps.
+        for (auto hk : {"space", "log", "metrics", "runtime"}) {
+            auto hit = children.find(hk);
+            if (hit != children.end() && hit->is_object()) {
+                auto const& hkObj = *hit;
+                bool empty_children = !hkObj.contains("children") || hkObj.at("children").empty();
+                bool empty_values   = !hkObj.contains("values") || hkObj.at("values").empty();
+                if (empty_children && empty_values) {
+                    children.erase(hit);
+                }
+            }
+        }
+        auto nested = children.find("children");
+        if (nested != children.end() && nested->is_object()) {
+            auto& nestedObj = *nested;
+            auto nestedChildren = nestedObj.find("children");
+            if (nestedChildren != nestedObj.end() && nestedChildren->is_object()) {
+                // Move grandchildren up one level and drop the redundant capsule.
+                for (auto& [name, child] : nestedChildren->items()) {
+                    children[name] = child;
+                }
+                children.erase("children");
+            }
+        }
+        for (auto& [_, child] : children.items()) {
+            flattenChildCapsules(child);
+        }
+    }
 }
 
 } // namespace
@@ -388,6 +440,7 @@ auto PathSpaceJsonExporter::Export(PathSpaceBase& space, PathSpaceJsonOptions co
         opts.includeDiagnostics        = true;
         opts.includeOpaquePlaceholders = true;
         opts.includeStructureFields    = true;
+        opts.includeMetadata           = true;
     } else {
         opts.includeDiagnostics        = false;
         opts.includeOpaquePlaceholders = false;
@@ -435,6 +488,43 @@ auto PathSpaceJsonExporter::Export(PathSpaceBase& space, PathSpaceJsonOptions co
 
     Json root = Json::object();
     root[opts.visit.root] = emitTree(rootNode);
+    flattenChildCapsules(root[opts.visit.root]);
+
+    auto emitMeta = [&]() -> Json {
+        Json meta = Json::object();
+        meta["root"] = opts.visit.root;
+
+        Json limits = Json::object();
+        limits["max_depth"]       = visitLimit(opts.visit.maxDepth);
+        limits["max_children"]    = opts.visit.childLimitEnabled()
+                                        ? visitLimit(opts.visit.maxChildren)
+                                        : Json("unlimited");
+        limits["max_queue_entries"] = visitLimit(opts.maxQueueEntries);
+        meta["limits"]               = std::move(limits);
+
+        Json flags = Json::object();
+        flags["mode"]                 = opts.mode == PathSpaceJsonOptions::Mode::Debug ? "debug" : "minimal";
+        flags["include_metadata"]     = true;
+        flags["include_diagnostics"]  = opts.includeDiagnostics;
+        flags["include_structure"]    = opts.includeStructureFields;
+        flags["include_values"]       = opts.visit.includeValues;
+        flags["include_nested_spaces"] = opts.visit.includeNestedSpaces;
+        meta["flags"] = std::move(flags);
+
+        Json statsJson = Json::object();
+        statsJson["node_count"]         = stats.nodeCount;
+        statsJson["values_exported"]    = stats.valuesExported;
+        statsJson["children_truncated"] = stats.childrenTruncated;
+        statsJson["values_truncated"]   = stats.valuesTruncated;
+        statsJson["depth_limited"]      = stats.depthLimited;
+        meta["stats"]                   = std::move(statsJson);
+
+        return meta;
+    };
+
+    if (opts.includeMetadata) {
+        root["_meta"] = emitMeta();
+    }
 
     auto indent = opts.dumpIndent;
     if (indent < 0) {

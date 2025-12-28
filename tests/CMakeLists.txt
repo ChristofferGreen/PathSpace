@@ -91,6 +91,7 @@ if(PATHSPACE_ENABLE_UI)
   ui/test_WidgetEventTrellis.cpp
   ui/test_WidgetStateMutators.cpp
   ui/test_DeclarativeTheme.cpp
+  ui/test_WidgetChildren.cpp
   ui/test_PathWindowView.cpp
   ui/test_WidgetBindingsText.cpp
   ui/test_PaintExampleNew.cpp

@@ -250,7 +250,17 @@ auto mount_base(std::string_view parent,
         return make_path(std::string(parent), "widgets");
     }
     if (options.policy == MountPolicy::WidgetChildren) {
-        return make_path(std::string(parent), "children");
+        std::string base{parent};
+        // Avoid duplicating the children component when the caller already
+        // passed a children root (legacy callers sometimes supply
+        // `<widget>/children` directly).
+        if (base.size() >= std::string_view{"children"}.size()
+            && base.compare(base.size() - std::string_view{"children"}.size(),
+                            std::string_view{"children"}.size(),
+                            "children") == 0) {
+            return base;
+        }
+        return make_path(std::move(base), "children");
     }
     std::string path{parent};
     auto windows_pos = path.find("/windows/");
