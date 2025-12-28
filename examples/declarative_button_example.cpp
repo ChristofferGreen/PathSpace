@@ -180,46 +180,34 @@ int main(int argc, char** argv) {
         .run_once = screenshot_exit || dump_json,
     };
 
-    // If screenshot2 is requested, keep the UI running long enough to capture
-    // a second frame ~1s after startup. Run UI on a background thread, delay,
-    // then trigger the scheduled capture.
-    std::optional<std::thread> ui_thread;
-    SP::Expected<void> run_ui{};
-
     if (screenshot2_path) {
-        run_options.run_once = false;
-        ui_thread.emplace([&] {
-            run_ui = SP::App::RunUI(space, *scene, *window, run_options);
+        run_options.run_once = false; // keep presenting until we request quit
+        std::thread capture_thread([&, screenshot2_path] {
+            std::this_thread::sleep_for(std::chrono::seconds{1});
+            SP::UI::Screenshot::DeclarativeScreenshotOptions opts{};
+            opts.output_png = screenshot2_path;
+            opts.capture_mode = "deadline_ns";
+            opts.capture_deadline = std::chrono::seconds{0}; // capture on next present after delay
+            opts.width = window_width;
+            opts.height = window_height;
+            auto capture2 = SP::UI::Screenshot::CaptureDeclarative(space, scene->path, window->path, opts);
+            if (!capture2) {
+                std::fprintf(stderr,
+                             "screenshot2 capture failed: %s\n",
+                             SP::describeError(capture2.error()).c_str());
+            }
+            SP::UI::RequestLocalWindowQuit();
         });
-
-        std::this_thread::sleep_for(std::chrono::seconds{1});
-
-        SP::UI::Screenshot::DeclarativeScreenshotOptions opts{};
-        opts.output_png = screenshot2_path;
-        opts.capture_mode = "deadline_ns";
-        opts.capture_deadline = std::chrono::seconds{0}; // capture on next present after delay
-        opts.width = window_width;
-        opts.height = window_height;
-        auto capture2 = SP::UI::Screenshot::CaptureDeclarative(space, scene->path, window->path, opts);
-        if (!capture2) {
-            std::fprintf(stderr,
-                         "screenshot2 capture failed: %s\n",
-                         SP::describeError(capture2.error()).c_str());
-        }
-
-        shutdown_runtime();
-        if (ui_thread->joinable()) {
-            ui_thread->join();
-        }
-    } else {
-        run_ui = SP::App::RunUI(space, *scene, *window, run_options);
-        if (!run_ui) {
-            std::fprintf(stderr, "RunUI failed: %s\n", SP::describeError(run_ui.error()).c_str());
-            shutdown_runtime();
-            return 1;
-        }
-        shutdown_runtime();
+        capture_thread.detach();
     }
+
+    auto run_ui = SP::App::RunUI(space, *scene, *window, run_options);
+    if (!run_ui) {
+        std::fprintf(stderr, "RunUI failed: %s\n", SP::describeError(run_ui.error()).c_str());
+        shutdown_runtime();
+        return 1;
+    }
+    shutdown_runtime();
 
     if (dump_json) {
         return export_json(0);
