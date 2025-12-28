@@ -186,7 +186,7 @@ int main(int argc, char** argv) {
         std::thread capture_thread([&, screenshot_path, screenshot2_path] {
             // First capture shortly after startup to allow the scene to publish.
             if (screenshot_path) {
-                std::this_thread::sleep_for(std::chrono::milliseconds{150});
+                std::this_thread::sleep_for(std::chrono::milliseconds{500});
                 SP::UI::Screenshot::DeclarativeScreenshotOptions opts{};
                 opts.output_png = screenshot_path;
                 opts.capture_mode = "next_present";
@@ -204,7 +204,7 @@ int main(int argc, char** argv) {
                 }
             }
             if (screenshot2_path) {
-                std::this_thread::sleep_for(std::chrono::seconds{1});
+                std::this_thread::sleep_for(std::chrono::milliseconds{1500});
                 SP::UI::Screenshot::DeclarativeScreenshotOptions opts{};
                 opts.output_png = screenshot2_path;
                 opts.capture_mode = "next_present";
