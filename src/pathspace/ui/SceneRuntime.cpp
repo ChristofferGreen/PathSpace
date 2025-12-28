@@ -63,15 +63,12 @@ auto PublishRevision(PathSpace& space,
     (void)metadata;
 
     auto record = to_record(revision);
-    auto revisionStr = format_revision(revision.revision);
-    auto revisionBase = make_revision_base(scenePath, revisionStr);
-
-    if (auto status = replace_single<SceneRevisionRecord>(space, revisionBase + "/desc", record); !status) {
-        return status;
-    }
-
     auto currentRevisionPath = std::string(scenePath.getPath()) + "/current_revision";
     if (auto status = replace_single<uint64_t>(space, currentRevisionPath, revision.revision); !status) {
+        return status;
+    }
+    auto currentDescPath = std::string(scenePath.getPath()) + "/current_revision_desc";
+    if (auto status = replace_single<SceneRevisionRecord>(space, currentDescPath, record); !status) {
         return status;
     }
 
@@ -86,13 +83,17 @@ auto ReadCurrentRevision(PathSpace const& space,
         return std::unexpected(revisionValue.error());
     }
 
-    auto revisionStr = format_revision(*revisionValue);
-    auto descPath = make_revision_base(scenePath, revisionStr) + "/desc";
-    auto record = read_value<SceneRevisionRecord>(space, descPath);
-    if (!record) {
-        return std::unexpected(record.error());
+    auto currentDescPath = std::string(scenePath.getPath()) + "/current_revision_desc";
+    auto record = read_value<SceneRevisionRecord>(space, currentDescPath);
+    if (record) {
+        return from_record(*record);
     }
-    return from_record(*record);
+
+    // Fallback: reconstruct minimal desc from the numeric revision when metadata is absent.
+    SceneRevisionDesc desc{};
+    desc.revision = *revisionValue;
+    desc.published_at = std::chrono::system_clock::time_point{};
+    return desc;
 }
 
 auto WaitUntilReady(PathSpace& space,

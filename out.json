@@ -132,23 +132,6 @@
         "children": {
           "button_scene": {
             "children": {
-              "builds": {
-                "children": {
-                  "0000000000000001": {
-                    "children": {
-                      "desc": {
-                        "values": [
-                          {
-                            "category": "SerializationLibraryCompatible",
-                            "index": 0,
-                            "type": "N2SP2UI7Runtime6Detail19SceneRevisionRecordE"
-                          }
-                        ]
-                      }
-                    }
-                  }
-                }
-              },
               "current_revision": {
                 "values": [
                   {
@@ -156,6 +139,15 @@
                     "index": 0,
                     "type": "uint64_t",
                     "value": 1
+                  }
+                ]
+              },
+              "current_revision_desc": {
+                "values": [
+                  {
+                    "category": "SerializationLibraryCompatible",
+                    "index": 0,
+                    "type": "N2SP2UI7Runtime6Detail19SceneRevisionRecordE"
                   }
                 ]
               },
@@ -218,7 +210,16 @@
                 "children": {
                   "lifecycle": {
                     "children": {
-                      "control": {},
+                      "control": {
+                        "values": [
+                          {
+                            "category": "SerializedData",
+                            "index": 0,
+                            "type": "std::string",
+                            "value": "/system/applications/declarative_button_example/scenes/button_scene/runtime/lifecycle/control"
+                          }
+                        ]
+                      },
                       "metrics": {
                         "children": {
                           "last_published_widget": {

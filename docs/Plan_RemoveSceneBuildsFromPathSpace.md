@@ -15,12 +15,12 @@ Keep PathSpace limited to shared/runtime-visible data by moving scene build snap
 - JSON dumps stay lean; tests/fixtures updated accordingly.
 
 ## Work items (✖ not started, ⏳ in progress, ✔ done)
-- ✖ Inventory producers/consumers: locate all writes to `scenes/*/builds` and all reads (presenter, inspector, screenshot, exporter/tests).
-- ✖ Implementation: stop writing builds to PathSpace; keep `current_revision` + metrics; ensure renderer cache owns snapshot lifetime/GC.
-- ✖ Consumers: update presenter/inspector/screenshot paths to fetch from renderer cache; drop PathSpace fallbacks.
-- ✖ Tests/fixtures: refresh dump regressions to expect no `builds/*`; add regression asserting `current_revision` present without builds.
-- ✖ Docs: update `AI_PATHS.md`, `Widget_Schema_Reference.md`, related finished plans, and this plan archive once complete.
-- ✖ Validation: build, run button dump, and full 5× test loop.
+- ✔ Inventory producers/consumers: locate all writes to `scenes/*/builds` and all reads (presenter, inspector, screenshot, exporter/tests).
+- ✔ Implementation: stop writing builds to PathSpace; keep `current_revision` + metadata in `current_revision_desc`; renderer cache owns snapshot lifetime/GC.
+- ⏳ Consumers: update presenter/inspector/screenshot paths to fetch from renderer cache; drop PathSpace fallbacks (confirm no hidden `builds/*` assumptions remain).
+- ⏳ Tests/fixtures: refresh dump regressions to expect no `builds/*`; add regression asserting `current_revision` present without builds.
+- ⏳ Docs: update `Widget_Schema_Reference.md`, related finished plans, and archive this plan once complete. (`AI_PATHS.md` scene row already updated.)
+- ⏳ Validation: build, run button dump, and full 5× test loop.
 
 ## Validation checklist
 - `cmake --build build -j`

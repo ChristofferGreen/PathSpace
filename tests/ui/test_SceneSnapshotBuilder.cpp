@@ -198,6 +198,11 @@ TEST_CASE("publish snapshot encodes bucket and metadata") {
     CHECK_FALSE(storedManifest);
     auto storedMetadata = fx.space.read<std::vector<std::uint8_t>>(revisionBase + "/metadata");
     CHECK_FALSE(storedMetadata);
+
+    // PathSpace should not materialize builds/* for renderer snapshots.
+    auto scene_children = fx.space.listChildren(SP::ConcretePathStringView{scene->getPath()});
+    CHECK(std::find(scene_children.begin(), scene_children.end(), std::string{"builds"})
+          == scene_children.end());
 }
 
 TEST_CASE("drawable fingerprints remain stable when drawable id changes") {
