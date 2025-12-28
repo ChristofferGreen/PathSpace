@@ -182,34 +182,99 @@ int main(int argc, char** argv) {
 
     bool needs_any_capture = screenshot_path.has_value() || screenshot2_path.has_value();
     if (needs_any_capture) {
-        run_options.run_once = false; // keep presenting until we request quit
-        std::thread capture_thread([&, screenshot_path, screenshot2_path] {
-            // First capture after startup; rely on window framebuffer.
-            if (screenshot_path) {
-                std::this_thread::sleep_for(std::chrono::milliseconds{3000});
-                if (!SP::UI::SaveLocalWindowScreenshot(screenshot_path->c_str())) {
-                    std::fprintf(stderr, "screenshot capture failed (SaveLocalWindowScreenshot)\n");
-                }
-            }
-            if (screenshot2_path) {
-                std::this_thread::sleep_for(std::chrono::milliseconds{5000});
-                if (!SP::UI::SaveLocalWindowScreenshot(screenshot2_path->c_str())) {
-                    std::fprintf(stderr, "screenshot2 capture failed (SaveLocalWindowScreenshot)\n");
-                } else {
-                    std::fprintf(stderr, "screenshot2 saved to %s\n", screenshot2_path->c_str());
-                }
-            }
-            SP::UI::RequestLocalWindowQuit();
-        });
-        capture_thread.detach();
+        run_options.run_once = false;
     }
 
-    auto run_ui = SP::App::RunUI(space, *scene, *window, run_options);
-    if (!run_ui) {
-        std::fprintf(stderr, "RunUI failed: %s\n", SP::describeError(run_ui.error()).c_str());
+    // Inline RunUI so we can screenshot immediately after presents.
+    auto app_root = SP::App::derive_app_root(SP::App::ConcretePathView{scene->path.getPath()});
+    if (!app_root) {
+        std::fprintf(stderr, "derive app root failed: %s\n", SP::describeError(app_root.error()).c_str());
         shutdown_runtime();
         return 1;
     }
+    auto present_handles = SP::UI::Declarative::BuildPresentHandles(space,
+                                                                    SP::App::AppRootPathView{app_root->getPath()},
+                                                                    window->path,
+                                                                    window->view_name);
+    if (!present_handles) {
+        std::fprintf(stderr, "BuildPresentHandles failed: %s\n", SP::describeError(present_handles.error()).c_str());
+        shutdown_runtime();
+        return 1;
+    }
+
+    SP::UI::LocalInputBridge bridge{};
+    bridge.space = &space;
+    SP::UI::install_local_window_bridge(bridge);
+
+    auto surface_desc =
+        space.read<SP::UI::Runtime::SurfaceDesc, std::string>(std::string(present_handles->surface.getPath()) + "/desc");
+    if (!surface_desc) {
+        std::fprintf(stderr, "surface desc read failed: %s\n", SP::describeError(surface_desc.error()).c_str());
+        shutdown_runtime();
+        return 1;
+    }
+    int window_width_run = run_options.window_width > 0 ? run_options.window_width : surface_desc->size_px.width;
+    int window_height_run = run_options.window_height > 0 ? run_options.window_height : surface_desc->size_px.height;
+    std::string title = run_options.window_title.empty() ? "PathSpace Declarative Window"
+                                                         : run_options.window_title;
+
+    SP::UI::InitLocalWindowWithSize(window_width_run, window_height_run, title.c_str());
+    std::uint64_t frames_rendered = 0;
+    bool captured1 = false;
+    bool captured2 = false;
+    while (true) {
+        SP::UI::PollLocalWindow();
+        if (SP::UI::LocalWindowQuitRequested()) {
+            break;
+        }
+        int content_w = window_width_run;
+        int content_h = window_height_run;
+        SP::UI::GetLocalWindowContentSize(&content_w, &content_h);
+        if (content_w > 0 && content_h > 0 && (content_w != window_width_run || content_h != window_height_run)) {
+            window_width_run = content_w;
+            window_height_run = content_h;
+            (void)SP::UI::Declarative::ResizePresentSurface(space,
+                                                            *present_handles,
+                                                            window_width_run,
+                                                            window_height_run);
+        }
+
+        auto present_frame = SP::UI::Declarative::PresentWindowFrame(space, *present_handles);
+        if (!present_frame) {
+            std::fprintf(stderr, "PresentWindowFrame failed: %s\n", SP::describeError(present_frame.error()).c_str());
+            break;
+        }
+        (void)SP::UI::Declarative::PresentFrameToLocalWindow(*present_frame,
+                                                             window_width_run,
+                                                             window_height_run);
+        ++frames_rendered;
+
+        // Capture after presents so framebuffer matches the window.
+        if (screenshot_path && !captured1 && frames_rendered >= 2) {
+            if (SP::UI::SaveLocalWindowScreenshot(screenshot_path->c_str())) {
+                captured1 = true;
+            } else {
+                std::fprintf(stderr, "screenshot capture failed (SaveLocalWindowScreenshot)\n");
+            }
+        }
+        if (screenshot2_path && !captured2 && frames_rendered >= 30) { // ~0.5s at 60fps
+            if (SP::UI::SaveLocalWindowScreenshot(screenshot2_path->c_str())) {
+                std::fprintf(stderr, "screenshot2 saved to %s\n", screenshot2_path->c_str());
+                captured2 = true;
+            } else {
+                std::fprintf(stderr, "screenshot2 capture failed (SaveLocalWindowScreenshot)\n");
+            }
+        }
+
+        if (run_options.run_once && frames_rendered >= 1) {
+            break;
+        }
+        if (needs_any_capture && captured1 && (!screenshot2_path || captured2)) {
+            SP::UI::RequestLocalWindowQuit();
+        }
+    }
+
+    SP::UI::SetLocalWindowCallbacks({});
     shutdown_runtime();
 
     if (dump_json) {
