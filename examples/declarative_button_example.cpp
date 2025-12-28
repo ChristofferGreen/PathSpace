@@ -187,38 +187,14 @@ int main(int argc, char** argv) {
             // First capture shortly after startup to allow the scene to publish.
             if (screenshot_path) {
                 std::this_thread::sleep_for(std::chrono::milliseconds{500});
-                SP::UI::Screenshot::DeclarativeScreenshotOptions opts{};
-                opts.output_png = screenshot_path;
-                opts.capture_mode = "next_present";
-                opts.force_publish = false;
-                opts.mark_dirty_before_publish = false;
-                opts.verify_output_matches_framebuffer = false;
-                auto capture1 = SP::UI::Screenshot::CaptureDeclarative(space,
-                                                                       scene->path,
-                                                                       window->path,
-                                                                       opts);
-                if (!capture1) {
-                    std::fprintf(stderr,
-                                 "screenshot capture failed: %s\n",
-                                 SP::describeError(capture1.error()).c_str());
+                if (!SP::UI::SaveLocalWindowScreenshot(screenshot_path->c_str())) {
+                    std::fprintf(stderr, "screenshot capture failed (SaveLocalWindowScreenshot)\n");
                 }
             }
             if (screenshot2_path) {
                 std::this_thread::sleep_for(std::chrono::milliseconds{1500});
-                SP::UI::Screenshot::DeclarativeScreenshotOptions opts{};
-                opts.output_png = screenshot2_path;
-                opts.capture_mode = "next_present";
-                opts.force_publish = false;
-                opts.mark_dirty_before_publish = false;
-                opts.verify_output_matches_framebuffer = false;
-                auto capture2 = SP::UI::Screenshot::CaptureDeclarative(space,
-                                                                       scene->path,
-                                                                       window->path,
-                                                                       opts);
-                if (!capture2) {
-                    std::fprintf(stderr,
-                                 "screenshot2 capture failed: %s\n",
-                                 SP::describeError(capture2.error()).c_str());
+                if (!SP::UI::SaveLocalWindowScreenshot(screenshot2_path->c_str())) {
+                    std::fprintf(stderr, "screenshot2 capture failed (SaveLocalWindowScreenshot)\n");
                 }
             }
             SP::UI::RequestLocalWindowQuit();
