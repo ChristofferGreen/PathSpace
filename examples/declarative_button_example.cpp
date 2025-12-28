@@ -190,8 +190,6 @@ int main(int argc, char** argv) {
                 SP::UI::Screenshot::DeclarativeScreenshotOptions opts{};
                 opts.output_png = screenshot_path;
                 opts.capture_mode = "next_present";
-                opts.width = window_width;
-                opts.height = window_height;
                 opts.force_publish = false;
                 opts.mark_dirty_before_publish = false;
                 auto capture1 = SP::UI::Screenshot::CaptureDeclarative(space,
@@ -209,8 +207,6 @@ int main(int argc, char** argv) {
                 SP::UI::Screenshot::DeclarativeScreenshotOptions opts{};
                 opts.output_png = screenshot2_path;
                 opts.capture_mode = "next_present";
-                opts.width = window_width;
-                opts.height = window_height;
                 opts.force_publish = false;
                 opts.mark_dirty_before_publish = false;
                 auto capture2 = SP::UI::Screenshot::CaptureDeclarative(space,
