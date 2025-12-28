@@ -184,18 +184,12 @@ int main(int argc, char** argv) {
         run_options.run_once = false; // keep presenting until we request quit
         std::thread capture_thread([&, screenshot2_path] {
             std::this_thread::sleep_for(std::chrono::seconds{1});
-            SP::UI::Screenshot::DeclarativeScreenshotOptions opts{};
-            opts.output_png = screenshot2_path;
-            opts.capture_mode = "deadline_ns";
-            opts.capture_deadline = std::chrono::seconds{0}; // capture on next present after delay
-            opts.width = window_width;
-            opts.height = window_height;
-            auto capture2 = SP::UI::Screenshot::CaptureDeclarative(space, scene->path, window->path, opts);
-            if (!capture2) {
-                std::fprintf(stderr,
-                             "screenshot2 capture failed: %s\n",
-                             SP::describeError(capture2.error()).c_str());
-            }
+            SP::UI::Screenshot::CaptureDeclarativeSimple(space,
+                                                         scene->path,
+                                                         window->path,
+                                                         *screenshot2_path,
+                                                         window_width,
+                                                         window_height);
             SP::UI::RequestLocalWindowQuit();
         });
         capture_thread.detach();
