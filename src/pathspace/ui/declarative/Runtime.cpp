@@ -27,6 +27,7 @@
 #include <chrono>
 #include <cctype>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -59,6 +60,36 @@ constexpr auto kRendererConfigSuffix = std::string_view{"/config/renderer/defaul
 constexpr auto kDefaultRendererName = std::string_view{"widgets_declarative_renderer"};
 constexpr auto kDefaultSurfacePrefix = std::string_view{"widgets_surface"};
 constexpr auto kDefaultThemeActive = std::string_view{"/config/theme/active"};
+
+#if defined(__APPLE__)
+auto copy_pixels_from_iosurface(IOSurfaceRef surface, int width, int height, int row_stride_bytes)
+    -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> pixels{};
+    if (!surface || width <= 0 || height <= 0) {
+        return pixels;
+    }
+    bool locked = IOSurfaceLock(surface, kIOSurfaceLockAvoidSync, nullptr) == kIOReturnSuccess;
+    auto* base = static_cast<std::uint8_t*>(IOSurfaceGetBaseAddress(surface));
+    auto const row_bytes = IOSurfaceGetBytesPerRow(surface);
+    if (row_stride_bytes <= 0) {
+        row_stride_bytes = static_cast<int>(row_bytes);
+    }
+    auto const copy_bytes = std::min<std::size_t>(row_bytes, static_cast<std::size_t>(row_stride_bytes));
+    auto const total_bytes = static_cast<std::size_t>(row_stride_bytes) * static_cast<std::size_t>(height);
+    if (locked && base && copy_bytes > 0) {
+        pixels.resize(total_bytes);
+        for (int row = 0; row < height; ++row) {
+            auto* dst = pixels.data() + static_cast<std::size_t>(row) * static_cast<std::size_t>(row_stride_bytes);
+            auto const* src = base + static_cast<std::size_t>(row) * row_bytes;
+            std::memcpy(dst, src, copy_bytes);
+        }
+    }
+    if (locked) {
+        IOSurfaceUnlock(surface, kIOSurfaceLockAvoidSync, nullptr);
+    }
+    return pixels;
+}
+#endif
 
 auto ensure_io_trellis(SP::PathSpace& space,
                        SP::IO::IoTrellisOptions const& options) -> SP::Expected<bool> {

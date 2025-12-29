@@ -16,15 +16,213 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
+#include <chrono>
+#include <dlfcn.h>
+#include <unistd.h>
+
+#if defined(__APPLE__)
+#include <ApplicationServices/ApplicationServices.h>
+#include <CoreGraphics/CGWindow.h>
+#include <ImageIO/ImageIO.h>
+#endif
+#include <cstdlib>
 
 constexpr int window_width = 640;
 constexpr int window_height = 360;
 
 using namespace SP::UI::Declarative;
 
+namespace {
+
+#if defined(__APPLE__)
+// Capture the currently active (frontmost) window using the OS screenshot API.
+bool SaveActiveWindowScreenshot(std::filesystem::path const& path,
+                                std::string const& title,
+                                int /*target_width_px*/,
+                                int /*target_height_px*/) {
+    if (path.empty()) {
+        return false;
+    }
+
+    CGWindowID active_window_id = static_cast<CGWindowID>(SP::UI::GetLocalWindowNumber());
+    pid_t self_pid = getpid();
+    CFArrayRef windows = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly
+                                                    | kCGWindowListExcludeDesktopElements,
+                                                    kCGNullWindowID);
+    if (windows) {
+        CFIndex count = CFArrayGetCount(windows);
+        for (CFIndex i = 0; i < count; ++i) {
+            auto const* window_dict = static_cast<CFDictionaryRef>(CFArrayGetValueAtIndex(windows, i));
+            if (!window_dict) continue;
+
+            // Filter by owning process.
+            pid_t owner_pid = 0;
+            if (auto owner_number = static_cast<CFNumberRef>(CFDictionaryGetValue(window_dict, kCGWindowOwnerPID))) {
+                (void)CFNumberGetValue(owner_number, kCFNumberSInt32Type, &owner_pid);
+            }
+            if (owner_pid != self_pid) {
+                continue;
+            }
+
+            // Filter by layer.
+            int layer = 0;
+            if (auto layer_number = static_cast<CFNumberRef>(CFDictionaryGetValue(window_dict, kCGWindowLayer))) {
+                (void)CFNumberGetValue(layer_number, kCFNumberSInt32Type, &layer);
+            }
+            if (layer != 0) {
+                continue;
+            }
+
+            // Filter by title match if present.
+            bool title_ok = true;
+            if (!title.empty()) {
+                if (auto name_ref = static_cast<CFStringRef>(CFDictionaryGetValue(window_dict, kCGWindowName))) {
+                    char buffer[512];
+                    if (CFStringGetCString(name_ref, buffer, sizeof(buffer), kCFStringEncodingUTF8)) {
+                        title_ok = (title == buffer);
+                    }
+                }
+            }
+            // Filter by reasonable height.
+            bool size_ok = true;
+            if (auto bounds_ref = static_cast<CFDictionaryRef>(CFDictionaryGetValue(window_dict, kCGWindowBounds))) {
+                CGRect bounds{};
+                if (CGRectMakeWithDictionaryRepresentation(bounds_ref, &bounds)) {
+                    size_ok = bounds.size.height > 100 && bounds.size.width > 100;
+                }
+            }
+            if (!size_ok) {
+                continue;
+            }
+
+            if (title_ok) {
+                auto const* window_number = static_cast<CFNumberRef>(CFDictionaryGetValue(window_dict, kCGWindowNumber));
+                if (window_number) {
+                    CGWindowID window_id = kCGNullWindowID;
+                    if (CFNumberGetValue(window_number, kCFNumberSInt32Type, &window_id)) {
+                        active_window_id = window_id;
+                        break;
+                    }
+                }
+            }
+        }
+        // Fallback to first window if none matched.
+        if ((active_window_id == kCGNullWindowID || active_window_id == 0) && CFArrayGetCount(windows) > 0) {
+            auto const* window_dict = static_cast<CFDictionaryRef>(CFArrayGetValueAtIndex(windows, 0));
+            if (window_dict) {
+                auto const* window_number = static_cast<CFNumberRef>(CFDictionaryGetValue(window_dict, kCGWindowNumber));
+                if (window_number) {
+                    CGWindowID window_id = kCGNullWindowID;
+                    (void)CFNumberGetValue(window_number, kCFNumberSInt32Type, &window_id);
+                    active_window_id = window_id;
+                }
+            }
+        }
+        CFRelease(windows);
+    }
+
+    if (active_window_id == kCGNullWindowID || active_window_id == 0) {
+        return false;
+    }
+
+    auto write_png = [&](CGImageRef image) -> bool {
+        if (!image) {
+            return false;
+        }
+
+        auto path_string = path.string();
+        CFStringRef cf_path = CFStringCreateWithCString(nullptr, path_string.c_str(), kCFStringEncodingUTF8);
+        if (!cf_path) {
+            return false;
+        }
+        CFURLRef url = CFURLCreateWithFileSystemPath(nullptr, cf_path, kCFURLPOSIXPathStyle, false);
+        CFRelease(cf_path);
+        if (!url) {
+            return false;
+        }
+
+        CGImageDestinationRef destination = CGImageDestinationCreateWithURL(url, kUTTypePNG, 1, nullptr);
+        if (!destination) {
+            CFRelease(url);
+            return false;
+        }
+        CGImageDestinationAddImage(destination, image, nullptr);
+        bool ok = CGImageDestinationFinalize(destination);
+        CFRelease(destination);
+        CFRelease(url);
+        return ok;
+    };
+
+    using CGWindowListCreateImageFn = CGImageRef (*)(CGRect,
+                                                     CGWindowListOption,
+                                                     CGWindowID,
+                                                     CGWindowImageOption);
+
+    CGWindowListCreateImageFn create_image = nullptr;
+    void* cg_handle = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_LAZY);
+    if (cg_handle) {
+        create_image = reinterpret_cast<CGWindowListCreateImageFn>(
+            dlsym(cg_handle, "CGWindowListCreateImage"));
+    }
+
+    if (create_image) {
+        CGImageRef image = create_image(CGRectNull,
+                                        kCGWindowListOptionIncludingWindow,
+                                        active_window_id,
+                                        kCGWindowImageDefault | kCGWindowImageBoundsIgnoreFraming
+                                            | kCGWindowImageNominalResolution);
+        if (image) {
+            bool ok = write_png(image);
+            CGImageRelease(image);
+            if (cg_handle) dlclose(cg_handle);
+            return ok;
+        }
+    }
+    if (cg_handle) {
+        dlclose(cg_handle);
+    }
+
+    // macOS 15+ removed CGWindowListCreateImage; fall back to screencapture CLI.
+    // Try a few times in case the window is not yet frontmost.
+    std::string base_cmd = "screencapture -x -o -l " + std::to_string(active_window_id) + " \""
+                           + path.string() + "\" > /dev/null 2>&1";
+    bool captured = false;
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        int rc = std::system(base_cmd.c_str());
+        if (rc == 0) {
+            captured = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    if (!captured) {
+        return false;
+    }
+
+    // Write as captured; no scaling/cropping to keep window chrome visible.
+    CFStringRef cf_path = CFStringCreateWithCString(nullptr, path.string().c_str(), kCFStringEncodingUTF8);
+    if (!cf_path) {
+        return captured;
+    }
+    CFURLRef url = CFURLCreateWithFileSystemPath(nullptr, cf_path, kCFURLPOSIXPathStyle, false);
+    CFRelease(cf_path);
+    if (!url) {
+        return captured;
+    }
+    CFRelease(url);
+    return captured;
+}
+#else
+bool SaveActiveWindowScreenshot(std::filesystem::path const&, std::string const&, int, int) { return false; }
+#endif
+
+} // namespace
+
 int main(int argc, char** argv) {
     std::optional<std::filesystem::path> screenshot_path;
     std::optional<std::filesystem::path> screenshot2_path;
+    std::optional<std::filesystem::path> screenshot_os_path;
     bool screenshot_exit = false;
     bool dump_json = false;
     bool dump_json_debug = false;
@@ -34,6 +232,9 @@ int main(int argc, char** argv) {
             screenshot_path = std::filesystem::path{argv[++i]};
         } else if (arg == "--screenshot2" && i + 1 < argc) {
             screenshot2_path = std::filesystem::path{argv[++i]};
+            screenshot_exit = true;
+        } else if (arg == "--screenshot_os" && i + 1 < argc) {
+            screenshot_os_path = std::filesystem::path{argv[++i]};
             screenshot_exit = true;
         } else if (arg == "--screenshot_exit") {
             screenshot_exit = true;
@@ -180,7 +381,7 @@ int main(int argc, char** argv) {
         .run_once = dump_json || screenshot_exit,
     };
 
-    bool needs_any_capture = screenshot_path.has_value() || screenshot2_path.has_value();
+    bool needs_any_capture = screenshot_path.has_value() || screenshot2_path.has_value() || screenshot_os_path.has_value();
     if (needs_any_capture) {
         run_options.run_once = false;
     }
@@ -222,6 +423,9 @@ int main(int argc, char** argv) {
     std::uint64_t frames_rendered = 0;
     bool captured1 = false;
     bool captured2 = false;
+    bool captured_os = false;
+    int os_attempts = 0;
+    constexpr int kMaxOsAttempts = 120; // ~2 seconds at 60fps
     while (true) {
         SP::UI::PollLocalWindow();
         if (SP::UI::LocalWindowQuitRequested()) {
@@ -266,11 +470,24 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "screenshot2 capture failed (SaveLocalWindowScreenshot)\n");
             }
         }
+        if (screenshot_os_path && !captured_os && frames_rendered >= 30) { // align with screenshot2 timing
+            ++os_attempts;
+            if (SaveActiveWindowScreenshot(*screenshot_os_path, title, 0, 0)) {
+                std::fprintf(stderr, "active window screenshot saved to %s\n", screenshot_os_path->c_str());
+                captured_os = true;
+            } else {
+                std::fprintf(stderr, "active window screenshot failed (SaveActiveWindowScreenshot)\n");
+                if (os_attempts >= kMaxOsAttempts) {
+                    std::fprintf(stderr, "active window screenshot giving up after %d attempts\n", os_attempts);
+                    captured_os = true; // allow exit instead of hanging forever
+                }
+            }
+        }
 
         if (run_options.run_once && frames_rendered >= 1) {
             break;
         }
-        if (needs_any_capture && captured1 && (!screenshot2_path || captured2)) {
+        if (needs_any_capture && captured1 && (!screenshot2_path || captured2) && (!screenshot_os_path || captured_os)) {
             SP::UI::RequestLocalWindowQuit();
         }
     }

@@ -1003,6 +1003,18 @@ void GetLocalWindowContentSize(int* width, int* height) {
 #endif
 }
 
+auto GetLocalWindowNumber() -> unsigned int {
+#if defined(__APPLE__)
+    @autoreleasepool {
+        WindowState& state = window_state();
+        if (state.window) {
+            return static_cast<unsigned int>([state.window windowNumber]);
+        }
+    }
+#endif
+    return 0U;
+}
+
 void RequestLocalWindowQuit() {
     quit_flag().store(true, std::memory_order_release);
 #if defined(__APPLE__)
