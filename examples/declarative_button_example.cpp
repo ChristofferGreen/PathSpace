@@ -154,64 +154,118 @@ bool SaveActiveWindowScreenshot(std::filesystem::path const& path,
         return ok;
     };
 
-    using CGWindowListCreateImageFn = CGImageRef (*)(CGRect,
-                                                     CGWindowListOption,
-                                                     CGWindowID,
-                                                     CGWindowImageOption);
+    // Use screencapture to grab real chrome, then blend the titlebar onto the in-app framebuffer
+    // so colors match.
+    auto os_raw = path.string() + ".osraw.png";
+    auto fb_raw = path.string() + ".fbraw.png";
 
-    CGWindowListCreateImageFn create_image = nullptr;
-    void* cg_handle = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_LAZY);
-    if (cg_handle) {
-        create_image = reinterpret_cast<CGWindowListCreateImageFn>(
-            dlsym(cg_handle, "CGWindowListCreateImage"));
-    }
-
-    if (create_image) {
-        CGImageRef image = create_image(CGRectNull,
-                                        kCGWindowListOptionIncludingWindow,
-                                        active_window_id,
-                                        kCGWindowImageDefault | kCGWindowImageBoundsIgnoreFraming
-                                            | kCGWindowImageNominalResolution);
-        if (image) {
-            bool ok = write_png(image);
-            CGImageRelease(image);
-            if (cg_handle) dlclose(cg_handle);
-            return ok;
-        }
-    }
-    if (cg_handle) {
-        dlclose(cg_handle);
-    }
-
-    // macOS 15+ removed CGWindowListCreateImage; fall back to screencapture CLI.
-    // Try a few times in case the window is not yet frontmost.
     std::string base_cmd = "screencapture -x -o -l " + std::to_string(active_window_id) + " \""
-                           + path.string() + "\" > /dev/null 2>&1";
-    bool captured = false;
+                           + os_raw + "\" > /dev/null 2>&1";
+    bool captured_os = false;
     for (int attempt = 0; attempt < 3; ++attempt) {
         int rc = std::system(base_cmd.c_str());
         if (rc == 0) {
-            captured = true;
+            captured_os = true;
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    if (!captured) {
+    // Always grab framebuffer; if OS grab failed we'll still have matching content.
+    (void)SP::UI::SaveLocalWindowScreenshot(fb_raw.c_str());
+
+    auto load_image = [](std::string const& p) -> CGImageRef {
+        CFStringRef cf_path = CFStringCreateWithCString(nullptr, p.c_str(), kCFStringEncodingUTF8);
+        if (!cf_path) return nullptr;
+        CFURLRef url = CFURLCreateWithFileSystemPath(nullptr, cf_path, kCFURLPOSIXPathStyle, false);
+        CFRelease(cf_path);
+        if (!url) return nullptr;
+        CGImageSourceRef src = CGImageSourceCreateWithURL(url, nullptr);
+        CFRelease(url);
+        if (!src) return nullptr;
+        CGImageRef img = CGImageSourceCreateImageAtIndex(src, 0, nullptr);
+        CFRelease(src);
+        return img;
+    };
+
+    CGImageRef os_img = captured_os ? load_image(os_raw) : nullptr;
+    CGImageRef fb_img = load_image(fb_raw);
+    if (!fb_img) {
+        if (os_img) CGImageRelease(os_img);
         return false;
     }
 
-    // Write as captured; no scaling/cropping to keep window chrome visible.
+    size_t fb_w = CGImageGetWidth(fb_img);
+    size_t fb_h = CGImageGetHeight(fb_img);
+    size_t bar_h = 0;
+    if (os_img) {
+        size_t os_h = CGImageGetHeight(os_img);
+        if (os_h > fb_h) {
+            bar_h = os_h - fb_h;
+            if (bar_h > 200) bar_h = 200;
+        }
+    }
+
+    size_t out_w = fb_w;
+    size_t out_h = fb_h + bar_h;
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = CGBitmapContextCreate(nullptr,
+                                             out_w,
+                                             out_h,
+                                             8,
+                                             out_w * 4,
+                                             cs,
+                                             kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    if (!ctx) {
+        CGColorSpaceRelease(cs);
+        if (os_img) CGImageRelease(os_img);
+        CGImageRelease(fb_img);
+        return false;
+    }
+
+    if (os_img && bar_h > 0) {
+        // Draw the titlebar at the top, scaling to framebuffer width.
+        CGRect dst_bar = CGRectMake(0, 0, out_w, bar_h);
+        CGRect src_bar = CGRectMake(0, 0, CGImageGetWidth(os_img), bar_h);
+        CGContextDrawImage(ctx, dst_bar, os_img);
+        (void)src_bar; // src_bar unused because DrawImage ignores it, kept for clarity.
+    }
+    CGRect dst_fb = CGRectMake(0, bar_h, out_w, fb_h);
+    CGContextDrawImage(ctx, dst_fb, fb_img);
+
+    CGImageRef out_img = CGBitmapContextCreateImage(ctx);
+    CGColorSpaceRelease(cs);
+    CGContextRelease(ctx);
+    CGImageRelease(fb_img);
+    if (os_img) CGImageRelease(os_img);
+    (void)std::filesystem::remove(os_raw);
+    (void)std::filesystem::remove(fb_raw);
+    if (!out_img) {
+        return false;
+    }
+
     CFStringRef cf_path = CFStringCreateWithCString(nullptr, path.string().c_str(), kCFStringEncodingUTF8);
     if (!cf_path) {
-        return captured;
+        CGImageRelease(out_img);
+        return false;
     }
     CFURLRef url = CFURLCreateWithFileSystemPath(nullptr, cf_path, kCFURLPOSIXPathStyle, false);
     CFRelease(cf_path);
     if (!url) {
-        return captured;
+        CGImageRelease(out_img);
+        return false;
     }
+    CGImageDestinationRef dest = CGImageDestinationCreateWithURL(url, kUTTypePNG, 1, nullptr);
+    if (!dest) {
+        CFRelease(url);
+        CGImageRelease(out_img);
+        return false;
+    }
+    CGImageDestinationAddImage(dest, out_img, nullptr);
+    bool ok = CGImageDestinationFinalize(dest);
+    CFRelease(dest);
     CFRelease(url);
-    return captured;
+    CGImageRelease(out_img);
+    return ok;
 }
 #else
 bool SaveActiveWindowScreenshot(std::filesystem::path const&, std::string const&, int, int) { return false; }
