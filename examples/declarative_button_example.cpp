@@ -4,7 +4,9 @@
 #include <pathspace/ui/Helpers.hpp>
 #include <pathspace/ui/declarative/Descriptor.hpp>
 #include <pathspace/ui/declarative/Runtime.hpp>
+#include <pathspace/ui/declarative/Detail.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
+#include <pathspace/ui/declarative/ThemeConfig.hpp>
 #include <pathspace/ui/screenshot/DeclarativeScreenshot.hpp>
 #include <pathspace/ui/screenshot/ScreenshotSlot.hpp>
 #include <pathspace/tools/PathSpaceJsonExporter.hpp>
@@ -30,6 +32,7 @@
 
 constexpr int window_width = 640;
 constexpr int window_height = 360;
+constexpr std::string_view kExampleTheme = "sunset";
 
 using namespace SP::UI::Declarative;
 
@@ -46,226 +49,21 @@ bool SaveActiveWindowScreenshot(std::filesystem::path const& path,
     }
 
     CGWindowID active_window_id = static_cast<CGWindowID>(SP::UI::GetLocalWindowNumber());
-    pid_t self_pid = getpid();
-    CFArrayRef windows = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly
-                                                    | kCGWindowListExcludeDesktopElements,
-                                                    kCGNullWindowID);
-    if (windows) {
-        CFIndex count = CFArrayGetCount(windows);
-        for (CFIndex i = 0; i < count; ++i) {
-            auto const* window_dict = static_cast<CFDictionaryRef>(CFArrayGetValueAtIndex(windows, i));
-            if (!window_dict) continue;
-
-            // Filter by owning process.
-            pid_t owner_pid = 0;
-            if (auto owner_number = static_cast<CFNumberRef>(CFDictionaryGetValue(window_dict, kCGWindowOwnerPID))) {
-                (void)CFNumberGetValue(owner_number, kCFNumberSInt32Type, &owner_pid);
-            }
-            if (owner_pid != self_pid) {
-                continue;
-            }
-
-            // Filter by layer.
-            int layer = 0;
-            if (auto layer_number = static_cast<CFNumberRef>(CFDictionaryGetValue(window_dict, kCGWindowLayer))) {
-                (void)CFNumberGetValue(layer_number, kCFNumberSInt32Type, &layer);
-            }
-            if (layer != 0) {
-                continue;
-            }
-
-            // Filter by title match if present.
-            bool title_ok = true;
-            if (!title.empty()) {
-                if (auto name_ref = static_cast<CFStringRef>(CFDictionaryGetValue(window_dict, kCGWindowName))) {
-                    char buffer[512];
-                    if (CFStringGetCString(name_ref, buffer, sizeof(buffer), kCFStringEncodingUTF8)) {
-                        title_ok = (title == buffer);
-                    }
-                }
-            }
-            // Filter by reasonable height.
-            bool size_ok = true;
-            if (auto bounds_ref = static_cast<CFDictionaryRef>(CFDictionaryGetValue(window_dict, kCGWindowBounds))) {
-                CGRect bounds{};
-                if (CGRectMakeWithDictionaryRepresentation(bounds_ref, &bounds)) {
-                    size_ok = bounds.size.height > 100 && bounds.size.width > 100;
-                }
-            }
-            if (!size_ok) {
-                continue;
-            }
-
-            if (title_ok) {
-                auto const* window_number = static_cast<CFNumberRef>(CFDictionaryGetValue(window_dict, kCGWindowNumber));
-                if (window_number) {
-                    CGWindowID window_id = kCGNullWindowID;
-                    if (CFNumberGetValue(window_number, kCFNumberSInt32Type, &window_id)) {
-                        active_window_id = window_id;
-                        break;
-                    }
-                }
-            }
-        }
-        // Fallback to first window if none matched.
-        if ((active_window_id == kCGNullWindowID || active_window_id == 0) && CFArrayGetCount(windows) > 0) {
-            auto const* window_dict = static_cast<CFDictionaryRef>(CFArrayGetValueAtIndex(windows, 0));
-            if (window_dict) {
-                auto const* window_number = static_cast<CFNumberRef>(CFDictionaryGetValue(window_dict, kCGWindowNumber));
-                if (window_number) {
-                    CGWindowID window_id = kCGNullWindowID;
-                    (void)CFNumberGetValue(window_number, kCFNumberSInt32Type, &window_id);
-                    active_window_id = window_id;
-                }
-            }
-        }
-        CFRelease(windows);
-    }
-
+    (void)title;
     if (active_window_id == kCGNullWindowID || active_window_id == 0) {
         return false;
     }
 
-    auto write_png = [&](CGImageRef image) -> bool {
-        if (!image) {
-            return false;
-        }
-
-        auto path_string = path.string();
-        CFStringRef cf_path = CFStringCreateWithCString(nullptr, path_string.c_str(), kCFStringEncodingUTF8);
-        if (!cf_path) {
-            return false;
-        }
-        CFURLRef url = CFURLCreateWithFileSystemPath(nullptr, cf_path, kCFURLPOSIXPathStyle, false);
-        CFRelease(cf_path);
-        if (!url) {
-            return false;
-        }
-
-        CGImageDestinationRef destination = CGImageDestinationCreateWithURL(url, kUTTypePNG, 1, nullptr);
-        if (!destination) {
-            CFRelease(url);
-            return false;
-        }
-        CGImageDestinationAddImage(destination, image, nullptr);
-        bool ok = CGImageDestinationFinalize(destination);
-        CFRelease(destination);
-        CFRelease(url);
-        return ok;
-    };
-
-    // Use screencapture to grab real chrome, then blend the titlebar onto the in-app framebuffer
-    // so colors match.
-    auto os_raw = path.string() + ".osraw.png";
-    auto fb_raw = path.string() + ".fbraw.png";
-
     std::string base_cmd = "screencapture -x -o -l " + std::to_string(active_window_id) + " \""
-                           + os_raw + "\" > /dev/null 2>&1";
-    bool captured_os = false;
+                           + path.string() + "\" > /dev/null 2>&1";
     for (int attempt = 0; attempt < 3; ++attempt) {
         int rc = std::system(base_cmd.c_str());
         if (rc == 0) {
-            captured_os = true;
-            break;
+            return true;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    // Always grab framebuffer; if OS grab failed we'll still have matching content.
-    (void)SP::UI::SaveLocalWindowScreenshot(fb_raw.c_str());
-
-    auto load_image = [](std::string const& p) -> CGImageRef {
-        CFStringRef cf_path = CFStringCreateWithCString(nullptr, p.c_str(), kCFStringEncodingUTF8);
-        if (!cf_path) return nullptr;
-        CFURLRef url = CFURLCreateWithFileSystemPath(nullptr, cf_path, kCFURLPOSIXPathStyle, false);
-        CFRelease(cf_path);
-        if (!url) return nullptr;
-        CGImageSourceRef src = CGImageSourceCreateWithURL(url, nullptr);
-        CFRelease(url);
-        if (!src) return nullptr;
-        CGImageRef img = CGImageSourceCreateImageAtIndex(src, 0, nullptr);
-        CFRelease(src);
-        return img;
-    };
-
-    CGImageRef os_img = captured_os ? load_image(os_raw) : nullptr;
-    CGImageRef fb_img = load_image(fb_raw);
-    if (!fb_img) {
-        if (os_img) CGImageRelease(os_img);
-        return false;
-    }
-
-    size_t fb_w = CGImageGetWidth(fb_img);
-    size_t fb_h = CGImageGetHeight(fb_img);
-    size_t bar_h = 0;
-    if (os_img) {
-        size_t os_h = CGImageGetHeight(os_img);
-        if (os_h > fb_h) {
-            bar_h = os_h - fb_h;
-            if (bar_h > 200) bar_h = 200;
-        }
-    }
-
-    size_t out_w = fb_w;
-    size_t out_h = fb_h + bar_h;
-    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
-    CGContextRef ctx = CGBitmapContextCreate(nullptr,
-                                             out_w,
-                                             out_h,
-                                             8,
-                                             out_w * 4,
-                                             cs,
-                                             kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
-    if (!ctx) {
-        CGColorSpaceRelease(cs);
-        if (os_img) CGImageRelease(os_img);
-        CGImageRelease(fb_img);
-        return false;
-    }
-
-    if (os_img && bar_h > 0) {
-        // Draw the titlebar at the top, scaling to framebuffer width.
-        CGRect dst_bar = CGRectMake(0, 0, out_w, bar_h);
-        CGRect src_bar = CGRectMake(0, 0, CGImageGetWidth(os_img), bar_h);
-        CGContextDrawImage(ctx, dst_bar, os_img);
-        (void)src_bar; // src_bar unused because DrawImage ignores it, kept for clarity.
-    }
-    CGRect dst_fb = CGRectMake(0, bar_h, out_w, fb_h);
-    CGContextDrawImage(ctx, dst_fb, fb_img);
-
-    CGImageRef out_img = CGBitmapContextCreateImage(ctx);
-    CGColorSpaceRelease(cs);
-    CGContextRelease(ctx);
-    CGImageRelease(fb_img);
-    if (os_img) CGImageRelease(os_img);
-    (void)std::filesystem::remove(os_raw);
-    (void)std::filesystem::remove(fb_raw);
-    if (!out_img) {
-        return false;
-    }
-
-    CFStringRef cf_path = CFStringCreateWithCString(nullptr, path.string().c_str(), kCFStringEncodingUTF8);
-    if (!cf_path) {
-        CGImageRelease(out_img);
-        return false;
-    }
-    CFURLRef url = CFURLCreateWithFileSystemPath(nullptr, cf_path, kCFURLPOSIXPathStyle, false);
-    CFRelease(cf_path);
-    if (!url) {
-        CGImageRelease(out_img);
-        return false;
-    }
-    CGImageDestinationRef dest = CGImageDestinationCreateWithURL(url, kUTTypePNG, 1, nullptr);
-    if (!dest) {
-        CFRelease(url);
-        CGImageRelease(out_img);
-        return false;
-    }
-    CGImageDestinationAddImage(dest, out_img, nullptr);
-    bool ok = CGImageDestinationFinalize(dest);
-    CFRelease(dest);
-    CFRelease(url);
-    CGImageRelease(out_img);
-    return ok;
+    return false;
 }
 #else
 bool SaveActiveWindowScreenshot(std::filesystem::path const&, std::string const&, int, int) { return false; }
@@ -308,11 +106,30 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    auto sanitized_theme = SP::UI::Declarative::ThemeConfig::SanitizeName(kExampleTheme);
     auto app = SP::App::Create(space,
                                "declarative_button_example",
-                               {.title = "Declarative Button"});
+                               {.title = "Declarative Button",
+                                .default_theme = sanitized_theme});
     if (!app) {
         std::fprintf(stderr, "App::Create failed: %s\n", SP::describeError(app.error()).c_str());
+        return 1;
+    }
+
+    auto app_root_view = SP::App::AppRootPathView{app->getPath()};
+    auto theme_defaults = SP::UI::Runtime::Widgets::MakeSunsetWidgetTheme();
+    auto ensured_theme = SP::UI::Declarative::ThemeConfig::Ensure(space,
+                                                                  app_root_view,
+                                                                  sanitized_theme,
+                                                                  theme_defaults,
+                                                                  /*store_value=*/false);
+    if (!ensured_theme) {
+        std::fprintf(stderr, "Theme ensure failed: %s\n", SP::describeError(ensured_theme.error()).c_str());
+        return 1;
+    }
+    auto set_active_theme = SP::UI::Declarative::ThemeConfig::SetActive(space, app_root_view, sanitized_theme);
+    if (!set_active_theme) {
+        std::fprintf(stderr, "Theme SetActive failed: %s\n", SP::describeError(set_active_theme.error()).c_str());
         return 1;
     }
 
@@ -325,6 +142,15 @@ int main(int argc, char** argv) {
     auto window = SP::Window::Create(space, *app, window_opts);
     if (!window) {
         std::fprintf(stderr, "Window::Create failed: %s\n", SP::describeError(window.error()).c_str());
+        return 1;
+    }
+    auto window_theme_path = std::string(window->path.getPath()) + "/style/theme";
+    auto window_theme_status = SP::UI::Declarative::Detail::replace_single<std::string>(space,
+                                                                                        window_theme_path,
+                                                                                        sanitized_theme);
+    if (!window_theme_status) {
+        std::fprintf(stderr, "window theme update failed: %s\n", SP::describeError(window_theme_status.error()).c_str());
+        SP::System::ShutdownDeclarativeRuntime(space);
         return 1;
     }
 
@@ -441,14 +267,14 @@ int main(int argc, char** argv) {
     }
 
     // Inline RunUI so we can screenshot immediately after presents.
-    auto app_root = SP::App::derive_app_root(SP::App::ConcretePathView{scene->path.getPath()});
-    if (!app_root) {
-        std::fprintf(stderr, "derive app root failed: %s\n", SP::describeError(app_root.error()).c_str());
+    auto derived_app_root = SP::App::derive_app_root(SP::App::ConcretePathView{scene->path.getPath()});
+    if (!derived_app_root) {
+        std::fprintf(stderr, "derive app root failed: %s\n", SP::describeError(derived_app_root.error()).c_str());
         shutdown_runtime();
         return 1;
     }
     auto present_handles = SP::UI::Declarative::BuildPresentHandles(space,
-                                                                    SP::App::AppRootPathView{app_root->getPath()},
+                                                                    SP::App::AppRootPathView{derived_app_root->getPath()},
                                                                     window->path,
                                                                     window->view_name);
     if (!present_handles) {
@@ -509,7 +335,7 @@ int main(int argc, char** argv) {
         ++frames_rendered;
 
         // Capture after presents so framebuffer matches the window.
-        if (screenshot_path && !captured1 && frames_rendered >= 2) {
+        if (screenshot_path && !captured1 && frames_rendered >= 30) { // wait for theme/publish to settle
             if (SP::UI::SaveLocalWindowScreenshot(screenshot_path->c_str())) {
                 captured1 = true;
             } else {

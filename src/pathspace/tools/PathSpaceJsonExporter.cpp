@@ -329,7 +329,7 @@ auto buildNode(PathEntry const& entry,
         }
     }
 
-    if (!values.empty()) {
+    if (!values.empty() || includeStructure) {
         node["values"] = std::move(values);
     }
 

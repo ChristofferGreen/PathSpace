@@ -851,8 +851,16 @@ void InitLocalWindowWithSize(int width, int height, char const* title) {
                                                                   NSWindowStyleMaskClosable |
                                                                   NSWindowStyleMaskMiniaturizable |
                                                                   NSWindowStyleMaskResizable)
-                                                         backing:NSBackingStoreBuffered
-                                                           defer:NO];
+                                                        backing:NSBackingStoreBuffered
+                                                          defer:NO];
+            // Align on-screen window visuals with the app's dark framebuffer theme.
+            state.window.styleMask |= NSWindowStyleMaskFullSizeContentView;
+            [state.window setTitlebarAppearsTransparent:YES];
+            state.window.titleVisibility = NSWindowTitleHidden;
+            state.window.backgroundColor = [NSColor colorWithCalibratedRed:(CGFloat)(28.0 / 255.0)
+                                                                     green:(CGFloat)(31.0 / 255.0)
+                                                                      blue:(CGFloat)(38.0 / 255.0)
+                                                                     alpha:1.0];
             state.window.title = [NSString stringWithUTF8String:state.desired_title.c_str()];
             PSLocalWindowDelegate* delegate = [[PSLocalWindowDelegate alloc] init];
             state.window.delegate = delegate;

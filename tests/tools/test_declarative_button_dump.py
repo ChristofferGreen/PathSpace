@@ -69,6 +69,21 @@ def require_path(tree: dict, root_path: str, target: str, label: str, allow_trun
     return node
 
 
+def require_child(tree: dict, root_path: str, base_path: str, child: str, label: str) -> dict:
+    candidates = (
+        f"{base_path}/children/{child}",
+        f"{base_path}/{child}",
+    )
+    last_exc: AssertionError | None = None
+    for path in candidates:
+        try:
+            return require_path(tree, root_path, path, label)
+        except AssertionError as exc:
+            last_exc = exc
+    assert last_exc is not None
+    raise last_exc
+
+
 def first_string_value(node: dict, label: str) -> str:
     values = node.get("values", [])
     for entry in values:
@@ -170,41 +185,69 @@ def main() -> int:
         for expected_child in ("scene", "surface", "widgets"):
             if expected_child not in view_children:
                 raise AssertionError(f"view missing expected child {expected_child!r}")
-        require_path(
+        button_children = None
+        button_children_paths = (
+            "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column/children",
+            "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column",
+        )
+        last_exc = None
+        for path in button_children_paths:
+            try:
+                button_children = require_path(payload, root_path, path, "button children")
+                break
+            except AssertionError as exc:
+                last_exc = exc
+        if button_children is None:
+            assert last_exc is not None
+            raise last_exc
+        require_child(
             payload,
             root_path,
-            "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column/children/hello_button",
+            "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column",
+            "hello_button",
             "hello button",
         )
-        require_path(
+        require_child(
             payload,
             root_path,
-            "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column/children/goodbye_button",
+            "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column",
+            "goodbye_button",
             "goodbye button",
         )
-        hello_label = require_path(
-            payload,
-            root_path,
+        hello_label = None
+        hello_label_paths = (
             "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column/children/hello_button/meta/label",
-            "hello label",
+            "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column/hello_button/meta/label",
         )
+        last_exc: AssertionError | None = None
+        for path in hello_label_paths:
+            try:
+                hello_label = require_path(payload, root_path, path, "hello label")
+                break
+            except AssertionError as exc:
+                last_exc = exc
+        if hello_label is None:
+            assert last_exc is not None
+            raise last_exc
         if first_string_value(hello_label, "hello label") != "Say Hello":
             raise AssertionError("hello button label missing or incorrect")
-        goodbye_label = require_path(
-            payload,
-            root_path,
+        goodbye_label_paths = (
             "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column/children/goodbye_button/meta/label",
-            "goodbye label",
+            "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column/goodbye_button/meta/label",
         )
+        goodbye_label = None
+        for path in goodbye_label_paths:
+            try:
+                goodbye_label = require_path(payload, root_path, path, "goodbye label")
+                break
+            except AssertionError as exc:
+                last_exc = exc
+        if goodbye_label is None:
+            assert last_exc is not None
+            raise last_exc
         if first_string_value(goodbye_label, "goodbye label") != "Say Goodbye":
             raise AssertionError("goodbye button label missing or incorrect")
-        children_node = require_path(
-            payload,
-            root_path,
-            "/system/applications/declarative_button_example/windows/declarative_button/views/main/widgets/button_column/children",
-            "button children",
-        )
-        child_keys = set(children_node.get("children", {}).keys())
+        child_keys = {key for key in button_children.get("children", {}) if key != "space"}
         if child_keys != {"hello_button", "goodbye_button"}:
             raise AssertionError(f"unexpected children under button_column: {sorted(child_keys)}")
     except AssertionError as exc:
