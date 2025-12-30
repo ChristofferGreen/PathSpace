@@ -102,7 +102,6 @@ struct CreateOptions {
     std::string title;
     int width = 0;
     int height = 0;
-    float scale = 0.0f;
     std::string background = "#101218";
     std::string view = "main";
     bool visible = false;

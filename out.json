@@ -1,11 +1,30 @@
 {
   "/system/applications/declarative_button_example": {
+    "category": "None",
+    "child_count": 7,
     "children": {
       "config": {
+        "category": "None",
+        "child_count": 2,
         "children": {
           "renderer": {
+            "category": "None",
+            "child_count": 1,
             "children": {
               "default": {
+                "category": "SerializedData",
+                "child_count": 0,
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": true,
+                  "queue_depth": 1,
+                  "raw_bytes": 42
+                },
+                "has_children": false,
+                "has_nested_space": false,
+                "has_value": true,
                 "values": [
                   {
                     "category": "SerializedData",
@@ -13,13 +32,44 @@
                     "type": "std::string",
                     "value": "renderers/widgets_declarative_renderer"
                   }
-                ]
+                ],
+                "values_sampled": true,
+                "values_truncated": false
               }
-            }
+            },
+            "children_truncated": false,
+            "depth_truncated": false,
+            "diagnostics": {
+              "has_execution_payload": false,
+              "has_serialized_payload": false,
+              "queue_depth": 0,
+              "raw_bytes": 0
+            },
+            "has_children": true,
+            "has_nested_space": false,
+            "has_value": false,
+            "values": [],
+            "values_sampled": true,
+            "values_truncated": false
           },
           "theme": {
+            "category": "None",
+            "child_count": 1,
             "children": {
               "active": {
+                "category": "SerializedData",
+                "child_count": 0,
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": true,
+                  "queue_depth": 1,
+                  "raw_bytes": 10
+                },
+                "has_children": false,
+                "has_nested_space": false,
+                "has_value": true,
                 "values": [
                   {
                     "category": "SerializedData",
@@ -27,19 +77,68 @@
                     "type": "std::string",
                     "value": "sunset"
                   }
-                ]
+                ],
+                "values_sampled": true,
+                "values_truncated": false
               }
-            }
+            },
+            "children_truncated": false,
+            "depth_truncated": false,
+            "diagnostics": {
+              "has_execution_payload": false,
+              "has_serialized_payload": false,
+              "queue_depth": 0,
+              "raw_bytes": 0
+            },
+            "has_children": true,
+            "has_nested_space": false,
+            "has_value": false,
+            "values": [],
+            "values_sampled": true,
+            "values_truncated": false
           }
-        }
+        },
+        "children_truncated": false,
+        "depth_truncated": false,
+        "diagnostics": {
+          "has_execution_payload": false,
+          "has_serialized_payload": false,
+          "queue_depth": 0,
+          "raw_bytes": 0
+        },
+        "has_children": true,
+        "has_nested_space": false,
+        "has_value": false,
+        "values": [],
+        "values_sampled": true,
+        "values_truncated": false
       },
       "renderers": {
+        "category": "None",
+        "child_count": 1,
         "children": {
           "widgets_declarative_renderer": {
+            "category": "None",
+            "child_count": 2,
             "children": {
               "meta": {
+                "category": "None",
+                "child_count": 3,
                 "children": {
                   "description": {
+                    "category": "SerializedData",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 31
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "SerializedData",
@@ -47,18 +146,50 @@
                         "type": "std::string",
                         "value": "Declarative widget renderer"
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   },
                   "kind": {
+                    "category": "SerializationLibraryCompatible",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 5
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "SerializationLibraryCompatible",
                         "index": 0,
+                        "placeholder": "opaque",
+                        "reason": "converter-missing",
                         "type": "N2SP2UI7Runtime12RendererKindE"
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   },
                   "name": {
+                    "category": "SerializedData",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 32
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "SerializedData",
@@ -66,26 +197,78 @@
                         "type": "std::string",
                         "value": "widgets_declarative_renderer"
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   }
-                }
+                },
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": false,
+                  "queue_depth": 0,
+                  "raw_bytes": 0
+                },
+                "has_children": true,
+                "has_nested_space": false,
+                "has_value": false,
+                "values": [],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "targets": {
+                "category": "None",
+                "child_count": 1,
                 "children": {
                   "surfaces": {
+                    "category": "None",
+                    "child_count": 1,
                     "children": {
                       "widgets_surface_declarative_button_main": {
+                        "category": "None",
+                        "child_count": 3,
                         "children": {
                           "desc": {
+                            "category": "SerializationLibraryCompatible",
+                            "child_count": 0,
+                            "children_truncated": false,
+                            "depth_truncated": false,
+                            "diagnostics": {
+                              "has_execution_payload": false,
+                              "has_serialized_payload": true,
+                              "queue_depth": 1,
+                              "raw_bytes": 18
+                            },
+                            "has_children": false,
+                            "has_nested_space": false,
+                            "has_value": true,
                             "values": [
                               {
                                 "category": "SerializationLibraryCompatible",
                                 "index": 0,
+                                "placeholder": "opaque",
+                                "reason": "converter-missing",
                                 "type": "N2SP2UI7Runtime11SurfaceDescE"
                               }
-                            ]
+                            ],
+                            "values_sampled": true,
+                            "values_truncated": false
                           },
                           "scene": {
+                            "category": "SerializedData",
+                            "child_count": 0,
+                            "children_truncated": false,
+                            "depth_truncated": false,
+                            "diagnostics": {
+                              "has_execution_payload": false,
+                              "has_serialized_payload": true,
+                              "queue_depth": 1,
+                              "raw_bytes": 23
+                            },
+                            "has_children": false,
+                            "has_nested_space": false,
+                            "has_value": true,
                             "values": [
                               {
                                 "category": "SerializedData",
@@ -93,32 +276,138 @@
                                 "type": "std::string",
                                 "value": "scenes/button_scene"
                               }
-                            ]
+                            ],
+                            "values_sampled": true,
+                            "values_truncated": false
                           },
                           "settings": {
+                            "category": "SerializationLibraryCompatible",
+                            "child_count": 0,
+                            "children_truncated": false,
+                            "depth_truncated": false,
+                            "diagnostics": {
+                              "has_execution_payload": false,
+                              "has_serialized_payload": true,
+                              "queue_depth": 1,
+                              "raw_bytes": 116
+                            },
+                            "has_children": false,
+                            "has_nested_space": false,
+                            "has_value": true,
                             "values": [
                               {
                                 "category": "SerializationLibraryCompatible",
                                 "index": 0,
+                                "placeholder": "opaque",
+                                "reason": "converter-missing",
                                 "type": "N2SP2UI7Runtime14RenderSettingsE"
                               }
-                            ]
+                            ],
+                            "values_sampled": true,
+                            "values_truncated": false
                           }
-                        }
+                        },
+                        "children_truncated": false,
+                        "depth_truncated": false,
+                        "diagnostics": {
+                          "has_execution_payload": false,
+                          "has_serialized_payload": false,
+                          "queue_depth": 0,
+                          "raw_bytes": 0
+                        },
+                        "has_children": true,
+                        "has_nested_space": false,
+                        "has_value": false,
+                        "values": [],
+                        "values_sampled": true,
+                        "values_truncated": false
                       }
-                    }
+                    },
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": false,
+                      "queue_depth": 0,
+                      "raw_bytes": 0
+                    },
+                    "has_children": true,
+                    "has_nested_space": false,
+                    "has_value": false,
+                    "values": [],
+                    "values_sampled": true,
+                    "values_truncated": false
                   }
-                }
+                },
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": false,
+                  "queue_depth": 0,
+                  "raw_bytes": 0
+                },
+                "has_children": true,
+                "has_nested_space": false,
+                "has_value": false,
+                "values": [],
+                "values_sampled": true,
+                "values_truncated": false
               }
-            }
+            },
+            "children_truncated": false,
+            "depth_truncated": false,
+            "diagnostics": {
+              "has_execution_payload": false,
+              "has_serialized_payload": false,
+              "queue_depth": 0,
+              "raw_bytes": 0
+            },
+            "has_children": true,
+            "has_nested_space": false,
+            "has_value": false,
+            "values": [],
+            "values_sampled": true,
+            "values_truncated": false
           }
-        }
+        },
+        "children_truncated": false,
+        "depth_truncated": false,
+        "diagnostics": {
+          "has_execution_payload": false,
+          "has_serialized_payload": false,
+          "queue_depth": 0,
+          "raw_bytes": 0
+        },
+        "has_children": true,
+        "has_nested_space": false,
+        "has_value": false,
+        "values": [],
+        "values_sampled": true,
+        "values_truncated": false
       },
       "scenes": {
+        "category": "None",
+        "child_count": 1,
         "children": {
           "button_scene": {
+            "category": "None",
+            "child_count": 7,
             "children": {
               "current_revision": {
+                "category": "Fundamental",
+                "child_count": 0,
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": true,
+                  "queue_depth": 1,
+                  "raw_bytes": 8
+                },
+                "has_children": false,
+                "has_nested_space": false,
+                "has_value": true,
                 "values": [
                   {
                     "category": "Fundamental",
@@ -126,20 +415,54 @@
                     "type": "uint64_t",
                     "value": 1
                   }
-                ]
+                ],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "current_revision_desc": {
+                "category": "SerializationLibraryCompatible",
+                "child_count": 0,
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": true,
+                  "queue_depth": 1,
+                  "raw_bytes": 32
+                },
+                "has_children": false,
+                "has_nested_space": false,
+                "has_value": true,
                 "values": [
                   {
                     "category": "SerializationLibraryCompatible",
                     "index": 0,
+                    "placeholder": "opaque",
+                    "reason": "converter-missing",
                     "type": "N2SP2UI7Runtime6Detail19SceneRevisionRecordE"
                   }
-                ]
+                ],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "meta": {
+                "category": "None",
+                "child_count": 2,
                 "children": {
                   "description": {
+                    "category": "SerializedData",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 22
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "SerializedData",
@@ -147,9 +470,24 @@
                         "type": "std::string",
                         "value": "button_scene scene"
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   },
                   "name": {
+                    "category": "SerializedData",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 16
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "SerializedData",
@@ -157,13 +495,44 @@
                         "type": "std::string",
                         "value": "button_scene"
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   }
-                }
+                },
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": false,
+                  "queue_depth": 0,
+                  "raw_bytes": 0
+                },
+                "has_children": true,
+                "has_nested_space": false,
+                "has_value": false,
+                "values": [],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "render": {
+                "category": "None",
+                "child_count": 1,
                 "children": {
                   "dirty": {
+                    "category": "Fundamental",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 1
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "Fundamental",
@@ -171,15 +540,48 @@
                         "type": "bool",
                         "value": false
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   }
-                }
+                },
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": false,
+                  "queue_depth": 0,
+                  "raw_bytes": 0
+                },
+                "has_children": true,
+                "has_nested_space": false,
+                "has_value": false,
+                "values": [],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "runtime": {
+                "category": "None",
+                "child_count": 1,
                 "children": {
                   "lifecycle": {
+                    "category": "None",
+                    "child_count": 2,
                     "children": {
                       "control": {
+                        "category": "SerializedData",
+                        "child_count": 0,
+                        "children_truncated": false,
+                        "depth_truncated": false,
+                        "diagnostics": {
+                          "has_execution_payload": false,
+                          "has_serialized_payload": true,
+                          "queue_depth": 1,
+                          "raw_bytes": 97
+                        },
+                        "has_children": false,
+                        "has_nested_space": false,
+                        "has_value": true,
                         "values": [
                           {
                             "category": "SerializedData",
@@ -187,11 +589,28 @@
                             "type": "std::string",
                             "value": "/system/applications/declarative_button_example/scenes/button_scene/runtime/lifecycle/control"
                           }
-                        ]
+                        ],
+                        "values_sampled": true,
+                        "values_truncated": false
                       },
                       "state": {
+                        "category": "None",
+                        "child_count": 1,
                         "children": {
                           "running": {
+                            "category": "Fundamental",
+                            "child_count": 0,
+                            "children_truncated": false,
+                            "depth_truncated": false,
+                            "diagnostics": {
+                              "has_execution_payload": false,
+                              "has_serialized_payload": true,
+                              "queue_depth": 1,
+                              "raw_bytes": 1
+                            },
+                            "has_children": false,
+                            "has_nested_space": false,
+                            "has_value": true,
                             "values": [
                               {
                                 "category": "Fundamental",
@@ -199,17 +618,76 @@
                                 "type": "bool",
                                 "value": false
                               }
-                            ]
+                            ],
+                            "values_sampled": true,
+                            "values_truncated": false
                           }
-                        }
+                        },
+                        "children_truncated": false,
+                        "depth_truncated": false,
+                        "diagnostics": {
+                          "has_execution_payload": false,
+                          "has_serialized_payload": false,
+                          "queue_depth": 0,
+                          "raw_bytes": 0
+                        },
+                        "has_children": true,
+                        "has_nested_space": false,
+                        "has_value": false,
+                        "values": [],
+                        "values_sampled": true,
+                        "values_truncated": false
                       }
-                    }
+                    },
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": false,
+                      "queue_depth": 0,
+                      "raw_bytes": 0
+                    },
+                    "has_children": true,
+                    "has_nested_space": false,
+                    "has_value": false,
+                    "values": [],
+                    "values_sampled": true,
+                    "values_truncated": false
                   }
-                }
+                },
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": false,
+                  "queue_depth": 0,
+                  "raw_bytes": 0
+                },
+                "has_children": true,
+                "has_nested_space": false,
+                "has_value": false,
+                "values": [],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "state": {
+                "category": "None",
+                "child_count": 1,
                 "children": {
                   "attached": {
+                    "category": "Fundamental",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 1
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "Fundamental",
@@ -217,19 +695,56 @@
                         "type": "bool",
                         "value": true
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   }
-                }
+                },
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": false,
+                  "queue_depth": 0,
+                  "raw_bytes": 0
+                },
+                "has_children": true,
+                "has_nested_space": false,
+                "has_value": false,
+                "values": [],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "structure": {
+                "category": "None",
+                "child_count": 1,
                 "children": {
                   "window": {
+                    "category": "None",
+                    "child_count": 1,
                     "children": {
                       "declarative_button": {
+                        "category": "None",
+                        "child_count": 5,
                         "children": {
                           "focus": {
+                            "category": "None",
+                            "child_count": 1,
                             "children": {
                               "current": {
+                                "category": "SerializedData",
+                                "child_count": 0,
+                                "children_truncated": false,
+                                "depth_truncated": false,
+                                "diagnostics": {
+                                  "has_execution_payload": false,
+                                  "has_serialized_payload": true,
+                                  "queue_depth": 1,
+                                  "raw_bytes": 4
+                                },
+                                "has_children": false,
+                                "has_nested_space": false,
+                                "has_value": true,
                                 "values": [
                                   {
                                     "category": "SerializedData",
@@ -237,13 +752,44 @@
                                     "type": "std::string",
                                     "value": ""
                                   }
-                                ]
+                                ],
+                                "values_sampled": true,
+                                "values_truncated": false
                               }
-                            }
+                            },
+                            "children_truncated": false,
+                            "depth_truncated": false,
+                            "diagnostics": {
+                              "has_execution_payload": false,
+                              "has_serialized_payload": false,
+                              "queue_depth": 0,
+                              "raw_bytes": 0
+                            },
+                            "has_children": true,
+                            "has_nested_space": false,
+                            "has_value": false,
+                            "values": [],
+                            "values_sampled": true,
+                            "values_truncated": false
                           },
                           "metrics": {
+                            "category": "None",
+                            "child_count": 1,
                             "children": {
                               "dpi": {
+                                "category": "Fundamental",
+                                "child_count": 0,
+                                "children_truncated": false,
+                                "depth_truncated": false,
+                                "diagnostics": {
+                                  "has_execution_payload": false,
+                                  "has_serialized_payload": true,
+                                  "queue_depth": 1,
+                                  "raw_bytes": 8
+                                },
+                                "has_children": false,
+                                "has_nested_space": false,
+                                "has_value": true,
                                 "values": [
                                   {
                                     "category": "Fundamental",
@@ -251,11 +797,40 @@
                                     "type": "double",
                                     "value": 1.0
                                   }
-                                ]
+                                ],
+                                "values_sampled": true,
+                                "values_truncated": false
                               }
-                            }
+                            },
+                            "children_truncated": false,
+                            "depth_truncated": false,
+                            "diagnostics": {
+                              "has_execution_payload": false,
+                              "has_serialized_payload": false,
+                              "queue_depth": 0,
+                              "raw_bytes": 0
+                            },
+                            "has_children": true,
+                            "has_nested_space": false,
+                            "has_value": false,
+                            "values": [],
+                            "values_sampled": true,
+                            "values_truncated": false
                           },
                           "present": {
+                            "category": "SerializedData",
+                            "child_count": 0,
+                            "children_truncated": false,
+                            "depth_truncated": false,
+                            "diagnostics": {
+                              "has_execution_payload": false,
+                              "has_serialized_payload": true,
+                              "queue_depth": 1,
+                              "raw_bytes": 49
+                            },
+                            "has_children": false,
+                            "has_nested_space": false,
+                            "has_value": true,
                             "values": [
                               {
                                 "category": "SerializedData",
@@ -263,9 +838,24 @@
                                 "type": "std::string",
                                 "value": "windows/declarative_button/views/main/present"
                               }
-                            ]
+                            ],
+                            "values_sampled": true,
+                            "values_truncated": false
                           },
                           "surface": {
+                            "category": "SerializedData",
+                            "child_count": 0,
+                            "children_truncated": false,
+                            "depth_truncated": false,
+                            "diagnostics": {
+                              "has_execution_payload": false,
+                              "has_serialized_payload": true,
+                              "queue_depth": 1,
+                              "raw_bytes": 52
+                            },
+                            "has_children": false,
+                            "has_nested_space": false,
+                            "has_value": true,
                             "values": [
                               {
                                 "category": "SerializedData",
@@ -273,9 +863,24 @@
                                 "type": "std::string",
                                 "value": "surfaces/widgets_surface_declarative_button_main"
                               }
-                            ]
+                            ],
+                            "values_sampled": true,
+                            "values_truncated": false
                           },
                           "view": {
+                            "category": "SerializedData",
+                            "child_count": 0,
+                            "children_truncated": false,
+                            "depth_truncated": false,
+                            "diagnostics": {
+                              "has_execution_payload": false,
+                              "has_serialized_payload": true,
+                              "queue_depth": 1,
+                              "raw_bytes": 8
+                            },
+                            "has_children": false,
+                            "has_nested_space": false,
+                            "has_value": true,
                             "values": [
                               {
                                 "category": "SerializedData",
@@ -283,21 +888,108 @@
                                 "type": "std::string",
                                 "value": "main"
                               }
-                            ]
+                            ],
+                            "values_sampled": true,
+                            "values_truncated": false
                           }
-                        }
+                        },
+                        "children_truncated": false,
+                        "depth_truncated": false,
+                        "diagnostics": {
+                          "has_execution_payload": false,
+                          "has_serialized_payload": false,
+                          "queue_depth": 0,
+                          "raw_bytes": 0
+                        },
+                        "has_children": true,
+                        "has_nested_space": false,
+                        "has_value": false,
+                        "values": [],
+                        "values_sampled": true,
+                        "values_truncated": false
                       }
-                    }
+                    },
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": false,
+                      "queue_depth": 0,
+                      "raw_bytes": 0
+                    },
+                    "has_children": true,
+                    "has_nested_space": false,
+                    "has_value": false,
+                    "values": [],
+                    "values_sampled": true,
+                    "values_truncated": false
                   }
-                }
+                },
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": false,
+                  "queue_depth": 0,
+                  "raw_bytes": 0
+                },
+                "has_children": true,
+                "has_nested_space": false,
+                "has_value": false,
+                "values": [],
+                "values_sampled": true,
+                "values_truncated": false
               }
-            }
+            },
+            "children_truncated": false,
+            "depth_truncated": false,
+            "diagnostics": {
+              "has_execution_payload": false,
+              "has_serialized_payload": false,
+              "queue_depth": 0,
+              "raw_bytes": 0
+            },
+            "has_children": true,
+            "has_nested_space": false,
+            "has_value": false,
+            "values": [],
+            "values_sampled": true,
+            "values_truncated": false
           }
-        }
+        },
+        "children_truncated": false,
+        "depth_truncated": false,
+        "diagnostics": {
+          "has_execution_payload": false,
+          "has_serialized_payload": false,
+          "queue_depth": 0,
+          "raw_bytes": 0
+        },
+        "has_children": true,
+        "has_nested_space": false,
+        "has_value": false,
+        "values": [],
+        "values_sampled": true,
+        "values_truncated": false
       },
       "state": {
+        "category": "None",
+        "child_count": 1,
         "children": {
           "title": {
+            "category": "SerializedData",
+            "child_count": 0,
+            "children_truncated": false,
+            "depth_truncated": false,
+            "diagnostics": {
+              "has_execution_payload": false,
+              "has_serialized_payload": true,
+              "queue_depth": 1,
+              "raw_bytes": 22
+            },
+            "has_children": false,
+            "has_nested_space": false,
+            "has_value": true,
             "values": [
               {
                 "category": "SerializedData",
@@ -305,26 +997,78 @@
                 "type": "std::string",
                 "value": "Declarative Button"
               }
-            ]
+            ],
+            "values_sampled": true,
+            "values_truncated": false
           }
-        }
+        },
+        "children_truncated": false,
+        "depth_truncated": false,
+        "diagnostics": {
+          "has_execution_payload": false,
+          "has_serialized_payload": false,
+          "queue_depth": 0,
+          "raw_bytes": 0
+        },
+        "has_children": true,
+        "has_nested_space": false,
+        "has_value": false,
+        "values": [],
+        "values_sampled": true,
+        "values_truncated": false
       },
       "surfaces": {
+        "category": "None",
+        "child_count": 1,
         "children": {
           "widgets_surface_declarative_button_main": {
+            "category": "None",
+            "child_count": 5,
             "children": {
               "desc": {
+                "category": "SerializationLibraryCompatible",
+                "child_count": 0,
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": true,
+                  "queue_depth": 1,
+                  "raw_bytes": 18
+                },
+                "has_children": false,
+                "has_nested_space": false,
+                "has_value": true,
                 "values": [
                   {
                     "category": "SerializationLibraryCompatible",
                     "index": 0,
+                    "placeholder": "opaque",
+                    "reason": "converter-missing",
                     "type": "N2SP2UI7Runtime11SurfaceDescE"
                   }
-                ]
+                ],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "meta": {
+                "category": "None",
+                "child_count": 1,
                 "children": {
                   "name": {
+                    "category": "SerializedData",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 43
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "SerializedData",
@@ -332,11 +1076,40 @@
                         "type": "std::string",
                         "value": "widgets_surface_declarative_button_main"
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   }
-                }
+                },
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": false,
+                  "queue_depth": 0,
+                  "raw_bytes": 0
+                },
+                "has_children": true,
+                "has_nested_space": false,
+                "has_value": false,
+                "values": [],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "renderer": {
+                "category": "SerializedData",
+                "child_count": 0,
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": true,
+                  "queue_depth": 1,
+                  "raw_bytes": 42
+                },
+                "has_children": false,
+                "has_nested_space": false,
+                "has_value": true,
                 "values": [
                   {
                     "category": "SerializedData",
@@ -344,9 +1117,24 @@
                     "type": "std::string",
                     "value": "renderers/widgets_declarative_renderer"
                   }
-                ]
+                ],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "scene": {
+                "category": "SerializedData",
+                "child_count": 0,
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": true,
+                  "queue_depth": 1,
+                  "raw_bytes": 23
+                },
+                "has_children": false,
+                "has_nested_space": false,
+                "has_value": true,
                 "values": [
                   {
                     "category": "SerializedData",
@@ -354,9 +1142,24 @@
                     "type": "std::string",
                     "value": "scenes/button_scene"
                   }
-                ]
+                ],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "target": {
+                "category": "SerializedData",
+                "child_count": 0,
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": true,
+                  "queue_depth": 1,
+                  "raw_bytes": 99
+                },
+                "has_children": false,
+                "has_nested_space": false,
+                "has_value": true,
                 "values": [
                   {
                     "category": "SerializedData",
@@ -364,15 +1167,60 @@
                     "type": "std::string",
                     "value": "renderers/widgets_declarative_renderer/targets/surfaces/widgets_surface_declarative_button_main"
                   }
-                ]
+                ],
+                "values_sampled": true,
+                "values_truncated": false
               }
-            }
+            },
+            "children_truncated": false,
+            "depth_truncated": false,
+            "diagnostics": {
+              "has_execution_payload": false,
+              "has_serialized_payload": false,
+              "queue_depth": 0,
+              "raw_bytes": 0
+            },
+            "has_children": true,
+            "has_nested_space": false,
+            "has_value": false,
+            "values": [],
+            "values_sampled": true,
+            "values_truncated": false
           }
-        }
+        },
+        "children_truncated": false,
+        "depth_truncated": false,
+        "diagnostics": {
+          "has_execution_payload": false,
+          "has_serialized_payload": false,
+          "queue_depth": 0,
+          "raw_bytes": 0
+        },
+        "has_children": true,
+        "has_nested_space": false,
+        "has_value": false,
+        "values": [],
+        "values_sampled": true,
+        "values_truncated": false
       },
       "themes": {
+        "category": "None",
+        "child_count": 1,
         "children": {
           "default": {
+            "category": "SerializedData",
+            "child_count": 0,
+            "children_truncated": false,
+            "depth_truncated": false,
+            "diagnostics": {
+              "has_execution_payload": false,
+              "has_serialized_payload": true,
+              "queue_depth": 1,
+              "raw_bytes": 10
+            },
+            "has_children": false,
+            "has_nested_space": false,
+            "has_value": true,
             "values": [
               {
                 "category": "SerializedData",
@@ -380,17 +1228,52 @@
                 "type": "std::string",
                 "value": "sunset"
               }
-            ]
+            ],
+            "values_sampled": true,
+            "values_truncated": false
           }
-        }
+        },
+        "children_truncated": false,
+        "depth_truncated": false,
+        "diagnostics": {
+          "has_execution_payload": false,
+          "has_serialized_payload": false,
+          "queue_depth": 0,
+          "raw_bytes": 0
+        },
+        "has_children": true,
+        "has_nested_space": false,
+        "has_value": false,
+        "values": [],
+        "values_sampled": true,
+        "values_truncated": false
       },
       "windows": {
+        "category": "None",
+        "child_count": 1,
         "children": {
           "declarative_button": {
+            "category": "None",
+            "child_count": 5,
             "children": {
               "meta": {
+                "category": "None",
+                "child_count": 6,
                 "children": {
                   "background": {
+                    "category": "SerializedData",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 11
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "SerializedData",
@@ -398,9 +1281,24 @@
                         "type": "std::string",
                         "value": "#101218"
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   },
                   "height": {
+                    "category": "Fundamental",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 4
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "Fundamental",
@@ -408,9 +1306,24 @@
                         "type": "int32_t",
                         "value": 360
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   },
                   "name": {
+                    "category": "SerializedData",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 22
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "SerializedData",
@@ -418,9 +1331,24 @@
                         "type": "std::string",
                         "value": "declarative_button"
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   },
                   "scale": {
+                    "category": "Fundamental",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 4
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "Fundamental",
@@ -428,9 +1356,24 @@
                         "type": "float",
                         "value": 1.0
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   },
                   "title": {
+                    "category": "SerializedData",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 22
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "SerializedData",
@@ -438,9 +1381,24 @@
                         "type": "std::string",
                         "value": "Declarative Button"
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   },
                   "width": {
+                    "category": "Fundamental",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 4
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "Fundamental",
@@ -448,13 +1406,44 @@
                         "type": "int32_t",
                         "value": 640
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   }
-                }
+                },
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": false,
+                  "queue_depth": 0,
+                  "raw_bytes": 0
+                },
+                "has_children": true,
+                "has_nested_space": false,
+                "has_value": false,
+                "values": [],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "render": {
+                "category": "None",
+                "child_count": 1,
                 "children": {
                   "dirty": {
+                    "category": "Fundamental",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 1
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "Fundamental",
@@ -462,13 +1451,44 @@
                         "type": "bool",
                         "value": false
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   }
-                }
+                },
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": false,
+                  "queue_depth": 0,
+                  "raw_bytes": 0
+                },
+                "has_children": true,
+                "has_nested_space": false,
+                "has_value": false,
+                "values": [],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "state": {
+                "category": "None",
+                "child_count": 1,
                 "children": {
                   "visible": {
+                    "category": "Fundamental",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 1
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "Fundamental",
@@ -476,13 +1496,44 @@
                         "type": "bool",
                         "value": true
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   }
-                }
+                },
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": false,
+                  "queue_depth": 0,
+                  "raw_bytes": 0
+                },
+                "has_children": true,
+                "has_nested_space": false,
+                "has_value": false,
+                "values": [],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "style": {
+                "category": "None",
+                "child_count": 1,
                 "children": {
                   "theme": {
+                    "category": "SerializedData",
+                    "child_count": 0,
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": true,
+                      "queue_depth": 1,
+                      "raw_bytes": 10
+                    },
+                    "has_children": false,
+                    "has_nested_space": false,
+                    "has_value": true,
                     "values": [
                       {
                         "category": "SerializedData",
@@ -490,15 +1541,48 @@
                         "type": "std::string",
                         "value": "sunset"
                       }
-                    ]
+                    ],
+                    "values_sampled": true,
+                    "values_truncated": false
                   }
-                }
+                },
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": false,
+                  "queue_depth": 0,
+                  "raw_bytes": 0
+                },
+                "has_children": true,
+                "has_nested_space": false,
+                "has_value": false,
+                "values": [],
+                "values_sampled": true,
+                "values_truncated": false
               },
               "views": {
+                "category": "None",
+                "child_count": 1,
                 "children": {
                   "main": {
+                    "category": "None",
+                    "child_count": 3,
                     "children": {
                       "scene": {
+                        "category": "SerializedData",
+                        "child_count": 0,
+                        "children_truncated": false,
+                        "depth_truncated": false,
+                        "diagnostics": {
+                          "has_execution_payload": false,
+                          "has_serialized_payload": true,
+                          "queue_depth": 1,
+                          "raw_bytes": 23
+                        },
+                        "has_children": false,
+                        "has_nested_space": false,
+                        "has_value": true,
                         "values": [
                           {
                             "category": "SerializedData",
@@ -506,9 +1590,24 @@
                             "type": "std::string",
                             "value": "scenes/button_scene"
                           }
-                        ]
+                        ],
+                        "values_sampled": true,
+                        "values_truncated": false
                       },
                       "surface": {
+                        "category": "SerializedData",
+                        "child_count": 0,
+                        "children_truncated": false,
+                        "depth_truncated": false,
+                        "diagnostics": {
+                          "has_execution_payload": false,
+                          "has_serialized_payload": true,
+                          "queue_depth": 1,
+                          "raw_bytes": 52
+                        },
+                        "has_children": false,
+                        "has_nested_space": false,
+                        "has_value": true,
                         "values": [
                           {
                             "category": "SerializedData",
@@ -516,60 +1615,189 @@
                             "type": "std::string",
                             "value": "surfaces/widgets_surface_declarative_button_main"
                           }
-                        ]
+                        ],
+                        "values_sampled": true,
+                        "values_truncated": false
                       },
                       "widgets": {
+                        "category": "None",
+                        "child_count": 1,
                         "children": {
                           "button_column": {
+                            "category": "None",
+                            "child_count": 2,
                             "children": {
                               "goodbye_button": {
-                                "children": {
-                                  "meta": {
-                                    "children": {
-                                      "label": {
-                                        "values": [
-                                          {
-                                            "category": "SerializedData",
-                                            "index": 0,
-                                            "type": "std::string",
-                                            "value": "Say Goodbye"
-                                          }
-                                        ]
-                                      }
-                                    }
-                                  }
-                                }
+                                "category": "None",
+                                "child_count": 1,
+                                "children": {},
+                                "children_truncated": false,
+                                "depth_truncated": false,
+                                "diagnostics": {
+                                  "has_execution_payload": false,
+                                  "has_serialized_payload": false,
+                                  "queue_depth": 0,
+                                  "raw_bytes": 0
+                                },
+                                "has_children": true,
+                                "has_nested_space": false,
+                                "has_value": false,
+                                "values": [],
+                                "values_sampled": true,
+                                "values_truncated": false
                               },
                               "hello_button": {
-                                "children": {
-                                  "meta": {
-                                    "children": {
-                                      "label": {
-                                        "values": [
-                                          {
-                                            "category": "SerializedData",
-                                            "index": 0,
-                                            "type": "std::string",
-                                            "value": "Say Hello"
-                                          }
-                                        ]
-                                      }
-                                    }
-                                  }
-                                }
+                                "category": "None",
+                                "child_count": 1,
+                                "children": {},
+                                "children_truncated": false,
+                                "depth_truncated": false,
+                                "diagnostics": {
+                                  "has_execution_payload": false,
+                                  "has_serialized_payload": false,
+                                  "queue_depth": 0,
+                                  "raw_bytes": 0
+                                },
+                                "has_children": true,
+                                "has_nested_space": false,
+                                "has_value": false,
+                                "values": [],
+                                "values_sampled": true,
+                                "values_truncated": false
                               }
-                            }
+                            },
+                            "children_truncated": false,
+                            "depth_truncated": false,
+                            "diagnostics": {
+                              "has_execution_payload": false,
+                              "has_serialized_payload": false,
+                              "queue_depth": 0,
+                              "raw_bytes": 0
+                            },
+                            "has_children": true,
+                            "has_nested_space": false,
+                            "has_value": false,
+                            "values": [],
+                            "values_sampled": true,
+                            "values_truncated": false
                           }
-                        }
+                        },
+                        "children_truncated": false,
+                        "depth_truncated": false,
+                        "diagnostics": {
+                          "has_execution_payload": false,
+                          "has_serialized_payload": false,
+                          "queue_depth": 0,
+                          "raw_bytes": 0
+                        },
+                        "has_children": true,
+                        "has_nested_space": false,
+                        "has_value": false,
+                        "values": [],
+                        "values_sampled": true,
+                        "values_truncated": false
                       }
-                    }
+                    },
+                    "children_truncated": false,
+                    "depth_truncated": false,
+                    "diagnostics": {
+                      "has_execution_payload": false,
+                      "has_serialized_payload": false,
+                      "queue_depth": 0,
+                      "raw_bytes": 0
+                    },
+                    "has_children": true,
+                    "has_nested_space": false,
+                    "has_value": false,
+                    "values": [],
+                    "values_sampled": true,
+                    "values_truncated": false
                   }
-                }
+                },
+                "children_truncated": false,
+                "depth_truncated": false,
+                "diagnostics": {
+                  "has_execution_payload": false,
+                  "has_serialized_payload": false,
+                  "queue_depth": 0,
+                  "raw_bytes": 0
+                },
+                "has_children": true,
+                "has_nested_space": false,
+                "has_value": false,
+                "values": [],
+                "values_sampled": true,
+                "values_truncated": false
               }
-            }
+            },
+            "children_truncated": false,
+            "depth_truncated": false,
+            "diagnostics": {
+              "has_execution_payload": false,
+              "has_serialized_payload": false,
+              "queue_depth": 0,
+              "raw_bytes": 0
+            },
+            "has_children": true,
+            "has_nested_space": false,
+            "has_value": false,
+            "values": [],
+            "values_sampled": true,
+            "values_truncated": false
           }
-        }
+        },
+        "children_truncated": false,
+        "depth_truncated": false,
+        "diagnostics": {
+          "has_execution_payload": false,
+          "has_serialized_payload": false,
+          "queue_depth": 0,
+          "raw_bytes": 0
+        },
+        "has_children": true,
+        "has_nested_space": false,
+        "has_value": false,
+        "values": [],
+        "values_sampled": true,
+        "values_truncated": false
       }
+    },
+    "children_truncated": false,
+    "depth_truncated": false,
+    "diagnostics": {
+      "has_execution_payload": false,
+      "has_serialized_payload": false,
+      "queue_depth": 0,
+      "raw_bytes": 0
+    },
+    "has_children": true,
+    "has_nested_space": false,
+    "has_value": false,
+    "values": [],
+    "values_sampled": true,
+    "values_truncated": false
+  },
+  "_meta": {
+    "flags": {
+      "include_diagnostics": true,
+      "include_metadata": true,
+      "include_nested_spaces": false,
+      "include_structure": true,
+      "include_values": true,
+      "mode": "debug"
+    },
+    "limits": {
+      "max_children": "unlimited",
+      "max_depth": "unlimited",
+      "max_queue_entries": "unlimited"
+    },
+    "root": "/system/applications/declarative_button_example",
+    "stats": {
+      "children_truncated": 0,
+      "depth_limited": 0,
+      "node_count": 83,
+      "values_exported": 34,
+      "values_truncated": 0
     }
   }
 }

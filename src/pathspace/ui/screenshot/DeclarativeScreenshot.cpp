@@ -750,6 +750,39 @@ auto CaptureDeclarative(SP::PathSpace& space,
     result.hardware_capture = slot_result->backend.value_or("") != "software2d";
     result.matched_baseline = slot_result->status == "match";
     result.status = slot_result->status;
+
+    if (screenshot_trace_enabled()) {
+        std::string msg = "slot result status=" + result.status + " artifact=" + result.artifact.string();
+        if (slot_result->error && !slot_result->error->empty()) {
+            msg.append(" error=").append(*slot_result->error);
+        }
+        screenshot_trace(msg.c_str());
+    }
+
+    // Treat errored slot results as failures so callers don't proceed with missing artifacts.
+    if (slot_result->status == "error") {
+        auto message = slot_result->error.value_or("screenshot slot reported error");
+        return std::unexpected(make_invalid_argument_error(std::move(message)));
+    }
+
+    // Ensure the artifact exists before returning success; allow a brief grace period
+    // because some platforms complete file writes asynchronously.
+    std::filesystem::path expected_artifact = slot_result->artifact;
+    if (options.output_png && !options.output_png->empty()) {
+        expected_artifact = *options.output_png;
+    }
+    if (!expected_artifact.empty()) {
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{250};
+        while (!std::filesystem::exists(expected_artifact)
+               && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds{10});
+        }
+        if (!std::filesystem::exists(expected_artifact)) {
+            return std::unexpected(
+                make_invalid_argument_error("screenshot artifact missing: " + expected_artifact.string()));
+        }
+    }
+
     return result;
 }
 

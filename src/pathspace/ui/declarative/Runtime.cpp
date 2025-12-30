@@ -689,6 +689,68 @@ auto build_present_handles(SP::PathSpace& space,
     return handles;
 }
 
+void ensure_view_stack_layout(PathSpace& space,
+                              SP::App::ConcretePathView const& view_path,
+                              SP::UI::SurfaceDesc const& surface_desc) {
+    bool debug_layout = std::getenv("PATHSPACE_DEBUG_LAYOUT") != nullptr;
+    if (debug_layout) {
+        auto view_str = std::string(view_path.getPath());
+        std::fprintf(stderr,
+                     "[layout-rebuild] begin view=%s surface=(%d x %d)\n",
+                     view_str.c_str(),
+                     surface_desc.size_px.width,
+                     surface_desc.size_px.height);
+    }
+
+    auto widgets_root = std::string(view_path.getPath()) + "/widgets";
+    auto widget_ids = space.listChildren(SP::ConcretePathStringView{widgets_root});
+    for (auto const& id : widget_ids) {
+        auto widget_root = widgets_root + "/" + id;
+        auto kind = space.read<std::string, std::string>(widget_root + "/meta/kind");
+        if (!kind || *kind != "stack") {
+            continue;
+        }
+
+        auto style = space.read<SP::UI::Runtime::Widgets::StackLayoutStyle, std::string>(widget_root + "/layout/style");
+        auto children =
+            space.read<std::vector<SP::UI::Runtime::Widgets::StackChildSpec>, std::string>(widget_root + "/layout/children");
+        auto computed =
+            space.read<SP::UI::Runtime::Widgets::StackLayoutState, std::string>(widget_root + "/layout/computed");
+        if (!style || !children || !computed) {
+            continue;
+        }
+
+        SP::UI::Runtime::Widgets::StackLayoutParams params{};
+        params.name = widget_root;
+        params.style = *style;
+        params.children = *children;
+        params.style.width = static_cast<float>(surface_desc.size_px.width);
+        params.style.height = static_cast<float>(surface_desc.size_px.height);
+
+        auto recomputed = SP::UI::Declarative::Detail::compute_stack_layout_state(space, params);
+        if (!recomputed) {
+            continue;
+        }
+        (void)SP::UI::Declarative::Detail::write_stack_metadata(space,
+                                                                params.name,
+                                                                params.style,
+                                                                params.children,
+                                                                *recomputed);
+
+        if (debug_layout) {
+            auto view_str = std::string(view_path.getPath());
+            std::fprintf(stderr,
+                         "[layout-rebuild] view=%s widget=%s size=(%.1f x %.1f) prev=(%.1f x %.1f)\n",
+                         view_str.c_str(),
+                         widget_root.c_str(),
+                         params.style.width,
+                         params.style.height,
+                         computed->width,
+                         computed->height);
+        }
+    }
+}
+
 } // namespace
 
 namespace SP::UI::Declarative {
@@ -768,6 +830,11 @@ auto ResizePresentSurface(SP::PathSpace& space,
         }
     }
 
+    // Trigger layout-dependent widgets (e.g., stacks) to rebuild against the new surface size.
+    ensure_view_stack_layout(space,
+                             SP::App::ConcretePathView{std::string(handles.window.getPath()) + "/views/" + handles.view_name},
+                             updated_desc);
+
     return {};
 }
 
@@ -778,6 +845,53 @@ auto PresentWindowFrame(SP::PathSpace& space,
         return std::unexpected(present_policy_result.error());
     }
     auto present_policy = *present_policy_result;
+
+    // Keep surface/target in sync with the actual window content size.
+    int content_w = 0;
+    int content_h = 0;
+    SP::UI::GetLocalWindowContentSize(&content_w, &content_h);
+    float backing_scale = SP::UI::GetLocalWindowBackingScale();
+    if (backing_scale < 1.0f) {
+        backing_scale = 1.0f;
+    }
+    // Content dimensions are already in backing pixels, so avoid double scaling.
+    int pixel_w = content_w;
+    int pixel_h = content_h;
+
+    bool debug_layout = std::getenv("PATHSPACE_DEBUG_LAYOUT") != nullptr;
+
+    SurfaceDesc effective_desc{};
+    bool have_desc = false;
+    auto surface_desc_path = std::string(handles.surface.getPath()) + "/desc";
+    if (auto surface_desc = space.read<SurfaceDesc, std::string>(surface_desc_path)) {
+        effective_desc = *surface_desc;
+        have_desc = true;
+    } else if (debug_layout) {
+        std::fprintf(stderr, "[layout-sync] surface desc missing for %s\n", surface_desc_path.c_str());
+    }
+
+    if (pixel_w > 0 && pixel_h > 0 && have_desc) {
+        if (effective_desc.size_px.width != pixel_w || effective_desc.size_px.height != pixel_h) {
+            (void)ResizePresentSurface(space, handles, pixel_w, pixel_h);
+            effective_desc.size_px.width = pixel_w;
+            effective_desc.size_px.height = pixel_h;
+            if (debug_layout) {
+                std::fprintf(stderr,
+                             "[layout-sync] resize surface to (%d x %d) from content=(%d x %d) scale=%.2f\n",
+                             pixel_w,
+                             pixel_h,
+                             content_w,
+                             content_h,
+                             backing_scale);
+            }
+        }
+    }
+
+    if (have_desc) {
+        ensure_view_stack_layout(space,
+                                 SP::App::ConcretePathView{std::string(handles.window.getPath()) + "/views/" + handles.view_name},
+                                 effective_desc);
+    }
 
     auto context = prepare_surface_render_context(space, handles.surface, std::nullopt);
     if (!context) {
@@ -1069,6 +1183,36 @@ auto PresentWindowFrame(SP::PathSpace& space,
             return frame;
         }
 
+        if (std::getenv("PATHSPACE_SCREENSHOT_TRACE")) {
+            std::fprintf(stderr,
+                         "CaptureDeclarative: slot capture req=%dx%d framebuffer_bytes=%zu backend=%s\n",
+                         req.width,
+                         req.height,
+                         frame.framebuffer.size(),
+                         frame.stats.backend_kind.c_str());
+        }
+
+        // Repack framebuffer if the slot request dimensions differ from the rendered buffer.
+        std::vector<std::uint8_t> packed_framebuffer;
+        std::span<std::uint8_t> framebuffer_span(frame.framebuffer.data(), frame.framebuffer.size());
+        auto expected_bytes = static_cast<std::size_t>(req.width) * static_cast<std::size_t>(req.height) * 4u;
+        if (req.width > 0 && req.height > 0 && frame.framebuffer.size() != expected_bytes) {
+            auto height_u = static_cast<std::size_t>(req.height);
+            if (frame.framebuffer.size() % height_u == 0) {
+                auto stride = frame.framebuffer.size() / height_u;
+                auto row_bytes = static_cast<std::size_t>(req.width) * 4u;
+                if (stride >= row_bytes) {
+                    packed_framebuffer.resize(expected_bytes);
+                    for (std::size_t y = 0; y < height_u; ++y) {
+                        auto const* src = frame.framebuffer.data() + y * stride;
+                        auto* dst = packed_framebuffer.data() + y * row_bytes;
+                        std::memcpy(dst, src, row_bytes);
+                    }
+                    framebuffer_span = std::span<std::uint8_t>(packed_framebuffer.data(), packed_framebuffer.size());
+                }
+            }
+        }
+
         SP::UI::Screenshot::ScreenshotRequest capture_request{
             .space = space,
             .window_path = handles.window,
@@ -1086,7 +1230,7 @@ auto PresentWindowFrame(SP::PathSpace& space,
             .force_software = req.force_software,
             .allow_software_fallback = req.allow_software_fallback,
             .present_when_force_software = req.present_when_force_software,
-            .provided_framebuffer = std::span<std::uint8_t>(frame.framebuffer.data(), frame.framebuffer.size()),
+            .provided_framebuffer = framebuffer_span,
             .provided_framebuffer_is_hardware = frame.stats.backend_kind != "software2d",
             .verify_output_matches_framebuffer = req.verify_output_matches_framebuffer,
             .verify_max_mean_error = req.verify_max_mean_error,
@@ -1246,9 +1390,9 @@ auto LaunchStandard(PathSpace& space, LaunchOptions const& options) -> SP::Expec
         }
     }
 
-    constexpr std::string_view kSystemActiveThemePath = "/system/themes/_active";
+    constexpr std::string_view systemActiveThemePath = "/system/themes/_active";
     std::string theme_name;
-    auto existing_active = read_optional<std::string>(space, std::string{kSystemActiveThemePath});
+    auto existing_active = read_optional<std::string>(space, std::string{systemActiveThemePath});
     if (!options.default_theme_name.empty()) {
         theme_name = options.default_theme_name;
     } else if (existing_active && existing_active->has_value() && !existing_active->value().empty()) {
@@ -1270,7 +1414,7 @@ auto LaunchStandard(PathSpace& space, LaunchOptions const& options) -> SP::Expec
         need_set_active = SP::UI::Declarative::ThemeConfig::SanitizeName(existing_active->value()) != theme_name;
     }
     if (need_set_active) {
-        if (auto status = replace_single<std::string>(space, std::string{kSystemActiveThemePath}, theme_name); !status) {
+        if (auto status = replace_single<std::string>(space, std::string{systemActiveThemePath}, theme_name); !status) {
             return std::unexpected(status.error());
         }
     }
@@ -1415,7 +1559,6 @@ auto Create(PathSpace& space,
     params.title = options.title.empty() ? params.name : options.title;
     params.width = options.width > 0 ? options.width : 1280;
     params.height = options.height > 0 ? options.height : 720;
-    params.scale = options.scale > 0.0f ? options.scale : 1.0f;
     params.background = options.background.empty() ? "#101218" : options.background;
 
     SP::App::AppRootPath app_root_value{std::string(app_root.getPath())};

@@ -3,13 +3,16 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -22,6 +25,7 @@
 #include <QuartzCore/CAMetalLayer.h>
 #include <ImageIO/ImageIO.h>
 #include <CoreServices/CoreServices.h>
+#include <ApplicationServices/ApplicationServices.h>
 #endif
 
 #if defined(__APPLE__)
@@ -853,10 +857,8 @@ void InitLocalWindowWithSize(int width, int height, char const* title) {
                                                                   NSWindowStyleMaskResizable)
                                                         backing:NSBackingStoreBuffered
                                                           defer:NO];
-            // Align on-screen window visuals with the app's dark framebuffer theme.
-            state.window.styleMask |= NSWindowStyleMaskFullSizeContentView;
-            [state.window setTitlebarAppearsTransparent:YES];
-            state.window.titleVisibility = NSWindowTitleHidden;
+            [state.window setTitlebarAppearsTransparent:NO];
+            state.window.titleVisibility = NSWindowTitleVisible;
             state.window.backgroundColor = [NSColor colorWithCalibratedRed:(CGFloat)(28.0 / 255.0)
                                                                      green:(CGFloat)(31.0 / 255.0)
                                                                       blue:(CGFloat)(38.0 / 255.0)
@@ -874,6 +876,9 @@ void InitLocalWindowWithSize(int width, int height, char const* title) {
             update_presenter_config(state);
         } else {
             [[state.window contentView] setFrame:NSMakeRect(0, 0, state.desired_width, state.desired_height)];
+            state.window.styleMask &= ~NSWindowStyleMaskFullSizeContentView;
+            [state.window setTitlebarAppearsTransparent:NO];
+            state.window.titleVisibility = NSWindowTitleVisible;
             state.window.title = [NSString stringWithUTF8String:state.desired_title.c_str()];
             PSLocalWindowDelegate* delegate = state.window_delegate;
             if (!delegate) {
@@ -997,18 +1002,30 @@ void GetLocalWindowContentSize(int* width, int* height) {
             *height = 0;
             return;
         }
-        CGFloat scale = state.window ? state.window.backingScaleFactor : (CGFloat)1.0;
-        if (scale < (CGFloat)1.0) {
-            scale = 1.0;
-        }
         NSRect bounds = [view bounds];
-        *width = static_cast<int>(std::llround(bounds.size.width * scale));
-        *height = static_cast<int>(std::llround(bounds.size.height * scale));
+        *width = static_cast<int>(std::llround(bounds.size.width));
+        *height = static_cast<int>(std::llround(bounds.size.height));
     }
 #else
     if (width) *width = 0;
     if (height) *height = 0;
 #endif
+}
+
+auto GetLocalWindowBackingScale() -> float {
+#if defined(__APPLE__)
+    @autoreleasepool {
+        WindowState& state = window_state();
+        if (state.window) {
+            CGFloat scale = state.window.backingScaleFactor;
+            if (scale < (CGFloat)1.0) {
+                scale = 1.0;
+            }
+            return static_cast<float>(scale);
+        }
+    }
+#endif
+    return 1.0f;
 }
 
 auto GetLocalWindowNumber() -> unsigned int {
@@ -1021,6 +1038,32 @@ auto GetLocalWindowNumber() -> unsigned int {
     }
 #endif
     return 0U;
+}
+
+auto SaveActiveWindowScreenshot(char const* path) -> bool {
+#if defined(__APPLE__)
+    if (!path || path[0] == '\0') {
+        return false;
+    }
+    CGWindowID active_window_id = static_cast<CGWindowID>(GetLocalWindowNumber());
+    if (active_window_id == kCGNullWindowID || active_window_id == 0) {
+        return false;
+    }
+
+    std::string base_cmd = "screencapture -x -o -l " + std::to_string(active_window_id) + " \""
+                           + std::string(path) + "\" > /dev/null 2>&1";
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        int rc = std::system(base_cmd.c_str());
+        if (rc == 0) {
+            return true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return false;
+#else
+    (void)path;
+    return false;
+#endif
 }
 
 void RequestLocalWindowQuit() {

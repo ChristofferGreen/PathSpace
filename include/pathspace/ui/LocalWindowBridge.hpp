@@ -82,7 +82,9 @@ void PresentLocalWindowIOSurface(void* surface,
                                  int row_stride_bytes);
 
 void GetLocalWindowContentSize(int* width, int* height);
+auto GetLocalWindowBackingScale() -> float;
 auto GetLocalWindowNumber() -> unsigned int;
+auto SaveActiveWindowScreenshot(char const* path) -> bool;
 
 auto SaveLocalWindowScreenshot(char const* path) -> bool;
 

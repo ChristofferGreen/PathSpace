@@ -1,22 +1,5 @@
 #include <pathspace/PathSpace.hpp>
-#include <pathspace/core/Error.hpp>
 #include <pathspace/system/Standard.hpp>
-#include <pathspace/ui/Helpers.hpp>
-#include <pathspace/ui/declarative/Descriptor.hpp>
-#include <pathspace/ui/declarative/Runtime.hpp>
-#include <pathspace/ui/declarative/Detail.hpp>
-#include <pathspace/ui/declarative/Widgets.hpp>
-#include <pathspace/ui/screenshot/DeclarativeScreenshot.hpp>
-#include <pathspace/ui/screenshot/ScreenshotSlot.hpp>
-#include <pathspace/tools/PathSpaceJsonExporter.hpp>
-
-#include "declarative_example_shared.hpp"
-
-#include <cstdio>
-#include <filesystem>
-#include <optional>
-#include <string>
-#include <string_view>
 
 constexpr int window_width = 640;
 constexpr int window_height = 360;
@@ -124,12 +107,6 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "stack create failed: %s\n", SP::describeError(stack.error()).c_str());
         return 1;
     }
-    auto write_label = [&](std::string const& widget_id, std::string const& label) {
-        auto widget_path = window_view_path + "/widgets/button_column/children/" + widget_id + "/meta/label";
-        (void)space.insert(widget_path, std::string{label});
-    };
-    write_label("hello_button", "Say Hello");
-    write_label("goodbye_button", "Say Goodbye");
     auto shutdown_runtime = [&space]() { SP::System::ShutdownDeclarativeRuntime(space); };
 
     auto readiness = PathSpaceExamples::ensure_declarative_scene_ready(space,

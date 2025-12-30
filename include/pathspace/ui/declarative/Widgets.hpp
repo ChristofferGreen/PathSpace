@@ -669,6 +669,7 @@ namespace Stack {
 struct Panel {
     std::string id;
     WidgetFragment fragment;
+    BuilderWidgets::StackChildConstraints constraints{};
 };
 
 struct Args {

@@ -297,9 +297,24 @@ auto SceneSnapshotBuilder::prune_impl(std::vector<SnapshotRecord>& records, Snap
     return {};
 }
 
-auto SceneSnapshotBuilder::record_metrics(SnapshotGcMetrics const& /*metrics*/) -> Expected<void> {
-    // Renderer-only: keep GC metrics in the renderer cache; avoid writing
-    // snapshot metrics into PathSpace.
+auto SceneSnapshotBuilder::record_metrics(SnapshotGcMetrics const& metrics) -> Expected<void> {
+    auto path = std::string(scene_path_.getPath()) + "/metrics/snapshots/state";
+    while (true) {
+        auto removed = space_.take<SnapshotGcMetrics>(path, SP::Pop{});
+        if (!removed) {
+            auto const& error = removed.error();
+            if (error.code == SP::Error::Code::NoSuchPath
+                || error.code == SP::Error::Code::NoObjectFound
+                || error.code == SP::Error::Code::InvalidType) {
+                break;
+            }
+            return std::unexpected(error);
+        }
+    }
+    auto write = space_.insert(path, metrics);
+    if (!write.errors.empty()) {
+        return std::unexpected(write.errors.front());
+    }
     return {};
 }
 

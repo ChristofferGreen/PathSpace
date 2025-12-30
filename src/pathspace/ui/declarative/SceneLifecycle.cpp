@@ -223,7 +223,7 @@ struct SceneLifecycleWorker {
         window_widgets_root_ = window_path_ + std::string{"/views/"} + view_name_ + "/widgets";
         control_queue_path_ = scene_path_ + "/runtime/lifecycle/control";
         theme_invalidate_command_ = control_queue_path_ + ":invalidate_theme";
-        metrics_base_.clear();
+        metrics_base_ = scene_path_ + "/runtime/lifecycle/metrics";
         auto surface_leaf = window_path_ + "/views/" + view_name_ + "/surface";
         auto surface_relative = space_.read<std::string, std::string>(surface_leaf);
         if (surface_relative) {

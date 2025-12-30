@@ -112,38 +112,33 @@ auto RendererSnapshotStore::prune(std::string const& scene_path,
     }
     std::sort(revisions.begin(), revisions.end(), std::greater<std::uint64_t>());
 
-    auto debug_tree = SP::UI::DebugTreeWritesEnabled();
     std::vector<std::uint64_t> retain;
     retain.reserve(revisions.size());
 
-    if (!debug_tree) {
-        retain.push_back(revisions.front());
-    } else {
-        auto now = std::chrono::system_clock::now();
-        std::size_t count = 0;
-        for (auto rev : revisions) {
-            auto entry_it = snapshots.find(rev);
-            if (entry_it == snapshots.end()) {
-                continue;
-            }
-            bool keep = false;
-            if (current_revision && rev == *current_revision) {
-                keep = true;
-            }
-            if (count < policy.min_revisions) {
-                keep = true;
-            }
-            if (policy.min_duration.count() >= 0) {
-                auto age = now - entry_it->second.metadata.created_at;
-                if (age <= policy.min_duration) {
-                    keep = true;
-                }
-            }
-            if (keep) {
-                retain.push_back(rev);
-            }
-            ++count;
+    auto now = std::chrono::system_clock::now();
+    std::size_t count = 0;
+    for (auto rev : revisions) {
+        auto entry_it = snapshots.find(rev);
+        if (entry_it == snapshots.end()) {
+            continue;
         }
+        bool keep = false;
+        if (current_revision && rev == *current_revision) {
+            keep = true;
+        }
+        if (count < policy.min_revisions) {
+            keep = true;
+        }
+        if (policy.min_duration.count() >= 0) {
+            auto age = now - entry_it->second.metadata.created_at;
+            if (age <= policy.min_duration) {
+                keep = true;
+            }
+        }
+        if (keep) {
+            retain.push_back(rev);
+        }
+        ++count;
     }
 
     auto should_keep = [&](std::uint64_t rev) {

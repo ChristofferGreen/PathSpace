@@ -1,3 +1,6 @@
+#include <cstdio>
+#include <cstdlib>
+
 struct StackWidgetSize {
     float width = 0.0f;
     float height = 0.0f;
@@ -227,12 +230,29 @@ inline auto compute_stack_layout(Widgets::StackLayoutStyle const& style,
     float base_main_sum = total_fixed + total_weight_base;
 
     float container_main = axis == Widgets::StackAxis::Horizontal ? style.width : style.height;
+    float container_cross = axis == Widgets::StackAxis::Horizontal ? style.height : style.width;
+
+    if (container_main <= 0.0f || container_cross <= 0.0f) {
+        int win_w = 0;
+        int win_h = 0;
+        SP::UI::GetLocalWindowContentSize(&win_w, &win_h);
+        if (win_w > 0 && win_h > 0) {
+            if (container_main <= 0.0f) {
+                container_main = axis == Widgets::StackAxis::Horizontal ? static_cast<float>(win_w)
+                                                                        : static_cast<float>(win_h);
+            }
+            if (container_cross <= 0.0f) {
+                container_cross = axis == Widgets::StackAxis::Horizontal ? static_cast<float>(win_h)
+                                                                         : static_cast<float>(win_w);
+            }
+        }
+    }
+
     if (container_main <= 0.0f) {
         container_main = padding_main + base_main_sum + spacing_total;
     }
     container_main = std::max(container_main, padding_main + base_main_sum + spacing_total);
 
-    float container_cross = axis == Widgets::StackAxis::Horizontal ? style.height : style.width;
     if (container_cross <= 0.0f) {
         container_cross = padding_cross + max_cross_extent;
     }
@@ -386,6 +406,27 @@ inline auto compute_stack_layout(Widgets::StackLayoutStyle const& style,
     }
 
     result.dirty = make_default_dirty_rect(state.width, state.height);
+
+    if (std::getenv("PATHSPACE_DEBUG_LAYOUT")) {
+        std::fprintf(stderr,
+                     "[stack-layout] axis=%s size=(%.1f x %.1f) children=%zu\n",
+                     axis == Widgets::StackAxis::Horizontal ? "horizontal" : "vertical",
+                     state.width,
+                     state.height,
+                     state.children.size());
+        for (std::size_t index = 0; index < state.children.size(); ++index) {
+            auto const& child = state.children[index];
+            std::fprintf(stderr,
+                         "  child[%zu] id=%s pos=(%.1f, %.1f) size=(%.1f x %.1f)\n",
+                         index,
+                         child.id.c_str(),
+                         child.x,
+                         child.y,
+                         child.width,
+                         child.height);
+        }
+    }
+
     return result;
 }
 
