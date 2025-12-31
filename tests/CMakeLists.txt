@@ -159,39 +159,43 @@ target_link_libraries(PathSpaceTests
 
 include(CTest)
 
-set(PATHSPACE_TEST_RUNNER "${CMAKE_SOURCE_DIR}/scripts/run-test-with-logs.sh")
-if(NOT EXISTS "${PATHSPACE_TEST_RUNNER}")
-  message(FATAL_ERROR "Test runner script missing: ${PATHSPACE_TEST_RUNNER}")
-endif()
-
+set(PATHSPACE_TEST_RUNNER "${PROJECT_SOURCE_DIR}/scripts/run-test-with-logs.sh")
 set(PATHSPACE_TEST_LOG_DIR "$<SHELL_PATH:${CMAKE_BINARY_DIR}/test-logs>")
 
-add_test(NAME PathSpaceTests
-  COMMAND "${PATHSPACE_TEST_RUNNER}"
-          --label PathSpaceTests
-          --log-dir "${PATHSPACE_TEST_LOG_DIR}"
-          --timeout 120
-          --env PATHSPACE_LOG=1
-          --env PATHSPACE_TEST_TIMEOUT=1
-          --env MallocNanoZone=0
-          --
-          "$<TARGET_FILE:PathSpaceTests>"
-)
+if(EXISTS "${PATHSPACE_TEST_RUNNER}")
+  set(_PATHSPACE_HAVE_TEST_RUNNER TRUE)
+else()
+  set(_PATHSPACE_HAVE_TEST_RUNNER FALSE)
+endif()
 
-set_tests_properties(PathSpaceTests PROPERTIES LABELS core)
+if(_PATHSPACE_HAVE_TEST_RUNNER)
+  add_test(NAME PathSpaceTests
+    COMMAND "${PATHSPACE_TEST_RUNNER}"
+            --label PathSpaceTests
+            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+            --timeout 120
+            --env PATHSPACE_LOG=1
+            --env PATHSPACE_TEST_TIMEOUT=1
+            --env MallocNanoZone=0
+            --
+            "$<TARGET_FILE:PathSpaceTests>"
+  )
 
-add_test(NAME HistorySavefileCLIRoundTrip
-  COMMAND "${PATHSPACE_TEST_RUNNER}"
-          --label HistorySavefileCLI
-          --log-dir "${PATHSPACE_TEST_LOG_DIR}"
-          --timeout 60
-          --env PATHSPACE_LOG=1
-          --env PATHSPACE_TEST_TIMEOUT=1
-          --env MallocNanoZone=0
-          --
-          "$<TARGET_FILE:pathspace_history_cli_roundtrip>"
-)
-set_tests_properties(HistorySavefileCLIRoundTrip PROPERTIES LABELS history)
+  set_tests_properties(PathSpaceTests PROPERTIES LABELS core)
+
+  add_test(NAME HistorySavefileCLIRoundTrip
+    COMMAND "${PATHSPACE_TEST_RUNNER}"
+            --label HistorySavefileCLI
+            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+            --timeout 60
+            --env PATHSPACE_LOG=1
+            --env PATHSPACE_TEST_TIMEOUT=1
+            --env MallocNanoZone=0
+            --
+            "$<TARGET_FILE:pathspace_history_cli_roundtrip>"
+  )
+  set_tests_properties(HistorySavefileCLIRoundTrip PROPERTIES LABELS history)
+endif()
 
 add_test(NAME HistoryTelemetryDashboard
   COMMAND python3
@@ -200,65 +204,67 @@ add_test(NAME HistoryTelemetryDashboard
 )
 set_tests_properties(HistoryTelemetryDashboard PROPERTIES LABELS history)
 
-add_test(NAME PathSpaceServeHtmlHttp
-  COMMAND "${PATHSPACE_TEST_RUNNER}"
-          --label PathSpaceServeHtmlHttp
-          --log-dir "${PATHSPACE_TEST_LOG_DIR}"
-          --timeout 120
-          --env PATHSPACE_LOG=1
-          --env PATHSPACE_TEST_TIMEOUT=1
-          --env MallocNanoZone=0
-          --
-          python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_http.py"
-                  --repo-root "${CMAKE_SOURCE_DIR}"
-                  --server "$<TARGET_FILE:pathspace_serve_html>"
-)
-set_tests_properties(PathSpaceServeHtmlHttp PROPERTIES LABELS serve_html)
+if(_PATHSPACE_HAVE_TEST_RUNNER)
+  add_test(NAME PathSpaceServeHtmlHttp
+    COMMAND "${PATHSPACE_TEST_RUNNER}"
+            --label PathSpaceServeHtmlHttp
+            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+            --timeout 120
+            --env PATHSPACE_LOG=1
+            --env PATHSPACE_TEST_TIMEOUT=1
+            --env MallocNanoZone=0
+            --
+            python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_http.py"
+                    --repo-root "${CMAKE_SOURCE_DIR}"
+                    --server "$<TARGET_FILE:pathspace_serve_html>"
+  )
+  set_tests_properties(PathSpaceServeHtmlHttp PROPERTIES LABELS serve_html)
 
-add_test(NAME PathSpaceServeHtmlSse
-  COMMAND "${PATHSPACE_TEST_RUNNER}"
-          --label PathSpaceServeHtmlSse
-          --log-dir "${PATHSPACE_TEST_LOG_DIR}"
-          --timeout 120
-          --env PATHSPACE_LOG=1
-          --env PATHSPACE_TEST_TIMEOUT=1
-          --env MallocNanoZone=0
-          --
-          python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_sse.py"
-                  --repo-root "${CMAKE_SOURCE_DIR}"
-                  --server "$<TARGET_FILE:pathspace_serve_html>"
-)
-set_tests_properties(PathSpaceServeHtmlSse PROPERTIES LABELS serve_html)
+  add_test(NAME PathSpaceServeHtmlSse
+    COMMAND "${PATHSPACE_TEST_RUNNER}"
+            --label PathSpaceServeHtmlSse
+            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+            --timeout 120
+            --env PATHSPACE_LOG=1
+            --env PATHSPACE_TEST_TIMEOUT=1
+            --env MallocNanoZone=0
+            --
+            python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_sse.py"
+                    --repo-root "${CMAKE_SOURCE_DIR}"
+                    --server "$<TARGET_FILE:pathspace_serve_html>"
+  )
+  set_tests_properties(PathSpaceServeHtmlSse PROPERTIES LABELS serve_html)
 
-add_test(NAME PathSpaceServeHtmlGoogle
-  COMMAND "${PATHSPACE_TEST_RUNNER}"
-          --label PathSpaceServeHtmlGoogle
-          --log-dir "${PATHSPACE_TEST_LOG_DIR}"
-          --timeout 150
-          --env PATHSPACE_LOG=1
-          --env PATHSPACE_TEST_TIMEOUT=1
-          --env MallocNanoZone=0
-          --
-          python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_google.py"
-                  --repo-root "${CMAKE_SOURCE_DIR}"
-                  --server "$<TARGET_FILE:pathspace_serve_html>"
-)
-set_tests_properties(PathSpaceServeHtmlGoogle PROPERTIES LABELS serve_html)
+  add_test(NAME PathSpaceServeHtmlGoogle
+    COMMAND "${PATHSPACE_TEST_RUNNER}"
+            --label PathSpaceServeHtmlGoogle
+            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+            --timeout 150
+            --env PATHSPACE_LOG=1
+            --env PATHSPACE_TEST_TIMEOUT=1
+            --env MallocNanoZone=0
+            --
+            python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_serve_html_google.py"
+                    --repo-root "${CMAKE_SOURCE_DIR}"
+                    --server "$<TARGET_FILE:pathspace_serve_html>"
+  )
+  set_tests_properties(PathSpaceServeHtmlGoogle PROPERTIES LABELS serve_html)
 
-add_test(NAME PathSpaceHtmlServerEmbed
-  COMMAND "${PATHSPACE_TEST_RUNNER}"
-          --label PathSpaceHtmlServerEmbed
-          --log-dir "${PATHSPACE_TEST_LOG_DIR}"
-          --timeout 90
-          --env PATHSPACE_LOG=1
-          --env PATHSPACE_TEST_TIMEOUT=1
-          --env MallocNanoZone=0
-          --
-          python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_html_server_embed_smoke.py"
-                  --repo-root "${CMAKE_SOURCE_DIR}"
-                  --server "$<TARGET_FILE:pathspace_html_server_embed>"
-)
-set_tests_properties(PathSpaceHtmlServerEmbed PROPERTIES LABELS serve_html)
+  add_test(NAME PathSpaceHtmlServerEmbed
+    COMMAND "${PATHSPACE_TEST_RUNNER}"
+            --label PathSpaceHtmlServerEmbed
+            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+            --timeout 90
+            --env PATHSPACE_LOG=1
+            --env PATHSPACE_TEST_TIMEOUT=1
+            --env MallocNanoZone=0
+            --
+            python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_pathspace_html_server_embed_smoke.py"
+                    --repo-root "${CMAKE_SOURCE_DIR}"
+                    --server "$<TARGET_FILE:pathspace_html_server_embed>"
+  )
+  set_tests_properties(PathSpaceHtmlServerEmbed PROPERTIES LABELS serve_html)
+endif()
 
 if(PATHSPACE_ENABLE_UI)
   set(PATHSPACE_UI_TEST_COMMON_ENV
@@ -269,6 +275,9 @@ if(PATHSPACE_ENABLE_UI)
       --env PATHSPACE_CAPTURE_FONT_DIAGNOSTICS=1)
 
   function(pathspace_add_ui_test LABEL)
+    if(NOT _PATHSPACE_HAVE_TEST_RUNNER)
+      return()
+    endif()
     set(oneValueArgs SUITE SUITE_EXCLUDE TIMEOUT)
     set(multiValueArgs EXTRA_ARGS)
     cmake_parse_arguments(UI "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})

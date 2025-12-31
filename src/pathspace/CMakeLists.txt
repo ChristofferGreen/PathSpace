@@ -73,6 +73,7 @@ add_library(PathSpace
     core/Leaf.cpp
     PathSpaceVisit.cpp
     tools/PathSpaceJsonExporter.cpp
+    examples/cli/ExampleCli.cpp
     distributed/RemoteMountProtocol.cpp
     distributed/RemoteMountManager.cpp
     distributed/RemoteMountServer.cpp
@@ -228,6 +229,7 @@ if(PATHSPACE_ENABLE_UI)
         ui/screenshot/ScreenshotSlot.cpp
         ui/screenshot/DeclarativeScreenshot.cpp
         ui/screenshot/DeclarativeScreenshotCli.cpp
+        examples/paint/PaintExampleNewUI.cpp
         $<$<BOOL:APPLE>:ui/LocalWindowBridge.mm>
         $<$<BOOL:APPLE>:ui/PathWindowView.mm>
         $<$<NOT:$<BOOL:APPLE>>:ui/PathWindowView.cpp>
@@ -306,9 +308,9 @@ target_compile_options(PathSpace PUBLIC "-Wno-deprecated")
 
 target_include_directories(PathSpace
     PUBLIC
-    ${CMAKE_SOURCE_DIR}/src/pathspace
-    ${CMAKE_SOURCE_DIR}/src/
-    ${CMAKE_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/src/pathspace
+    ${PROJECT_SOURCE_DIR}/src/
+    ${PROJECT_SOURCE_DIR}/include
     ${parallelhashmap_SOURCE_DIR}
     ${nlohmann_SOURCE_DIR}/include
     ${cereal_SOURCE_DIR}/include

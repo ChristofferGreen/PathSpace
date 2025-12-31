@@ -644,8 +644,10 @@ auto CollectTargetDiagnostics(PathSpace& space,
 
 #if !PATHSPACE_ENABLE_UI
 // Stub for UI-disabled builds so tools linking unconditionally still succeed.
+// Default argument is only specified on the primary declaration above to avoid
+// duplicate default-arg errors when UI is disabled.
 namespace SP::UI::Runtime::Diagnostics {
-inline auto CollectTargetDiagnostics(PathSpace&, std::string_view = "/renderers")
+inline auto CollectTargetDiagnostics(PathSpace&, std::string_view renderers_root)
     -> SP::Expected<std::vector<TargetDiagnosticsSummary>> {
     return std::vector<TargetDiagnosticsSummary>{};
 }
