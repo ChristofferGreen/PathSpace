@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Compile and run PathSpace examples (devices_example).
+# Compile and run the minimal PathSpace example.
 #
 # This helper configures CMake with -DBUILD_PATHSPACE_EXAMPLES=ON,
-# builds the devices_example target, and runs it.
+# builds the minimal_button_example target, and runs it.
 #
 # Usage:
 #   scripts/compile_run_examples.sh [options]
@@ -28,7 +28,7 @@
 #   scripts/compile_run_examples.sh -G "Ninja" -B build-ninja
 #
 # Note:
-# - The devices_example runs until Ctrl-C by default. Use --run-seconds to auto-stop.
+# - The minimal_button_example runs until Ctrl-C by default. Use --run-seconds to auto-stop.
 
 set -euo pipefail
 
@@ -45,7 +45,7 @@ JOBS=""
 VERBOSE=0
 ENABLE_MACOS_BACKEND=0
 RUN_SECONDS=""
-TARGET_EXE_NAME="devices_example"
+TARGET_EXE_NAME="minimal_button_example"
 
 # Helpers
 die() {

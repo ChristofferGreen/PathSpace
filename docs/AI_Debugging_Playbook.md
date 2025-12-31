@@ -8,6 +8,7 @@
 > **Context update (October 18, 2025):** The test harness now captures detailed logs for every failure via `scripts/run-test-with-logs.sh`. Use this playbook to triage regressions, inspect diagnostics, and close the loop with the mandated 5× test runs.
 > **Diagnostics refresh (October 19, 2025):** Dirty-rect hints are coalesced server-side, and the extended damage/fingerprint/progressive metrics are available when `PATHSPACE_UI_DAMAGE_METRICS=1`. Keep the flag unset during perf runs—the software encode pass is still single-threaded today, so we’re focusing on parallelising it next.
 > **Minimal core (December 27, 2025):** Renderer/trellis diagnostics and present/residency metrics are *off* by default to keep PathSpace lean. Set `PATHSPACE_UI_DEBUG_TREE=1` (aliases: `PATHSPACE_UI_DEBUG_DIAGNOSTICS`, `PATHSPACE_UI_DEBUG_PATHSPACE`) before using the diagnostic steps below; leave it unset for minimal exports.
+> **Example retirement (December 31, 2025):** Legacy demos (`paint_example`, `widgets_example`, `html_replay_example`, `devices_example`, `pixel_noise_example`) and the screenshot harness (`pathspace_screenshot_cli`) are retired. The only shipped sample is now `minimal_button_example`; treat sections that reference the old binaries or recorder scripts as archival notes unless you are working from a historical checkout.
 
 This guide consolidates the practical steps for investigating failures across unit tests, UI targets, and runtime metrics. Pair it with the architecture docs (`docs/AI_Architecture.md`, `docs/finished/Plan_SceneGraph_Renderer_Finished.md`) when you need deeper background.
 
@@ -81,7 +82,9 @@ Environment knobs (all respected by the wrapper and the logger):
 | `MallocNanoZone` | Set to `0` to reduce allocation overhead on macOS (default from helper). |
 | `PATHSPACE_ENABLE_METAL_UPLOADS` | Opt-in Metal texture uploads during UI tests; leave unset in CI/headless runs so builders fall back to the software raster. |
 
-### 1.3 Widget session capture and replay
+### 1.3 Widget session capture and replay (legacy — widgets_example retired)
+
+These scripts are preserved for historical checkouts. The current tree only ships `minimal_button_example`, which does not expose the widget trace/HTML export surfaces referenced below.
 
 - Record an interactive widgets gallery run (creates a pointer/keyboard trace with per-event metadata):
 
@@ -288,7 +291,7 @@ Recent fix: declarative presents once again honor `/present/params/capture_frame
 
 - `./scripts/compile.sh --test` now runs the PixelNoise perf harness (software and, when enabled, Metal) alongside the core and UI test executables. The mandated 5× loop therefore enforces the perf budgets without a separate CTest call—refresh `docs/perf/pixel_noise_baseline.json` and `docs/perf/pixel_noise_metal_baseline.json` whenever thresholds legitimately move.
 
-### 5.1 Pixel Noise Perf Harness Baselines
+### 5.1 Pixel Noise Perf Harness Baselines (legacy — demo retired)
 
 - Use `./scripts/capture_pixel_noise_baseline.sh` after rebuilding (`cmake --build build -j`) to refresh `docs/perf/pixel_noise_baseline.json`.
 - Pass `--backend=metal` (and export `PATHSPACE_ENABLE_METAL_UPLOADS=1`) to capture the Metal2D variant in `docs/perf/pixel_noise_metal_baseline.json`; commit both baselines together when budgets shift.
@@ -302,11 +305,11 @@ Recent fix: declarative presents once again honor `/present/params/capture_frame
 - When updating visuals, run `./build/pixel_noise_example --headless --frames=1 --write-frame=docs/images/perf/pixel_noise.png` to refresh the canonical PNG shown in docs; the flag enables framebuffer capture automatically.
 - Keep older baselines committed when behaviour intentionally shifts; diffing JSON across commits highlights the magnitude of a regression or improvement.
 
-### 5.2 Demo Binary Size Guardrail
+### 5.2 Demo Binary Size Guardrail (minimal example)
 
-- Run `./scripts/compile.sh --size-report` to build the demo executables with `BUILD_PATHSPACE_EXAMPLES=ON` and compare their sizes against `docs/perf/example_size_baseline.json`. The helper fails the build when a binary exceeds the baseline by more than 5 % or 256 KiB (whichever is larger).
+- Run `./scripts/compile.sh --size-report` to build the demo executable with `BUILD_PATHSPACE_EXAMPLES=ON` and compare its size against `docs/perf/example_size_baseline.json`. The helper fails the build when the binary exceeds the baseline by more than 5 % or 256 KiB (whichever is larger).
 - Record a new baseline with `./scripts/compile.sh --size-write-baseline` after intentional asset or dependency additions. Commit the refreshed JSON alongside the relevant code/doc changes.
-- Baseline entries live under `docs/perf/example_size_baseline.json` and track `devices_example`, `html_replay_example`, `paint_example`, `pixel_noise_example`, and `widgets_example`. Update the doc when new demos are added so the guardrail lists stay in sync.
+- Baseline entries now track only `minimal_button_example` in `docs/perf/example_size_baseline.json`; retired demos remain documented here for historical context only.
 
 ### 5.3 Undo history inspection
 

@@ -9,6 +9,8 @@
 #include <pathspace/ui/MaterialShaderKey.hpp>
 #include <pathspace/ui/PathSurfaceSoftware.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/scenegraph/SoftwareTileRenderer.hpp>
+#include <pathspace/ui/scenegraph/TileDirtyTracker.hpp>
 #include <pathspace/ui/runtime/RenderSettings.hpp>
 #include <pathspace/ui/runtime/SurfaceTypes.hpp>
 
@@ -73,6 +75,14 @@ public:
         std::uint64_t progressive_jobs = 0;
         std::uint64_t encode_workers_used = 0;
         std::uint64_t encode_jobs = 0;
+        std::uint64_t tiles_total = 0;
+        std::uint64_t tiles_dirty = 0;
+        std::uint64_t tiles_rendered = 0;
+        std::uint64_t tile_jobs = 0;
+        std::uint64_t tile_workers_used = 0;
+        std::uint32_t tile_width = 0;
+        std::uint32_t tile_height = 0;
+        bool tiled_renderer_used = false;
         double encode_worker_stall_ms_total = 0.0;
         double encode_worker_stall_ms_max = 0.0;
         std::uint64_t encode_worker_stall_workers = 0;
@@ -119,6 +129,9 @@ private:
         std::vector<float> linear_buffer;
         MaterialDescriptorMap material_descriptors;
         std::vector<MaterialDescriptor> material_list;
+        SceneGraph::TileDirtyTracker tiled_dirty_tracker;
+        std::unique_ptr<SceneGraph::SoftwareTileRenderer> tiled_renderer;
+        PathSurfaceSoftware* tiled_surface = nullptr;
         std::uint64_t last_revision = 0;
         double last_approx_area_total = 0.0;
         double last_approx_area_opaque = 0.0;

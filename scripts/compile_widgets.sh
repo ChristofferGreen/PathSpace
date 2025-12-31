@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Convenience wrapper that builds the widgets demos with UI flags enabled.
+# Convenience wrapper that builds the minimal UI demo with UI flags enabled.
 
 set -euo pipefail
 
@@ -13,8 +13,7 @@ export PATHSPACE_CMAKE_ARGS="${PATHSPACE_CMAKE_ARGS:-} \
 -DBUILD_PATHSPACE_EXAMPLES=ON"
 
 TARGETS=(
-  widgets_example
-  widgets_example_minimal
+  minimal_button_example
 )
 
 ARGS=("$@")

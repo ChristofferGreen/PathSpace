@@ -8,6 +8,7 @@
 > **Shutdown snapshot (October 20, 2025):** `PathRenderer2DMetal` now renders rects, rounded rects, text quads, and textured images on the GPU, Metal UITests run by default (`./scripts/compile.sh` enables them unless `--disable-metal-tests` is passed), and `paint_example --metal` exercises the GPU pipeline end-to-end. Remaining Metal focus: hook material/shader bindings so GPU encode matches software telemetry, then expand coverage to glyph batches and material-driven pipelines.
 > **Diagnostics toggle (October 19, 2025):** Set `PATHSPACE_UI_DAMAGE_METRICS=1` when you need the incremental renderer’s damage/fingerprint/progressive tile counters (`damageRectangles`, `damageCoverageRatio`, `fingerprint{MatchesExact,MatchesRemap,Changes,New,Removed}`, `progressiveTiles{Dirty,Total,Skipped}`) written under `output/v1/common`. Leave it unset for normal runs to avoid the extra bookkeeping overhead.
 > **Encode roadmap (October 19, 2025 — evening):** Dirty-rect hints now coalesce tile-aligned regions automatically; benchmark traces show encode still dominating full-surface work. Next implementation target is to parallelise the encode loop across dirty tiles so multi-core hosts climb past the current ~0.7 FPS full-repaint ceiling at 4K.
+> **Example retirement (December 31, 2025):** All legacy UI demos (`paint_example`, `widgets_example`, `html_replay_example`, `devices_example`, `pixel_noise_example`) are retired. `minimal_button_example` is the only shipped sample when `BUILD_PATHSPACE_EXAMPLES=ON`; treat remaining references to the old binaries in this file as historical context.
 
 This guide bootstraps a brand-new AI assistant so it can work productively in the PathSpace repository without inheriting prior conversational context. Follow these steps at the beginning of every new session.
 
@@ -73,11 +74,11 @@ Before ending a session, record progress in the relevant plan (e.g., `docs/finis
 
 > **Quick status snapshot:** the latest build/test pointers, Metal presenter status, and archived follow-ups now live in `docs/finished/Plan_SceneGraph_Finished.md`.
 
-### Immediate next steps (October 19, 2025 — refreshed)
+### Immediate next steps (December 31, 2025 — refreshed)
 1. Extend the new Metal encoder (currently rect-only) to cover rounded rects, images, glyph batches, and material/shader binding so Metal2D can stay on-GPU for full scenes; keep residency metrics and UITests in sync.
-2. Verify the shared `LocalWindowBridge` across examples (`paint_example`, `devices_example`) and capture any bridge regressions in UI diagnostics.
+2. Smoke the minimal sample (`minimal_button_example --screenshot /tmp/hello.png --screenshot_exit`) after renderer changes to keep the declarative path healthy now that other demos are gone.
 3. Fold `PATHSPACE_ENABLE_METAL_UPLOADS` into CI/docs (macOS GPU runners) and keep dashboards ingesting the refreshed residency metrics plus new residency ratios/status nodes (`resourceGpuBytes`, `textureGpuBytes`, `diagnostics/metrics/residency/*` — updated October 20, 2025).
-4. Document the compiled artifact expectations for the new cycle (start with `./scripts/compile_paint.sh` and the 5× loop harness) so the next hand-off can validate quickly.
+4. Document the compiled artifact expectations for the new cycle (start with `./scripts/compile.sh --loop=5` and the 5× loop harness) so the next hand-off can validate quickly.
 5. Connect widget reducers to the new binding helpers (`Widgets::Bindings::Dispatch{Button,Toggle,Slider}`) so UI interactions emit dirty hints and ops under `widgets/<id>/ops/inbox/queue` instead of republishing full scenes.
 
 ---

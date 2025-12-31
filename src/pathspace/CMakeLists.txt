@@ -111,7 +111,6 @@ add_library(PathSpace
     io/IoEventsSerialization.cpp
     runtime/IOPump.cpp
     runtime/TelemetryControl.cpp
-    examples/cli/ExampleCli.cpp
 )
 
 if(PATHSPACE_ENABLE_APP)
@@ -221,9 +220,10 @@ if(PATHSPACE_ENABLE_UI)
         ui/PathRenderer2DDetailDraw.cpp
         ui/PathRenderer2DDetailEncode.cpp
         ui/PathRenderer2D.cpp
-        examples/paint/PaintControls.cpp
-        examples/paint/PaintScreenshotPostprocess.cpp
-        examples/paint/PaintExampleNewUI.cpp
+        ui/scenegraph/RenderCommandStore.cpp
+        ui/scenegraph/TileGrid.cpp
+        ui/scenegraph/TileDirtyTracker.cpp
+        ui/scenegraph/SoftwareTileRenderer.cpp
         ui/screenshot/ScreenshotService.cpp
         ui/screenshot/ScreenshotSlot.cpp
         ui/screenshot/DeclarativeScreenshot.cpp
@@ -343,7 +343,6 @@ set(_pathspace_public_headers
     tools/PathSpaceJsonExporter.hpp
     tools/PathSpaceJsonConverters.hpp
     layer/PathSpaceTrellis.hpp
-    examples/cli/ExampleCli.hpp
 )
 if(PATHSPACE_ENABLE_EXTRA)
     list(APPEND _pathspace_public_headers
@@ -357,9 +356,6 @@ if(PATHSPACE_ENABLE_EXTRA)
     )
 endif()
 
-if(PATHSPACE_ENABLE_UI)
-    list(APPEND _pathspace_public_headers examples/paint/PaintControls.hpp)
-endif()
 list(JOIN _pathspace_public_headers ";" _pathspace_public_header_string)
 set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "${_pathspace_public_header_string}")
 

@@ -40,6 +40,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # UI/renderer feature gating
+# Default OFF; tools handle missing UI features via stubs/guards.
 option(PATHSPACE_ENABLE_UI "Build UI (surfaces/renderers/windows)" OFF)
 option(PATHSPACE_UI_SOFTWARE "Enable software surface backend" ON)
 option(PATHSPACE_UI_METAL "Enable Metal surface/presenter (Apple)" ${APPLE})
@@ -136,11 +137,6 @@ target_link_libraries(pathspace_serve_html PRIVATE PathSpaceServeHtml)
 add_executable(pathspace_dump_json tools/pathspace_dump_json.cpp)
 target_link_libraries(pathspace_dump_json PRIVATE PathSpace)
 
-if(BUILD_PATHSPACE_EXAMPLES)
-  add_executable(pathspace_screenshot_cli tools/pathspace_screenshot_cli.cpp)
-  target_link_libraries(pathspace_screenshot_cli PRIVATE paint_example_lib)
-endif()
-
 if(PATHSPACE_ENABLE_UI)
     add_executable(pathspace_hsat_inspect tools/hsat_inspect.cpp)
     target_link_libraries(pathspace_hsat_inspect PRIVATE PathSpace)
@@ -156,137 +152,15 @@ endif()
 # Examples (optional)
 option(BUILD_PATHSPACE_EXAMPLES "Build PathSpace examples" OFF)
 if(BUILD_PATHSPACE_EXAMPLES)
-    add_executable(devices_example examples/devices_example.cpp)
-    target_link_libraries(devices_example PRIVATE PathSpace)
+    add_executable(minimal_button_example examples/minimal_button_example.cpp)
+    target_link_libraries(minimal_button_example PRIVATE PathSpace)
     if(APPLE)
-        if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")
-            set_source_files_properties(
-                examples/macos/GameControllerHaptics.mm
-                PROPERTIES COMPILE_FLAGS "-fobjc-arc"
-            )
-        endif()
-        target_link_libraries(devices_example PRIVATE "-framework Cocoa" "-framework GameController")
-        target_link_libraries(devices_example PRIVATE
-            "-framework Metal"
-            "-framework QuartzCore"
-            "-framework IOSurface")
-        target_compile_definitions(devices_example PRIVATE PATHIO_BACKEND_MACOS=1)
-    endif()
-
-    add_executable(remote_mount_manual examples/remote_mount_manual.cpp)
-    target_link_libraries(remote_mount_manual PRIVATE PathSpace)
-
-    add_library(paint_example_lib STATIC
-        examples/paint_example.cpp)
-    target_link_libraries(paint_example_lib PUBLIC PathSpace PathSpaceServeHtml)
-    target_compile_definitions(paint_example_lib PRIVATE PATHSPACE_PAINT_EXAMPLE_NO_MAIN=1)
-
-    add_executable(paint_example
-        examples/paint_example_main.cpp)
-    target_link_libraries(paint_example PRIVATE paint_example_lib)
-    if(APPLE)
-        if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")
-            set_source_files_properties(
-                examples/macos/GameControllerHaptics.mm
-                PROPERTIES COMPILE_FLAGS "-fobjc-arc"
-            )
-        endif()
-        target_link_libraries(paint_example PRIVATE
-            "-framework Cocoa"
-            "-framework GameController"
-            "-framework Metal"
-            "-framework QuartzCore"
-            "-framework IOSurface")
-        target_compile_definitions(paint_example PRIVATE PATHIO_BACKEND_MACOS=1)
-    endif()
-
-    add_executable(paint_example_new
-        examples/paint_example_new.cpp)
-    target_link_libraries(paint_example_new PRIVATE PathSpace)
-    if(APPLE)
-        target_link_libraries(paint_example_new PRIVATE
+        target_link_libraries(minimal_button_example PRIVATE
             "-framework Cocoa"
             "-framework Metal"
             "-framework QuartzCore"
             "-framework IOSurface")
-        target_compile_definitions(paint_example_new PRIVATE PATHIO_BACKEND_MACOS=1)
-    endif()
-
-    add_executable(html_replay_example examples/html_replay_example.cpp)
-    target_link_libraries(html_replay_example PRIVATE PathSpace)
-    if(APPLE)
-        target_link_libraries(html_replay_example PRIVATE
-            "-framework Cocoa"
-            "-framework Metal"
-            "-framework QuartzCore"
-            "-framework IOSurface")
-        target_compile_definitions(html_replay_example PRIVATE PATHIO_BACKEND_MACOS=1)
-    endif()
-
-    add_executable(widgets_example examples/widgets_example.cpp)
-    target_link_libraries(widgets_example PRIVATE PathSpace PathSpaceServeHtml)
-    if(APPLE)
-        target_link_libraries(widgets_example PRIVATE
-            "-framework Cocoa"
-            "-framework Metal"
-            "-framework QuartzCore"
-            "-framework IOSurface")
-        target_compile_definitions(widgets_example PRIVATE PATHIO_BACKEND_MACOS=1)
-    endif()
-
-    add_executable(widgets_example_minimal examples/widgets_example_minimal.cpp)
-    target_link_libraries(widgets_example_minimal PRIVATE PathSpace)
-    if(APPLE)
-        target_link_libraries(widgets_example_minimal PRIVATE
-            "-framework Cocoa"
-            "-framework Metal"
-            "-framework QuartzCore"
-            "-framework IOSurface")
-        target_compile_definitions(widgets_example_minimal PRIVATE PATHIO_BACKEND_MACOS=1)
-    endif()
-
-    add_executable(declarative_theme_example examples/declarative_theme_example.cpp)
-    target_link_libraries(declarative_theme_example PRIVATE PathSpace)
-    if(APPLE)
-        target_link_libraries(declarative_theme_example PRIVATE
-            "-framework Cocoa"
-            "-framework Metal"
-            "-framework QuartzCore"
-            "-framework IOSurface")
-        target_compile_definitions(declarative_theme_example PRIVATE PATHIO_BACKEND_MACOS=1)
-    endif()
-
-    add_executable(declarative_button_example examples/declarative_button_example.cpp)
-    target_link_libraries(declarative_button_example PRIVATE PathSpace)
-    if(APPLE)
-        target_link_libraries(declarative_button_example PRIVATE
-            "-framework Cocoa"
-            "-framework Metal"
-            "-framework QuartzCore"
-            "-framework IOSurface")
-        target_compile_definitions(declarative_button_example PRIVATE PATHIO_BACKEND_MACOS=1)
-    endif()
-
-    add_executable(declarative_hello_example examples/declarative_hello_example.cpp)
-    target_link_libraries(declarative_hello_example PRIVATE PathSpace)
-    if(APPLE)
-        target_link_libraries(declarative_hello_example PRIVATE
-            "-framework Cocoa"
-            "-framework Metal"
-            "-framework QuartzCore"
-            "-framework IOSurface")
-        target_compile_definitions(declarative_hello_example PRIVATE PATHIO_BACKEND_MACOS=1)
-    endif()
-
-    add_executable(pixel_noise_example examples/pixel_noise_example.cpp)
-    target_link_libraries(pixel_noise_example PRIVATE PathSpace)
-    if(APPLE)
-        target_link_libraries(pixel_noise_example PRIVATE
-            "-framework Cocoa"
-            "-framework Metal"
-            "-framework QuartzCore"
-            "-framework IOSurface")
-        target_compile_definitions(pixel_noise_example PRIVATE PATHIO_BACKEND_MACOS=1)
+        target_compile_definitions(minimal_button_example PRIVATE PATHIO_BACKEND_MACOS=1)
     endif()
 endif()
 

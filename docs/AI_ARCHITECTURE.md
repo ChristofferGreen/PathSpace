@@ -10,6 +10,7 @@ Renderer snapshot builder details have moved out of this architecture document. 
 > **Concurrency update (November 14, 2025):** PathSpaceTrellis redesign completed; see `docs/finished/Plan_PathSpaceTrellis_Finished.md` for the final fan-in notes. Historical background remains in `docs/finished/Plan_PathSpace_FanIn_Abandoned.md`.
 > **Minimal diagnostics (December 27, 2025):** Renderer target hints, present/residency metrics, and trellis/runtime counters now emit only when `PATHSPACE_UI_DEBUG_TREE=1` (aliases: `PATHSPACE_UI_DEBUG_DIAGNOSTICS`, `PATHSPACE_UI_DEBUG_PATHSPACE`). Default runs leave those branches empty so hierarchical dumps stay lean.
 > **Minimal themes (December 27, 2025):** Runtime bootstrap no longer writes `config/theme/<name>/value`; only `config/theme/active` is seeded. Theme resolution falls back to built-in palettes when the compiled blob is absent, while explicit theme edits still persist the value.
+> **GPU hooks (December 31, 2025):** SceneGraph tiled renderer is now the default software path (opt-out via `PATHSPACE_DISABLE_TILED_RENDERER` or `PATHSPACE_ENABLE_TILED_RENDERER=0`); `TileEncoderHooks` remain opt-in for Metal/Vulkan encoders.
 
 ## UI/Rendering — cross-reference
 

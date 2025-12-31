@@ -522,6 +522,14 @@ struct TargetMetrics {
     double encode_worker_stall_ms_total = 0.0;
     double encode_worker_stall_ms_max = 0.0;
     uint64_t encode_worker_stall_workers = 0;
+    uint64_t tiles_total = 0;
+    uint64_t tiles_dirty = 0;
+    uint64_t tiles_rendered = 0;
+    uint64_t tile_jobs = 0;
+    uint64_t tile_workers_used = 0;
+    uint32_t tile_width_px = 0;
+    uint32_t tile_height_px = 0;
+    bool tiled_renderer_used = false;
     bool progressive_tile_diagnostics_enabled = false;
     uint64_t progressive_tiles_copied = 0;
     uint64_t progressive_tiles_dirty = 0;
@@ -633,3 +641,13 @@ auto CollectTargetDiagnostics(PathSpace& space,
 } // namespace Diagnostics
 
 } // namespace SP::UI::Runtime
+
+#if !PATHSPACE_ENABLE_UI
+// Stub for UI-disabled builds so tools linking unconditionally still succeed.
+namespace SP::UI::Runtime::Diagnostics {
+inline auto CollectTargetDiagnostics(PathSpace&, std::string_view = "/renderers")
+    -> SP::Expected<std::vector<TargetDiagnosticsSummary>> {
+    return std::vector<TargetDiagnosticsSummary>{};
+}
+} // namespace SP::UI::Runtime::Diagnostics
+#endif

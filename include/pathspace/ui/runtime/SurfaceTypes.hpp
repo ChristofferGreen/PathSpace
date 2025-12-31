@@ -66,7 +66,7 @@ struct SurfaceDesc {
         int width = 0;
         int height = 0;
     } size_px;
-    PixelFormat pixel_format = PixelFormat::RGBA8Unorm;
+    PixelFormat pixel_format = PixelFormat::BGRA8Unorm; // default to BGRA to match window presenters
     ColorSpace color_space = ColorSpace::sRGB;
     bool premultiplied_alpha = true;
     int progressive_tile_size_px = 64;
@@ -77,7 +77,7 @@ struct SoftwareFramebuffer {
     int width = 0;
     int height = 0;
     std::uint32_t row_stride_bytes = 0;
-    PixelFormat pixel_format = PixelFormat::RGBA8Unorm;
+    PixelFormat pixel_format = PixelFormat::BGRA8Unorm;
     ColorSpace color_space = ColorSpace::sRGB;
     bool premultiplied_alpha = true;
     std::vector<std::uint8_t> pixels;

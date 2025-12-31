@@ -611,6 +611,54 @@ auto ReadTargetMetrics(PathSpace const& space,
                && value.error().code != SP::Error::Code::NoSuchPath) {
         return std::unexpected(value.error());
     }
+    if (auto value = read_value<uint64_t>(space, base + "/tilesTotal"); value) {
+        metrics.tiles_total = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+    if (auto value = read_value<uint64_t>(space, base + "/tilesDirty"); value) {
+        metrics.tiles_dirty = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+    if (auto value = read_value<uint64_t>(space, base + "/tilesRendered"); value) {
+        metrics.tiles_rendered = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+    if (auto value = read_value<uint64_t>(space, base + "/tileJobs"); value) {
+        metrics.tile_jobs = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+    if (auto value = read_value<uint64_t>(space, base + "/tileWorkersUsed"); value) {
+        metrics.tile_workers_used = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+    if (auto value = read_value<uint32_t>(space, base + "/tileWidthPx"); value) {
+        metrics.tile_width_px = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+    if (auto value = read_value<uint32_t>(space, base + "/tileHeightPx"); value) {
+        metrics.tile_height_px = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
+    if (auto value = read_value<bool>(space, base + "/tiledRendererUsed"); value) {
+        metrics.tiled_renderer_used = *value;
+    } else if (value.error().code != SP::Error::Code::NoObjectFound
+               && value.error().code != SP::Error::Code::NoSuchPath) {
+        return std::unexpected(value.error());
+    }
 
     if (auto value = read_value<bool>(space, base + "/progressiveTileDiagnosticsEnabled"); value) {
         metrics.progressive_tile_diagnostics_enabled = *value;
@@ -1363,6 +1411,46 @@ auto write_present_metrics_to_base(PathSpace& space,
     if (auto status = replace_single<uint64_t>(space,
                                                base + "/encodeJobs",
                                                stats.encode_jobs); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/tilesTotal",
+                                               stats.tiles_total); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/tilesDirty",
+                                               stats.tiles_dirty); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/tilesRendered",
+                                               stats.tiles_rendered); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/tileJobs",
+                                               stats.tile_jobs); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint64_t>(space,
+                                               base + "/tileWorkersUsed",
+                                               stats.tile_workers_used); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint32_t>(space,
+                                               base + "/tileWidthPx",
+                                               stats.tile_width_px); !status) {
+        return status;
+    }
+    if (auto status = replace_single<uint32_t>(space,
+                                               base + "/tileHeightPx",
+                                               stats.tile_height_px); !status) {
+        return status;
+    }
+    if (auto status = replace_single<bool>(space,
+                                           base + "/tiledRendererUsed",
+                                           stats.tiled_renderer_used); !status) {
         return status;
     }
     if (auto status = replace_single<bool>(space,

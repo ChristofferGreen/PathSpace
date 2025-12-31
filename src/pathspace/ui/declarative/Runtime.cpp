@@ -809,9 +809,12 @@ auto ResizePresentSurface(SP::PathSpace& space,
 
     applied_settings.surface.size_px.width = width;
     applied_settings.surface.size_px.height = height;
-    if (applied_settings.surface.dpi_scale <= 0.0f) {
-        applied_settings.surface.dpi_scale = 1.0f;
+    // Keep dpi_scale in sync with the backing scale so layout matches rendered pixels.
+    float backing_scale = SP::UI::GetLocalWindowBackingScale();
+    if (backing_scale < 1.0f) {
+        backing_scale = 1.0f;
     }
+    applied_settings.surface.dpi_scale = backing_scale;
 
     if (auto status = SP::UI::Renderer::UpdateSettings(space, handles.target, applied_settings); !status) {
         return std::unexpected(status.error());
@@ -846,7 +849,7 @@ auto PresentWindowFrame(SP::PathSpace& space,
     }
     auto present_policy = *present_policy_result;
 
-    // Keep surface/target in sync with the actual window content size.
+    // Keep surface/target in sync with the actual window content size (points).
     int content_w = 0;
     int content_h = 0;
     SP::UI::GetLocalWindowContentSize(&content_w, &content_h);
@@ -854,9 +857,8 @@ auto PresentWindowFrame(SP::PathSpace& space,
     if (backing_scale < 1.0f) {
         backing_scale = 1.0f;
     }
-    // Content dimensions are already in backing pixels, so avoid double scaling.
-    int pixel_w = content_w;
-    int pixel_h = content_h;
+    int pixel_w = static_cast<int>(std::llround(static_cast<double>(content_w) * static_cast<double>(backing_scale)));
+    int pixel_h = static_cast<int>(std::llround(static_cast<double>(content_h) * static_cast<double>(backing_scale)));
 
     bool debug_layout = std::getenv("PATHSPACE_DEBUG_LAYOUT") != nullptr;
 
@@ -1837,9 +1839,15 @@ auto RunUI(SP::PathSpace& space,
         int content_w = window_width;
         int content_h = window_height;
         SP::UI::GetLocalWindowContentSize(&content_w, &content_h);
-        if (content_w > 0 && content_h > 0 && (content_w != window_width || content_h != window_height)) {
-            window_width = content_w;
-            window_height = content_h;
+        float scale = SP::UI::GetLocalWindowBackingScale();
+        if (scale < 1.0f) {
+            scale = 1.0f;
+        }
+        int pixel_w = static_cast<int>(std::llround(static_cast<double>(content_w) * static_cast<double>(scale)));
+        int pixel_h = static_cast<int>(std::llround(static_cast<double>(content_h) * static_cast<double>(scale)));
+        if (pixel_w > 0 && pixel_h > 0 && (pixel_w != window_width || pixel_h != window_height)) {
+            window_width = pixel_w;
+            window_height = pixel_h;
             (void)SP::UI::Declarative::ResizePresentSurface(space,
                                                             *present_handles,
                                                             window_width,

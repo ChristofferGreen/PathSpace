@@ -322,11 +322,6 @@ void schedule_metal_present(WindowState& state) {
         }
         return;
     }
-    if (state.live_resize_active.load(std::memory_order_acquire)) {
-        state.pending_present_after_resize.store(true, std::memory_order_release);
-        state.metal_present_scheduled.store(false);
-        return;
-    }
     bool expected = false;
     if (!state.metal_present_scheduled.compare_exchange_strong(expected, true)) {
         return;
@@ -505,6 +500,8 @@ void schedule_metal_present(WindowState& state) {
 - (instancetype)initWithFrame:(NSRect)frameRect {
     self = [super initWithFrame:frameRect];
     if (self) {
+        // Ensure the event view always tracks the window content size.
+        self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         [self configureMetalLayerIfPossible];
     }
     return self;
@@ -761,6 +758,11 @@ void schedule_metal_present(WindowState& state) {
     end_resize_block(window_state());
 }
 
+- (void)windowDidResize:(NSNotification *)notification {
+    (void)notification;
+    update_presenter_config(window_state());
+}
+
 - (void)windowWillClose:(NSNotification *)notification {
     (void)notification;
     WindowState& state = window_state();
@@ -809,11 +811,11 @@ void ConfigureLocalWindow(int width, int height, char const* title) {
     if (state.window) {
         dispatch_async(dispatch_get_main_queue(), ^{
             WindowState& st = window_state();
-            NSRect frame = [st.window frame];
-            frame.size = NSMakeSize(st.desired_width, st.desired_height);
-            [st.window setFrame:frame display:YES animate:NO];
+            NSSize content_size = NSMakeSize(st.desired_width, st.desired_height);
+            [st.window setContentSize:content_size];
             st.window.title = [NSString stringWithUTF8String:st.desired_title.c_str()];
-            [[st.window contentView] setFrame:NSMakeRect(0, 0, st.desired_width, st.desired_height)];
+            [[st.window contentView] setFrame:NSMakeRect(0, 0, content_size.width, content_size.height)];
+            [[st.window contentView] setNeedsLayout:YES];
             [[st.window contentView] setNeedsDisplay:YES];
             update_presenter_config(st);
         });
@@ -902,14 +904,19 @@ void PollLocalWindow() {
 #if defined(__APPLE__)
     @autoreleasepool {
         NSApplication* app = [NSApplication sharedApplication];
-        while (true) {
-            NSEvent* ev = [app nextEventMatchingMask:NSEventMaskAny
-                                           untilDate:[NSDate dateWithTimeIntervalSinceNow:0.0]
-                                              inMode:NSDefaultRunLoopMode
-                                             dequeue:YES];
-            if (!ev) break;
-            [app sendEvent:ev];
-        }
+        auto drain_events = ^(NSString* mode) {
+            while (true) {
+                NSEvent* ev = [app nextEventMatchingMask:NSEventMaskAny
+                                               untilDate:[NSDate dateWithTimeIntervalSinceNow:0.0]
+                                                  inMode:mode
+                                                 dequeue:YES];
+                if (!ev) break;
+                [app sendEvent:ev];
+            }
+        };
+        // Default mode covers normal dispatch; tracking mode fires during live resizes.
+        drain_events(NSDefaultRunLoopMode);
+        drain_events(NSEventTrackingRunLoopMode);
     }
 #endif
 }
@@ -996,15 +1003,11 @@ void GetLocalWindowContentSize(int* width, int* height) {
             *height = 0;
             return;
         }
-        NSView* view = [state.window contentView];
-        if (!view) {
-            *width = 0;
-            *height = 0;
-            return;
-        }
-        NSRect bounds = [view bounds];
-        *width = static_cast<int>(std::llround(bounds.size.width));
-        *height = static_cast<int>(std::llround(bounds.size.height));
+        // Use the window's content rect so we track live size changes even if the view's
+        // layout has not updated yet during the resize gesture.
+        NSRect content_rect = [state.window contentRectForFrameRect:[state.window frame]];
+        *width = static_cast<int>(std::llround(content_rect.size.width));
+        *height = static_cast<int>(std::llround(content_rect.size.height));
     }
 #else
     if (width) *width = 0;

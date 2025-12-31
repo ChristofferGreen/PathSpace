@@ -1,6 +1,7 @@
 #include "DescriptorDetail.hpp"
 
 #include "../WidgetDetail.hpp"
+#include "widgets/Common.hpp"
 #include <pathspace/ui/declarative/Detail.hpp>
 
 #include <pathspace/ui/runtime/TextRuntime.hpp>
@@ -21,6 +22,7 @@
 
 namespace SP::UI::Declarative::DescriptorDetail {
 namespace Detail = SP::UI::Declarative::Detail;
+namespace WidgetDetail = SP::UI::Declarative::Detail;
 namespace BuilderWidgets = SP::UI::Runtime::Widgets;
 namespace PaintRuntime = SP::UI::Declarative::PaintRuntime;
 namespace ThemeConfig = SP::UI::Declarative::ThemeConfig;
@@ -341,17 +343,41 @@ auto ReadButtonDescriptor(PathSpace& space,
                           BuilderWidgets::WidgetTheme const& theme)
     -> SP::Expected<ButtonDescriptor> {
     ButtonDescriptor descriptor{};
-    auto style = ReadRequired<BuilderWidgets::ButtonStyle>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/style"));
-    if (!style) {
-        return std::unexpected(style.error());
+
+    auto stored_style = ReadRequired<BuilderWidgets::ButtonStyle>(
+        space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/style"));
+    if (!stored_style) {
+        return std::unexpected(stored_style.error());
     }
-    descriptor.style = ApplyThemeToButtonStyle(*style, theme.button);
-    auto state = ReadRequired<BuilderWidgets::ButtonState>(space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state"));
+
+    // Render-time theme application: start from active theme, then apply any overrides
+    // carried in the stored style (background/text/typography overrides).
+    BuilderWidgets::ButtonStyle themed = theme.button;
+    using Field = BuilderWidgets::ButtonStyleOverrideField;
+    if (BuilderWidgets::HasStyleOverride(stored_style->overrides, Field::BackgroundColor)) {
+        themed.background_color = stored_style->background_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(stored_style->overrides, Field::TextColor)) {
+        themed.text_color = stored_style->text_color;
+    }
+    if (BuilderWidgets::HasStyleOverride(stored_style->overrides, Field::Typography)) {
+        themed.typography = stored_style->typography;
+    }
+    // Size/radius always come from stored style so layout remains stable.
+    themed.width = stored_style->width;
+    themed.height = stored_style->height;
+    themed.corner_radius = stored_style->corner_radius;
+    descriptor.style = themed;
+
+    auto state = ReadRequired<BuilderWidgets::ButtonState>(
+        space, SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/state"));
     if (!state) {
         return std::unexpected(state.error());
     }
     descriptor.state = *state;
-    auto label = space.read<std::string, std::string>(SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/label"));
+
+    auto label = space.read<std::string, std::string>(
+        SP::UI::Runtime::Widgets::WidgetSpacePath(root, "/meta/label"));
     if (label) {
         descriptor.label = *label;
     } else {
@@ -552,6 +578,7 @@ auto ResolveThemeForWidget(PathSpace& space,
     }
     SP::App::AppRootPathView app_root_view{app_root->getPath()};
     std::optional<std::string> theme_value;
+    std::string theme_source = "unset";
 
     std::string current = widget_root;
     auto const& app_root_raw = app_root->getPath();
@@ -562,6 +589,7 @@ auto ResolveThemeForWidget(PathSpace& space,
         }
         if (candidate->has_value()) {
             theme_value = **candidate;
+            theme_source = "widget_override";
             break;
         }
         if (current == app_root_raw) {
@@ -583,6 +611,7 @@ auto ResolveThemeForWidget(PathSpace& space,
         if (active_theme) {
             if (!active_theme->empty()) {
                 theme_value = *active_theme;
+                theme_source = "app_active";
             }
         } else {
             auto const& error = active_theme.error();
@@ -597,6 +626,7 @@ auto ResolveThemeForWidget(PathSpace& space,
                 return std::unexpected(system_theme.error());
             }
             theme_value = *system_theme;
+            theme_source = "system_active";
         }
     }
 
@@ -604,7 +634,8 @@ auto ResolveThemeForWidget(PathSpace& space,
     auto resolved = ThemeConfig::Resolve(app_root_view, sanitized);
     if (!resolved) {
         return std::unexpected(resolved.error());
-    }    auto loaded = ThemeConfig::Load(space, *resolved);
+    }
+    auto loaded = ThemeConfig::Load(space, *resolved);
     if (!loaded) {
         return std::unexpected(loaded.error());
     }

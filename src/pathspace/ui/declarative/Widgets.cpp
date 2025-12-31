@@ -1,6 +1,7 @@
 
 #include <pathspace/path/ConcretePath.hpp>
 #include <pathspace/ui/declarative/Widgets.hpp>
+#include <pathspace/ui/declarative/ThemeConfig.hpp>
 
 #include "widgets/Common.hpp"
 
@@ -53,6 +54,29 @@ auto MountFragment(PathSpace& space,
 
     if (auto status = WidgetDetail::write_kind(space, root, fragment.kind); !status) {
         return std::unexpected(status.error());
+    }
+
+    // Ensure a theme is set so widgets inherit the globally active (or hardcoded) theme by default.
+    auto theme_path = WidgetSpacePath(root, "/style/theme");
+    auto existing_theme = space.read<std::string, std::string>(theme_path);
+    if (!existing_theme
+        && (existing_theme.error().code == SP::Error::Code::NoSuchPath
+            || existing_theme.error().code == SP::Error::Code::NoObjectFound
+            || existing_theme.error().code == SP::Error::Code::InvalidPath)) {
+        std::string theme_name = "sunset"; // hardcoded fallback
+        if (auto app_root = Detail::derive_app_root_for(parent); app_root) {
+            if (auto active = ThemeConfig::LoadActive(space, SP::App::AppRootPathView{app_root->getPath()});
+                active && !active->empty()) {
+                theme_name = ThemeConfig::SanitizeName(*active);
+            } else {
+                // fall back to system active if present
+                auto system_theme = ThemeConfig::LoadSystemActive(space);
+                if (system_theme && !system_theme->empty()) {
+                    theme_name = ThemeConfig::SanitizeName(*system_theme);
+                }
+            }
+        }
+        (void)WidgetDetail::write_value(space, theme_path, theme_name);
     }
 
     FragmentContext ctx{space, root};

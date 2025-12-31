@@ -19,8 +19,7 @@ Links:
 - docs/WidgetDeclarativeFeatureParity.md (migration tracker comparing legacy and declarative widgets)
 - docs/WidgetDeclarativeMigrationTracker.md (live status board for inspector/web/consumer adoption of the declarative runtime)
 - docs/finished/Plan_PathSpace_Inspector_Finished.md (live PathSpace inspector roadmap; historical record)
-- examples/devices_example.cpp (experimental device IO example)
-- examples/paint_example.cpp (declarative paint demo + screenshot harness)
+- examples/minimal_button_example.cpp (canonical declarative demo; the only example built when `BUILD_PATHSPACE_EXAMPLES=ON`)
 - build/docs/html/index.html (Doxygen API Reference)
 
 ## Architecture at a Glance
@@ -83,7 +82,7 @@ Scripts:
 - ./scripts/compile.sh
 - ./scripts/update_compile_commands.sh (keeps compile_commands.json in repo root)
 - ./build/pathspace_serve_html [--seed-demo] (standalone ServeHtml binary for ops/CI; see docs/serve_html/README.md for the module map and docs/finished/Plan_WebServer_Adapter_Finished.md for deployment details.)
-- ./build/paint_example --html-server / ./build/widgets_example --html-server (builds the embeddable `PathSpaceHtmlServer` with HtmlMirror bootstrap + demo credentials, auto-assigns a port when `port=0`, and serves `/apps/<app>/<view>` alongside the native window. The flag is mutually exclusive with headless/screenshot/export/GPU smoke modes and prints the served URL.)
+- ./build/minimal_button_example [--screenshot <png> --dump_json --screenshot_exit] (canonical UI smoke; runs the declarative runtime, renders two buttons, and can capture a headless screenshot before exiting.)
 
 ## Embeddable HTML server
 
@@ -119,33 +118,7 @@ html_server.stop(); // joins before PathSpace teardown
 ```
 
 - Use `html_server.options().serve_html.port` to log the chosen port when `port=0`.
-- The paint/widgets examples already run this helper via `--html-server`; reuse their CLI flags to
-  smoke-test mirror output alongside the native window.
-
-## HTML bundle export
-
-The declarative examples can emit standalone HTML bundles that mirror
-`renderers/<renderer>/targets/html/<view>/output/v1/html/*`. Run either example with
-`--export-html <output_dir>` to capture the DOM, CSS, commands, metadata, and asset blobs without
-starting the LocalWindow loop:
-
-```
-./build/paint_example --export-html out/html/paint
-./build/widgets_example --export-html out/html/widgets
-```
-
-Each export rewrites the target directory with:
-
-- `dom.html` — the rendered DOM fragment
-- `styles.css` — the adapter’s CSS output (may be empty when commands drive the UI)
-- `commands.json` — Canvas replay commands used when DOM fallback isn’t possible
-- `metadata.txt` — renderer/target/view identifiers, revision, mode, fallback flag, asset count
-- `assets_manifest.txt` plus `assets/` — fingerprinted binary payloads (fonts, images, etc.)
-
-`--export-html` implies headless mode and cannot be combined with screenshot/GPU smoke flags. The
-files above are what `pathspace_serve_html` and future web adapters expect; copy them into a staging
-directory or serve them directly from the prototype server while the distributed PathSpace plumbing
-is still under construction.
+- Legacy demo binaries (`paint_example`, `widgets_example`, `html_replay_example`, `devices_example`, `pixel_noise_example`) have been retired in favor of the single `minimal_button_example`. The ServeHtml workflow remains available for embedders via `pathspace_serve_html` but no longer ships bundled UI demos.
 
 ## Inspector quick start
 
@@ -158,7 +131,7 @@ Once you have built the tree, you can launch the bundled inspector server agains
   --root /app \
   --max-depth 3 \
   --max-children 64 \
-  --diagnostics-root /diagnostics/ui/paint_example \
+  --diagnostics-root /diagnostics/ui/minimal_button_example \
   --ui-root out/inspector-ui \
   --no-demo
 ```
@@ -381,7 +354,7 @@ Tip: For high-throughput patterns, write with Immediate and read<FutureAny> to c
 
 ## Experimental IO providers (PathIO)
 
-The repository includes experimental providers under `src/pathspace/layer/io` and examples in `examples/devices_example.cpp` and `examples/paint_example.cpp`. These mount path-agnostic IO providers (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed event streams using the canonical `/system/devices/in/*` namespace; see `docs/finished/Plan_SceneGraph_Renderer_Finished.md` for app/device path conventions. The paint example combines those providers with the software renderer to offer a minimal mouse-driven canvas.
+The repository includes experimental providers under `src/pathspace/layer/io`. Earlier demo binaries have been retired; use the snippets below (or the helpers in `pathspace/layer/io/*`) as the starting point for bespoke apps. Providers mount path-agnostic IO streams (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed events using the canonical `/system/devices/in/*` namespace; see `docs/finished/Plan_SceneGraph_Renderer_Finished.md` for app/device path conventions.
 
 Sketch:
 ```cpp
@@ -416,10 +389,9 @@ Normalized IO Trellis structs live in `<pathspace/io/IoEvents.hpp>` for consumer
 
 Notes:
 - These providers are evolving; platform-specific backends may require flags (ENABLE_PATHIO_MACOS)
-- The example simulates events if no OS backend is active
+- The minimal_button_example does not exercise PathIO; bring your own provider wiring when testing inputs.
 
 See:
-- examples/devices_example.cpp
 - src/pathspace/layer/io/*
 
 ## CMake integration

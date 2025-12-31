@@ -7,7 +7,7 @@ This guide collects the conventions and scripts used when pairing with the PathS
 - Keep changes ASCII unless the file already uses Unicode.
 - Run the full test suite with the mandated loop/timeout before requesting review.
 - Git pushes are gated by the local `pre-push` hook (`scripts/git-hooks/pre-push.local.sh`).
-  - By default it runs `./scripts/compile.sh --clean --test --loop=5 --release` (UI enabled) and then builds & smoke-tests `devices_example`.
+  - By default it runs `./scripts/compile.sh --clean --test --loop=5 --release` (UI enabled) and then builds & smoke-tests `minimal_button_example`.
   - Set `SKIP_LOOP_TESTS=1` or `SKIP_EXAMPLE=1` in the environment if you have explicit maintainer approval to skip those steps.
 
 ## Build Setup

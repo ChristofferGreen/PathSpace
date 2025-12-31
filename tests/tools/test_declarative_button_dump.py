@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Regression test for declarative_button_example --dump_json.
+Regression test for the minimal declarative button example (`minimal_button_example --dump_json`).
 
 Ensures the example exits quickly and exports the expected scene nodes.
 """
@@ -21,7 +21,7 @@ def parse_args() -> argparse.Namespace:
         "--binary",
         type=Path,
         required=True,
-        help="Path to the declarative_button_example binary",
+        help="Path to the minimal_button_example binary",
     )
     parser.add_argument(
         "--timeout",

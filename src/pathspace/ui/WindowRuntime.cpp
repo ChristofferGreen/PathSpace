@@ -419,6 +419,14 @@ auto Present(PathSpace& space,
         presentStats.encode_worker_stall_ms_total = stats_value.encode_worker_stall_ms_total;
         presentStats.encode_worker_stall_ms_max = stats_value.encode_worker_stall_ms_max;
         presentStats.encode_worker_stall_workers = stats_value.encode_worker_stall_workers;
+        presentStats.tiles_total = stats_value.tiles_total;
+        presentStats.tiles_dirty = stats_value.tiles_dirty;
+        presentStats.tiles_rendered = stats_value.tiles_rendered;
+        presentStats.tile_jobs = stats_value.tile_jobs;
+        presentStats.tile_workers_used = stats_value.tile_workers_used;
+        presentStats.tile_width_px = stats_value.tile_width;
+        presentStats.tile_height_px = stats_value.tile_height;
+        presentStats.tiled_renderer_used = stats_value.tiled_renderer_used;
         presentStats.progressive_tiles_dirty = stats_value.progressive_tiles_dirty;
         presentStats.progressive_tiles_total = stats_value.progressive_tiles_total;
         presentStats.progressive_tiles_skipped = stats_value.progressive_tiles_skipped;

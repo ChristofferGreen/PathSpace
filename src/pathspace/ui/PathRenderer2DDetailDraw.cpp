@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 namespace SP::UI::PathRenderer2DDetail {
@@ -324,7 +325,8 @@ auto draw_rect_command(Scene::RectCommand const& command,
 auto draw_rounded_rect_command(Scene::RoundedRectCommand const& command,
                                std::vector<float>& buffer,
                                int width,
-                               int height) -> bool {
+                               int height,
+                               std::span<PathRenderer2DInternal::DamageRect const> clip_rects) -> bool {
     auto color = make_linear_color(command.color);
 
     auto min_x = std::min(command.min_x, command.max_x);
@@ -366,12 +368,12 @@ auto draw_rounded_rect_command(Scene::RoundedRectCommand const& command,
     adjust_pair(radius_tl, radius_bl, height_f);
     adjust_pair(radius_tr, radius_br, height_f);
 
-    auto min_x_i = std::clamp(static_cast<int>(std::floor(min_x)), 0, width);
-    auto max_x_i = std::clamp(static_cast<int>(std::ceil(max_x)), 0, width);
-    auto min_y_i = std::clamp(static_cast<int>(std::floor(min_y)), 0, height);
-    auto max_y_i = std::clamp(static_cast<int>(std::ceil(max_y)), 0, height);
+    auto base_min_x_i = std::clamp(static_cast<int>(std::floor(min_x)), 0, width);
+    auto base_max_x_i = std::clamp(static_cast<int>(std::ceil(max_x)), 0, width);
+    auto base_min_y_i = std::clamp(static_cast<int>(std::floor(min_y)), 0, height);
+    auto base_max_y_i = std::clamp(static_cast<int>(std::ceil(max_y)), 0, height);
 
-    if (min_x_i >= max_x_i || min_y_i >= max_y_i) {
+    if (base_min_x_i >= base_max_x_i || base_min_y_i >= base_max_y_i) {
         return false;
     }
 
@@ -418,13 +420,30 @@ auto draw_rounded_rect_command(Scene::RoundedRectCommand const& command,
         return true;
     };
 
-    bool drawn = false;
-    for (int y = min_y_i; y < max_y_i; ++y) {
-        for (int x = min_x_i; x < max_x_i; ++x) {
-            if (blend_if_inside(x, y)) {
-                drawn = true;
+    auto draw_range = [&](int min_x_i, int max_x_i, int min_y_i, int max_y_i, bool& drawn) {
+        for (int y = min_y_i; y < max_y_i; ++y) {
+            for (int x = min_x_i; x < max_x_i; ++x) {
+                if (blend_if_inside(x, y)) {
+                    drawn = true;
+                }
             }
         }
+    };
+
+    bool drawn = false;
+    if (!clip_rects.empty()) {
+        for (auto const& clip : clip_rects) {
+            auto min_x_i = std::max(base_min_x_i, clip.min_x);
+            auto max_x_i = std::min(base_max_x_i, clip.max_x);
+            auto min_y_i = std::max(base_min_y_i, clip.min_y);
+            auto max_y_i = std::min(base_max_y_i, clip.max_y);
+            if (min_x_i >= max_x_i || min_y_i >= max_y_i) {
+                continue;
+            }
+            draw_range(min_x_i, max_x_i, min_y_i, max_y_i, drawn);
+        }
+    } else {
+        draw_range(base_min_x_i, base_max_x_i, base_min_y_i, base_max_y_i, drawn);
     }
     return drawn;
 }

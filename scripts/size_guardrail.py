@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Binary size guardrail helper for PathSpace examples.
+"""Binary size guardrail helper for the PathSpace minimal example.
 
-This helper collects the sizes of key demo/example binaries after a build,
-generates a human-readable report, and optionally checks the sizes against an
-on-disk baseline (with configurable growth tolerances). It is intended to be
-invoked from scripts/compile.sh via the --size-report / --size-write-baseline
-flags but can be used directly as well.
+This helper collects the size of the canonical minimal_button_example binary
+after a build, generates a human-readable report, and optionally checks the
+size against an on-disk baseline (with configurable growth tolerances). It is
+intended to be invoked from scripts/compile.sh via the --size-report /
+--size-write-baseline flags but can be used directly as well.
 """
 
 from __future__ import annotations
@@ -30,11 +30,7 @@ class TargetBinary:
 
 
 TARGET_BINARIES: List[TargetBinary] = [
-    TargetBinary("devices_example", "examples/devices_example"),
-    TargetBinary("html_replay_example", "examples/html_replay_example"),
-    TargetBinary("paint_example", "examples/paint_example"),
-    TargetBinary("pixel_noise_example", "examples/pixel_noise_example"),
-    TargetBinary("widgets_example", "examples/widgets_example"),
+    TargetBinary("minimal_button_example", "examples/minimal_button_example"),
 ]
 
 

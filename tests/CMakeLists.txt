@@ -65,6 +65,10 @@ endif()
 
 if(PATHSPACE_ENABLE_UI)
   target_sources(PathSpaceTests PRIVATE unit/ui/test_HistoryBinding.cpp)
+  target_sources(PathSpaceTests PRIVATE unit/ui/scenegraph/test_RenderCommandStore.cpp)
+  target_sources(PathSpaceTests PRIVATE unit/ui/scenegraph/test_TileGrid.cpp)
+  target_sources(PathSpaceTests PRIVATE unit/ui/scenegraph/test_TileDirtyTracker.cpp)
+  target_sources(PathSpaceTests PRIVATE unit/ui/scenegraph/test_SoftwareTileRenderer.cpp)
 endif()
 
 if(PATHSPACE_ENABLE_UI)
@@ -301,19 +305,21 @@ if(PATHSPACE_ENABLE_UI)
   pathspace_add_ui_test("PathSpaceUITests_All" TIMEOUT 0)
   set_tests_properties(PathSpaceUITests_All PROPERTIES LABELS ui)
 
-  add_test(NAME DeclarativeButtonJsonDump
-    COMMAND "${PATHSPACE_TEST_RUNNER}"
-            --label DeclarativeButtonJsonDump
-            --log-dir "${PATHSPACE_TEST_LOG_DIR}"
-            --timeout 20
-            --env PATHSPACE_LOG=1
-            --env PATHSPACE_TEST_TIMEOUT=1
-            --env MallocNanoZone=0
-            --
-            python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_declarative_button_dump.py"
-                    --binary "$<TARGET_FILE:declarative_button_example>"
-  )
-  set_tests_properties(DeclarativeButtonJsonDump PROPERTIES LABELS ui)
+  if(TARGET minimal_button_example)
+    add_test(NAME DeclarativeButtonJsonDump
+      COMMAND "${PATHSPACE_TEST_RUNNER}"
+              --label DeclarativeButtonJsonDump
+              --log-dir "${PATHSPACE_TEST_LOG_DIR}"
+              --timeout 20
+              --env PATHSPACE_LOG=1
+              --env PATHSPACE_TEST_TIMEOUT=1
+              --env MallocNanoZone=0
+              --
+              python3 "${CMAKE_SOURCE_DIR}/tests/tools/test_declarative_button_dump.py"
+                      --binary "$<TARGET_FILE:minimal_button_example>"
+    )
+    set_tests_properties(DeclarativeButtonJsonDump PROPERTIES LABELS ui)
+  endif()
 
   if(APPLE)
     # PixelNoise perf harness removed until the ServeHtml/example rewrite reinstates it.

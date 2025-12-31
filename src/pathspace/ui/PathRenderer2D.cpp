@@ -3,6 +3,9 @@
 #include <pathspace/ui/DrawCommands.hpp>
 #include <pathspace/ui/PipelineFlags.hpp>
 #include <pathspace/ui/SceneSnapshotBuilder.hpp>
+#include <pathspace/ui/scenegraph/RenderCommandStore.hpp>
+#include <pathspace/ui/scenegraph/SoftwareTileRenderer.hpp>
+#include <pathspace/ui/scenegraph/TileDirtyTracker.hpp>
 #include <pathspace/ui/DebugFlags.hpp>
 #include <pathspace/ui/PathSurfaceMetal.hpp>
 #include "PathRenderer2DInternal.hpp"
@@ -190,6 +193,254 @@ void write_font_diagnostics(FontDiagnosticsRecord const& record) {
 
 } // namespace
 
+namespace {
+
+struct TiledRendererToggle {
+    bool enabled = false;
+    int tile_size_px = 64;
+    std::size_t max_bucket_size = 256;
+    std::size_t max_workers = 0;
+};
+
+auto trim_view(std::string_view value) -> std::string_view {
+    auto is_space = [](char ch) {
+        return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f';
+    };
+    while (!value.empty() && is_space(value.front())) {
+        value.remove_prefix(1);
+    }
+    while (!value.empty() && is_space(value.back())) {
+        value.remove_suffix(1);
+    }
+    return value;
+}
+
+auto env_flag_enabled(char const* key, bool default_value = false) -> bool {
+    if (auto* raw = std::getenv(key)) {
+        std::string_view value{raw};
+        if (value.empty()) {
+            return false;
+        }
+        value = trim_view(value);
+        if (value.empty()) {
+            return false;
+        }
+        if (value == "0" || value == "false" || value == "False" || value == "FALSE") {
+            return false;
+        }
+        return true;
+    }
+    return default_value;
+}
+
+template <typename T>
+auto parse_numeric_env(char const* key, T fallback) -> T {
+    if (auto* raw = std::getenv(key)) {
+        std::string_view view{raw};
+        view = trim_view(view);
+        std::string buffer{view};
+        char* end = nullptr;
+        auto parsed = std::strtoll(buffer.c_str(), &end, 10);
+        if (end != buffer.c_str()) {
+            return static_cast<T>(parsed);
+        }
+    }
+    return fallback;
+}
+
+auto tiled_renderer_toggle() -> TiledRendererToggle {
+    TiledRendererToggle cfg{};
+    bool const tiled_disabled = env_flag_enabled("PATHSPACE_DISABLE_TILED_RENDERER");
+    bool const tiled_enabled = env_flag_enabled("PATHSPACE_ENABLE_TILED_RENDERER", true);
+    if (!tiled_enabled || tiled_disabled) {
+        return cfg;
+    }
+    cfg.enabled = true;
+    cfg.tile_size_px = std::max(1, parse_numeric_env<int>("PATHSPACE_TILED_TILE_SIZE", cfg.tile_size_px));
+    cfg.max_bucket_size = std::max<std::size_t>(1, parse_numeric_env<std::size_t>("PATHSPACE_TILED_MAX_BUCKET", cfg.max_bucket_size));
+    cfg.max_workers = parse_numeric_env<std::size_t>("PATHSPACE_TILED_MAX_WORKERS", cfg.max_workers);
+    return cfg;
+}
+
+auto clamp_to_surface(SceneGraph::IntRect rect, int width, int height) -> std::optional<SceneGraph::IntRect> {
+    rect.min_x = std::clamp(rect.min_x, 0, width);
+    rect.max_x = std::clamp(rect.max_x, 0, width);
+    rect.min_y = std::clamp(rect.min_y, 0, height);
+    rect.max_y = std::clamp(rect.max_y, 0, height);
+    if (rect.empty()) {
+        return std::nullopt;
+    }
+    return rect;
+}
+
+struct TiledAdapterData {
+    SceneGraph::RenderCommandStore store;
+    SceneGraph::SpanPayloadProvider payloads;
+    std::vector<Scene::RectCommand> rects;
+    std::vector<Scene::RoundedRectCommand> rounded_rects;
+    std::vector<Scene::TextGlyphsCommand> texts;
+    std::size_t unsupported_commands = 0;
+    std::size_t text_command_count = 0;
+    double approx_area_total = 0.0;
+    double approx_area_opaque = 0.0;
+    double approx_area_alpha = 0.0;
+};
+
+auto rect_from_payload(Scene::RectCommand const& rect) -> SceneGraph::IntRect {
+    auto min_x = static_cast<int>(std::floor(std::min(rect.min_x, rect.max_x)));
+    auto max_x = static_cast<int>(std::ceil(std::max(rect.min_x, rect.max_x)));
+    auto min_y = static_cast<int>(std::floor(std::min(rect.min_y, rect.max_y)));
+    auto max_y = static_cast<int>(std::ceil(std::max(rect.min_y, rect.max_y)));
+    return SceneGraph::IntRect{min_x, min_y, max_x, max_y};
+}
+
+auto rect_from_payload(Scene::RoundedRectCommand const& rounded) -> SceneGraph::IntRect {
+    auto min_x = static_cast<int>(std::floor(std::min(rounded.min_x, rounded.max_x)));
+    auto max_x = static_cast<int>(std::ceil(std::max(rounded.min_x, rounded.max_x)));
+    auto min_y = static_cast<int>(std::floor(std::min(rounded.min_y, rounded.max_y)));
+    auto max_y = static_cast<int>(std::ceil(std::max(rounded.min_y, rounded.max_y)));
+    return SceneGraph::IntRect{min_x, min_y, max_x, max_y};
+}
+
+auto rect_from_payload(Scene::TextGlyphsCommand const& text) -> SceneGraph::IntRect {
+    auto min_x = static_cast<int>(std::floor(std::min(text.min_x, text.max_x)));
+    auto max_x = static_cast<int>(std::ceil(std::max(text.min_x, text.max_x)));
+    auto min_y = static_cast<int>(std::floor(std::min(text.min_y, text.max_y)));
+    auto max_y = static_cast<int>(std::ceil(std::max(text.min_y, text.max_y)));
+    return SceneGraph::IntRect{min_x, min_y, max_x, max_y};
+}
+
+auto area(SceneGraph::IntRect const& rect) -> double {
+    auto width = std::max(0, rect.max_x - rect.min_x);
+    auto height = std::max(0, rect.max_y - rect.min_y);
+    return static_cast<double>(width) * static_cast<double>(height);
+}
+
+auto build_tiled_adapter(Scene::DrawableBucketSnapshot const& bucket,
+                         std::vector<std::size_t> const& payload_offsets,
+                         int surface_width,
+                         int surface_height,
+                         phmap::flat_hash_map<std::uint64_t, std::shared_ptr<FontAtlasData const>> const& atlases)
+    -> std::optional<TiledAdapterData> {
+    TiledAdapterData data{};
+    auto drawable_count = bucket.drawable_ids.size();
+    if (bucket.command_kinds.size() != payload_offsets.size()) {
+        return std::nullopt;
+    }
+
+    data.payloads.glyphs = bucket.glyph_vertices;
+    data.payloads.atlases = atlases;
+
+    for (std::size_t drawable_index = 0; drawable_index < drawable_count; ++drawable_index) {
+        if (drawable_index >= bucket.command_offsets.size()
+            || drawable_index >= bucket.command_counts.size()
+            || drawable_index >= bucket.visibility.size()) {
+            return std::nullopt;
+        }
+
+        if (bucket.visibility[drawable_index] == 0) {
+            continue;
+        }
+
+        auto command_offset = bucket.command_offsets[drawable_index];
+        auto command_count = bucket.command_counts[drawable_index];
+        if (static_cast<std::size_t>(command_offset) + command_count > bucket.command_kinds.size()) {
+            return std::nullopt;
+        }
+
+        auto drawable_id = bucket.drawable_ids[drawable_index];
+        auto z_value = (drawable_index < bucket.z_values.size())
+                           ? bucket.z_values[drawable_index]
+                           : static_cast<float>(drawable_index);
+        auto z_int = static_cast<int32_t>(std::lround(z_value));
+
+        for (std::uint32_t local = 0; local < command_count; ++local) {
+            auto command_index = static_cast<std::size_t>(command_offset) + local;
+            auto payload_offset = payload_offsets[command_index];
+            auto kind = static_cast<Scene::DrawCommandKind>(bucket.command_kinds[command_index]);
+            SceneGraph::CommandDescriptor descriptor{};
+            descriptor.z = z_int;
+            descriptor.opacity = 1.0f;
+            descriptor.kind = kind;
+            descriptor.entity_id = (drawable_id << 32u) ^ static_cast<std::uint64_t>(local);
+
+            switch (kind) {
+            case Scene::DrawCommandKind::Rect: {
+                auto rect = PathRenderer2DDetail::read_struct<Scene::RectCommand>(bucket.command_payload,
+                                                                                  payload_offset);
+                auto bbox = clamp_to_surface(rect_from_payload(rect), surface_width, surface_height);
+                if (!bbox) {
+                    continue;
+                }
+                descriptor.bbox = *bbox;
+                descriptor.payload_handle = static_cast<std::uint64_t>(data.rects.size());
+                data.approx_area_total += area(descriptor.bbox);
+                auto alpha = rect.color[3];
+                if (alpha >= 1.0f) {
+                    data.approx_area_opaque += area(descriptor.bbox);
+                } else {
+                    data.approx_area_alpha += area(descriptor.bbox);
+                }
+                data.rects.push_back(rect);
+                break;
+            }
+            case Scene::DrawCommandKind::RoundedRect: {
+                auto rounded = PathRenderer2DDetail::read_struct<Scene::RoundedRectCommand>(bucket.command_payload,
+                                                                                            payload_offset);
+                auto bbox = clamp_to_surface(rect_from_payload(rounded), surface_width, surface_height);
+                if (!bbox) {
+                    continue;
+                }
+                descriptor.bbox = *bbox;
+                descriptor.payload_handle = static_cast<std::uint64_t>(data.rounded_rects.size());
+                data.approx_area_total += area(descriptor.bbox);
+                auto alpha = rounded.color[3];
+                if (alpha >= 1.0f) {
+                    data.approx_area_opaque += area(descriptor.bbox);
+                } else {
+                    data.approx_area_alpha += area(descriptor.bbox);
+                }
+                data.rounded_rects.push_back(rounded);
+                break;
+            }
+            case Scene::DrawCommandKind::TextGlyphs: {
+                auto text = PathRenderer2DDetail::read_struct<Scene::TextGlyphsCommand>(bucket.command_payload,
+                                                                                         payload_offset);
+                auto glyph_end = static_cast<std::size_t>(text.glyph_offset + text.glyph_count);
+                if (text.glyph_offset > bucket.glyph_vertices.size()
+                    || glyph_end > bucket.glyph_vertices.size()) {
+                    ++data.unsupported_commands;
+                    continue;
+                }
+                auto bbox = clamp_to_surface(rect_from_payload(text), surface_width, surface_height);
+                if (!bbox) {
+                    continue;
+                }
+                descriptor.bbox = *bbox;
+                descriptor.payload_handle = static_cast<std::uint64_t>(data.texts.size());
+                data.approx_area_total += area(descriptor.bbox);
+                data.approx_area_alpha += area(descriptor.bbox);
+                data.texts.push_back(text);
+                ++data.text_command_count;
+                break;
+            }
+            default:
+                ++data.unsupported_commands;
+                continue;
+            }
+
+            data.store.upsert(descriptor);
+        }
+    }
+
+    data.payloads.rects = data.rects;
+    data.payloads.rounded_rects = data.rounded_rects;
+    data.payloads.texts = data.texts;
+    return data;
+}
+
+} // namespace
+
 PathRenderer2D::PathRenderer2D(PathSpace& space)
     : space_(space) {}
 
@@ -317,6 +568,8 @@ auto PathRenderer2D::render_with_bucket(SP::UI::Scene::DrawableBucketSnapshot co
         (void)set_last_error(space_, params.target_path, message);
         return std::unexpected(make_error(message, SP::Error::Code::InvalidType));
     }
+
+    auto const tiled_cfg = tiled_renderer_toggle();
 
 
     auto const pixel_count = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
@@ -646,6 +899,341 @@ auto PathRenderer2D::render_with_bucket(SP::UI::Scene::DrawableBucketSnapshot co
     auto const [text_pipeline_mode, text_fallback_allowed] = determine_text_pipeline(params.settings);
     std::uint64_t text_command_count = 0;
     std::uint64_t text_fallback_count = 0;
+
+    bool const tiled_candidate = tiled_cfg.enabled
+                                 && params.backend_kind == SP::UI::RendererKind::Software2D
+                                 && params.metal_surface == nullptr
+                                 && surface.has_buffered();
+    if (!tiled_candidate) {
+        state.tiled_dirty_tracker.reset();
+    }
+    if (tiled_candidate) {
+        auto adapter = build_tiled_adapter(*bucket, *payload_offsets, width, height, font_atlases);
+        if (adapter && adapter->unsupported_commands == 0) {
+            auto tracker_dirty = state.tiled_dirty_tracker.compute_dirty(adapter->store,
+                                                                         std::span<SP::UI::Runtime::DirtyRectHint const>{dirty_rect_hints},
+                                                                         width,
+                                                                         height,
+                                                                         full_repaint);
+            std::vector<SceneGraph::IntRect> tile_overrides;
+            tile_overrides.reserve(tracker_dirty.size());
+            tile_overrides.insert(tile_overrides.end(), tracker_dirty.begin(), tracker_dirty.end());
+            if (has_damage) {
+                auto rects = damage.rectangles();
+                tile_overrides.reserve(tile_overrides.size() + rects.size());
+                for (auto const& rect : rects) {
+                    tile_overrides.push_back(SceneGraph::IntRect{
+                        rect.min_x,
+                        rect.min_y,
+                        rect.max_x,
+                        rect.max_y,
+                    });
+                }
+            }
+
+            SceneGraph::SoftwareTileRendererConfig cfg{};
+            cfg.tile_width = tiled_cfg.tile_size_px;
+            cfg.tile_height = tiled_cfg.tile_size_px;
+            cfg.max_bucket_size = tiled_cfg.max_bucket_size;
+            cfg.max_workers = tiled_cfg.max_workers;
+
+            if (!state.tiled_renderer || state.tiled_surface != &surface) {
+                state.tiled_renderer = std::make_unique<SceneGraph::SoftwareTileRenderer>(surface, cfg);
+                state.tiled_surface = &surface;
+            } else {
+                state.tiled_renderer->configure(cfg);
+            }
+            auto* tiled_renderer = state.tiled_renderer.get();
+            auto frame_info = PathSurfaceSoftware::FrameInfo{
+                .frame_index = params.settings.time.frame_index,
+                .revision = revision,
+            };
+            auto tile_stats = tiled_renderer->render(adapter->store,
+                                                     adapter->payloads,
+                                                     tile_overrides,
+                                                     frame_info);
+
+            drawn_total = adapter->store.active_count();
+            drawn_opaque = adapter->store.active_count();
+            drawn_alpha = adapter->text_command_count;
+            executed_commands = tile_stats.commands_rendered;
+            unsupported_commands = adapter->unsupported_commands;
+            approx_area_total = adapter->approx_area_total;
+            approx_area_opaque = adapter->approx_area_opaque;
+            approx_area_alpha = adapter->approx_area_alpha;
+            text_command_count = adapter->text_command_count;
+
+            for (std::size_t drawable_index = 0; drawable_index < bucket->drawable_ids.size(); ++drawable_index) {
+                auto flags = pipeline_flags_for(*bucket, drawable_index);
+                bool highlight = (flags & PipelineFlags::HighlightPulse) != 0u;
+                if (!highlight) {
+                    continue;
+                }
+                has_focus_pulse = true;
+                if (drawable_index < bounds_by_index.size()) {
+                    auto const& maybe_bounds = bounds_by_index[drawable_index];
+                    if (maybe_bounds && !maybe_bounds->empty()) {
+                        SP::UI::Runtime::DirtyRectHint bounds_hint{};
+                        bounds_hint.min_x = static_cast<float>(maybe_bounds->min_x);
+                        bounds_hint.min_y = static_cast<float>(maybe_bounds->min_y);
+                        bounds_hint.max_x = static_cast<float>(maybe_bounds->max_x);
+                        bounds_hint.max_y = static_cast<float>(maybe_bounds->max_y);
+                        if (focus_dirty.has_value()) {
+                            focus_dirty->min_x = std::min(focus_dirty->min_x, bounds_hint.min_x);
+                            focus_dirty->min_y = std::min(focus_dirty->min_y, bounds_hint.min_y);
+                            focus_dirty->max_x = std::max(focus_dirty->max_x, bounds_hint.max_x);
+                            focus_dirty->max_y = std::max(focus_dirty->max_y, bounds_hint.max_y);
+                        } else {
+                            focus_dirty = bounds_hint;
+                        }
+                    }
+                }
+            }
+
+            if (!has_damage && approx_area_total <= 0.0 && state.last_approx_area_total > 0.0) {
+                approx_area_total = state.last_approx_area_total;
+                approx_area_opaque = state.last_approx_area_opaque;
+                approx_area_alpha = state.last_approx_area_alpha;
+            }
+            double approx_surface_pixels = static_cast<double>(pixel_count);
+            double approx_overdraw_factor = 0.0;
+            if (approx_surface_pixels > 0.0) {
+                approx_overdraw_factor = approx_area_total / approx_surface_pixels;
+            }
+
+            auto const end = std::chrono::steady_clock::now();
+            auto render_ms = std::chrono::duration<double, std::milli>(end - start).count();
+
+            std::vector<MaterialDescriptor> material_list;
+            std::vector<MaterialResourceResidency> resource_list;
+            resource_list.reserve(resource_residency.size());
+            for (auto const& entry : resource_residency) {
+                resource_list.push_back(entry.second);
+            }
+            std::sort(resource_list.begin(),
+                      resource_list.end(),
+                      [](MaterialResourceResidency const& lhs, MaterialResourceResidency const& rhs) {
+                          return lhs.fingerprint < rhs.fingerprint;
+                      });
+
+            std::uint64_t total_texture_gpu_bytes = 0;
+            std::uint64_t font_atlas_cpu_bytes = 0;
+            std::uint64_t font_atlas_gpu_bytes = 0;
+            std::uint64_t font_atlas_resource_count = 0;
+            for (auto const& info : resource_list) {
+                total_texture_gpu_bytes += info.gpu_bytes;
+                if (info.uses_font_atlas) {
+                    ++font_atlas_resource_count;
+                    font_atlas_cpu_bytes += info.cpu_bytes;
+                    font_atlas_gpu_bytes += info.gpu_bytes;
+                }
+            }
+            std::uint64_t total_gpu_bytes = total_texture_gpu_bytes;
+            std::uint64_t target_texture_bytes = total_texture_gpu_bytes;
+            auto const surface_bytes = surface.resident_cpu_bytes();
+            auto const cache_bytes = image_cache_.resident_bytes() + font_atlas_cache_.resident_bytes();
+            auto const resource_cpu_bytes = static_cast<std::uint64_t>(surface_bytes + cache_bytes);
+            auto const reported_texture_bytes = target_texture_bytes;
+
+            bool debug_tree_writes = SP::UI::DebugTreeWritesEnabled();
+            auto metricsBase = std::string(params.target_path.getPath()) + "/output/v1/common";
+            auto diagnosticsBase = std::string(params.target_path.getPath()) + "/diagnostics/metrics/render";
+
+            std::uint64_t font_registered_fonts = 0;
+            std::uint64_t font_cache_hits = 0;
+            std::uint64_t font_cache_misses = 0;
+            std::uint64_t font_cache_evictions = 0;
+            std::uint64_t font_cache_size = 0;
+            std::uint64_t font_cache_capacity = 0;
+            std::uint64_t font_cache_hard_capacity = 0;
+            std::uint64_t font_atlas_soft_bytes_reported = 0;
+            std::uint64_t font_atlas_hard_bytes_reported = 0;
+            std::uint64_t font_shaped_run_approx_bytes = 0;
+            if (auto app_root = SP::App::derive_app_root(SP::App::ConcretePathView{params.target_path.getPath()})) {
+                auto font_metrics_path = std::string(app_root->getPath()) + "/diagnostics/metrics/fonts";
+                auto read_font_metric = [&](char const* suffix, std::uint64_t& dest) {
+                    auto value = space_.read<std::uint64_t, std::string>(font_metrics_path + suffix);
+                    if (value) {
+                        dest = *value;
+                    } else {
+                        auto const code = value.error().code;
+                        if (code != SP::Error::Code::NoSuchPath && code != SP::Error::Code::NoObjectFound) {
+                            (void)code;
+                        }
+                    }
+                };
+                read_font_metric("/registeredFonts", font_registered_fonts);
+                read_font_metric("/cacheHits", font_cache_hits);
+                read_font_metric("/cacheMisses", font_cache_misses);
+                read_font_metric("/cacheEvictions", font_cache_evictions);
+                read_font_metric("/cacheSize", font_cache_size);
+                read_font_metric("/cacheCapacity", font_cache_capacity);
+                read_font_metric("/cacheHardCapacity", font_cache_hard_capacity);
+                read_font_metric("/atlasSoftBytes", font_atlas_soft_bytes_reported);
+                read_font_metric("/atlasHardBytes", font_atlas_hard_bytes_reported);
+                read_font_metric("/shapedRunApproxBytes", font_shaped_run_approx_bytes);
+            }
+
+            auto write_tiled_metrics = [&](std::string const& base, bool clear_target_error) -> SP::Expected<void> {
+                if (!debug_tree_writes) {
+                    return {};
+                }
+                if (auto status = replace_single<std::uint64_t>(space_, base + "/frameIndex", params.settings.time.frame_index); !status) {
+                    return std::unexpected(status.error());
+                }
+                if (auto status = replace_single<std::uint64_t>(space_, base + "/revision", revision); !status) {
+                    return std::unexpected(status.error());
+                }
+                if (auto status = replace_single<double>(space_, base + "/renderMs", render_ms); !status) {
+                    return std::unexpected(status.error());
+                }
+                (void)replace_single<double>(space_, base + "/damageMs", damage_ms);
+                (void)replace_single<double>(space_, base + "/encodeMs", tile_stats.render_ms);
+                (void)replace_single<double>(space_, base + "/publishMs", 0.0);
+                (void)replace_single<std::uint64_t>(space_, base + "/drawableCount", static_cast<std::uint64_t>(drawable_count));
+                (void)replace_single<std::uint64_t>(space_, base + "/commandCount", static_cast<std::uint64_t>(adapter->store.active_count()));
+                (void)replace_single<std::uint64_t>(space_, base + "/commandsExecuted", static_cast<std::uint64_t>(tile_stats.commands_rendered));
+                (void)replace_single<std::uint64_t>(space_, base + "/unsupportedCommands", adapter->unsupported_commands);
+                (void)replace_single<std::uint64_t>(space_, base + "/opaqueSortViolations", opaque_sort_violations);
+                (void)replace_single<std::uint64_t>(space_, base + "/alphaSortViolations", alpha_sort_violations);
+                (void)replace_single<double>(space_, base + "/approxOpaquePixels", approx_area_opaque);
+                (void)replace_single<double>(space_, base + "/approxAlphaPixels", approx_area_alpha);
+                (void)replace_single<double>(space_, base + "/approxDrawablePixels", approx_area_total);
+                (void)replace_single<double>(space_, base + "/approxOverdrawFactor", approx_overdraw_factor);
+                (void)replace_single<std::uint64_t>(space_, base + "/textCommandCount", adapter->text_command_count);
+                (void)replace_single<std::uint64_t>(space_, base + "/textFallbackCount", text_fallback_count);
+                (void)replace_single<std::string>(space_,
+                                                  base + "/textPipeline",
+                                                  (text_pipeline_mode == TextPipeline::Shaped) ? std::string{"Shaped"}
+                                                                                              : std::string{"GlyphQuads"});
+                (void)replace_single<bool>(space_, base + "/textFallbackAllowed", text_fallback_allowed);
+                (void)replace_single<std::uint64_t>(space_, base + "/tilesTotal", tile_stats.tiles_total);
+                (void)replace_single<std::uint64_t>(space_, base + "/tilesDirty", tile_stats.tiles_dirty);
+                (void)replace_single<std::uint64_t>(space_, base + "/tilesRendered", tile_stats.tiles_rendered);
+                (void)replace_single<std::uint64_t>(space_, base + "/tileJobs", tile_stats.tile_jobs);
+                (void)replace_single<std::uint64_t>(space_, base + "/tileWorkersUsed", tile_stats.workers_used);
+                (void)replace_single<std::uint64_t>(space_, base + "/materialCount", static_cast<std::uint64_t>(material_list.size()));
+                (void)replace_single<std::uint64_t>(space_, base + "/materialResourceCount",
+                                                    static_cast<std::uint64_t>(resource_list.size()));
+                (void)replace_single(space_, base + "/materialDescriptors", material_list);
+                (void)replace_single(space_, base + "/materialResources", resource_list);
+                (void)replace_single(space_, base + "/damageTiles", damage_tile_hints);
+                (void)replace_single<std::uint64_t>(space_, base + "/fontAtlasCpuBytes", font_atlas_cpu_bytes);
+                (void)replace_single<std::uint64_t>(space_, base + "/fontAtlasGpuBytes", font_atlas_gpu_bytes);
+                (void)replace_single<std::uint64_t>(space_, base + "/fontAtlasResourceCount", font_atlas_resource_count);
+                (void)replace_single<std::uint64_t>(space_, base + "/fontActiveCount",
+                                                    static_cast<std::uint64_t>(active_font_assets.size()));
+                (void)replace_single<std::uint64_t>(space_, base + "/fontRegisteredFonts", font_registered_fonts);
+                (void)replace_single<std::uint64_t>(space_, base + "/fontCacheHits", font_cache_hits);
+                (void)replace_single<std::uint64_t>(space_, base + "/fontCacheMisses", font_cache_misses);
+                (void)replace_single<std::uint64_t>(space_, base + "/fontCacheEvictions", font_cache_evictions);
+                (void)replace_single<std::uint64_t>(space_, base + "/fontCacheSize", font_cache_size);
+                (void)replace_single<std::uint64_t>(space_, base + "/fontCacheCapacity", font_cache_capacity);
+                (void)replace_single<std::uint64_t>(space_, base + "/fontCacheHardCapacity", font_cache_hard_capacity);
+                (void)replace_single<std::uint64_t>(space_, base + "/fontAtlasSoftBytes", font_atlas_soft_bytes_reported);
+                (void)replace_single<std::uint64_t>(space_, base + "/fontAtlasHardBytes", font_atlas_hard_bytes_reported);
+                (void)replace_single<std::uint64_t>(space_, base + "/fontShapedRunApproxBytes", font_shaped_run_approx_bytes);
+                (void)replace_single(space_, base + "/damageTiles", damage_tile_hints);
+                (void)replace_single<std::uint64_t>(space_, base + "/resourceCpuBytes", resource_cpu_bytes);
+                (void)replace_single<std::uint64_t>(space_, base + "/resourceGpuBytes", total_gpu_bytes);
+                (void)replace_single<std::uint64_t>(space_, base + "/textureGpuBytes", reported_texture_bytes);
+                (void)replace_single<std::uint64_t>(space_, base + "/progressiveTilesUpdated", progressive_tiles_updated);
+                (void)replace_single<std::uint64_t>(space_, base + "/progressiveBytesCopied", progressive_bytes_copied);
+                (void)replace_single<std::uint64_t>(space_, base + "/progressiveTileSize", static_cast<std::uint64_t>(cfg.tile_width));
+                (void)replace_single<std::uint64_t>(space_, base + "/progressiveWorkersUsed",
+                                                    static_cast<std::uint64_t>(progressive_workers_used));
+                (void)replace_single<std::uint64_t>(space_, base + "/progressiveJobs",
+                                                    static_cast<std::uint64_t>(progressive_jobs));
+                (void)replace_single<std::uint64_t>(space_, base + "/encodeWorkersUsed",
+                                                    static_cast<std::uint64_t>(tile_stats.workers_used));
+                (void)replace_single<std::uint64_t>(space_, base + "/encodeJobs",
+                                                    static_cast<std::uint64_t>(tile_stats.tile_jobs));
+                if (collect_damage_metrics) {
+                    (void)replace_single<std::uint64_t>(space_, base + "/progressiveTilesDirty", progressive_tiles_dirty);
+                    (void)replace_single<std::uint64_t>(space_, base + "/progressiveTilesTotal", progressive_tiles_total);
+                    (void)replace_single<std::uint64_t>(space_, base + "/progressiveTilesSkipped", progressive_tiles_skipped);
+                }
+                if (clear_target_error) {
+                    if (auto status = set_last_error(space_,
+                                                     params.target_path,
+                                                     "",
+                                                     revision,
+                                                     Runtime::Diagnostics::PathSpaceError::Severity::Info); !status) {
+                        return std::unexpected(status.error());
+                    }
+                }
+                return {};
+            };
+
+            if (debug_tree_writes) {
+                (void)write_tiled_metrics(metricsBase, true);
+                (void)write_tiled_metrics(diagnosticsBase, false);
+            }
+
+            state.drawable_states = std::move(current_states);
+            state.clear_color = current_clear;
+            state.desc = desc;
+            state.last_revision = revision;
+            state.last_approx_area_total = approx_area_total;
+            state.last_approx_area_opaque = approx_area_opaque;
+            state.last_approx_area_alpha = approx_area_alpha;
+
+            if (has_focus_pulse) {
+                schedule_focus_pulse_render(space_,
+                                            params.target_path,
+                                            params.settings,
+                                            focus_dirty,
+                                            params.settings.time.frame_index);
+            }
+
+            RenderStats stats{};
+            stats.frame_index = params.settings.time.frame_index;
+            stats.revision = revision;
+            stats.render_ms = render_ms;
+            stats.drawable_count = drawn_total;
+            stats.damage_ms = damage_ms;
+            stats.encode_ms = tile_stats.render_ms;
+            stats.progressive_copy_ms = 0.0;
+            stats.publish_ms = 0.0;
+            stats.progressive_tiles_updated = 0;
+            stats.progressive_bytes_copied = 0;
+            stats.progressive_tile_size = 0;
+            stats.progressive_workers_used = 0;
+            stats.progressive_jobs = tile_stats.tile_jobs;
+            stats.encode_workers_used = tile_stats.workers_used;
+            stats.encode_jobs = tile_stats.tile_jobs;
+            stats.tiles_total = static_cast<std::uint64_t>(tile_stats.tiles_total);
+            stats.tiles_dirty = static_cast<std::uint64_t>(tile_stats.tiles_dirty);
+            stats.tiles_rendered = static_cast<std::uint64_t>(tile_stats.tiles_rendered);
+            stats.tile_jobs = static_cast<std::uint64_t>(tile_stats.tile_jobs);
+            stats.tile_workers_used = static_cast<std::uint64_t>(tile_stats.workers_used);
+            stats.tile_width = static_cast<std::uint32_t>(cfg.tile_width);
+            stats.tile_height = static_cast<std::uint32_t>(cfg.tile_height);
+            stats.tiled_renderer_used = true;
+            stats.encode_worker_stall_ms_total = 0.0;
+            stats.encode_worker_stall_ms_max = 0.0;
+            stats.encode_worker_stall_workers = 0;
+            if (collect_damage_metrics) {
+                stats.progressive_tiles_dirty = progressive_tiles_dirty;
+                stats.progressive_tiles_total = progressive_tiles_total;
+                stats.progressive_tiles_skipped = progressive_tiles_skipped;
+            }
+            stats.progressive_tile_diagnostics_enabled = collect_damage_metrics;
+            stats.text_command_count = text_command_count;
+            stats.text_fallback_count = text_fallback_count;
+            stats.text_pipeline = text_pipeline_mode;
+            stats.text_fallback_allowed = text_fallback_allowed;
+            stats.backend_kind = params.backend_kind;
+            stats.materials = material_list;
+            stats.resource_residency = std::move(resource_list);
+            stats.damage_tiles = std::move(damage_tile_hints);
+            stats.resource_cpu_bytes = resource_cpu_bytes;
+            stats.resource_gpu_bytes = total_gpu_bytes;
+            stats.texture_gpu_bytes = reported_texture_bytes;
+            return stats;
+        }
+        state.tiled_dirty_tracker.reset();
+    }
 
     auto image_asset_prefix = revision_base + "/assets/images/";
 

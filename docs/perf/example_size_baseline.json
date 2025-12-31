@@ -1,27 +1,11 @@
 {
   "binaries": {
-    "examples/devices_example": {
-      "name": "devices_example",
-      "sizeBytes": 386416
-    },
-    "examples/html_replay_example": {
-      "name": "html_replay_example",
-      "sizeBytes": 1079632
-    },
-    "examples/paint_example": {
-      "name": "paint_example",
-      "sizeBytes": 1215072
-    },
-    "examples/pixel_noise_example": {
-      "name": "pixel_noise_example",
-      "sizeBytes": 1293712
-    },
-    "examples/widgets_example": {
-      "name": "widgets_example",
-      "sizeBytes": 1531472
+    "examples/minimal_button_example": {
+      "name": "minimal_button_example",
+      "sizeBytes": 4794696
     }
   },
-  "generatedAt": "2025-10-23T12:17:16.602005+00:00",
+  "generatedAt": "2025-12-31T00:00:00Z",
   "tolerance": {
     "absoluteBytes": 262144,
     "percent": 5.0

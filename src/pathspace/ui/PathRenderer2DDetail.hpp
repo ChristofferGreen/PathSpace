@@ -155,7 +155,8 @@ auto draw_rect_command(Scene::RectCommand const& command,
 auto draw_rounded_rect_command(Scene::RoundedRectCommand const& command,
                                std::vector<float>& buffer,
                                int width,
-                               int height) -> bool;
+                               int height,
+                               std::span<PathRenderer2DInternal::DamageRect const> clip_rects = {}) -> bool;
 
 auto draw_shaped_text_command(Scene::TextGlyphsCommand const& command,
                               Scene::DrawableBucketSnapshot const& bucket,

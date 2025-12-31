@@ -2536,6 +2536,7 @@ TEST_CASE("progressive repaint keeps backdrop when dirty hints cover a tile") {
 
 TEST_CASE("pipeline flags partition passes when snapshot lacks explicit indices") {
     RendererFixture fx;
+    ScopedEnv disable_tiled{"PATHSPACE_DISABLE_TILED_RENDERER", "1"};
 
     DrawableBucketSnapshot bucket{};
     bucket.drawable_ids = {0x100001u, 0x100002u};
@@ -3005,12 +3006,67 @@ TEST_CASE("clear color change triggers full-surface repaint") {
     CHECK(*updated == tile_count);
 }
 
+TEST_CASE("tiled renderer writes tile metrics when flag is enabled") {
+    ScopedEnv tiled_flag{"PATHSPACE_ENABLE_TILED_RENDERER", "1"};
+
+    RendererFixture fx;
+
+    RectCommand rect{
+        .min_x = 0.0f,
+        .min_y = 0.0f,
+        .max_x = 8.0f,
+        .max_y = 8.0f,
+        .color = {1.0f, 0.0f, 0.0f, 1.0f},
+    };
+    auto bucket = make_rect_bucket({RectDrawableDef{.id = 1, .fingerprint = 1, .rect = rect}});
+
+    auto scenePath = create_scene(fx, "scene_tiled_renderer", bucket);
+    auto rendererPath = create_renderer(fx, "renderer_tiled_renderer");
+
+    Runtime::SurfaceDesc surfaceDesc{};
+    surfaceDesc.size_px.width = 8;
+    surfaceDesc.size_px.height = 8;
+    surfaceDesc.pixel_format = PixelFormat::RGBA8Unorm;
+    surfaceDesc.color_space = ColorSpace::sRGB;
+    surfaceDesc.premultiplied_alpha = true;
+
+    auto surfacePath = create_surface(fx, "surface_tiled_renderer", surfaceDesc, rendererPath.getPath());
+    REQUIRE(Surface::SetScene(fx.space, surfacePath, scenePath));
+    auto targetPath = resolve_target(fx, surfacePath);
+
+    PathSurfaceSoftware surface{surfaceDesc};
+    PathRenderer2D renderer{fx.space};
+
+    RenderSettings settings{};
+    settings.surface.size_px.width = surfaceDesc.size_px.width;
+    settings.surface.size_px.height = surfaceDesc.size_px.height;
+    settings.clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+    settings.time.frame_index = 7;
+
+    auto result = renderer.render({
+        .target_path = SP::ConcretePathStringView{targetPath.getPath()},
+        .settings = settings,
+        .surface = surface,
+        .backend_kind = RendererKind::Software2D,
+    });
+    REQUIRE(result);
+
+    auto metrics_base = std::string(targetPath.getPath()) + "/output/v1/common";
+    auto tiles_total = fx.space.read<std::uint64_t, std::string>(metrics_base + "/tilesTotal");
+    REQUIRE(tiles_total);
+    CHECK(*tiles_total > 0);
+    auto tile_jobs = fx.space.read<std::uint64_t, std::string>(metrics_base + "/tileJobs");
+    REQUIRE(tile_jobs);
+    CHECK(*tile_jobs > 0);
+}
+
 } // TEST_SUITE PathRenderer2D_RenderBasics
 
 TEST_SUITE("PathRenderer2D_RenderCommands") {
 
 TEST_CASE("records opaque sort violations when indices are unsorted") {
     RendererFixture fx;
+    ScopedEnv disable_tiled{"PATHSPACE_DISABLE_TILED_RENDERER", "1"};
 
     DrawableBucketSnapshot bucket{};
     bucket.drawable_ids = {0x200001u, 0x200002u};
@@ -3089,6 +3145,7 @@ TEST_CASE("records opaque sort violations when indices are unsorted") {
 
 TEST_CASE("records alpha sort violations when depth is front-to-back") {
     RendererFixture fx;
+    ScopedEnv disable_tiled{"PATHSPACE_DISABLE_TILED_RENDERER", "1"};
 
     DrawableBucketSnapshot bucket{};
     bucket.drawable_ids = {0x300001u, 0x300002u};
@@ -3273,6 +3330,7 @@ TEST_CASE("renders png image command") {
 
 TEST_CASE("render executes text glyphs command") {
     RendererFixture fx;
+    ScopedEnv disable_tiled{"PATHSPACE_DISABLE_TILED_RENDERER", "1"};
 
     DrawableBucketSnapshot bucket{};
     bucket.drawable_ids = {0x300001u};
@@ -3398,6 +3456,7 @@ TEST_CASE("render executes text glyphs command") {
 
 TEST_CASE("text fallback engages when shaped pipeline requested") {
     RendererFixture fx;
+    ScopedEnv disable_tiled{"PATHSPACE_DISABLE_TILED_RENDERER", "1"};
 
     DrawableBucketSnapshot bucket{};
     bucket.drawable_ids = {0x300101u};
@@ -3695,6 +3754,7 @@ TEST_SUITE("PathRenderer2D_RenderMetrics") {
 
 TEST_CASE("render tracks culled drawables and executed commands") {
     RendererFixture fx;
+    ScopedEnv disable_tiled{"PATHSPACE_DISABLE_TILED_RENDERER", "1"};
 
     DrawableBucketSnapshot bucket{};
     bucket.drawable_ids = {0x010000u, 0x020000u};
@@ -3949,6 +4009,7 @@ TEST_SUITE("PathRenderer2D_MaterialMetrics") {
 
 TEST_CASE("PathRenderer2D records material descriptors metrics") {
     RendererFixture fx;
+    ScopedEnv disable_tiled{"PATHSPACE_DISABLE_TILED_RENDERER", "1"};
 
     RectDrawableDef def{};
     def.id = 0x1111u;
@@ -4016,6 +4077,7 @@ TEST_SUITE("PathRenderer2D_FocusPulse") {
 
 TEST_CASE("PathRenderer2D pulses focus highlight color over time") {
     RendererFixture fx;
+    ScopedEnv disable_tiled{"PATHSPACE_DISABLE_TILED_RENDERER", "1"};
 
     RectDrawableDef highlight{};
     highlight.id = 0xF0C0F001u;
@@ -4240,9 +4302,16 @@ TEST_CASE("Window::Present renders and presents a frame with metrics") {
     CHECK(fx.space.read<bool>(metricsBase + "/presented").value());
     CHECK(fx.space.read<bool>(metricsBase + "/bufferedFrameConsumed").value()
           == !presentResult->stats.used_iosurface);
-    CHECK(fx.space.read<bool>(metricsBase + "/usedProgressive").value());
-    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() == 1);
-    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRectsCoalesced").value() >= 1);
+    auto used_progressive_metric = fx.space.read<bool>(metricsBase + "/usedProgressive").value();
+    if (presentResult->stats.tiled_renderer_used) {
+        CHECK_FALSE(used_progressive_metric);
+        CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() == 0);
+        CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRectsCoalesced").value() == 0);
+    } else {
+        CHECK(used_progressive_metric);
+        CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() == 1);
+        CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRectsCoalesced").value() >= 1);
+    }
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveSkipOddSeq").value() == 0);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveRecopyAfterSeqChange").value() == 0);
     CHECK(fx.space.read<double>(metricsBase + "/waitBudgetMs").value() == doctest::Approx(20.0).epsilon(0.1));
@@ -4579,7 +4648,11 @@ TEST_CASE("Window::Present progressive updates preserve prior content") {
     auto present_second = Runtime::Window::Present(fx.space, *windowPath, "main");
     REQUIRE(present_second);
     CHECK(present_second->stats.presented);
-    CHECK(present_second->stats.progressive_tiles_copied >= 1);
+    if (present_second->stats.tiled_renderer_used) {
+        CHECK(present_second->stats.progressive_tiles_copied == 0);
+    } else {
+        CHECK(present_second->stats.progressive_tiles_copied >= 1);
+    }
 
     auto framebuffer_second = fx.space.read<Runtime::SoftwareFramebuffer, std::string>(framebufferPath);
     REQUIRE(framebuffer_second);
@@ -4666,7 +4739,12 @@ TEST_CASE("Window::Present handles repeated loop without dropping metrics") {
     CHECK(fx.space.read<uint64_t>(metricsBase + "/frameIndex").value() == kIterations);
     CHECK(fx.space.read<bool>(metricsBase + "/presented").value());
     CHECK_FALSE(fx.space.read<bool>(metricsBase + "/lastPresentSkipped").value());
-    CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() >= 1);
+    auto tiled_metric = fx.space.read<bool>(metricsBase + "/tiledRendererUsed").value();
+    if (tiled_metric) {
+        CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() == 0);
+    } else {
+        CHECK(fx.space.read<uint64_t>(metricsBase + "/progressiveTilesCopied").value() >= 1);
+    }
     CHECK(fx.space.read<double>(metricsBase + "/renderMs").value() >= 0.0);
     CHECK(fx.space.read<double>(metricsBase + "/presentMs").value() >= 0.0);
     CHECK(fx.space.read<uint64_t>(metricsBase + "/opaqueSortViolations").value() == 0);
@@ -4779,7 +4857,11 @@ TEST_CASE("Window::Present handles multiple renderer targets") {
     auto presentLeft = Runtime::Window::Present(fx.space, *windowPath, "left");
     REQUIRE(presentLeft);
     CHECK(presentLeft->stats.presented);
-    CHECK(presentLeft->stats.progressive_tiles_copied >= 1);
+    if (presentLeft->stats.tiled_renderer_used) {
+        CHECK(presentLeft->stats.progressive_tiles_copied == 0);
+    } else {
+        CHECK(presentLeft->stats.progressive_tiles_copied >= 1);
+    }
     CHECK(fx.space.read<uint64_t>(metricsBaseLeft + "/frameIndex").value() == 1);
 
     auto framebufferLeft = Runtime::Diagnostics::ReadSoftwareFramebuffer(fx.space,
@@ -4792,7 +4874,11 @@ TEST_CASE("Window::Present handles multiple renderer targets") {
     auto presentRight = Runtime::Window::Present(fx.space, *windowPath, "right");
     REQUIRE(presentRight);
     CHECK(presentRight->stats.presented);
-    CHECK(presentRight->stats.progressive_tiles_copied >= 1);
+    if (presentRight->stats.tiled_renderer_used) {
+        CHECK(presentRight->stats.progressive_tiles_copied == 0);
+    } else {
+        CHECK(presentRight->stats.progressive_tiles_copied >= 1);
+    }
     CHECK(fx.space.read<uint64_t>(metricsBaseRight + "/frameIndex").value() == 1);
 
     auto framebufferRight = Runtime::Diagnostics::ReadSoftwareFramebuffer(fx.space,
@@ -5193,6 +5279,7 @@ TEST_CASE("Window auto render scheduling no-ops when disabled") {
 
 TEST_CASE("PathWindowView reports progressive seqlock skips") {
     RendererFixture fx;
+    ScopedEnv disable_tiled{"PATHSPACE_DISABLE_TILED_RENDERER", "1"};
 
     DrawableBucketSnapshot bucket{};
     bucket.drawable_ids = {0x330001u};
@@ -5276,6 +5363,7 @@ TEST_CASE("PathWindowView reports progressive seqlock skips") {
 
 TEST_CASE("Window::Present records progressive seqlock metrics") {
     RendererFixture fx;
+    ScopedEnv disable_tiled{"PATHSPACE_DISABLE_TILED_RENDERER", "1"};
 
     DrawableBucketSnapshot bucket{};
     bucket.drawable_ids = {0x440001u};
