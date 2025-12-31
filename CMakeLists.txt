@@ -27,9 +27,6 @@ else()
   project(PathSpaceTests LANGUAGES C CXX)
 endif()
 
-find_package(OpenSSL REQUIRED)
-find_package(Threads REQUIRED)
-
 # Additional GCC settings for macOS
 if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     message(FATAL_ERROR "On macOS, please use clang/clang++ (Apple Clang) instead of GCC to build ObjC++ sources and Apple frameworks.")
@@ -39,20 +36,10 @@ endif()
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# UI/renderer feature gating
-# Default OFF; tools handle missing UI features via stubs/guards.
-option(PATHSPACE_ENABLE_UI "Build UI (surfaces/renderers/windows)" OFF)
-option(PATHSPACE_UI_SOFTWARE "Enable software surface backend" ON)
-option(PATHSPACE_UI_METAL "Enable Metal surface/presenter (Apple)" ${APPLE})
-option(PATHSPACE_ENABLE_APP "Build app-layer helpers" ON)
-option(PATHSPACE_ENABLE_EXTRA "Build optional runtime extras (PathIO providers, discovery, etc.)" ON)
 # Add options for sanitizers
 option(ENABLE_THREAD_SANITIZER "Enable Thread Sanitizer" OFF)
 option(ENABLE_ADDRESS_SANITIZER "Enable Address Sanitizer" OFF)
 option(ENABLE_UNDEFINED_SANITIZER "Enable Undefined Behavior Sanitizer" OFF)
-
-# PathIO platform backends
-# Build macOS backends automatically when on Apple; no user toggle required.
 
 # Check if Clang is used, set it to use libc++
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -77,101 +64,13 @@ elseif(ENABLE_UNDEFINED_SANITIZER)
 endif()
 
 # Architectural features permanently enabled (no gating)
-
-
 enable_testing()
 add_subdirectory(src/pathspace)
-
-add_library(bcrypt STATIC
-    third_party/libbcrypt/src/bcrypt.c
-    third_party/libbcrypt/src/crypt_blowfish.c
-    third_party/libbcrypt/src/crypt_gensalt.c
-    third_party/libbcrypt/src/wrapper.c)
-target_include_directories(bcrypt PUBLIC
-    third_party/libbcrypt/include
-    third_party/libbcrypt/include/bcrypt)
-
-add_executable(pathspace_history_inspect tools/history_inspect.cpp)
-target_link_libraries(pathspace_history_inspect PRIVATE PathSpace)
-
-add_executable(pathspace_history_savefile tools/history_savefile.cpp)
-target_link_libraries(pathspace_history_savefile PRIVATE PathSpace)
-
-add_executable(pathspace_history_cli_roundtrip tools/history_cli_roundtrip.cpp)
-target_link_libraries(pathspace_history_cli_roundtrip PRIVATE PathSpace)
-
-add_executable(pathspace_paint_screenshot_card tools/paint_screenshot_card.cpp)
-target_link_libraries(pathspace_paint_screenshot_card PRIVATE PathSpace)
-
-add_executable(pathspace_inspector_server tools/inspector_server.cpp)
-target_link_libraries(pathspace_inspector_server PRIVATE PathSpace)
-
-add_library(PathSpaceServeHtml STATIC
-    src/pathspace/web/ServeHtmlServer.cpp
-    src/pathspace/web/ServeHtmlOptions.cpp
-    src/pathspace/web/serve_html/DemoSeed.cpp
-    src/pathspace/web/serve_html/AssetPath.cpp
-    src/pathspace/web/serve_html/HtmlPayload.cpp
-    src/pathspace/web/serve_html/Metrics.cpp
-    src/pathspace/web/serve_html/TimeUtils.cpp
-    src/pathspace/web/serve_html/streaming/SseBroadcaster.cpp
-    src/pathspace/web/serve_html/routing/HtmlController.cpp
-    src/pathspace/web/serve_html/routing/AuthController.cpp
-    src/pathspace/web/serve_html/routing/HttpHelpers.cpp
-    src/pathspace/web/serve_html/auth/Credentials.cpp
-    src/pathspace/web/serve_html/auth/SessionStore.cpp
-    src/pathspace/web/serve_html/auth/OAuthGoogle.cpp)
-target_link_libraries(PathSpaceServeHtml PUBLIC PathSpace bcrypt OpenSSL::SSL OpenSSL::Crypto)
-target_include_directories(PathSpaceServeHtml PUBLIC
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src/pathspace
-)
-target_include_directories(PathSpaceServeHtml PRIVATE
-    ${cpp_httplib_SOURCE_DIR}
-)
-
-add_executable(pathspace_serve_html tools/serve_html.cpp)
-target_link_libraries(pathspace_serve_html PRIVATE PathSpaceServeHtml)
-
-add_executable(pathspace_dump_json tools/pathspace_dump_json.cpp)
-target_link_libraries(pathspace_dump_json PRIVATE PathSpace)
-
-if(PATHSPACE_ENABLE_UI)
-    add_executable(pathspace_hsat_inspect tools/hsat_inspect.cpp)
-    target_link_libraries(pathspace_hsat_inspect PRIVATE PathSpace)
-endif()
-
 add_subdirectory(tests)
-
-# Platform-specific defines for unified PathIO backends
-if(APPLE)
-    add_compile_definitions(PATHIO_BACKEND_MACOS=1)
-endif()
-
-# Examples (optional)
-option(BUILD_PATHSPACE_EXAMPLES "Build PathSpace examples" OFF)
-if(BUILD_PATHSPACE_EXAMPLES)
-    add_executable(minimal_button_example examples/minimal_button_example.cpp)
-    target_link_libraries(minimal_button_example PRIVATE PathSpace)
-    if(APPLE)
-        target_link_libraries(minimal_button_example PRIVATE
-            "-framework Cocoa"
-            "-framework Metal"
-            "-framework QuartzCore"
-            "-framework IOSurface")
-        target_compile_definitions(minimal_button_example PRIVATE PATHIO_BACKEND_MACOS=1)
-    endif()
-endif()
 
 # Documentation (Doxygen)
 option(ENABLE_DOXYGEN "Enable generating Doxygen API documentation (target: docs)" OFF)
 find_package(Doxygen QUIET)
-
-option(BUILD_PATHSPACE_BENCHMARKS "Build PathSpace benchmark binaries" OFF)
-if(BUILD_PATHSPACE_BENCHMARKS)
-    add_subdirectory(benchmarks)
-endif()
 
 if(ENABLE_DOXYGEN AND DOXYGEN_FOUND)
     set(DOXYGEN_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/docs/doxygen")

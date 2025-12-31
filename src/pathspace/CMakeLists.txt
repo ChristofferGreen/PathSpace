@@ -73,12 +73,6 @@ add_library(PathSpace
     core/Leaf.cpp
     PathSpaceVisit.cpp
     tools/PathSpaceJsonExporter.cpp
-    examples/cli/ExampleCli.cpp
-    distributed/RemoteMountProtocol.cpp
-    distributed/RemoteMountManager.cpp
-    distributed/RemoteMountServer.cpp
-    distributed/TypedPayloadBridge.cpp
-    distributed/RemoteMountTls.cpp
     history/UndoHistoryUtils.cpp
     history/UndoJournalEntry.cpp
     history/UndoJournalState.cpp
@@ -98,211 +92,9 @@ add_library(PathSpace
     type/TypeMetadataRegistry.cpp
     log/TaggedLogger.cpp
     PathSpace.cpp
-    inspector/PaintScreenshotCard.cpp
-    inspector/InspectorSnapshot.cpp
-    inspector/InspectorAcl.cpp
-    inspector/InspectorHttpServer.cpp
-    inspector/InspectorMailboxMetrics.cpp
-    inspector/InspectorSearchMetrics.cpp
-    inspector/InspectorStreamMetrics.cpp
-    inspector/InspectorUsageMetrics.cpp
-    inspector/InspectorUiAssets.cpp
-    inspector/InspectorRemoteMount.cpp
     layer/PathSpaceTrellis.cpp
-    io/IoEventsSerialization.cpp
-    runtime/IOPump.cpp
-    runtime/TelemetryControl.cpp
+    layer/PathView.cpp
 )
-
-if(PATHSPACE_ENABLE_APP)
-    target_sources(PathSpace PRIVATE app/AppPaths.cpp)
-    target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_APP=1)
-else()
-    target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_APP=0)
-endif()
-
-if(PATHSPACE_ENABLE_EXTRA)
-    target_sources(PathSpace PRIVATE
-        layer/PathView.cpp
-        layer/io/PathFileSystem.cpp
-        layer/io/DevicePushConfigNodes.cpp
-        layer/io/PathIOGamepad.cpp
-        layer/io/PathIOPointerMixer.cpp
-        layer/io/PathIOMouse.cpp
-        layer/io/PathIOKeyboard.cpp
-        layer/io/PathIODeviceDiscovery.cpp
-        layer/io/PathIOStdOut.cpp
-        io/IoTrellis.cpp
-    )
-    target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_EXTRA=1)
-else()
-    target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_EXTRA=0)
-endif()
-
-if(PATHSPACE_ENABLE_UI)
-    find_package(PkgConfig QUIET)
-    if(PkgConfig_FOUND)
-        pkg_check_modules(HARFBUZZ QUIET IMPORTED_TARGET harfbuzz)
-        if(HARFBUZZ_FOUND)
-            target_link_libraries(PathSpace PRIVATE PkgConfig::HARFBUZZ)
-            target_compile_definitions(PathSpace PRIVATE PATHSPACE_HAS_HARFBUZZ=1)
-        endif()
-    endif()
-
-    target_sources(PathSpace PRIVATE
-        ui/Helpers.cpp
-        ui/DebugFlags.cpp
-        ui/SceneRuntime.cpp
-        ui/RuntimeAPI.cpp
-        ui/RendererRuntime.cpp
-        ui/SurfaceRuntime.cpp
-        ui/WindowRuntime.cpp
-        ui/AppRuntime.cpp
-        ui/WidgetRuntime.cpp
-        ui/WidgetBindingsRuntime.cpp
-        ui/WidgetInputRuntime.cpp
-        ui/WidgetTrace.cpp
-        ui/WidgetFocusRuntime.cpp
-        ui/WidgetReducersRuntime.cpp
-        ui/declarative/InputTask.cpp
-        ui/declarative/Descriptor.cpp
-        ui/declarative/DescriptorDetail.cpp
-        ui/declarative/Detail.cpp
-        ui/declarative/Reducers.cpp
-        ui/declarative/SceneLifecycle.cpp
-        ui/declarative/Theme.cpp
-        ui/declarative/ThemeConfig.cpp
-        ui/declarative/Runtime.cpp
-        ui/declarative/Schema.cpp
-        ui/declarative/Telemetry.cpp
-        ui/declarative/HistoryBinding.cpp
-        ui/declarative/Text.cpp
-        ui/declarative/PaintSurfaceRuntime.cpp
-        ui/declarative/PaintSurfaceUploader.cpp
-        ui/declarative/StackReadiness.cpp
-        ui/declarative/SceneReadiness.cpp
-        ui/declarative/WidgetEventTrellis.cpp
-        ui/declarative/WidgetEventTrellisWorker.cpp
-        ui/declarative/WidgetEventPointerHandlers.cpp
-        ui/declarative/WidgetEventFocusHandlers.cpp
-        ui/declarative/WidgetEventHelpers.cpp
-        ui/declarative/WidgetStateMutators.cpp
-        ui/declarative/WidgetCapsule.cpp
-        ui/declarative/WidgetRenderPackage.cpp
-        ui/declarative/WidgetPrimitives.cpp
-        ui/declarative/Widgets.cpp
-        ui/declarative/widgets/Common.cpp
-        ui/declarative/widgets/Button.cpp
-        ui/declarative/widgets/Toggle.cpp
-        ui/declarative/widgets/Slider.cpp
-        ui/declarative/widgets/Label.cpp
-        ui/declarative/widgets/List.cpp
-        ui/declarative/widgets/Tree.cpp
-        ui/declarative/widgets/Stack.cpp
-        ui/declarative/widgets/InputField.cpp
-        ui/declarative/widgets/PaintSurface.cpp
-        ui/FontResources.cpp
-        ui/FontAtlasCache.cpp
-        ui/ThemeResources.cpp
-        ui/FontManager.cpp
-        ui/DiagnosticsRuntime.cpp
-        ui/RendererSnapshotStore.cpp
-        ui/SceneSnapshotBuilder.cpp
-        ui/SceneSnapshotBuilderDecode.cpp
-        ui/SceneSnapshotBuilderFingerprint.cpp
-        ui/SceneUtilities.cpp
-        ui/ProgressiveSurfaceBuffer.cpp
-        ui/PathSurfaceSoftware.cpp
-        ui/MaterialShaderKey.cpp
-        ui/PathRenderer2DDamage.cpp
-        ui/PathRenderer2DEncode.cpp
-        ui/PathRenderer2DColor.cpp
-        ui/PathRenderer2DDetailCommon.cpp
-        ui/PathRenderer2DDetailDraw.cpp
-        ui/PathRenderer2DDetailEncode.cpp
-        ui/PathRenderer2D.cpp
-        ui/scenegraph/RenderCommandStore.cpp
-        ui/scenegraph/TileGrid.cpp
-        ui/scenegraph/TileDirtyTracker.cpp
-        ui/scenegraph/SoftwareTileRenderer.cpp
-        ui/screenshot/ScreenshotService.cpp
-        ui/screenshot/ScreenshotSlot.cpp
-        ui/screenshot/DeclarativeScreenshot.cpp
-        ui/screenshot/DeclarativeScreenshotCli.cpp
-        examples/paint/PaintExampleNewUI.cpp
-        $<$<BOOL:APPLE>:ui/LocalWindowBridge.mm>
-        $<$<BOOL:APPLE>:ui/PathWindowView.mm>
-        $<$<NOT:$<BOOL:APPLE>>:ui/PathWindowView.cpp>
-        ui/ImageCache.cpp
-        ui/HtmlAdapter.cpp
-        ui/HtmlRunner.cpp
-        $<$<AND:$<BOOL:PATHSPACE_UI_METAL>,$<BOOL:APPLE>>:ui/PathSurfaceMetal.mm>
-        $<$<AND:$<BOOL:PATHSPACE_UI_METAL>,$<BOOL:APPLE>>:ui/PathRenderer2DMetal.mm>
-    )
-    target_compile_definitions(PathSpace PUBLIC PATHSPACE_ENABLE_UI=1)
-    if(PATHSPACE_UI_SOFTWARE)
-        target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_SOFTWARE=1)
-    else()
-        target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_SOFTWARE=0)
-    endif()
-    if(PATHSPACE_UI_METAL)
-        target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_METAL=1)
-        if(APPLE)
-            set_source_files_properties(ui/PathSurfaceMetal.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-            set_source_files_properties(ui/PathRenderer2DMetal.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-            target_link_libraries(PathSpace PRIVATE
-                "-framework Metal"
-                "-framework QuartzCore"
-            )
-        endif()
-    else()
-        target_compile_definitions(PathSpace PUBLIC PATHSPACE_UI_METAL=0)
-    endif()
-    if(APPLE)
-        set_source_files_properties(ui/PathWindowView.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-        set_source_files_properties(ui/LocalWindowBridge.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-        target_link_libraries(PathSpace PRIVATE "-framework Foundation")
-        target_link_libraries(PathSpace PRIVATE "-framework IOSurface")
-        target_link_libraries(PathSpace PRIVATE "-framework Cocoa")
-        target_link_libraries(PathSpace PRIVATE "-framework CoreText" "-framework CoreGraphics")
-    endif()
-else()
-    target_compile_definitions(PathSpace PUBLIC
-        PATHSPACE_ENABLE_UI=0
-        PATHSPACE_UI_SOFTWARE=0
-        PATHSPACE_UI_METAL=0
-    )
-endif()
-
-# macOS backend options and integration
-if(APPLE)
-    if(PATHSPACE_ENABLE_EXTRA)
-        # Option to enable CGEventTap-based mouse/keyboard OS backend in providers
-        option(PATHSPACE_ENABLE_MOUSE_OS_TAP "Enable macOS CGEventTap backend in IO providers" OFF)
-
-        # Define PATHIO_BACKEND_MACOS only when OS backends are enabled (prevents CGEventTap code in unit tests)
-        if(PATHSPACE_ENABLE_MOUSE_OS_TAP)
-            target_compile_definitions(PathSpace PRIVATE PATHIO_BACKEND_MACOS=1)
-        endif()
-
-        # Add ObjC++ GameController helper and enable ARC (always safe; uses weak imports and dynamic selectors)
-        target_sources(PathSpace PRIVATE layer/macos/GameControllerHaptics.mm)
-        set_source_files_properties(layer/macos/GameControllerHaptics.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-
-        # Link required Apple frameworks
-        # - Foundation, Cocoa for Objective‑C runtime and windowing helpers (used by examples and helpers)
-        # - GameController for haptics/input helper (weak/dynamic – linking is safe if framework present)
-        # - ApplicationServices only when CGEventTap backend is enabled (provides CGEventTap symbols)
-        target_link_libraries(PathSpace PRIVATE
-            "-framework Foundation"
-            "-framework Cocoa"
-            "-framework GameController"
-        )
-        if(PATHSPACE_ENABLE_MOUSE_OS_TAP)
-            target_link_libraries(PathSpace PRIVATE "-framework ApplicationServices")
-        endif()
-    endif()
-endif()
 
 target_compile_options(PathSpace PUBLIC "-Wno-deprecated")
 
@@ -332,9 +124,6 @@ endif()
 
 target_link_libraries(PathSpace
     PRIVATE
-    OpenSSL::SSL
-    OpenSSL::Crypto
-    Threads::Threads
 
     # glaze::glaze
     # foonathan_memory
@@ -342,19 +131,11 @@ target_link_libraries(PathSpace
 
 set(_pathspace_public_headers
     PathSpace.hpp
-    tools/PathSpaceJsonExporter.hpp
-    tools/PathSpaceJsonConverters.hpp
     layer/PathSpaceTrellis.hpp
 )
 if(PATHSPACE_ENABLE_EXTRA)
     list(APPEND _pathspace_public_headers
-        layer/io/PathIOMouse.hpp
-        layer/io/PathIOKeyboard.hpp
-        layer/io/PathIOStdOut.hpp
         layer/PathAlias.hpp
-        layer/io/PathIODeviceDiscovery.hpp
-        layer/io/PathIOPointerMixer.hpp
-        layer/io/PathIOGamepad.hpp
     )
 endif()
 

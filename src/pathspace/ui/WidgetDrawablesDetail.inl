@@ -1,8 +1,0 @@
-#include "WidgetDrawablesDetailCommon.inl"
-#include "WidgetDrawablesDetailButton.inl"
-#include "WidgetDrawablesDetailToggle.inl"
-#include "WidgetDrawablesDetailSlider.inl"
-#include "WidgetDrawablesDetailList.inl"
-#include "WidgetDrawablesDetailStack.inl"
-#include "WidgetDrawablesDetailTree.inl"
-#include "WidgetDrawablesDetailText.inl"
