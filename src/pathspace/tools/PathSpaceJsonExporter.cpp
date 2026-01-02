@@ -527,6 +527,43 @@ auto PathSpaceJsonExporter::Export(PathSpaceBase& space, PathSpaceJsonOptions co
     }
 
     auto indent = opts.dumpIndent;
+
+    if (opts.flatPaths) {
+        auto simplifyValues = [&](Json const& vals) -> Json {
+            if (!vals.is_array()) return vals;
+            if (opts.flatSimpleValues) {
+                if (vals.size() == 1 && vals[0].contains("value")) {
+                    return vals[0]["value"];
+                }
+                bool allHaveValue = std::all_of(vals.begin(), vals.end(), [](Json const& v) {
+                    return v.is_object() && v.contains("value");
+                });
+                if (allHaveValue) {
+                    Json arr = Json::array();
+                    for (auto const& v : vals) arr.push_back(v["value"]);
+                    return arr;
+                }
+            }
+            return vals;
+        };
+        Json flat = Json::object();
+        auto flatten = [&](auto&& self, Json const& node, std::string const& path) -> void {
+            if (node.contains("values")) {
+                flat[path] = simplifyValues(node["values"]);
+            }
+            if (node.contains("children") && node["children"].is_object()) {
+                for (auto const& [childName, childNode] : node["children"].items()) {
+                    std::string childPath = path == "/" ? ("/" + childName) : (path + "/" + childName);
+                    self(self, childNode, childPath);
+                }
+            }
+        };
+        if (root.contains(opts.visit.root) && root[opts.visit.root].is_object()) {
+            flatten(flatten, root[opts.visit.root], opts.visit.root);
+        }
+        return flat.dump(indent < 0 ? -1 : indent);
+    }
+
     if (indent < 0) {
         return root.dump();
     }

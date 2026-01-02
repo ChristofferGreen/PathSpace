@@ -77,6 +77,8 @@ struct PathSpaceJsonOptions {
     bool         includeOpaquePlaceholders = false;
     bool         includeDiagnostics        = false;
     bool         includeStructureFields    = false;
+    bool         flatPaths                 = false; // when true, emit flat path->values JSON
+    bool         flatSimpleValues          = false; // when true, simplify flat values to raw scalars/arrays when possible
     Mode         mode                      = Mode::Minimal;
     int          dumpIndent                = 2;
 };
