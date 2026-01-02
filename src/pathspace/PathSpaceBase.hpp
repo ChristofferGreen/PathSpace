@@ -63,15 +63,14 @@ struct VisitOptions {
 struct PathSpaceJsonOptions {
     enum class Mode { Minimal, Debug };
 
-    PathSpaceJsonOptions() {
-        // Hierarchical exports default to the local tree; nested spaces opt in.
-        visit.includeNestedSpaces = false;
-        // Defaults are unbounded so callers opt into any truncation explicitly.
-        visit.maxDepth    = VisitOptions::kUnlimitedDepth;
-        visit.maxChildren = VisitOptions::kUnlimitedChildren;
-    }
-
-    VisitOptions visit{};
+    // Defaults mirror the old ctor: nested spaces opt-in; traversal unbounded.
+    VisitOptions visit{
+        .root                = "/",
+        .maxDepth            = VisitOptions::kUnlimitedDepth,
+        .maxChildren         = VisitOptions::kUnlimitedChildren,
+        .includeNestedSpaces = false,
+        .includeValues       = true,
+    };
     std::size_t  maxQueueEntries           = std::numeric_limits<std::size_t>::max();
     bool         includeMetadata           = false;
     bool         includeOpaquePlaceholders = false;
