@@ -130,7 +130,6 @@ def capture_once(
     cmd.extend(extra_args)
     env = os.environ.copy()
     env.setdefault("PATHSPACE_ENABLE_METAL_UPLOADS", "1")
-    env.setdefault("PATHSPACE_UI_METAL", "ON")
     env["PAINT_EXAMPLE_BASELINE_TAG"] = tag
     env["PAINT_EXAMPLE_BASELINE_WIDTH"] = str(entry["width"])
     env["PAINT_EXAMPLE_BASELINE_HEIGHT"] = str(entry["height"])

@@ -267,11 +267,6 @@ PATHSPACE_CMAKE_ARGS+=" -DCMAKE_OBJCXX_COMPILER=${CLANGXX_BIN}"
 
 METAL_TEST_ARGS=()
 METAL_TESTS_REQUESTED=0
-if [[ "$(uname)" == "Darwin" ]] && [[ "${DISABLE_METAL_TESTS:-0}" != "1" ]]; then
-  PATHSPACE_CMAKE_ARGS+=" -DPATHSPACE_UI_METAL=ON"
-  METAL_TEST_ARGS+=(--enable-metal-tests)
-  METAL_TESTS_REQUESTED=1
-fi
 BASE_PATHSPACE_CMAKE_ARGS="$PATHSPACE_CMAKE_ARGS"
 
 say "Repository root: $ROOT"
@@ -282,7 +277,7 @@ if [[ "${SKIP_LOOP_TESTS:-0}" != "1" ]]; then
   say "Building and running tests with loop=5"
   # scripts/compile.sh takes care of configure+build+tests
   # Prefer Apple clang for both C++ and ObjC++ to support ObjC headers/blocks
-  run_with_hard_timeout "compile/test loop" PATHSPACE_CMAKE_ARGS="$PATHSPACE_CMAKE_ARGS" ./scripts/compile.sh --clean --test --loop=5 "$BUILD_TYPE_FLAG" --jobs "$JOBS" "${METAL_TEST_ARGS[@]}"
+  run_with_hard_timeout "compile/test loop" PATHSPACE_CMAKE_ARGS="$PATHSPACE_CMAKE_ARGS" ./scripts/compile.sh --clean --test --loop=5 "$BUILD_TYPE_FLAG" --jobs "$JOBS"
   ok "Test loop completed successfully"
 else
   warn "Skipping test loop (SKIP_LOOP_TESTS=1)"
@@ -320,71 +315,17 @@ if [[ ${#SANITIZER_RUNS[@]} -gt 0 ]]; then
       sanitize_args+=("--loop=$local_loop")
     fi
     say "Running ${upper_sanitizer} sanitizer build/test pass"
-    run_with_hard_timeout "${upper_sanitizer} sanitizer compile/test" PATHSPACE_CMAKE_ARGS="$BASE_PATHSPACE_CMAKE_ARGS -DPATHSPACE_UI_METAL=OFF" \
+    run_with_hard_timeout "${upper_sanitizer} sanitizer compile/test" PATHSPACE_CMAKE_ARGS="$BASE_PATHSPACE_CMAKE_ARGS" \
       ./scripts/compile.sh "${sanitize_args[@]}"
     ok "${upper_sanitizer} sanitizer pass succeeded"
   done
 fi
 
-if [[ "${SKIP_LOOP_TESTS:-0}" != "1" ]]; then
-  if [[ ! -f "$FONT_ATLAS_ARTIFACT" ]]; then
-    err "Missing font atlas artifact from widget gallery UITest: $FONT_ATLAS_ARTIFACT"
-    err "Ensure PathSpaceUITests produced widget_gallery_font_assets.bin (persistence regression guard)."
-    exit 1
-  fi
-  ok "Captured font atlas artifact at $FONT_ATLAS_ARTIFACT"
-else
-  warn "Skipping font atlas artifact guard (SKIP_LOOP_TESTS=1)"
-fi
+warn "Skipping font atlas artifact guard (UI/atlas artifacts removed)."
 
-if [[ "${SKIP_LOOP_TESTS:-0}" != "1" && "${SKIP_HISTORY_CLI:-0}" != "1" ]]; then
-  say "Running history savefile CLI roundtrip harness"
-  if [[ ! -x ./build/pathspace_history_cli_roundtrip ]]; then
-    err "Missing ./build/pathspace_history_cli_roundtrip (build step did not produce harness)"
-    exit 1
-  fi
-  archive_stamp="$(date +"%Y%m%d-%H%M%S")"
-  archive_dir="./build/test-logs/history_cli_roundtrip/pre-push_${archive_stamp}"
-  mkdir -p "$archive_dir"
-  if PATHSPACE_CLI_ROUNDTRIP_ARCHIVE_DIR="$archive_dir" run_with_hard_timeout "history_cli_roundtrip" ./build/pathspace_history_cli_roundtrip; then
-    ok "History savefile CLI roundtrip succeeded"
-    scripts/history_cli_roundtrip_ingest.py \
-      --artifacts-root "build/test-logs" \
-      --output "build/test-logs/history_cli_roundtrip/index.json" \
-      --relative-base "${PWD}/build" \
-      --html-output "build/test-logs/history_cli_roundtrip/dashboard.html" \
-      --quiet || warn "history telemetry aggregation failed"
-  else
-    err "History savefile CLI roundtrip failed"
-    exit 1
-  fi
-else
-  warn "Skipping history savefile CLI roundtrip (SKIP_HISTORY_CLI=1)"
-fi
+warn "Skipping history savefile CLI roundtrip (harness removed)."
 
-# 2) Build the example app (non-sim) unless skipped
-if [[ "${SKIP_EXAMPLE:-0}" != "1" ]]; then
-  say "Configuring example app (minimal_button_example)"
-  # Configure example via CMake cache; respect PATHSPACE_CMAKE_ARGS and optional macOS backend flag
-  run_with_hard_timeout "cmake configure" cmake -S . -B build \
-    -DBUILD_PATHSPACE_EXAMPLES=ON \
-    -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-    ${PATHSPACE_CMAKE_ARGS:-}
-
-  say "Building example app"
-  run_with_hard_timeout "cmake build minimal_button_example" cmake --build build -j "$JOBS" --target minimal_button_example
-
-  # 3) Smoke run the example briefly to ensure it starts (no simulation; expects real input)
-  say "Running minimal_button_example for a brief smoke test (3s)..."
-  if run_with_timeout 3 ./build/minimal_button_example; then
-    ok "minimal_button_example smoke test OK"
-  else
-    err "minimal_button_example failed to start cleanly"
-    exit 1
-  fi
-else
-  warn "Skipping example app smoke test (SKIP_EXAMPLE=1)"
-fi
+# Example app build/smoke test removed (minimal_button_example not required).
 
 ok "Local pre-push checks passed"
 exit 0

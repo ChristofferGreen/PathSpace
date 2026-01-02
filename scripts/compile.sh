@@ -37,7 +37,7 @@ PER_TEST_TIMEOUT=""  # override seconds per test; default 60 (single), 120 (when
 EXTRA_ARGS=""        # extra args passed to test executable (doctest)
 UI_TEST_EXTRA_ARGS="${PATHSPACE_UI_TEST_EXTRA_ARGS:-}" # extra args passed only to PathSpaceUITests
 DOCS=0               # generate Doxygen docs if 1
-ENABLE_METAL_TESTS=1 # Metal presenter tests run by default
+ENABLE_METAL_TESTS=0 # Metal presenter tests removed
 SIZE_REPORT=0
 SIZE_BASELINE=""
 SIZE_WRITE_BASELINE=""
@@ -82,8 +82,8 @@ Options:
       --args "..."           Extra arguments passed to the test runner (doctest)
       --ui-test-extra-args "..."
                              Extra arguments passed only to PathSpaceUITests (e.g. "--success")
-      --enable-metal-tests   (default) Build with PATHSPACE_UI_METAL and run Metal presenter tests.
-      --disable-metal-tests  Skip building/running the Metal presenter tests.
+      --enable-metal-tests   (no-op; Metal presenter tests removed)
+      --disable-metal-tests  (no-op)
       --loop-keep-logs LABELS  Comma/space separated labels whose logs are preserved even on success
                              (default when --loop is used: PathSpaceUITests). Use "none" to disable.
       --loop-label LABEL       Restrict --loop runs to one or more labels (repeat or comma-separate, supports globs)
@@ -276,11 +276,9 @@ while [[ $# -gt 0 ]]; do
       fi
       ;;
     --enable-metal-tests)
-      ENABLE_METAL_TESTS=1
       METAL_FLAG_EXPLICIT=1
       ;;
     --disable-metal-tests)
-      ENABLE_METAL_TESTS=0
       METAL_FLAG_EXPLICIT=1
       ;;
     --loop-keep-logs)
@@ -353,19 +351,12 @@ if [[ -n "$SANITIZER" && -z "$BUILD_DIR" ]]; then
   BUILD_DIR="$ROOT_DIR/build-$SANITIZER"
 fi
 
-if [[ -n "$SANITIZER" && "$METAL_FLAG_EXPLICIT" -eq 0 ]]; then
-  ENABLE_METAL_TESTS=0
-fi
+ENABLE_METAL_TESTS=0
 
 # ----------------------------
 # Validations and setup
 # ----------------------------
 require_tool cmake
-if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
-  if [[ "$(uname)" != "Darwin" ]]; then
-    die "--enable-metal-tests is only supported on macOS hosts"
-  fi
-fi
 
 if [[ -z "$BUILD_DIR" ]]; then
   BUILD_DIR="$BUILD_DIR_DEFAULT"
@@ -419,11 +410,6 @@ esac
 
 # Always export compile_commands.json (redundant with project default, but safe)
 CMAKE_FLAGS+=("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON")
-# Always enable UI tests when building via this helper so CI/push runs cover them.
-CMAKE_FLAGS+=("-DPATHSPACE_ENABLE_UI=ON" "-DPATHSPACE_UI_SOFTWARE=ON")
-if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
-  CMAKE_FLAGS+=("-DPATHSPACE_UI_METAL=ON")
-fi
 if [[ "$SIZE_REPORT" -eq 1 || -n "$SIZE_WRITE_BASELINE" || "$TEST" -eq 1 ]]; then
   CMAKE_FLAGS+=("-DBUILD_PATHSPACE_EXAMPLES=ON")
 fi
@@ -459,9 +445,6 @@ if [[ -n "$GENERATOR" ]]; then
   CONFIGURE_CMD+=( -G "$GENERATOR" )
 fi
 CONFIGURE_CMD+=( "${CMAKE_FLAGS[@]}" )
-if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
-  info "Metal presenter tests enabled (PATHSPACE_UI_METAL=ON, PATHSPACE_ENABLE_METAL_UPLOADS=1 for test runs)"
-fi
 
 if [[ "$VERBOSE" -eq 1 ]]; then
   echo "Configure: ${CONFIGURE_CMD[*]}"
@@ -596,10 +579,6 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
     if [[ -n "$TEST_LOG_MANIFEST" ]]; then
       export PATHSPACE_TEST_LOG_MANIFEST="$TEST_LOG_MANIFEST"
       TEST_ENV_FLAGS+=("--env" "PATHSPACE_TEST_LOG_MANIFEST=${TEST_LOG_MANIFEST}")
-    fi
-    if [[ "$ENABLE_METAL_TESTS" -eq 1 ]]; then
-      TEST_ENV_FLAGS+=("--env" "PATHSPACE_ENABLE_METAL_UPLOADS=1")
-      TEST_ENV_FLAGS+=("--env" "PATHSPACE_UI_METAL=ON")
     fi
     if [[ "$SANITIZER" == "asan" ]]; then
       export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=1:halt_on_error=1:strict_init_order=1:color=always}"
