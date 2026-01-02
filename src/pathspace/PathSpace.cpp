@@ -3,6 +3,7 @@
 #include "core/PathSpaceContext.hpp"
 #include "log/TaggedLogger.hpp"
 #include "path/ConcretePath.hpp"
+#include "core/NodeData.hpp"
 #include <algorithm>
 #include <cstdlib>
 #include <mutex>
@@ -124,6 +125,43 @@ auto canonicalize(std::string_view path) -> Expected<std::string> {
 
 } // namespace
 
+namespace {
+
+auto appendComponent(std::string const& base, std::string_view component) -> std::string {
+    if (base.empty() || base == "/") {
+        return std::string{"/"}.append(component);
+    }
+    if (base.back() == '/') {
+        std::string result = base;
+        result.append(component);
+        return result;
+    }
+    std::string result = base;
+    result.push_back('/');
+    result.append(component);
+    return result;
+}
+
+auto makeMountPrefix(std::string const& spacePrefix, std::string const& path) -> std::string {
+    if (spacePrefix.empty()) {
+        return path;
+    }
+    std::string result = spacePrefix;
+    result.append(path);
+    return result;
+}
+
+auto accumulate(PathSpace::CopyStats& into, PathSpace::CopyStats const& from) -> void {
+    into.nodesVisited += from.nodesVisited;
+    into.payloadsCopied += from.payloadsCopied;
+    into.payloadsSkipped += from.payloadsSkipped;
+    into.valuesCopied += from.valuesCopied;
+    into.nestedSpacesCopied += from.nestedSpacesCopied;
+    into.nestedSpacesSkipped += from.nestedSpacesSkipped;
+}
+
+} // namespace
+
 PathSpace::PathSpace(TaskPool* pool) {
     sp_log("PathSpace::PathSpace", "Function Called");
     // Ensure a non-null executor without relying on a global singleton.
@@ -147,6 +185,39 @@ PathSpace::PathSpace(std::shared_ptr<PathSpaceContext> context, std::string pref
     if (this->context_ && this->context_->executor()) {
         this->setExecutor(this->context_->executor());
     }
+}
+
+PathSpace::PathSpace(PathSpace const& other) {
+    sp_log("PathSpace::PathSpace(copy)", "Function Called");
+    this->pool = other.pool ? other.pool : &TaskPool::Instance();
+    Executor* exec = static_cast<Executor*>(this->pool);
+    this->context_ = std::make_shared<PathSpaceContext>(exec);
+    this->setExecutor(exec);
+    this->prefix = other.prefix;
+    this->copyFrom(other, nullptr);
+}
+
+auto PathSpace::operator=(PathSpace const& other) -> PathSpace& {
+    sp_log("PathSpace::operator=(copy)", "Function Called");
+    if (this == &other) {
+        return *this;
+    }
+    this->clear();
+    this->ownedPool.reset();
+    this->pool = other.pool ? other.pool : &TaskPool::Instance();
+    Executor* exec = static_cast<Executor*>(this->pool);
+    this->context_ = std::make_shared<PathSpaceContext>(exec);
+    this->setExecutor(exec);
+    this->prefix = other.prefix;
+    this->copyFrom(other, nullptr);
+    return *this;
+}
+
+auto PathSpace::clone(CopyStats* stats) const -> PathSpace {
+    PathSpace copy{this->pool ? this->pool : &TaskPool::Instance()};
+    copy.prefix = this->prefix;
+    copy.copyFrom(*this, stats);
+    return copy;
 }
 void PathSpace::adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix) {
     sp_log("PathSpace::adoptContextAndPrefix", "Function Called");
@@ -467,6 +538,71 @@ auto PathSpace::listChildrenCanonical(std::string_view canonicalPath) const -> s
     }
 
     return {};
+}
+
+void PathSpace::copyNodeRecursive(Node const& src,
+                                  Node& dst,
+                                  std::shared_ptr<PathSpaceContext> const& context,
+                                  std::string const& basePrefix,
+                                  std::string const& currentPath,
+                                  CopyStats& stats) {
+    stats.nodesVisited += 1;
+
+    PathSpaceBase const* nestedSpace = nullptr;
+    {
+        std::lock_guard<std::mutex> guard(src.payloadMutex);
+        if (src.data) {
+            auto snapshot = src.data->serializeSnapshot();
+            if (snapshot) {
+                auto restored = NodeData::deserializeSnapshot(*snapshot);
+                if (restored) {
+                    dst.data = std::make_unique<NodeData>(std::move(*restored));
+                    stats.payloadsCopied += 1;
+                    stats.valuesCopied += dst.data->valueCount();
+                } else {
+                    stats.payloadsSkipped += 1;
+                }
+            } else {
+                stats.payloadsSkipped += 1;
+            }
+        }
+        if (src.nested) {
+            nestedSpace = src.nested.get();
+        }
+    }
+
+    if (nestedSpace) {
+        if (auto nestedPathSpace = dynamic_cast<PathSpace const*>(nestedSpace)) {
+            CopyStats nestedStats{};
+            auto nestedCopy = nestedPathSpace->clone(&nestedStats);
+            accumulate(stats, nestedStats);
+            auto mountPrefix = makeMountPrefix(basePrefix, currentPath);
+            nestedCopy.adoptContextAndPrefix(context, mountPrefix);
+            dst.nested = std::make_unique<PathSpace>(std::move(nestedCopy));
+            stats.nestedSpacesCopied += 1;
+        } else {
+            stats.nestedSpacesSkipped += 1;
+        }
+    }
+
+    src.children.for_each([&](auto const& kv) {
+        auto const& name    = kv.first;
+        auto const& child   = kv.second;
+        Node&       dstChild = dst.getOrCreateChild(name);
+        auto childPath        = appendComponent(currentPath, name);
+        copyNodeRecursive(*child, dstChild, context, basePrefix, childPath, stats);
+    });
+}
+
+void PathSpace::copyFrom(PathSpace const& other, CopyStats* stats) {
+    CopyStats local{};
+    this->leaf.clear();
+    Node&       dstRoot = this->leaf.rootNode();
+    Node const& srcRoot = other.leaf.rootNode();
+    copyNodeRecursive(srcRoot, dstRoot, this->context_, this->prefix, "/", local);
+    if (stats) {
+        *stats = local;
+    }
 }
 
 } // namespace SP

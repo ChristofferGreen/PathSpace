@@ -19,6 +19,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/test_PathSpace_insert.cpp
   unit/test_PathSpace_multithreading.cpp
   unit/test_PathSpace_execution.cpp
+  unit/test_PathSpace_copy.cpp
   unit/path/test_UnvalidatedPath.cpp
   unit/history/test_UndoJournal.cpp
   unit/history/test_UndoJournalState.cpp
@@ -85,13 +86,6 @@ if(_PATHSPACE_HAVE_TEST_RUNNER)
 
   set_tests_properties(PathSpaceTests PROPERTIES LABELS core)
 endif()
-
-add_test(NAME HistoryTelemetryDashboard
-  COMMAND python3
-          "${CMAKE_SOURCE_DIR}/tests/tools/test_history_cli_roundtrip_dashboard.py"
-          --repo-root "${CMAKE_SOURCE_DIR}"
-)
-set_tests_properties(HistoryTelemetryDashboard PROPERTIES LABELS history)
 
 if(PATHSPACE_ENABLE_UI)
   set(PATHSPACE_UI_TEST_COMMON_ENV

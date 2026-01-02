@@ -38,6 +38,38 @@ public:
      */
     explicit PathSpace(std::shared_ptr<PathSpaceContext> context, std::string prefix = {});
 
+    /**
+     * @brief Copy-construct a PathSpace.
+     * Copies the tree structure and serialized values. Execution payloads or
+     * other uncopyable data are skipped silently. The copied PathSpace reuses
+     * the same TaskPool/executor as the source but owns an independent context
+     * (no wait registrations are shared).
+     */
+    PathSpace(PathSpace const& other);
+
+    /**
+     * @brief Copy-assign a PathSpace with best-effort payload copying.
+     * Existing data is cleared; execution payloads are skipped. The resulting
+     * PathSpace shares the source TaskPool.
+     */
+    auto operator=(PathSpace const& other) -> PathSpace&;
+
+    struct CopyStats {
+        std::size_t nodesVisited         = 0;
+        std::size_t payloadsCopied       = 0;
+        std::size_t payloadsSkipped      = 0;
+        std::size_t valuesCopied         = 0;
+        std::size_t nestedSpacesCopied   = 0;
+        std::size_t nestedSpacesSkipped  = 0;
+    };
+
+    /**
+     * @brief Create a deep structural copy of this PathSpace.
+     * @param stats Optional pointer populated with copy outcomes.
+     * @return New PathSpace sharing the same TaskPool as the source.
+     */
+    [[nodiscard]] auto clone(CopyStats* stats = nullptr) const -> PathSpace;
+
     ~PathSpace();
 
     virtual auto clear() -> void;
@@ -85,6 +117,15 @@ protected:
     // If non-null, this PathSpace owns the TaskPool and will shut it down and destroy it at teardown.
     std::unique_ptr<TaskPool> ownedPool;
     Leaf        leaf;
+
+private:
+    void copyFrom(PathSpace const& other, CopyStats* stats);
+    static void copyNodeRecursive(Node const& src,
+                                  Node& dst,
+                                  std::shared_ptr<PathSpaceContext> const& context,
+                                  std::string const& basePrefix,
+                                  std::string const& currentPath,
+                                  CopyStats& stats);
 
 };
 
