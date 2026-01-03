@@ -26,6 +26,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/history/test_UndoJournalPersistence.cpp
   unit/history/test_UndoableSpace.cpp
   unit/pathspace/test_PathSpaceJsonExporter.cpp
+  unit/test_BoundedPathSpace.cpp
   test_main.cpp
 )
 

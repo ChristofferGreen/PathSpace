@@ -388,6 +388,8 @@ private:
     friend class PathAlias;
     friend class PathSpaceTrellis;
     friend class History::UndoableSpace;
+    friend class BoundedPathSpace;
+    template <typename T> friend class BoundedPathSpaceT;
 
     // Core virtual hooks implemented by concrete spaces.
     virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn                                                      = 0;
