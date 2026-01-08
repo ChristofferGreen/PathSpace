@@ -40,6 +40,10 @@ struct NodeData {
     auto serialize(const InputData& inputData) -> std::optional<Error>;
     auto deserialize(void* obj, const InputMetadata& inputMetadata) const -> std::optional<Error>;
     auto deserializePop(void* obj, const InputMetadata& inputMetadata) -> std::optional<Error>;
+    auto deserializeIndexed(std::size_t matchIndex,
+                            InputMetadata const& inputMetadata,
+                            bool doPop,
+                            void* obj) -> std::optional<Error>;
     auto popFrontSerialized(NodeData& destination) -> std::optional<Error>;
     auto empty() const -> bool;
     // Return a Future aligned with the front task (if present)

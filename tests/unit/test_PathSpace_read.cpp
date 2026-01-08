@@ -54,6 +54,19 @@ TEST_CASE("PathSpace Read") {
         CHECK(ret2.value() == 56);
     }
 
+    SUBCASE("Indexed PathSpace Read returns nth value without pop") {
+        for (int i = 0; i < 5; ++i) {
+            CHECK(pspace.insert("/ints", i).nbrValuesInserted == 1);
+        }
+        auto ret = pspace.read<int>("/ints[3]");
+        REQUIRE(ret.has_value());
+        CHECK(ret.value() == 3);
+        // Front of queue remains unchanged
+        auto front = pspace.read<int>("/ints");
+        REQUIRE(front.has_value());
+        CHECK(front.value() == 0);
+    }
+
     SUBCASE("Simple PathSpace Read Function Pointer Execution") {
         using TestFuncPtr = int (*)();
         TestFuncPtr f     = []() -> int { return 58; };

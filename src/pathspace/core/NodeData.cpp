@@ -12,6 +12,8 @@
 #include <condition_variable>
 #include <functional>
 #include <atomic>
+#include <vector>
+#include <limits>
 
 namespace {
 constexpr std::uint32_t HISTORY_PAYLOAD_VERSION = 2;
@@ -172,6 +174,122 @@ auto NodeData::deserialize(void* obj, const InputMetadata& inputMetadata) const 
 auto NodeData::deserializePop(void* obj, const InputMetadata& inputMetadata) -> std::optional<Error> {
     sp_log("NodeData::deserializePop", "Function Called");
     return this->deserializeImpl(obj, inputMetadata, true);
+}
+
+auto NodeData::deserializeIndexed(std::size_t matchIndex,
+                                  InputMetadata const& inputMetadata,
+                                  bool doPop,
+                                  void* obj) -> std::optional<Error> {
+    sp_log("NodeData::deserializeIndexed", "Function Called");
+
+    if (this->types.empty()) {
+        return Error{Error::Code::NoObjectFound, "No data available for deserialization"};
+    }
+
+    // Fast path: if caller asks for index 0 and the front matches type/category, reuse existing logic.
+    if (matchIndex == 0) {
+        auto const& front = this->types.front();
+        if (front.category != DataCategory::Execution && front.category != DataCategory::UniquePtr
+            && front.typeInfo == inputMetadata.typeInfo
+            && front.category == inputMetadata.dataCategory) {
+            return this->deserializeImpl(obj, inputMetadata, doPop);
+        }
+        // Otherwise fall through to search for the first matching data payload.
+    }
+
+    // Walk the queues to locate the Nth value (excluding executions/nested).
+    std::size_t serializedIdx        = 0; // position within valueSizes / serialized payloads
+    std::size_t absoluteValueIndex   = 0; // counts all materialized values
+    std::size_t byteOffset           = 0; // offset from current virtual front into data buffer
+    std::size_t targetTypeIndex      = std::numeric_limits<std::size_t>::max();
+    std::size_t targetValueSize      = 0;
+    std::size_t targetSerializedIdx  = 0;
+
+    for (std::size_t typeIdx = 0; typeIdx < this->types.size(); ++typeIdx) {
+        auto const& entry = this->types[typeIdx];
+
+        if (entry.category == DataCategory::Execution || entry.category == DataCategory::UniquePtr) {
+            continue; // indexed access is only for serialized/primitives
+        }
+
+        for (std::size_t elem = 0; elem < entry.elements; ++elem) {
+            if (serializedIdx >= this->valueSizes.size()) {
+                return Error{Error::Code::MalformedInput,
+                             "Serialized payload missing value length metadata"};
+            }
+            auto const len = this->valueSizes[serializedIdx];
+
+            if (absoluteValueIndex == matchIndex) {
+                // Type must match the requested output
+                if (entry.typeInfo != inputMetadata.typeInfo || entry.category != inputMetadata.dataCategory) {
+                    return Error{Error::Code::InvalidType, "Type mismatch during indexed deserialization"};
+                }
+                targetTypeIndex     = typeIdx;
+                targetValueSize     = len;
+                targetSerializedIdx = serializedIdx;
+                goto FOUND_TARGET;
+            }
+
+            ++absoluteValueIndex;
+            byteOffset += len;
+            ++serializedIdx;
+        }
+    }
+
+    return Error{Error::Code::NoObjectFound, "No data available for deserialization"};
+
+FOUND_TARGET:
+    // Prepare a temporary buffer slice for deserialization.
+    auto raw   = this->data.rawData();
+    auto front = this->data.virtualFront();
+    if (front + byteOffset + targetValueSize > raw.size()) {
+        return Error{Error::Code::MalformedInput, "Serialized payload exceeds buffer"};
+    }
+
+    SlidingBuffer tmp;
+    tmp.append(raw.data() + front + byteOffset, targetValueSize);
+
+    // Non-pop path: deserialize from copy, leave queues untouched.
+    if (!doPop) {
+        if (!inputMetadata.deserialize) {
+            return Error{Error::Code::UnserializableType, "No deserialization function provided"};
+        }
+        inputMetadata.deserialize(obj, tmp);
+        return std::nullopt;
+    }
+
+    // Pop path: deserialize first, then surgically remove the target from queues/buffer.
+    if (!inputMetadata.deserializePop) {
+        return Error{Error::Code::UnserializableType, "No pop deserialization function provided"};
+    }
+    inputMetadata.deserializePop(obj, tmp);
+
+    // Remove the payload bytes from the sliding buffer.
+    std::vector<uint8_t> newRaw;
+    newRaw.reserve(this->data.size() - targetValueSize);
+    newRaw.insert(newRaw.end(),
+                  raw.begin() + static_cast<std::ptrdiff_t>(front),
+                  raw.begin() + static_cast<std::ptrdiff_t>(front + byteOffset));
+    newRaw.insert(newRaw.end(),
+                  raw.begin() + static_cast<std::ptrdiff_t>(front + byteOffset + targetValueSize),
+                  raw.end());
+    this->data.assignRaw(std::move(newRaw), 0);
+
+    // Erase the corresponding size entry.
+    if (targetSerializedIdx < this->valueSizes.size()) {
+        this->valueSizes.erase(this->valueSizes.begin() + static_cast<std::ptrdiff_t>(targetSerializedIdx));
+    } else {
+        return Error{Error::Code::MalformedInput, "Serialized payload missing value length metadata"};
+    }
+
+    // Update the type run (may collapse/erase).
+    if (targetTypeIndex < this->types.size()) {
+        if (--this->types[targetTypeIndex].elements == 0) {
+            this->types.erase(this->types.begin() + static_cast<std::ptrdiff_t>(targetTypeIndex));
+        }
+    }
+
+    return std::nullopt;
 }
 
 auto NodeData::popFrontSerialized(NodeData& destination) -> std::optional<Error> {

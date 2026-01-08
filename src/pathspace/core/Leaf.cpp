@@ -509,8 +509,17 @@ auto Leaf::outAtNode(Node& node,
         }
 
         if (parsed.index.has_value()) {
-            // Explicit index targets nested spaces; reading a value at an indexed node is invalid.
-            return Error{Error::Code::NoSuchPath, "Path not found"};
+            std::lock_guard<std::mutex> lg(child->payloadMutex);
+            if (!child->data) {
+                sp_log("Leaf::outAtNode(final,indexed) no data present", "Leaf");
+                return Error{Error::Code::NoSuchPath, "Path not found"};
+            }
+            auto res = child->data->deserializeIndexed(*parsed.index, inputMetadata, doExtract, obj);
+            if (!res.has_value() && child->data->empty()) {
+                // Keep node; avoid erasure to prevent races under concurrency
+                child->data.reset();
+            }
+            return res;
         }
 
         if (child->hasData()) {

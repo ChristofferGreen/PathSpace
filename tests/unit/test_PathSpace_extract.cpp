@@ -119,6 +119,25 @@ TEST_CASE("PathSpace Take") {
         CHECK(ret.value() == map);
     }
 
+    SUBCASE("Indexed take pops nth value and compacts queue") {
+        for (int i = 0; i < 6; ++i) {
+            CHECK(pspace.insert("/ints", i).nbrValuesInserted == 1);
+        }
+        auto third = pspace.take<int>("/ints[3]");
+        REQUIRE(third.has_value());
+        CHECK(third.value() == 3);
+        // Remaining queue should retain other elements in order
+        std::vector<int> remaining;
+        for (int i = 0; i < 5; ++i) {
+            auto val = pspace.take<int>("/ints");
+            if (val.has_value()) {
+                remaining.push_back(val.value());
+            }
+        }
+        std::vector<int> expected{0, 1, 2, 4, 5};
+        CHECK(remaining == expected);
+    }
+
     SUBCASE("Extract custom struct") {
         struct CustomStruct {
             int         x;
