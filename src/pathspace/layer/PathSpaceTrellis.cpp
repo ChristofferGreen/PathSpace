@@ -428,6 +428,9 @@ auto PathSpaceTrellis::mergeInsertReturn(InsertReturn& target, InsertReturn cons
     target.nbrSpacesInserted += source.nbrSpacesInserted;
     target.nbrTasksInserted  += source.nbrTasksInserted;
     target.nbrValuesSuppressed += source.nbrValuesSuppressed;
+    if (!source.retargets.empty()) {
+        target.retargets.insert(target.retargets.end(), source.retargets.begin(), source.retargets.end());
+    }
     if (!source.errors.empty()) {
         target.errors.insert(target.errors.end(), source.errors.begin(), source.errors.end());
     }

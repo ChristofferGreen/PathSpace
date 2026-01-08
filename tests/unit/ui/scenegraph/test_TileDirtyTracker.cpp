@@ -14,7 +14,7 @@ auto rect_equals(IntRect const& lhs, IntRect const& rhs) -> bool {
 
 } // namespace
 
-TEST_SUITE("TileDirtyTracker") {
+TEST_SUITE("ui.scenegraph.render.tile.dirty.tracker") {
     TEST_CASE("marks_new_entities_dirty") {
         TileDirtyTracker tracker;
         RenderCommandStore store;

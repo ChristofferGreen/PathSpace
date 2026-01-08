@@ -3,6 +3,8 @@
 
 using namespace SP;
 
+TEST_SUITE_BEGIN("type.input");
+
 TEST_CASE("Type InputMetadata Fundamental") {
     SUBCASE("Int Serialize and Deserialize") {
         using ST = int;
@@ -89,3 +91,5 @@ TEST_CASE("Type InputMetadata Fundamental") {
         REQUIRE(im3.functionCategory == FunctionCategory::None);
     }
 }
+
+TEST_SUITE_END();

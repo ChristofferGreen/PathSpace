@@ -4,7 +4,7 @@
 
 using namespace SP;
 
-TEST_SUITE("UnvalidatedPathView") {
+TEST_SUITE("path.unvalidated") {
 
 TEST_CASE("canonicalize_absolute trims trailing slash") {
     UnvalidatedPathView raw{"/system/applications/demo/"};
@@ -25,4 +25,3 @@ TEST_CASE("split_absolute_components rejects non-absolute") {
 }
 
 } // TEST_SUITE
-

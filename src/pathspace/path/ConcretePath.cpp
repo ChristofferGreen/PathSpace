@@ -19,6 +19,27 @@ auto make_path_error(Error::Code code, std::string message) -> Error {
     return Error{code, std::move(message)};
 }
 
+auto is_index_component(std::string_view component) -> bool {
+    auto lb = component.find('[');
+    if (lb == std::string_view::npos) {
+        return false;
+    }
+    auto rb = component.find(']', lb + 1);
+    if (rb != component.size() - 1 || lb == 0) {
+        return false;
+    }
+    auto indexView = component.substr(lb + 1, rb - lb - 1);
+    if (indexView.empty()) {
+        return false;
+    }
+    for (char c : indexView) {
+        if (c < '0' || c > '9') {
+            return false;
+        }
+    }
+    return true;
+}
+
 auto parse_concrete_path(std::string_view raw) -> Expected<ParsedConcretePath> {
     std::string working(raw);
     if (working.empty()) {
@@ -48,7 +69,8 @@ auto parse_concrete_path(std::string_view raw) -> Expected<ParsedConcretePath> {
             return std::unexpected(make_path_error(Error::Code::InvalidPathSubcomponent,
                                                    "Relative path components are not allowed"));
         }
-        if (SP::is_glob(token)) {
+        bool const indexToken = is_index_component(token);
+        if (SP::is_glob(token) && !indexToken) {
             return std::unexpected(make_path_error(Error::Code::InvalidPathSubcomponent,
                                                    "Glob syntax is not allowed in concrete paths"));
         }

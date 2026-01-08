@@ -9,7 +9,7 @@
 using namespace SP;
 using namespace SP::Inspector;
 
-TEST_SUITE("Inspector/PaintScreenshotCard") {
+TEST_SUITE("inspector.paint.screenshot.card") {
 
 TEST_CASE("classifies healthy run from diagnostics tree") {
     PathSpace space;

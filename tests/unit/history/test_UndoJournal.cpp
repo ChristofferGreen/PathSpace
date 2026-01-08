@@ -20,7 +20,7 @@ namespace {
 }
 } // namespace
 
-TEST_SUITE("UndoJournalEntry") {
+TEST_SUITE("history.journal.entry") {
     TEST_CASE("NodeData payload round-trips through journal helpers") {
         NodeData node;
         int      value = 123;

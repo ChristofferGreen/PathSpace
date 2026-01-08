@@ -181,11 +181,26 @@ public:
     auto insert(S const& pathIn, DataType&& data, In const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
         Iterator const path{pathIn};
-        if (auto error = path.validate(options.validationLevel))
+        using RawData = std::remove_reference_t<DataType>;
+        ValidationLevel effectiveValidation = options.validationLevel;
+        if constexpr (InputMetadataT<DataType>::dataCategory == DataCategory::UniquePtr) {
+            using Element = typename RawData::element_type;
+            if constexpr (!std::is_base_of_v<PathSpaceBase, Element>) {
+                return InsertReturn{.errors = {Error{Error::Code::InvalidType,
+                                                     "UniquePtr payload must derive from PathSpaceBase"}}};
+            }
+            if (effectiveValidation == ValidationLevel::Basic) {
+                effectiveValidation = ValidationLevel::Full;
+            }
+        }
+        if (auto error = path.validate(effectiveValidation))
             return InsertReturn{.errors = {*error}};
+
         InputData inputData{std::forward<DataType>(data)};
-        sp_log(std::string("PathSpaceBase::insert dataCategory=") + std::to_string(static_cast<int>(InputMetadataT<DataType>::dataCategory))
-               + " type=" + (InputMetadataT<DataType>::typeInfo ? InputMetadataT<DataType>::typeInfo->name() : "null"), "PathSpaceBase");
+
+        sp_log(std::string("PathSpaceBase::insert dataCategory=") + std::to_string(static_cast<int>(inputData.metadata.dataCategory))
+               + " type=" + (inputData.metadata.typeInfo ? inputData.metadata.typeInfo->name() : "null"), "PathSpaceBase");
+
         // Ensure executor is threaded through for downstream scheduling.
         inputData.executor = this->getExecutor();
         if constexpr (InputMetadataT<DataType>::dataCategory == DataCategory::Execution) {

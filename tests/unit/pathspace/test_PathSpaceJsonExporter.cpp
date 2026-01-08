@@ -51,6 +51,8 @@ auto findNode(Json const& doc, std::string const& rootPath, std::string const& p
 
 } // namespace
 
+TEST_SUITE_BEGIN("pathspace.json");
+
 TEST_CASE("PathSpace JSON exporter serializes primitive values (minimal)") {
     PathSpace space;
     REQUIRE(space.insert("/alpha/int", 42).nbrValuesInserted == 1);
@@ -258,3 +260,5 @@ TEST_CASE("PathSpace JSON exporter metadata is opt-in") {
     CHECK(meta.at("root") == "/");
     CHECK(meta.at("flags").at("include_metadata").get<bool>());
 }
+
+TEST_SUITE_END();

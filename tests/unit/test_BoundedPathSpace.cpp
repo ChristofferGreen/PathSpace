@@ -13,6 +13,8 @@ struct TestEvent {
 };
 } // namespace
 
+TEST_SUITE_BEGIN("pathspace.bounded");
+
 TEST_CASE("BoundedPathSpace pops oldest to allow insert") {
     auto backing = std::make_shared<PathSpace>();
     BoundedPathSpace bounded{backing, 2};
@@ -92,3 +94,5 @@ TEST_CASE("BoundedPathSpace preserves caller object after pop loop") {
     REQUIRE(val.has_value());
     CHECK(val->payload == 99);
 }
+
+TEST_SUITE_END();

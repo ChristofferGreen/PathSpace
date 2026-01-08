@@ -1,9 +1,13 @@
 #include "third_party/doctest.h"
 #include <pathspace/PathSpace.hpp>
+#include "PathSpaceTestHelper.hpp"
 #include <thread>
+#include <atomic>
 
 using namespace SP;
 using namespace std::chrono_literals;
+
+TEST_SUITE_BEGIN("pathspace.execution");
 
 TEST_CASE("PathSpace Execution") {
     PathSpace pspace;
@@ -47,6 +51,26 @@ TEST_CASE("PathSpace Execution") {
             REQUIRE(result.has_value());
             CHECK(result.value() == 42);
         }
+    }
+
+    SUBCASE("Context without executor falls back to global pool") {
+        auto context = std::make_shared<PathSpaceContext>(nullptr);
+        PathSpace space{context, ""};
+
+        std::atomic<int> ran{0};
+        auto ret = space.insert("/immediate",
+                                [&ran]() -> int {
+                                    ++ran;
+                                    return 7;
+                                },
+                                In{.executionCategory = ExecutionCategory::Immediate});
+        CHECK(ret.errors.empty());
+
+        auto value = space.read<int>("/immediate", Block{200ms});
+        REQUIRE(value.has_value());
+        CHECK(value.value() == 7);
+        CHECK(ran.load() == 1);
+        CHECK(PathSpaceTestHelper::executor(space) != nullptr);
     }
 
     SUBCASE("Timeout Behavior") {
@@ -144,3 +168,5 @@ TEST_CASE("PathSpace Execution") {
         }
     }
 }
+
+TEST_SUITE_END();

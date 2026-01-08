@@ -4,7 +4,7 @@
 
 using namespace SP;
 
-TEST_SUITE("ConcretePath") {
+TEST_SUITE("path.concrete") {
 
 TEST_CASE("canonicalized trims and ensures absolute root") {
     ConcretePathStringView canonical{"/widgets/panel"};

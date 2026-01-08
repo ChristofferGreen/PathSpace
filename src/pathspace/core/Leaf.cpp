@@ -19,7 +19,11 @@ namespace SP {
 // Forward declarations of internal helpers (defined below)
 static auto ensureNodeData(Node& n, InputData const& inputData, InsertReturn& ret) -> NodeData*;
 static void mergeInsertReturn(InsertReturn& into, InsertReturn const& from);
-static auto inAtNode(Node& node, Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
+static auto inAtNode(Node& node,
+                     Iterator const& iter,
+                     InputData const& inputData,
+                     InsertReturn& ret,
+                     std::string const& resolvedPath) -> void;
 static auto outAtNode(Node& node,
                       Iterator const& iter,
                       InputMetadata const& inputMetadata,
@@ -30,20 +34,29 @@ static auto outAtNode(Node& node,
 static auto extractNestedSpace(Node& node,
                               InputMetadata const& inputMetadata,
                               void* obj,
-                              bool const doExtract) -> std::optional<Error>;
+                              bool const doExtract,
+                              std::optional<std::size_t> index) -> std::optional<Error>;
 static auto insertSerializedAtNode(Node& node,
                                   Iterator const& iter,
                                   NodeData const& payload,
-                                  InsertReturn& ret) -> void;
+                                  InsertReturn& ret,
+                                  std::string const& resolvedPath) -> void;
 
 auto Leaf::ensureNodeData(Node& n, InputData const& inputData, InsertReturn& ret) -> NodeData* {
     {
         std::lock_guard<std::mutex> lg(n.payloadMutex);
         if (!n.data) {
-            n.data = std::make_unique<NodeData>(inputData);
+            auto data = std::make_unique<NodeData>();
+            if (auto err = data->serialize(inputData); err.has_value()) {
+                ret.errors.emplace_back(*err);
+                return nullptr;
+            }
+            n.data = std::move(data);
         } else {
-            if (auto err = n.data->serialize(inputData); err.has_value())
+            if (auto err = n.data->serialize(inputData); err.has_value()) {
                 ret.errors.emplace_back(err.value());
+                return nullptr;
+            }
         }
     }
     return n.data.get();
@@ -54,6 +67,9 @@ void Leaf::mergeInsertReturn(InsertReturn& into, InsertReturn const& from) {
     into.nbrSpacesInserted += from.nbrSpacesInserted;
     into.nbrTasksInserted  += from.nbrTasksInserted;
     into.nbrValuesSuppressed += from.nbrValuesSuppressed;
+    if (!from.retargets.empty()) {
+        into.retargets.insert(into.retargets.end(), from.retargets.begin(), from.retargets.end());
+    }
     if (!from.errors.empty()) {
         into.errors.insert(into.errors.end(), from.errors.begin(), from.errors.end());
     }
@@ -75,6 +91,39 @@ auto appendPayload(Node& node, NodeData const& payload, InsertReturn& ret) -> bo
     return true;
 }
 
+auto buildResolvedPath(std::string const& prefix, std::string_view component) -> std::string {
+    if (prefix.empty() || prefix == "/") {
+        return std::string("/") + std::string(component);
+    }
+    std::string result = prefix;
+    if (result.back() != '/') {
+        result.push_back('/');
+    }
+    result.append(component.begin(), component.end());
+    return result;
+}
+
+auto joinMountPrefix(std::string const& parent, std::string const& child) -> std::string {
+    if (parent.empty() || parent == "/") {
+        return child;
+    }
+    if (child.empty() || child == "/") {
+        return parent;
+    }
+    std::string result = parent;
+    if (!result.empty() && result.back() == '/') {
+        result.pop_back();
+    }
+    result.append(child);
+    return result;
+}
+
+auto rebaseRetargets(InsertReturn& ret, std::string const& mountPrefix) -> void {
+    for (auto& req : ret.retargets) {
+        req.mountPrefix = joinMountPrefix(mountPrefix, req.mountPrefix);
+    }
+}
+
 } // namespace
 
 auto Leaf::insertSerialized(Iterator const& iter,
@@ -91,13 +140,14 @@ auto Leaf::insertSerialized(Iterator const& iter,
         appendPayload(root, payload, ret);
         return;
     }
-    insertSerializedAtNode(root, iter, payload, ret);
+    insertSerializedAtNode(root, iter, payload, ret, "/");
 }
 
 static auto insertSerializedAtNode(Node& node,
                                   Iterator const& iter,
                                   NodeData const& payload,
-                                  InsertReturn& ret) -> void {
+                                  InsertReturn& ret,
+                                  std::string const& resolvedPath) -> void {
     auto component = iter.currentComponent();
     bool const final = iter.isAtFinalComponent();
 
@@ -117,11 +167,11 @@ static auto insertSerializedAtNode(Node& node,
         return;
     }
 
-    PathSpaceBase* nested = nullptr;
+    std::shared_ptr<PathSpaceBase> nested;
     {
         std::lock_guard<std::mutex> guard(child.payloadMutex);
-        if (child.nested) {
-            nested = child.nested.get();
+        if (child.data) {
+            nested = child.data->borrowNestedShared(0);
         }
     }
     if (nested) {
@@ -130,13 +180,16 @@ static auto insertSerializedAtNode(Node& node,
         return;
     }
 
-    insertSerializedAtNode(child, iter.next(), payload, ret);
+    auto const nextIter = iter.next();
+    auto nextResolved   = buildResolvedPath(resolvedPath, component);
+    insertSerializedAtNode(child, nextIter, payload, ret, nextResolved);
 }
 
 static auto extractNestedSpace(Node& node,
                               InputMetadata const& inputMetadata,
                               void* obj,
-                              bool const doExtract) -> std::optional<Error> {
+                              bool const doExtract,
+                              std::optional<std::size_t> index) -> std::optional<Error> {
     if (!doExtract) {
         return Error{Error::Code::NotSupported, "Nested PathSpaces can only be taken"};
     }
@@ -151,18 +204,30 @@ static auto extractNestedSpace(Node& node,
     std::unique_ptr<PathSpaceBase> moved;
     PathSpace*                      derived = nullptr;
 
+    std::size_t targetIndex = index.value_or(0);
+
     {
         std::lock_guard<std::mutex> lg(node.payloadMutex);
-        if (!node.nested) {
+        if (!node.data || !node.data->hasNestedSpaces()) {
             return Error{Error::Code::NoSuchPath, "No nested PathSpace present at path"};
         }
+        auto* nestedPtr = node.data->nestedAt(targetIndex);
+        if (!nestedPtr) {
+            return Error{Error::Code::NoSuchPath, "No nested PathSpace present at requested index"};
+        }
         if (wantsPathSpace) {
-            derived = dynamic_cast<PathSpace*>(node.nested.get());
+            derived = dynamic_cast<PathSpace*>(nestedPtr);
             if (!derived) {
                 return Error{Error::Code::InvalidType, "Nested space is not an SP::PathSpace"};
             }
         }
-        moved = std::move(node.nested);
+        moved = node.data->takeNestedAt(targetIndex);
+        if (!moved) {
+            return Error{Error::Code::NoSuchPath, "Failed to remove nested PathSpace at requested index"};
+        }
+        if (node.data->empty()) {
+            node.data.reset();
+        }
     }
 
     if (wantsPathSpace) {
@@ -180,11 +245,23 @@ static auto extractNestedSpace(Node& node,
     return std::nullopt;
 }
 
-auto Leaf::inAtNode(Node& node, Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void {
+auto Leaf::inAtNode(Node& node,
+                    Iterator const& iter,
+                    InputData const& inputData,
+                    InsertReturn& ret,
+                    std::string const& resolvedPath) -> void {
     auto const name = iter.currentComponent();
+    auto const parsed = parse_indexed_component(name);
+    if (parsed.malformed) {
+        ret.errors.emplace_back(Error{Error::Code::InvalidPath, "Malformed indexed path component"});
+        return;
+    }
+    auto const baseNameView = parsed.base;
+    std::string baseName{baseNameView};
 
     if (iter.isAtFinalComponent()) {
-        if (is_glob(name)) {
+        bool const nameIsGlob = parsed.index.has_value() ? false : is_glob(name);
+        if (nameIsGlob) {
             // Do not allow inserting nested spaces via glob
             if (inputData.metadata.dataCategory == DataCategory::UniquePtr) {
                 ret.errors.emplace_back(Error::Code::InvalidType, "PathSpaces cannot be added in glob expressions.");
@@ -202,13 +279,23 @@ auto Leaf::inAtNode(Node& node, Iterator const& iter, InputData const& inputData
             for (auto const& key : matchingKeys) {
                 if (Node* childPtr = node.getChild(key)) {
                     Node& child = *childPtr;
-                    ensureNodeData(child, inputData, ret);
-                    if (inputData.task)
+                    auto* data = ensureNodeData(child, inputData, ret);
+                    if (!data) {
+                        continue;
+                    }
+                    if (inputData.task) {
                         ret.nbrTasksInserted++;
-                    else
+                    } else {
                         ret.nbrValuesInserted++;
+                    }
                 }
             }
+            return;
+        }
+
+        if (parsed.index.has_value() && inputData.metadata.dataCategory != DataCategory::UniquePtr) {
+            ret.errors.emplace_back(Error{Error::Code::InvalidPath,
+                                          "Indexed components require nested PathSpace payloads"});
             return;
         }
 
@@ -216,28 +303,38 @@ auto Leaf::inAtNode(Node& node, Iterator const& iter, InputData const& inputData
         bool parentHasValue = false;
         {
             std::lock_guard<std::mutex> parentLock(node.payloadMutex);
-            parentHasValue = (node.data != nullptr) && !node.nested;
+            parentHasValue = (node.data != nullptr) && !node.data->hasNestedSpaces();
         }
-        Node& child = node.getOrCreateChild(name);
+        auto const& childKey = parsed.base;
+        Node& child = node.getOrCreateChild(childKey);
         if (inputData.metadata.dataCategory == DataCategory::UniquePtr) {
-            // Move nested PathSpaceBase into place and adopt parent context/prefix when available
-            {
-                std::lock_guard<std::mutex> lg(child.payloadMutex);
-                child.nested = std::move(*static_cast<std::unique_ptr<PathSpaceBase>*>(inputData.obj));
+            if (parsed.index.has_value()) {
+                ret.errors.emplace_back(Error{Error::Code::InvalidPath,
+                                              "Indexed nested inserts are not supported"});
+                return;
             }
-            // Compute mount prefix for the nested space: <startToCurrent>/<name>
-            std::string mountPrefix = std::string(iter.startToCurrent());
-            if (mountPrefix.empty() || mountPrefix == "/")
-                mountPrefix = "/" + std::string(name);
-            else
-                mountPrefix += "/" + std::string(name);
-
+            // Move nested PathSpaceBase into the payload queue
+            auto* data = ensureNodeData(child, inputData, ret);
+            if (!data) {
+                return;
+            }
             ret.nbrSpacesInserted++;
+            if (child.data) {
+                auto nestedIndex = child.data->nestedCount() > 0 ? child.data->nestedCount() - 1 : 0;
+                if (auto* nestedPtr = child.data->nestedAt(nestedIndex)) {
+                    auto mountPath = buildResolvedPath(resolvedPath, baseName);
+                    ret.retargets.push_back(
+                        InsertReturn::RetargetRequest{nestedPtr, append_index_suffix(mountPath, nestedIndex)});
+                }
+            }
         } else {
-            ensureNodeData(child, inputData, ret);
-            if (inputData.task)
+            auto* data = ensureNodeData(child, inputData, ret);
+            if (!data) {
+                return;
+            }
+            if (inputData.task) {
                 ret.nbrTasksInserted++;
-            else {
+            } else {
                 ret.nbrValuesInserted++;
                 if (parentHasValue)
                     ret.nbrValuesSuppressed++;
@@ -247,48 +344,80 @@ auto Leaf::inAtNode(Node& node, Iterator const& iter, InputData const& inputData
     }
 
     // Intermediate component
-    auto const nextIter = iter.next();
-    if (is_glob(name)) {
+    auto const nextIterRaw = iter.next();
+    bool const nameIsGlob = parsed.index.has_value() ? false : is_glob(name);
+    if (nameIsGlob) {
         // Recurse into all matching existing children
-        node.children.for_each([&](auto const& kv) {
+    node.children.for_each([&](auto const& kv) {
             auto const& key = kv.first;
-            if (match_names(name, key)) {
-                Node& child = *kv.second;
-                PathSpaceBase* nestedRaw = nullptr;
-                {
-                    std::lock_guard<std::mutex> lg(child.payloadMutex);
-                    if (child.nested)
-                        nestedRaw = child.nested.get();
+            if (!match_names(name, key)) {
+                return;
+            }
+            Node& child = *kv.second;
+            std::vector<std::pair<std::shared_ptr<PathSpaceBase>, std::size_t>> nestedTargets;
+            {
+                std::lock_guard<std::mutex> lg(child.payloadMutex);
+                if (child.data) {
+                    auto nestedCount = child.data->nestedCount();
+                    nestedTargets.reserve(nestedCount);
+                    for (std::size_t i = 0; i < nestedCount; ++i) {
+                        if (auto nested = child.data->borrowNestedShared(i)) {
+                            nestedTargets.emplace_back(std::move(nested), i);
+                        }
+                    }
                 }
-                if (nestedRaw) {
-                    // Forward to nested space
-                    InsertReturn nestedRet = nestedRaw->in(nextIter, inputData);
+            }
+            if (!nestedTargets.empty()) {
+                std::string relative{"/"};
+                relative.append(nextIterRaw.currentToEnd());
+                for (auto const& nestedEntry : nestedTargets) {
+                    auto const& nestedRaw = nestedEntry.first;
+                    auto const  nestedIdx = nestedEntry.second;
+                    Iterator nestedIter{relative};
+                    InsertReturn nestedRet = nestedRaw->in(nestedIter, inputData);
+                    auto mountBase = append_index_suffix(buildResolvedPath(resolvedPath, key), nestedIdx);
+                    rebaseRetargets(nestedRet, mountBase);
                     mergeInsertReturn(ret, nestedRet);
-                } else {
-                    inAtNode(child, nextIter, inputData, ret);
                 }
+            } else {
+                auto nextResolved = buildResolvedPath(resolvedPath, key);
+                inAtNode(child, nextIterRaw, inputData, ret, nextResolved);
             }
         });
         return;
     }
 
     // Existing children may hold data; still recurse to allow mixed payload/child nodes (trellis stats etc.)
-    if (Node* existing = node.getChild(name); existing) {
-        PathSpaceBase* nestedRaw = nullptr;
+    if (Node* existing = node.getChild(baseName); existing) {
+        std::shared_ptr<PathSpaceBase> nestedRaw;
         {
             std::lock_guard<std::mutex> lg(existing->payloadMutex);
-            if (existing->nested)
-                nestedRaw = existing->nested.get();
+            if (existing->data)
+                nestedRaw = existing->data->borrowNestedShared(parsed.index.value_or(0));
         }
         if (nestedRaw) {
-            InsertReturn nestedRet = nestedRaw->in(nextIter, inputData);
+            std::string relative{"/"};
+            relative.append(nextIterRaw.currentToEnd());
+            Iterator nestedIter{relative};
+            InsertReturn nestedRet = nestedRaw->in(nestedIter, inputData);
+            auto mountBase = append_index_suffix(buildResolvedPath(resolvedPath, baseName),
+                                                 parsed.index.value_or(0));
+            rebaseRetargets(nestedRet, mountBase);
             mergeInsertReturn(ret, nestedRet);
+        } else if (parsed.index.has_value()) {
+            ret.errors.emplace_back(Error{Error::Code::NoSuchPath, "Nested PathSpace index not found"});
+            return;
         } else {
-            inAtNode(*existing, nextIter, inputData, ret);
+            auto nextResolved = buildResolvedPath(resolvedPath, baseName);
+            inAtNode(*existing, nextIterRaw, inputData, ret, nextResolved);
         }
     } else {
-        Node& created = node.getOrCreateChild(name);
-        inAtNode(created, nextIter, inputData, ret);
+        Node& created      = node.getOrCreateChild(baseName);
+        auto  nextResolved = buildResolvedPath(resolvedPath, baseName);
+        inAtNode(created, nextIterRaw, inputData, ret, nextResolved);
+        if (!ret.errors.empty() && !created.hasData() && !created.hasChildren()) {
+            node.eraseChild(baseName);
+        }
     }
 }
 
@@ -300,10 +429,17 @@ auto Leaf::outAtNode(Node& node,
                      Node* parent,
                      std::string_view keyInParent) -> std::optional<Error> {
     auto name = iter.currentComponent();
+    auto parsed = parse_indexed_component(name);
+    if (parsed.malformed) {
+        return Error{Error::Code::InvalidPath, "Malformed indexed path component"};
+    }
+    auto baseNameView = parsed.base;
+    std::string baseName{baseNameView};
 
     if (iter.isAtFinalComponent()) {
         // Support glob at final component by selecting the smallest matching key
-        if (is_glob(name)) {
+        bool const nameIsGlob = parsed.index.has_value() ? false : is_glob(name);
+        if (nameIsGlob) {
             // Collect matching keys and try each in lexicographic order until one succeeds
             std::vector<std::string> matches;
             node.children.for_each([&](auto const& kv) {
@@ -362,14 +498,19 @@ auto Leaf::outAtNode(Node& node,
             return Error{Error::Code::NoSuchPath, "Path not found"};
         }
 
-        Node* child = node.getChild(name);
+        Node* child = node.getChild(baseName);
         if (!child) {
             sp_log("Leaf::outAtNode(final) no such child: " + std::string(name), "Leaf");
             return Error{Error::Code::NoSuchPath, "Path not found"};
         }
  
         if (inputMetadata.dataCategory == DataCategory::UniquePtr) {
-            return extractNestedSpace(*child, inputMetadata, obj, doExtract);
+            return extractNestedSpace(*child, inputMetadata, obj, doExtract, parsed.index);
+        }
+
+        if (parsed.index.has_value()) {
+            // Explicit index targets nested spaces; reading a value at an indexed node is invalid.
+            return Error{Error::Code::NoSuchPath, "Path not found"};
         }
 
         if (child->hasData()) {
@@ -408,18 +549,36 @@ auto Leaf::outAtNode(Node& node,
     }
 
     // Intermediate component
-    if (is_glob(name)) {
+    bool const nameIsGlob = parsed.index.has_value() ? false : is_glob(name);
+    if (nameIsGlob) {
         return Error{Error::Code::NoSuchPath, "Path not found"};
     }
 
-    Node* child = node.getChild(name);
+    Node* child = node.getChild(baseName);
     if (!child)
         return Error{Error::Code::NoSuchPath, "Path not found"};
 
     // If this node stores data and no deeper structure, it's an invalid subcomponent
     auto const nextIter = iter.next();
-    if (child->hasNestedSpace()) {
-        return child->nested->out(nextIter, inputMetadata, Out{.doPop = doExtract, .isMinimal = true}, obj);
+    std::shared_ptr<PathSpaceBase> nested;
+    {
+        std::lock_guard<std::mutex> lg(child->payloadMutex);
+        if (child->data) {
+            if (parsed.index.has_value()) {
+                nested = child->data->borrowNestedShared(*parsed.index);
+            } else {
+                nested = child->data->borrowNestedShared(0);
+            }
+        }
+    }
+    if (nested) {
+        std::string relative{"/"};
+        relative.append(nextIter.currentToEnd());
+        Iterator nestedIter{relative};
+        return nested->out(nestedIter, inputMetadata, Out{.doPop = doExtract}, obj);
+    }
+    if (parsed.index.has_value()) {
+        return Error{Error::Code::NoSuchPath, "Nested PathSpace index not found"};
     }
 
     return outAtNode(*child, nextIter, inputMetadata, obj, doExtract, &node, nextIter.currentComponent());
@@ -499,7 +658,7 @@ auto Leaf::extractSerializedAtNode(Node& node,
         return Error{Error::Code::NoSuchPath, "Path not found"};
     }
 
-    if (child->hasNestedSpace()) {
+    if (child->data && child->data->hasNestedSpaces()) {
         return Error{Error::Code::NotSupported,
                      "Serialized extraction unsupported for nested PathSpaces"};
     }
@@ -517,17 +676,17 @@ auto Leaf::clear() -> void {
     ############# In #############
 */
 auto Leaf::in(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void {
-    this->inAtNode(this->root, iter, inputData, ret);
+    this->inAtNode(this->root, iter, inputData, ret, "/");
 }
 
 auto Leaf::inFinalComponent(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void {
     // Kept for compatibility with existing calls; redirect to generic handler.
-    this->inAtNode(this->root, iter, inputData, ret);
+    this->inAtNode(this->root, iter, inputData, ret, "/");
 }
 
 auto Leaf::inIntermediateComponent(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void {
     // Kept for compatibility with existing calls; redirect to generic handler.
-    this->inAtNode(this->root, iter, inputData, ret);
+    this->inAtNode(this->root, iter, inputData, ret, "/");
 }
 
 /*

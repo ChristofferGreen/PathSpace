@@ -38,7 +38,7 @@ auto tempPath(std::string_view suffix) -> std::filesystem::path {
 
 } // namespace
 
-TEST_SUITE("UndoJournalPersistence") {
+TEST_SUITE("history.journal.persistence") {
     TEST_CASE("append and replay journal entries across reopen") {
         auto path = tempPath("journal1.log");
 

@@ -43,7 +43,11 @@ private:
     auto extractSerializedAtNode(Node& node, Iterator const& iter, NodeData& payload) -> std::optional<Error>;
 
     // Internal helpers (members for friend access to PathSpaceBase)
-    auto inAtNode(Node& node, Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
+    auto inAtNode(Node& node,
+                  Iterator const& iter,
+                  InputData const& inputData,
+                  InsertReturn& ret,
+                  std::string const& resolvedPath) -> void;
     auto outAtNode(Node& node, Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract, Node* parent, std::string_view keyInParent) -> std::optional<Error>;
     static auto ensureNodeData(Node& n, InputData const& inputData, InsertReturn& ret) -> NodeData*;
     static void mergeInsertReturn(InsertReturn& into, InsertReturn const& from);

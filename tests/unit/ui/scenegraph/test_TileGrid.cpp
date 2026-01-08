@@ -4,7 +4,7 @@
 
 using namespace SP::UI::SceneGraph;
 
-TEST_SUITE("TileGrid") {
+TEST_SUITE("ui.scenegraph.render.tile.grid") {
     TEST_CASE("bbox_maps_to_expected_tiles") {
         TileGrid grid(TileGridConfig{.tile_width = 4, .tile_height = 4, .surface_width = 12, .surface_height = 8});
         grid.mark_dirty(IntRect{2, 2, 6, 6}, 1);
@@ -34,4 +34,3 @@ TEST_SUITE("TileGrid") {
         CHECK(grid.bucket(1).empty());
     }
 }
-

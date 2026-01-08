@@ -15,6 +15,8 @@ struct Person {
     }
 };
 
+TEST_SUITE_BEGIN("ext.alpaca");
+
 TEST_CASE("External: Alpaca") {
     auto const person = Person{"John", 22, {"Ripper", "Silverhand"}};
     std::vector<uint8_t> bytes;
@@ -26,3 +28,5 @@ TEST_CASE("External: Alpaca") {
         REQUIRE(john == person);
     }
 }
+
+TEST_SUITE_END();

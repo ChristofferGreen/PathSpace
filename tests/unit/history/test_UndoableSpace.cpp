@@ -33,7 +33,7 @@ auto makeUndoableSpace(HistoryOptions defaults = {}) -> std::unique_ptr<Undoable
 
 } // namespace
 
-TEST_SUITE("UndoableSpace") {
+TEST_SUITE_BEGIN("history.undoable.core");
 
 TEST_CASE("undo/redo round trip") {
     auto space = makeUndoableSpace();
@@ -261,6 +261,9 @@ TEST_CASE("journal multi-step undo redo sequence restores states in order") {
     REQUIRE(bFinal.has_value());
     CHECK(*bFinal == std::string{"beta"});
 }
+
+TEST_SUITE_END();
+TEST_SUITE_BEGIN("history.undoable.gc");
 
 TEST_CASE("journal telemetry paths expose stats") {
     auto space = makeUndoableSpace();
@@ -569,6 +572,9 @@ TEST_CASE("manual garbage collect defers retention until invoked") {
     CHECK(statsAfter->trim.entries >= statsBefore->trim.entries + 1);
 }
 
+TEST_SUITE_END();
+TEST_SUITE_BEGIN("history.undoable.metrics");
+
 TEST_CASE("history telemetry paths expose stats") {
     auto space = makeUndoableSpace();
     REQUIRE(space);
@@ -800,6 +806,9 @@ TEST_CASE("journal telemetry matches snapshot telemetry outputs") {
     CHECK(journalTelemetry.lastBytesAfterPath == journalTelemetry.stats.bytes.total);
 }
 
+TEST_SUITE_END();
+TEST_SUITE_BEGIN("history.undoable.validation");
+
 TEST_CASE("history rejects unsupported payloads") {
     SUBCASE("task payloads surface descriptive errors and skip history entries") {
         auto space = makeUndoableSpace();
@@ -875,6 +884,9 @@ TEST_CASE("shared undo stack keys are rejected across roots") {
     REQUIRE(second.error().message.has_value());
     CHECK(second.error().message->find("shared undo stacks") != std::string::npos);
 }
+
+TEST_SUITE_END();
+TEST_SUITE_BEGIN("history.undoable.persistence");
 
 TEST_CASE("persistence restores state and undo history") {
     auto tempRoot = std::filesystem::temp_directory_path() / "undoable_space_persist_test";
@@ -1079,6 +1091,9 @@ TEST_CASE("savefile export import roundtrip retains history") {
 
     std::filesystem::remove(savePath, removeEc);
 }
+
+TEST_SUITE_END();
+TEST_SUITE_BEGIN("history.undoable.concurrency");
 
 TEST_CASE("journal handles concurrent mutation and history operations") {
     auto space = makeUndoableSpace();
@@ -1573,4 +1588,4 @@ TEST_CASE("mutation journal roots require explicit opt-in") {
     REQUIRE(space->disableHistory(ConcretePathStringView{"/journal"}).has_value());
 }
 
-}
+TEST_SUITE_END();

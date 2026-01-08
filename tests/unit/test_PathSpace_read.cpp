@@ -28,6 +28,8 @@
 using namespace SP;
 using namespace std::chrono_literals;
 
+TEST_SUITE_BEGIN("pathspace.read");
+
 TEST_CASE("PathSpace Read") {
     PathSpace pspace;
     SUBCASE("Simple PathSpace Read") {
@@ -236,3 +238,5 @@ TEST_CASE("PathSpace Read") {
         CHECK(val.value() == lst);
     }
 }
+
+TEST_SUITE_END();

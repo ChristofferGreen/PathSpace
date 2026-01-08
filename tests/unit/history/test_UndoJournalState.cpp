@@ -34,7 +34,7 @@ auto makeSizedEntry(int seq, std::size_t payloadBytes) -> JournalEntry {
 
 } // namespace
 
-TEST_SUITE("UndoJournalState") {
+TEST_SUITE("history.journal.state") {
     TEST_CASE("append tracks undo and redo cursors") {
         JournalState state;
         auto e1 = makeEntry(1, "a");

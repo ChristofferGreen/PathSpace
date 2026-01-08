@@ -13,7 +13,7 @@ auto to_view(AppRootPath const& root) -> AppRootPathView {
 
 } // namespace
 
-TEST_SUITE("AppPaths") {
+TEST_SUITE("app.paths") {
 
 TEST_CASE("normalize_app_root canonicalizes and strips trailing slash") {
     auto normalized = normalize_app_root(AppRootPathView{"/system/applications/notepad/"});

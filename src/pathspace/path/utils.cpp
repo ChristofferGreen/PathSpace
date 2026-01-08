@@ -119,7 +119,8 @@ auto is_concrete(std::string_view path) -> bool {
 
 auto is_glob(std::string_view path) -> bool {
     bool previousCharWasEscape = false;
-    for (auto const& ch : path) {
+    for (std::size_t idx = 0; idx < path.size(); ++idx) {
+        auto const ch = path[idx];
         if (ch == '\\' && !previousCharWasEscape) {
             previousCharWasEscape = true;
             continue;
@@ -128,11 +129,104 @@ auto is_glob(std::string_view path) -> bool {
             previousCharWasEscape = false;
             continue;
         }
-        if (ch == '*' || ch == '?' || ch == '[' || ch == ']') {
+        if (ch == '[') {
+            auto rb = path.find(']', idx + 1);
+            if (rb != std::string_view::npos) {
+                bool digitsOnly = true;
+                for (std::size_t i = idx + 1; i < rb; ++i) {
+                    char c = path[i];
+                    if (c < '0' || c > '9') {
+                        digitsOnly = false;
+                        break;
+                    }
+                }
+                bool validIndex = digitsOnly && rb > idx + 1 && (rb + 1 == path.size() || path[rb + 1] == '/');
+                if (validIndex) {
+                    idx = rb;
+                    continue;
+                }
+            }
+            return true;
+        }
+        if (ch == '*' || ch == '?' || ch == ']') {
             return true;
         }
     }
     return false;
+}
+
+auto parse_indexed_component(std::string_view component) -> IndexedComponent {
+    bool previousEscape = false;
+    std::optional<std::size_t> lb;
+    for (std::size_t i = 0; i < component.size(); ++i) {
+        char c = component[i];
+        if (previousEscape) {
+            previousEscape = false;
+            continue;
+        }
+        if (c == '\\') {
+            previousEscape = true;
+            continue;
+        }
+        if (c == '[') {
+            lb = i;
+            break;
+        }
+    }
+
+    if (!lb) {
+        return {component, std::nullopt, false};
+    }
+
+    bool basePresent = *lb > 0;
+
+    bool escape = false;
+    std::optional<std::size_t> rb;
+    for (std::size_t i = *lb + 1; i < component.size(); ++i) {
+        char c = component[i];
+        if (escape) {
+            escape = false;
+            continue;
+        }
+        if (c == '\\') {
+            escape = true;
+            continue;
+        }
+        if (c == ']') {
+            rb = i;
+            break;
+        }
+    }
+
+    // If the bracket starts the component or isn't the final character, treat as a glob/character class.
+    if (!basePresent || !rb || *rb != component.size() - 1) {
+        return {component, std::nullopt, false};
+    }
+
+    auto indexView = component.substr(*lb + 1, *rb - *lb - 1);
+    if (indexView.empty()) {
+        return {component, std::nullopt, true};
+    }
+    std::size_t idx = 0;
+    for (char c : indexView) {
+        if (c < '0' || c > '9') {
+            return {component, std::nullopt, true};
+        }
+        idx = idx * 10 + static_cast<std::size_t>(c - '0');
+    }
+
+    return {component.substr(0, *lb), idx, false};
+}
+
+auto append_index_suffix(std::string const& base, std::size_t index) -> std::string {
+    if (index == 0) {
+        return base;
+    }
+    std::string result = base;
+    result.push_back('[');
+    result.append(std::to_string(index));
+    result.push_back(']');
+    return result;
 }
 
 } // namespace SP

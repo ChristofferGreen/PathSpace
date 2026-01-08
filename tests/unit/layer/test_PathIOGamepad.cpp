@@ -9,7 +9,7 @@
 using namespace SP;
 using namespace std::chrono_literals;
 
-TEST_SUITE("PathIOGamepad") {
+TEST_SUITE("layer.pathio.gamepad") {
     TEST_CASE("Simulation queue basic operations") {
         PathIOGamepad pad{PathIOGamepad::BackendMode::Simulation};
 

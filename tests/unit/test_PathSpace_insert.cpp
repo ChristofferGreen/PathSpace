@@ -3,6 +3,8 @@
 
 using namespace SP;
 
+TEST_SUITE_BEGIN("pathspace.insert");
+
 TEST_CASE("PathSpace Insert") {
     PathSpace pspace;
     SUBCASE("Simple PathSpace Construction") {
@@ -13,6 +15,27 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.insert("/test", 54).nbrValuesInserted == 1);
         auto const val = pspace.insert("/test/data", 55);
         CHECK(val.nbrValuesInserted == 0);
+    }
+
+    SUBCASE("UniquePtr payload must be a PathSpace") {
+        auto payload = std::make_unique<int>(42);
+        auto ret     = pspace.insert("/unique", std::move(payload));
+        CHECK(ret.nbrSpacesInserted == 0);
+        REQUIRE(ret.errors.size() == 1);
+        CHECK(ret.errors[0].code == Error::Code::InvalidType);
+    }
+
+    SUBCASE("Indexed component requires nested payloads and validates path") {
+        auto valueRet = pspace.insert("/node[1]", 5);
+        CHECK(valueRet.nbrValuesInserted == 0);
+        REQUIRE(valueRet.errors.size() == 1);
+        CHECK(valueRet.errors[0].code == Error::Code::InvalidPath);
+
+        auto nested = std::make_unique<PathSpace>();
+        auto badRet = pspace.insert("/node[", std::move(nested), In{.validationLevel = ValidationLevel::Basic});
+        CHECK(badRet.nbrSpacesInserted == 0);
+        REQUIRE(badRet.errors.size() == 1);
+        CHECK(badRet.errors[0].code == Error::Code::InvalidPath);
     }
 
     SUBCASE("Simple PathSpace Glob Construction") {
@@ -144,3 +167,5 @@ TEST_CASE("PathSpace Insert") {
         }
     }
 }
+
+TEST_SUITE_END();

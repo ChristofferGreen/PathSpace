@@ -95,6 +95,9 @@ auto WaitMap::Guard::wait_until(std::chrono::time_point<std::chrono::system_cloc
 
 auto WaitMap::wait(std::string_view path) -> Guard {
     sp_log("WaitMap::wait for path: " + std::string(path), "WaitMap");
+    if (WaitMap::debug_enabled()) {
+        WaitMap::debug_log("wait", path, std::chrono::milliseconds{0}, std::chrono::milliseconds{0}, 0);
+    }
     return Guard(*this, path);
 }
 

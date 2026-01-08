@@ -13,6 +13,8 @@
 using namespace SP;
 using namespace std::chrono_literals;
 
+TEST_SUITE_BEGIN("task.pool");
+
 TEST_CASE("TaskPool Misc") {
     SUBCASE("Basic task execution") {
         TaskPool          pool(2);
@@ -773,3 +775,5 @@ TEST_CASE("TaskPool Misc") {
         }
     }
 }
+
+TEST_SUITE_END();

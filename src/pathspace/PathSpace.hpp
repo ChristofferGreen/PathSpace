@@ -15,7 +15,6 @@
 #include "type/InputData.hpp"
 #include "type/InputMetadata.hpp"
 #include <memory>
-#include <span>
 #include <string_view>
 #include <vector>
 #include "task/IFutureAny.hpp"
@@ -24,6 +23,7 @@ namespace SP {
 
 struct TaskPool;
 class PathSpaceContext;
+struct PathSpaceTestHelper; // test-only access to private helpers
 class PathSpace : public PathSpaceBase {
 public:
     /**
@@ -126,6 +126,9 @@ private:
                                   std::string const& basePrefix,
                                   std::string const& currentPath,
                                   CopyStats& stats);
+    void retargetNestedMounts(Node const* node, std::string const& basePath);
+
+    friend struct PathSpaceTestHelper; // unit tests
 
 };
 

@@ -22,6 +22,8 @@ auto collectPaths(PathSpace& space, VisitOptions options = {}) -> std::vector<st
 
 } // namespace
 
+TEST_SUITE_BEGIN("pathspace.visit");
+
 TEST_CASE("PathSpace visit traverses nodes and reads values") {
     PathSpace space;
     REQUIRE(space.insert("/alpha/value", 42).nbrValuesInserted == 1);
@@ -89,3 +91,49 @@ TEST_CASE("PathSpace visit enforces child limit and disables values when request
     CHECK(result);
     CHECK(children.size() == 2);
 }
+
+TEST_CASE("PathSpace visit validates indexed roots and nested traversal") {
+    PathSpace space;
+
+    SUBCASE("Indexed nested root requires includeNestedSpaces") {
+        auto nested0 = std::make_unique<PathSpace>();
+        REQUIRE(nested0->insert("/child0", 1).nbrValuesInserted == 1);
+        auto nested1 = std::make_unique<PathSpace>();
+        REQUIRE(nested1->insert("/child1", 2).nbrValuesInserted == 1);
+
+        REQUIRE(space.insert("/mount", std::move(nested0)).nbrSpacesInserted == 1);
+        REQUIRE(space.insert("/mount", std::move(nested1)).nbrSpacesInserted == 1);
+
+        VisitOptions includeNested;
+        includeNested.root               = "/mount[1]";
+        includeNested.includeNestedSpaces = true;
+
+        std::vector<std::string> visited;
+        auto ok = space.visit(
+            [&](PathEntry const& entry, ValueHandle&) {
+                visited.push_back(entry.path);
+                return VisitControl::Continue;
+            },
+            includeNested);
+        REQUIRE(ok);
+        CHECK(std::find(visited.begin(), visited.end(), "/mount[1]") != visited.end());
+        CHECK(std::find(visited.begin(), visited.end(), "/mount[1]/child1") != visited.end());
+
+        VisitOptions nestedDisabled;
+        nestedDisabled.root                = "/mount[1]";
+        nestedDisabled.includeNestedSpaces = false;
+
+        std::vector<std::string> shallow;
+        auto skip = space.visit(
+            [&](PathEntry const& entry, ValueHandle&) {
+                shallow.push_back(entry.path);
+                return VisitControl::Continue;
+            },
+            nestedDisabled);
+        REQUIRE(skip);
+        CHECK(std::find(shallow.begin(), shallow.end(), "/mount[1]") != shallow.end());
+        CHECK(std::find(shallow.begin(), shallow.end(), "/mount[1]/child1") == shallow.end());
+    }
+}
+
+TEST_SUITE_END();

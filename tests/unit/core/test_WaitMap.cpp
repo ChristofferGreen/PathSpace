@@ -10,7 +10,7 @@
 using namespace SP;
 using namespace std::chrono_literals;
 
-TEST_SUITE("WaitMap") {
+TEST_SUITE("core.waitmap") {
     TEST_CASE("Basic Operations") {
         WaitMap waitMap;
 

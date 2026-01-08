@@ -26,6 +26,8 @@
 using namespace SP;
 using namespace std::chrono_literals;
 
+TEST_SUITE_BEGIN("pathspace.extract");
+
 TEST_CASE("PathSpace Take") {
     PathSpace pspace;
     SUBCASE("Simple PathSpace Extract") {
@@ -1011,3 +1013,5 @@ TEST_CASE("PathSpace String") {
         CHECK(extracted_values.size() == NUM_THREADS * OPS_PER_THREAD);
     }
 }
+
+TEST_SUITE_END();

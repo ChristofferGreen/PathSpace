@@ -3,6 +3,7 @@
 #include "type/InputData.hpp"
 #include "type/InputMetadata.hpp"
 #include "type/InputMetadataT.hpp"
+#include "task/Task.hpp"
 
 #include "third_party/doctest.h"
 
@@ -31,7 +32,7 @@ inline auto metadataForString() -> InputMetadata {
 }
 } // namespace
 
-TEST_SUITE("NodeData snapshot serialization") {
+TEST_SUITE("core.nodedata.snapshot") {
     TEST_CASE("round-trips single value") {
         NodeData node;
         int      value = 42;
@@ -148,5 +149,53 @@ TEST_SUITE("NodeData snapshot serialization") {
         double roundtrip = 0;
         CHECK_FALSE(decoded->deserialize(&roundtrip, metadataForDouble()).has_value());
         CHECK(roundtrip == Approx(value));
+    }
+
+    TEST_CASE("serializeSnapshot returns nullopt for execution-only payloads") {
+        NodeData node;
+        auto task = Task::Create([](Task&, bool) {});
+        InputData input{task};
+        input.task     = task;
+        input.executor = nullptr;
+        InputMetadata meta{};
+        meta.typeInfo     = &typeid(Task);
+        meta.serialize    = nullptr;
+        meta.deserialize  = nullptr;
+        meta.dataCategory = DataCategory::Execution;
+        input.metadata    = meta;
+        CHECK_FALSE(node.serialize(input).has_value());
+
+        auto snapshot = node.serializeSnapshot();
+        CHECK_FALSE(snapshot.has_value());
+    }
+
+    TEST_CASE("serializeSnapshot filters execution payloads but keeps values") {
+        NodeData node;
+        int      value = 7;
+        CHECK_FALSE(node.serialize(InputData(value)).has_value());
+
+        auto task = Task::Create([](Task&, bool) {});
+        InputData input{task};
+        input.task     = task;
+        input.executor = nullptr;
+        InputMetadata meta{};
+        meta.typeInfo     = &typeid(Task);
+        meta.serialize    = nullptr;
+        meta.deserialize  = nullptr;
+        meta.dataCategory = DataCategory::Execution;
+        input.metadata    = meta;
+        CHECK_FALSE(node.serialize(input).has_value());
+
+        auto snapshot = node.serializeSnapshot();
+        REQUIRE(snapshot.has_value());
+
+        auto restoredOpt =
+            NodeData::deserializeSnapshot(std::span<const std::byte>{snapshot->data(), snapshot->size()});
+        REQUIRE(restoredOpt.has_value());
+        auto restored = std::move(*restoredOpt);
+
+        int out = 0;
+        CHECK_FALSE(restored.deserialize(&out, metadataForInt()).has_value());
+        CHECK(out == value);
     }
 }

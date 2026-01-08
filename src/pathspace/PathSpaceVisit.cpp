@@ -1,10 +1,12 @@
 #include "PathSpaceBase.hpp"
 
 #include "core/Node.hpp"
+#include "path/utils.hpp"
 
 #include <algorithm>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <optional>
 
 namespace SP {
@@ -54,6 +56,7 @@ struct VisitState {
     PathVisitor const& visitor;
     VisitOptions const& options;
     std::size_t baseDepth = 0;
+    std::optional<std::size_t> rootIndex;
     bool stopRequested    = false;
 };
 
@@ -137,7 +140,7 @@ auto snapshotNode(PathSpaceBase& owner, Node& node, std::string const& path, Vis
 
     {
         std::lock_guard<std::mutex> guard(node.payloadMutex);
-        capture.entry.hasNestedSpace = static_cast<bool>(node.nested);
+        capture.entry.hasNestedSpace = node.data && node.data->hasNestedSpaces();
         if (node.data) {
             capture.entry.hasValue = true;
             auto const& summary    = node.data->typeSummary();
@@ -186,12 +189,23 @@ auto visitNestedSpace(Node& node,
         return {};
     }
 
-    std::unique_lock<std::mutex> guard(node.payloadMutex);
-    if (!node.nested) {
-        return {};
+    std::vector<std::pair<std::shared_ptr<PathSpaceBase>, std::size_t>> nestedSpaces;
+    {
+        std::unique_lock<std::mutex> guard(node.payloadMutex);
+        if (!node.data || !node.data->hasNestedSpaces()) {
+            return {};
+        }
+        auto count = node.data->nestedCount();
+        nestedSpaces.reserve(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            if (state.rootIndex && depth == state.baseDepth && *state.rootIndex != i) {
+                continue;
+            }
+            if (auto nested = node.data->borrowNestedShared(i)) {
+                nestedSpaces.emplace_back(std::move(nested), i);
+            }
+        }
     }
-    auto nested = node.nested.get();
-    guard.unlock();
 
     auto budget = remainingDepthBudget(state.baseDepth, depth, state.options);
     if (!budget.has_value()) {
@@ -202,25 +216,37 @@ auto visitNestedSpace(Node& node,
     nestedOptions.root        = "/";
     nestedOptions.maxDepth    = budget.value();
 
-    auto nestedVisitor = [&](PathEntry const& entry, ValueHandle& handle) -> VisitControl {
+    for (auto const& entry : nestedSpaces) {
         if (state.stopRequested) {
-            return VisitControl::Stop;
+            break;
         }
-        if (entry.path == "/") {
-            return VisitControl::Continue;
-        }
-        PathEntry remapped = entry;
-        remapped.path      = appendNestedPath(path, entry.path);
-        auto control       = state.visitor(remapped, handle);
-        if (control == VisitControl::Stop) {
-            state.stopRequested = true;
-        }
-        return control;
-    };
+        auto const& nestedHolder = entry.first;
+        auto* nested             = nestedHolder.get();
+        auto idx                 = entry.second;
+        auto nestedVisitor = [&](PathEntry const& entry, ValueHandle& handle) -> VisitControl {
+            if (state.stopRequested) {
+                return VisitControl::Stop;
+            }
+            if (entry.path == "/") {
+                return VisitControl::Continue;
+            }
+            PathEntry remapped = entry;
+            std::string basePath = path;
+            if (!(state.rootIndex && depth == state.baseDepth)) {
+                basePath = append_index_suffix(path, idx);
+            }
+            remapped.path      = appendNestedPath(basePath, entry.path);
+            auto control       = state.visitor(remapped, handle);
+            if (control == VisitControl::Stop) {
+                state.stopRequested = true;
+            }
+            return control;
+        };
 
-    auto result = nested->visit(nestedVisitor, nestedOptions);
-    if (!result) {
-        return result;
+        auto result = nested->visit(nestedVisitor, nestedOptions);
+        if (!result) {
+            return result;
+        }
     }
     return {};
 }
@@ -301,12 +327,20 @@ auto resolveStart(PathSpaceBase& space,
     std::size_t currentDepth = 0;
 
     for (std::size_t idx = 0; idx < components.size(); ++idx) {
-        auto* child = current->getChild(components[idx]);
+        auto parsed = parse_indexed_component(components[idx]);
+        if (parsed.malformed) {
+            return std::unexpected(Error{Error::Code::InvalidPath, "Malformed indexed path component"});
+        }
+        auto* child = current->getChild(parsed.base);
         if (!child) {
-            std::unique_lock<std::mutex> guard(current->payloadMutex);
-            if (current->nested) {
-                auto nested = current->nested.get();
-                guard.unlock();
+            std::shared_ptr<PathSpaceBase> nested;
+            {
+                std::unique_lock<std::mutex> guard(current->payloadMutex);
+                if (current->data && state.options.includeNestedSpaces) {
+                    nested = current->data->borrowNestedShared(parsed.index.value_or(0));
+                }
+            }
+            if (nested) {
                 VisitOptions nestedOptions = options;
                 nestedOptions.root         = buildSubPath(components, idx);
                 auto nestedVisitor = [&](PathEntry const& entry, ValueHandle& handle) -> VisitControl {
@@ -314,7 +348,8 @@ auto resolveStart(PathSpaceBase& space,
                         return VisitControl::Stop;
                     }
                     PathEntry remapped = entry;
-                    remapped.path      = appendNestedPath(currentPath, entry.path);
+                    auto basePath      = append_index_suffix(currentPath, parsed.index.value_or(0));
+                    remapped.path      = appendNestedPath(basePath, entry.path);
                     auto control       = state.visitor(remapped, handle);
                     if (control == VisitControl::Stop) {
                         state.stopRequested = true;
@@ -327,7 +362,9 @@ auto resolveStart(PathSpaceBase& space,
                 }
                 return std::optional<VisitStart>{};
             }
-            guard.unlock();
+            if (parsed.index.has_value()) {
+                return std::unexpected(Error{Error::Code::NoSuchPath, "visit root not found"});
+            }
             return std::unexpected(Error{Error::Code::NoSuchPath, "visit root not found"});
         }
 
@@ -336,34 +373,43 @@ auto resolveStart(PathSpaceBase& space,
         currentDepth = idx + 1;
 
         bool finalComponent = (idx + 1 == components.size());
-        if (!finalComponent) {
+        std::shared_ptr<PathSpaceBase> nested;
+        {
             std::unique_lock<std::mutex> guard(child->payloadMutex);
-            if (child->nested) {
-                auto nested = child->nested.get();
-                guard.unlock();
-                VisitOptions nestedOptions = options;
-                nestedOptions.root         = buildSubPath(components, idx + 1);
-                auto nestedVisitor = [&](PathEntry const& entry, ValueHandle& handle) -> VisitControl {
-                    if (state.stopRequested) {
-                        return VisitControl::Stop;
-                    }
-                    if (entry.path == "/") {
-                        return VisitControl::Continue;
-                    }
-                    PathEntry remapped = entry;
-                    remapped.path      = appendNestedPath(currentPath, entry.path);
-                    auto control       = state.visitor(remapped, handle);
-                    if (control == VisitControl::Stop) {
-                        state.stopRequested = true;
-                    }
-                    return control;
-                };
-                auto result = nested->visit(nestedVisitor, nestedOptions);
-                if (!result) {
-                    return std::unexpected(result.error());
-                }
-                return std::optional<VisitStart>{};
+            if (child->data) {
+                nested = child->data->borrowNestedShared(parsed.index.value_or(0));
             }
+        }
+        if (nested && !finalComponent) {
+            if (!state.options.includeNestedSpaces) {
+                return std::unexpected(Error{Error::Code::NoSuchPath, "visit root not found"});
+            }
+            VisitOptions nestedOptions = options;
+            nestedOptions.root         = buildSubPath(components, idx + 1);
+            auto nestedVisitor = [&](PathEntry const& entry, ValueHandle& handle) -> VisitControl {
+                if (state.stopRequested) {
+                    return VisitControl::Stop;
+                }
+                if (entry.path == "/") {
+                    return VisitControl::Continue;
+                }
+                PathEntry remapped = entry;
+                remapped.path      = appendNestedPath(append_index_suffix(currentPath, parsed.index.value_or(0)), entry.path);
+                auto control       = state.visitor(remapped, handle);
+                if (control == VisitControl::Stop) {
+                    state.stopRequested = true;
+                }
+                return control;
+            };
+
+            auto result = nested->visit(nestedVisitor, nestedOptions);
+            if (!result) {
+                return std::unexpected(result.error());
+            }
+            return std::optional<VisitStart>{};
+        }
+        if (!nested && parsed.index.has_value()) {
+            return std::unexpected(Error{Error::Code::NoSuchPath, "visit root not found"});
         }
     }
 
@@ -436,6 +482,13 @@ auto PathSpaceBase::visit(PathVisitor const& visitor, VisitOptions const& option
     }
 
     VisitState state{*this, visitor, options, depthForPath(canonicalRoot)};
+    if (!components->empty()) {
+        auto parsedRoot   = parse_indexed_component(components->back());
+        if (parsedRoot.malformed) {
+            return std::unexpected(Error{Error::Code::InvalidPath, "Malformed indexed path component"});
+        }
+        state.rootIndex = parsedRoot.index;
+    }
     auto       resolved = resolveStart(*this, *rootNode, canonicalRoot, *components, options, state);
     if (!resolved) {
         return std::unexpected(resolved.error());

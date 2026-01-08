@@ -32,7 +32,7 @@ auto make_surface(int width, int height) -> PathSurfaceSoftware {
 
 } // namespace
 
-TEST_SUITE("SoftwareTileRenderer") {
+TEST_SUITE("ui.scenegraph.render.tile.renderer.software") {
     TEST_CASE("renders_rect_commands_into_tiles") {
         auto surface = make_surface(8, 4);
         SoftwareTileRenderer renderer(surface, SoftwareTileRendererConfig{.tile_width = 4, .tile_height = 2});

@@ -1,14 +1,22 @@
 #include "NodeData.hpp"
+#include "PathSpaceBase.hpp"
 #include "log/TaggedLogger.hpp"
 #include "type/InputData.hpp"
 #include "core/ExecutionCategory.hpp"
 #include "task/Task.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <span>
+#include <mutex>
+#include <condition_variable>
+#include <functional>
+#include <atomic>
 
 namespace {
 constexpr std::uint32_t HISTORY_PAYLOAD_VERSION = 2;
+std::function<void()> g_borrowWaitHook;
+std::function<std::optional<SP::Error>()> g_nestedSerializeHook;
 
 template <typename T>
 void appendScalar(std::vector<std::byte>& bytes, T value) {
@@ -31,6 +39,76 @@ auto readScalar(std::span<const std::byte>& span) -> std::optional<T> {
 
 namespace SP {
 
+std::optional<Error> NodeData::validateNested(std::unique_ptr<PathSpaceBase> const& space) const {
+    if (g_nestedSerializeHook) {
+        if (auto maybeErr = g_nestedSerializeHook()) {
+            return maybeErr;
+        }
+    }
+    if (!space) {
+        return Error{Error::Code::InvalidType, "UniquePtr payload is null"};
+    }
+    return std::nullopt;
+}
+
+NodeData::~NodeData() = default;
+
+NodeData::NodeData(NodeData&& other) noexcept
+    : data(std::move(other.data)),
+      types(std::move(other.types)),
+      tasks(std::move(other.tasks)),
+      futures(std::move(other.futures)),
+      anyFutures(std::move(other.anyFutures)),
+      valueSizes(std::move(other.valueSizes)),
+      nestedSlots(std::move(other.nestedSlots)) {
+}
+
+NodeData& NodeData::operator=(NodeData&& other) noexcept {
+    if (this == &other) {
+        return *this;
+    }
+    data              = std::move(other.data);
+    types             = std::move(other.types);
+    tasks             = std::move(other.tasks);
+    futures           = std::move(other.futures);
+    anyFutures        = std::move(other.anyFutures);
+    valueSizes        = std::move(other.valueSizes);
+    nestedSlots       = std::move(other.nestedSlots);
+    return *this;
+}
+
+NodeData::NodeData(NodeData const& other)
+    : data(other.data),
+      types(other.types),
+      tasks(other.tasks),
+      futures(other.futures),
+      anyFutures(other.anyFutures),
+      valueSizes(other.valueSizes),
+      nestedSlots{} {
+    if (other.hasNestedSpaces()) {
+        sp_log("NodeData copy dropped nested PathSpaces (not copyable)", "NodeData");
+        dropNestedTypes();
+    }
+}
+
+NodeData& NodeData::operator=(NodeData const& other) {
+    if (this == &other) {
+        return *this;
+    }
+    this->data       = other.data;
+    this->types      = other.types;
+    this->tasks      = other.tasks;
+    this->futures    = other.futures;
+    this->anyFutures = other.anyFutures;
+    this->valueSizes = other.valueSizes;
+    nestedSlots.clear();
+    if (other.hasNestedSpaces()) {
+        sp_log("NodeData copy assignment dropped nested PathSpaces (not copyable)", "NodeData");
+        dropNestedTypes();
+    }
+    return *this;
+}
+
 NodeData::NodeData(InputData const& inputData) {
     sp_log("NodeData::NodeData", "Function Called");
     this->serialize(inputData);
@@ -39,7 +117,16 @@ NodeData::NodeData(InputData const& inputData) {
 auto NodeData::serialize(const InputData& inputData) -> std::optional<Error> {
     sp_log("NodeData::serialize", "Function Called");
     sp_log("Serializing data of type: " + std::string(inputData.metadata.typeInfo->name()), "NodeData");
-    if (inputData.task) {
+    if (inputData.metadata.dataCategory == DataCategory::UniquePtr) {
+        auto* ptr = static_cast<std::unique_ptr<PathSpaceBase>*>(inputData.obj);
+        if (!ptr) {
+            return Error{Error::Code::InvalidType, "UniquePtr payload missing backing pointer"};
+        }
+        if (auto err = validateNested(*ptr)) {
+            return err;
+        }
+        this->appendNested(std::move(*ptr));
+    } else if (inputData.task) {
         // Store task and aligned future handle
         this->tasks.push_back(std::move(inputData.task));
         this->futures.push_back(Future::FromShared(this->tasks.back()));
@@ -92,6 +179,9 @@ auto NodeData::popFrontSerialized(NodeData& destination) -> std::optional<Error>
     if (this->types.empty()) {
         return Error{Error::Code::NoObjectFound, "No data available for serialization"};
     }
+    if (this->types.front().category == DataCategory::UniquePtr) {
+        return Error{Error::Code::NotSupported, "Nested PathSpaces cannot be serialized"};
+    }
     if (this->types.front().category == DataCategory::Execution) {
         return Error{Error::Code::NotSupported, "Execution payloads cannot be serialized"};
     }
@@ -126,6 +216,28 @@ auto NodeData::popFrontSerialized(NodeData& destination) -> std::optional<Error>
 auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, bool doPop) -> std::optional<Error> {
     sp_log("NodeData::deserializeImpl", "Function Called");
 
+    // Allow non-destructive reads to skip past nested PathSpaces that sit in front of
+    // regular payloads. We keep the authoritative queue ordering for pops/takes.
+    if (!doPop && !this->types.empty()
+        && this->types.front().category == DataCategory::UniquePtr
+        && inputMetadata.dataCategory != DataCategory::UniquePtr) {
+        NodeData copy{*this}; // drops nested type metadata
+        return copy.deserializeImpl(obj, inputMetadata, false);
+    }
+
+    // If the front of the queue is a nested slot that has no restored payload (e.g. a
+    // snapshot placeholder), allow accesses to skip it before validating type compatibility.
+    if (inputMetadata.dataCategory != DataCategory::UniquePtr) {
+        while (!this->types.empty()
+               && this->types.front().category == DataCategory::UniquePtr
+               && this->nestedAt(0) == nullptr) {
+            this->takeNestedAt(0);
+            if (this->types.empty()) {
+                return Error{Error::Code::NoObjectFound, "No data available for deserialization"};
+            }
+        }
+    }
+
     if (auto validationResult = validateInputs(inputMetadata))
         return validationResult;
 
@@ -142,6 +254,8 @@ auto NodeData::deserializeImpl(void* obj, const InputMetadata& inputMetadata, bo
             return Error{Error::Code::NoObjectFound, "No task available"};
         }
         return this->deserializeExecution(obj, inputMetadata, doPop);
+    } else if (this->types.front().category == DataCategory::UniquePtr) {
+        return Error{Error::Code::NotSupported, "Nested PathSpaces must be accessed via out/take helpers"};
     } else {
         return this->deserializeData(obj, inputMetadata, doPop);
     }
@@ -290,9 +404,27 @@ auto NodeData::pushType(InputMetadata const& meta) -> void {
 
 auto NodeData::popType() -> void {
     sp_log("NodeData::popType", "Function Called");
-    if (!this->types.empty())
-        if (--this->types.front().elements == 0)
-            this->types.erase(this->types.begin());
+    if (this->types.empty())
+        return;
+
+    if (this->types.front().category == DataCategory::UniquePtr) {
+        // Discard the front nested space in lockstep with the type queue.
+        (void)this->takeNestedAt(0);
+        return;
+    }
+
+    if (--this->types.front().elements == 0) {
+        this->types.erase(this->types.begin());
+    }
+}
+
+void NodeData::dropNestedTypes() {
+    types.erase(std::remove_if(types.begin(),
+                               types.end(),
+                               [](ElementType const& t) {
+                                   return t.category == DataCategory::UniquePtr;
+                               }),
+                types.end());
 }
 
 auto NodeData::append(NodeData const& other) -> std::optional<Error> {
@@ -300,6 +432,10 @@ auto NodeData::append(NodeData const& other) -> std::optional<Error> {
     if (other.hasExecutionPayload()) {
         return Error{Error::Code::NotSupported,
                      "Execution payloads cannot be serialized across mounts"};
+    }
+    if (other.hasNestedSpaces()) {
+        return Error{Error::Code::NotSupported,
+                     "Nested PathSpaces cannot be serialized across mounts"};
     }
 
     auto sourceRaw   = other.rawBuffer();
@@ -354,10 +490,147 @@ auto NodeData::peekFuture() const -> std::optional<Future> {
    return this->futures.front();
 }
 
+auto NodeData::hasNestedSpaces() const noexcept -> bool {
+    return this->nestedCount() > 0;
+}
+
+auto NodeData::nestedCount() const noexcept -> std::size_t {
+    return nestedSlots.size();
+}
+
+auto NodeData::nestedAt(std::size_t index) const -> PathSpaceBase* {
+    if (index >= nestedSlots.size())
+        return nullptr;
+    auto const& slot = nestedSlots[index];
+    if (!slot)
+        return nullptr;
+    return slot->ptr.get();
+}
+
+auto NodeData::takeNestedAt(std::size_t index) -> std::unique_ptr<PathSpaceBase> {
+    if (!hasNestedSpaces())
+        return {};
+
+    if (index >= nestedSlots.size())
+        return {};
+
+    auto slot = nestedSlots[index];
+    if (!slot || !slot->ptr) {
+        nestedSlots.erase(nestedSlots.begin() + static_cast<std::ptrdiff_t>(index));
+        removeNestedTypeAt(index);
+        return {};
+    }
+
+    {
+        std::unique_lock<std::mutex> lk(slot->m);
+        if (slot->borrows.load() > 0 && g_borrowWaitHook) {
+            g_borrowWaitHook();
+        }
+        slot->cv.wait(lk, [&]() { return slot->borrows.load() == 0; });
+    }
+
+    auto ptr = std::move(slot->ptr);
+    nestedSlots.erase(nestedSlots.begin() + static_cast<std::ptrdiff_t>(index));
+
+    removeNestedTypeAt(index);
+    return ptr;
+}
+
+auto NodeData::appendNested(std::unique_ptr<PathSpaceBase> space) -> void {
+    auto slot = std::make_shared<NestedSlot>();
+    slot->ptr = std::move(space);
+    slot->self = slot;
+    nestedSlots.push_back(std::move(slot));
+}
+
+auto NodeData::emplaceNestedAt(std::size_t index, std::unique_ptr<PathSpaceBase>& space) -> std::optional<Error> {
+    if (auto err = validateNested(space)) {
+        return err;
+    }
+    if (index >= nestedSlots.size()) {
+        return Error{Error::Code::NoSuchPath, "Nested slot out of range"};
+    }
+    auto& slot = nestedSlots[index];
+    if (!slot) {
+        slot = std::make_shared<NestedSlot>();
+        slot->self = slot;
+    }
+    if (slot->ptr != nullptr) {
+        return Error{Error::Code::InvalidType, "Nested slot already occupied"};
+    }
+    slot->ptr = std::move(space);
+    return std::nullopt;
+}
+
+auto NodeData::borrowNestedShared(std::size_t index) const -> std::shared_ptr<PathSpaceBase> {
+    if (index >= nestedSlots.size()) {
+        return {};
+    }
+    auto slot = nestedSlots[index];
+    if (!slot || !slot->ptr) {
+        return {};
+    }
+    slot->borrows.fetch_add(1);
+    std::weak_ptr<NestedSlot> weakSlot = slot;
+    auto control = slot; // keep slot alive for the holder lifetime
+    std::shared_ptr<PathSpaceBase> holder(slot->ptr.get(), [weakSlot, control](PathSpaceBase*) {
+        if (auto ctrl = weakSlot.lock()) {
+            auto prev = ctrl->borrows.fetch_sub(1);
+            if (prev == 1) {
+                ctrl->cv.notify_all();
+            }
+        }
+    });
+    return holder;
+}
+
+void NodeData::retargetTasks(std::weak_ptr<NotificationSink> sink, Executor* exec) {
+    for (auto const& task : tasks) {
+        if (!task) {
+            continue;
+        }
+        task->notifier = sink;
+        task->setExecutor(exec);
+    }
+}
+
+void NodeData::removeNestedTypeAt(std::size_t nestedIndex) {
+    std::size_t remaining = nestedIndex;
+    for (auto it = types.begin(); it != types.end(); ++it) {
+        if (it->category != DataCategory::UniquePtr)
+            continue;
+
+        if (remaining >= it->elements) {
+            remaining -= it->elements;
+            continue;
+        }
+
+        // Target nested resides within this run
+        if (--it->elements == 0) {
+            types.erase(it);
+        }
+        return;
+    }
+}
+
 std::optional<std::vector<std::byte>> NodeData::serializeSnapshot() const {
     sp_log("NodeData::serializeSnapshot", "Function Called");
+    // Nested PathSpaces are copied separately by the caller (PathSpace::copyNodeRecursive).
+    // Preserve their metadata to maintain queue ordering; the actual nested payloads are
+    // re-attached after deserialization. Execution payloads cannot be serialized, so drop
+    // them while retaining any adjacent values.
+    std::deque<ElementType> typesForSnapshot = this->types;
     if (!this->tasks.empty() || !this->futures.empty() || !this->anyFutures.empty()) {
-        sp_log("History payload unsupported for nodes containing tasks/futures", "NodeData");
+        typesForSnapshot.erase(std::remove_if(typesForSnapshot.begin(),
+                                              typesForSnapshot.end(),
+                                              [](ElementType const& t) {
+                                                  return t.category == DataCategory::Execution;
+                                              }),
+                               typesForSnapshot.end());
+    }
+
+    if (typesForSnapshot.empty()) {
+        sp_log("History payload has no serializable entries after filtering", "NodeData");
         return std::nullopt;
     }
 
@@ -365,9 +638,9 @@ std::optional<std::vector<std::byte>> NodeData::serializeSnapshot() const {
     bytes.reserve(32 + this->data.rawSize());
 
     appendScalar<std::uint32_t>(bytes, HISTORY_PAYLOAD_VERSION);
-    appendScalar<std::uint32_t>(bytes, static_cast<std::uint32_t>(this->types.size()));
+    appendScalar<std::uint32_t>(bytes, static_cast<std::uint32_t>(typesForSnapshot.size()));
 
-    for (auto const& type : this->types) {
+    for (auto const& type : typesForSnapshot) {
         auto ptrValue = reinterpret_cast<std::uintptr_t>(type.typeInfo);
         appendScalar<std::uintptr_t>(bytes, ptrValue);
         appendScalar<std::uint32_t>(bytes, type.elements);
@@ -461,7 +734,26 @@ std::optional<NodeData> NodeData::deserializeSnapshot(std::span<const std::byte>
     if (hasValueSizes) {
         node.valueSizes.assign(restoredValueSizes.begin(), restoredValueSizes.end());
     }
+    // Recreate placeholder entries for nested payloads so queue ordering is preserved
+    // even when the actual nested spaces are copied separately or unavailable.
+    for (auto const& type : node.types) {
+        if (type.category != DataCategory::UniquePtr)
+            continue;
+        for (std::size_t i = 0; i < type.elements; ++i) {
+            auto slot = std::make_shared<NestedSlot>();
+            slot->self = slot;
+            node.nestedSlots.push_back(std::move(slot));
+        }
+    }
     return node;
+}
+
+void NodeDataTestHelper::setBorrowWaitHook(std::function<void()> hook) {
+    g_borrowWaitHook = std::move(hook);
+}
+
+void NodeDataTestHelper::setNestedSerializeHook(std::function<std::optional<Error>()> hook) {
+    g_nestedSerializeHook = std::move(hook);
 }
 
 auto NodeData::fromSerializedValue(InputMetadata const& metadata,

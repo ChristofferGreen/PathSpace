@@ -9,6 +9,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/type/test_InputMetadata.cpp
   unit/type/test_SlidingBuffer.cpp
   unit/core/test_NodeDataSnapshot.cpp
+  unit/core/test_NodeDataNested.cpp
   unit/ext/test_alpaca.cpp
   unit/task/test_TaskPool.cpp
   unit/test_PathSpace_read.cpp
@@ -17,6 +18,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/test_PathSpace_listChildren.cpp
   unit/test_PathSpace_visit.cpp
   unit/test_PathSpace_insert.cpp
+  unit/test_PathSpace_retarget.cpp
   unit/test_PathSpace_multithreading.cpp
   unit/test_PathSpace_execution.cpp
   unit/test_PathSpace_copy.cpp

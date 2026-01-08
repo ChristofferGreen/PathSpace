@@ -208,7 +208,7 @@ auto UndoableSpace::captureJournalNodeData(UndoJournalRootState const& state,
     }
 
     std::scoped_lock payloadLock(node->payloadMutex);
-    if (node->nested) {
+    if (node->data && node->data->hasNestedSpaces()) {
         return std::unexpected(Error{Error::Code::UnknownError,
                                      std::string(UndoUtilsAlias::UnsupportedNestedMessage)});
     }

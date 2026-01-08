@@ -4,7 +4,7 @@
 
 using namespace SP::UI::SceneGraph;
 
-TEST_SUITE("RenderCommandStore") {
+TEST_SUITE("ui.scenegraph.render.command.store") {
     TEST_CASE("upsert_new_assigns_id_and_counts") {
         RenderCommandStore store;
         CommandDescriptor cmd{};
@@ -52,4 +52,3 @@ TEST_SUITE("RenderCommandStore") {
         CHECK(second.id == first.id); // slot reused
     }
 }
-

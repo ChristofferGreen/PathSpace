@@ -8,6 +8,8 @@
 
 using namespace SP;
 
+TEST_SUITE_BEGIN("path.iterator");
+
 TEST_CASE("Path Iterator and Utilities") {
     SUBCASE("Path Iterator Basic Operations") {
         SUBCASE("Root Path") {
@@ -259,3 +261,5 @@ TEST_CASE("Path Iterator and Utilities") {
         }
     }
 }
+
+TEST_SUITE_END();

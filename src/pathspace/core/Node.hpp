@@ -1,7 +1,6 @@
 #pragma once
 
 #include "core/NodeData.hpp"
-#include "PathSpaceBase.hpp"
 #include "path/TransparentString.hpp"
 
 #include <memory>
@@ -51,14 +50,11 @@ struct Node final {
     // Sub-tree structure
     ChildrenMap children;
 
-    // Protects payload and nested members; children has its own internal sharding locks.
+    // Protects payload members; children has its own internal sharding locks.
     mutable std::mutex payloadMutex;
 
     // Data payload at this node (if present)
     std::unique_ptr<NodeData> data;
-
-    // Nested space anchored at this node (if present)
-    std::unique_ptr<PathSpaceBase> nested;
 
     Node()  = default;
     ~Node() = default;
@@ -66,7 +62,6 @@ struct Node final {
     // Structural queries
     bool hasChildren() const noexcept { return !children.empty(); }
     bool hasData() const noexcept { return static_cast<bool>(data); }
-    bool hasNestedSpace() const noexcept { return static_cast<bool>(nested); }
     bool isLeaf() const noexcept { return !hasChildren(); }
 
     // Create or fetch a child node for the given name
@@ -103,7 +98,6 @@ struct Node final {
     // Clear payloads at this node (does not clear children)
     void clearLocal() noexcept {
         data.reset();
-        nested.reset();
     }
 
     // Clear entire sub-tree (children and payloads)

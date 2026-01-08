@@ -54,7 +54,7 @@ auto mountTrellis(std::shared_ptr<PathSpace> const& space) -> PathSpaceTrellis* 
 
 } // namespace
 
-TEST_SUITE("PathSpaceTrellis") {
+TEST_SUITE("layer.pathspace.trellis") {
     TEST_CASE("enable/disable commands update registry") {
         auto space   = std::make_shared<PathSpace>();
         auto* trellis = mountTrellis(space);
