@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <pathspace/PathSpace.hpp>
+#include <pathspace/tools/PathSpaceJsonExporter.hpp>
 #include <pathspace/tools/PathSpaceJsonConverters.hpp>
 
 using Json = nlohmann::json;
@@ -259,6 +260,48 @@ TEST_CASE("PathSpace JSON exporter metadata is opt-in") {
     auto meta = metaDoc.at("_meta");
     CHECK(meta.at("root") == "/");
     CHECK(meta.at("flags").at("include_metadata").get<bool>());
+}
+
+TEST_CASE("JSON namespace Export matches direct exporter") {
+    PathSpace space;
+    REQUIRE(space.insert("/alias/value", 123).nbrValuesInserted == 1);
+
+    PathSpaceJsonOptions opts;
+    opts.mode                   = PathSpaceJsonOptions::Mode::Debug;
+    opts.includeStructureFields = true;
+    opts.visit.root             = "/";
+
+    auto direct = PathSpaceJsonExporter::Export(space, opts);
+    REQUIRE(direct);
+
+    auto viaAlias = JSON::Export(space, opts);
+    REQUIRE(viaAlias);
+
+    CHECK(*viaAlias == *direct);
+
+    auto doc = Json::parse(*viaAlias);
+    auto node = findNode(doc, "/", "/alias/value");
+    CHECK(node.at("values").size() == 1);
+    CHECK(node.at("values")[0].at("value") == 123);
+}
+
+TEST_CASE("JSON namespace Export supports flat paths") {
+    PathSpace space;
+    REQUIRE(space.insert("/flat/one", 1).nbrValuesInserted == 1);
+    REQUIRE(space.insert("/flat/two", 2).nbrValuesInserted == 1);
+
+    PathSpaceJsonOptions opts;
+    opts.flatPaths        = true;
+    opts.flatSimpleValues = true;
+    opts.visit.root       = "/flat";
+
+    auto flat = JSON::Export(space, opts);
+    REQUIRE(flat);
+
+    auto doc = Json::parse(*flat);
+    CHECK(doc.at("/flat/one") == 1);
+    CHECK(doc.at("/flat/two") == 2);
+    CHECK(doc.size() == 2);
 }
 
 TEST_SUITE_END();
