@@ -4,6 +4,7 @@
 
 #include "core/Error.hpp"
 #include "core/InsertReturn.hpp"
+#include "core/PodPayload.hpp"
 #include "path/Iterator.hpp"
 #include "path/utils.hpp"
 #include "type/InputData.hpp"
@@ -11,7 +12,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <typeinfo>
 #include <vector>
 
 namespace SP {
@@ -41,8 +41,12 @@ static auto insertSerializedAtNode(Node& node,
                                   NodeData const& payload,
                                   InsertReturn& ret,
                                   std::string const& resolvedPath) -> void;
+static auto migratePodToNodeData(Node& node, InsertReturn& ret) -> bool;
 
 auto Leaf::ensureNodeData(Node& n, InputData const& inputData, InsertReturn& ret) -> NodeData* {
+    if (!migratePodToNodeData(n, ret)) {
+        return nullptr;
+    }
     {
         std::lock_guard<std::mutex> lg(n.payloadMutex);
         if (!n.data) {
@@ -79,6 +83,10 @@ namespace {
 
 auto appendPayload(Node& node, NodeData const& payload, InsertReturn& ret) -> bool {
     std::lock_guard<std::mutex> guard(node.payloadMutex);
+    if (node.podPayload) {
+        ret.errors.emplace_back(Error{Error::Code::InvalidType, "Node already holds POD fast-path payload"});
+        return false;
+    }
     if (!node.data) {
         node.data = std::make_unique<NodeData>(payload);
     } else {
@@ -124,7 +132,151 @@ auto rebaseRetargets(InsertReturn& ret, std::string const& mountPrefix) -> void 
     }
 }
 
+static auto ensurePodPayload(Node& node, InputData const& inputData) -> std::shared_ptr<PodPayloadBase> {
+    std::lock_guard<std::mutex> lg(node.payloadMutex);
+    if (node.data) {
+        return {};
+    }
+    if (node.podPayload) {
+        if (node.podPayload->matches(*inputData.metadata.typeInfo)) {
+            return node.podPayload;
+        }
+        return {};
+    }
+    if (!inputData.metadata.createPodPayload) {
+        return {};
+    }
+    auto payload    = inputData.metadata.createPodPayload();
+    node.podPayload = payload;
+    return payload;
+}
+
+static auto tryPodInsert(Node& node, InputData const& inputData, InsertReturn& ret) -> std::optional<Error> {
+    if (!inputData.metadata.podPreferred || inputData.task || inputData.metadata.dataCategory == DataCategory::UniquePtr) {
+        return Error{Error::Code::NotSupported, "POD fast path not applicable"};
+    }
+
+    std::shared_ptr<PodPayloadBase> mismatchPayload;
+    {
+        std::lock_guard<std::mutex> lg(node.payloadMutex);
+        if (node.data) {
+            return Error{Error::Code::NotSupported, "Node already holds generic payload"};
+        }
+        if (node.podPayload && !node.podPayload->matches(*inputData.metadata.typeInfo)) {
+            mismatchPayload = node.podPayload;
+        }
+    }
+
+    if (mismatchPayload) {
+        if (!migratePodToNodeData(node, ret)) {
+            return Error{Error::Code::InvalidType, "Failed to upgrade POD payload to generic storage"};
+        }
+        return Error{Error::Code::NotSupported, "Upgraded POD fast path to generic payload"};
+    }
+
+    auto payload = ensurePodPayload(node, inputData);
+    if (!payload) {
+        return Error{Error::Code::InvalidType, "POD fast path unavailable for this node"};
+    }
+    if (!inputData.obj) {
+        return Error{Error::Code::InvalidType, "Input pointer missing"};
+    }
+    if (!payload->pushValue(inputData.obj)) {
+        return Error{Error::Code::NotSupported, "POD fast path temporarily unavailable"};
+    }
+    ret.nbrValuesInserted += 1;
+    return std::nullopt;
+}
+
+static auto tryPodRead(Node& node, InputMetadata const& inputMetadata, void* obj, bool doExtract) -> std::optional<Error> {
+    if (!inputMetadata.podPreferred || inputMetadata.dataCategory == DataCategory::UniquePtr) {
+        return Error{Error::Code::NotSupported, "POD fast path not applicable"};
+    }
+    auto payload = node.podPayload;
+    if (!payload) {
+        return Error{Error::Code::InvalidType, "POD fast path unavailable"};
+    }
+    if (!payload->matches(*inputMetadata.typeInfo)) {
+        return Error{Error::Code::InvalidType, "POD fast path type mismatch or unavailable"};
+    }
+    return doExtract ? payload->takeTo(obj) : payload->readTo(obj);
+}
+
+template <typename Fn>
+static auto tryPodSpan(Node const& node, InputMetadata const& inputMetadata, Fn&& fn) -> std::optional<Error> {
+    if (!inputMetadata.podPreferred) {
+        return Error{Error::Code::NotSupported, "POD span not applicable"};
+    }
+    auto payload = node.podPayload;
+    if (!payload) {
+        return Error{Error::Code::InvalidType, "POD fast path unavailable"};
+    }
+    if (!payload->matches(*inputMetadata.typeInfo)) {
+        return Error{Error::Code::InvalidType, "POD fast path type mismatch or unavailable"};
+    }
+    return payload->withSpanRaw([&](void const* data, std::size_t count) { fn(data, count); });
+}
+
+template <typename Fn>
+static auto tryPodSpanMutable(Node& node, InputMetadata const& inputMetadata, Fn&& fn) -> std::optional<Error> {
+    if (!inputMetadata.podPreferred) {
+        return Error{Error::Code::NotSupported, "POD span not applicable"};
+    }
+    auto payload = node.podPayload;
+    if (!payload) {
+        return Error{Error::Code::InvalidType, "POD fast path unavailable"};
+    }
+    if (!payload->matches(*inputMetadata.typeInfo)) {
+        return Error{Error::Code::InvalidType, "POD fast path type mismatch or unavailable"};
+    }
+    return payload->withSpanMutableRaw([&](void* data, std::size_t count) { fn(data, count); });
+}
+
 } // namespace
+
+auto migratePodToNodeData(Node& node, InsertReturn& ret) -> bool {
+    std::unique_lock<std::mutex> lg(node.payloadMutex);
+    if (!node.podPayload) {
+        return true;
+    }
+    auto payload = node.podPayload;
+    payload->freezeForUpgrade();
+    auto const& meta      = payload->podMetadata();
+    auto        elemBytes = payload->elementSize();
+    std::vector<std::byte> buffer(elemBytes);
+
+    auto data = std::make_unique<NodeData>();
+    for (;;) {
+        auto err = payload->takeTo(buffer.data());
+        if (err) {
+            if (err->code == Error::Code::NoObjectFound) {
+                break;
+            }
+            lg.unlock();
+            ret.errors.emplace_back(*err);
+            return false;
+        }
+        InputData copy{buffer.data(), meta};
+        if (auto ser = data->serialize(copy)) {
+            lg.unlock();
+            ret.errors.emplace_back(*ser);
+            return false;
+        }
+    }
+
+    if (!node.data) {
+        node.data = std::move(data);
+    } else {
+        if (auto err = node.data->append(*data)) {
+            lg.unlock();
+            ret.errors.emplace_back(*err);
+            return false;
+        }
+    }
+    node.podPayload.reset();
+    lg.unlock();
+    return true;
+}
 
 auto Leaf::insertSerialized(Iterator const& iter,
                             NodeData const& payload,
@@ -303,7 +455,7 @@ auto Leaf::inAtNode(Node& node,
         bool parentHasValue = false;
         {
             std::lock_guard<std::mutex> parentLock(node.payloadMutex);
-            parentHasValue = (node.data != nullptr) && !node.data->hasNestedSpaces();
+            parentHasValue = ((node.data != nullptr) && !node.data->hasNestedSpaces()) || node.podPayload != nullptr;
         }
         auto const& childKey = parsed.base;
         Node& child = node.getOrCreateChild(childKey);
@@ -328,6 +480,19 @@ auto Leaf::inAtNode(Node& node,
                 }
             }
         } else {
+            if (inputData.metadata.podPreferred && !inputData.task) {
+                if (auto podErr = tryPodInsert(child, inputData, ret); podErr.has_value()) {
+                    if (podErr->code != Error::Code::NotSupported) {
+                        ret.errors.emplace_back(*podErr);
+                        return;
+                    }
+                    // Fall through to generic path when not supported.
+                } else {
+                    if (parentHasValue)
+                        ret.nbrValuesSuppressed++;
+                    return;
+                }
+            }
             auto* data = ensureNodeData(child, inputData, ret);
             if (!data) {
                 return;
@@ -348,7 +513,7 @@ auto Leaf::inAtNode(Node& node,
     bool const nameIsGlob = parsed.index.has_value() ? false : is_glob(name);
     if (nameIsGlob) {
         // Recurse into all matching existing children
-    node.children.for_each([&](auto const& kv) {
+        node.children.for_each([&](auto const& kv) {
             auto const& key = kv.first;
             if (!match_names(name, key)) {
                 return;
@@ -437,6 +602,29 @@ auto Leaf::outAtNode(Node& node,
     std::string baseName{baseNameView};
 
     if (iter.isAtFinalComponent()) {
+        if (inputMetadata.spanReader || inputMetadata.spanMutator) {
+            if (parsed.index.has_value() || is_glob(name)) {
+                return Error{Error::Code::InvalidPath, "Span reads require concrete non-indexed paths"};
+            }
+            Node* child = node.getChild(baseName);
+            if (!child) {
+                sp_log("Leaf::outAtNode(span) no such child: " + std::string(name), "Leaf");
+                return Error{Error::Code::NoSuchPath, "Path not found"};
+            }
+            if (!inputMetadata.podPreferred) {
+                return Error{Error::Code::NotSupported, "Span supported only on POD fast path"};
+            }
+            if (!child->podPayload) {
+                return Error{Error::Code::NotSupported, "POD fast path unavailable"};
+            }
+            if (inputMetadata.spanReader) {
+                return tryPodSpan(
+                    *child, inputMetadata, [&](void const* data, std::size_t count) { inputMetadata.spanReader(data, count); });
+            }
+            return tryPodSpanMutable(
+                *child, inputMetadata, [&](void* data, std::size_t count) { inputMetadata.spanMutator(data, count); });
+        }
+
         // Support glob at final component by selecting the smallest matching key
         bool const nameIsGlob = parsed.index.has_value() ? false : is_glob(name);
         if (nameIsGlob) {
@@ -460,7 +648,11 @@ auto Leaf::outAtNode(Node& node,
                     continue;
                 std::optional<Error> res;
                 bool attempted = false;
-                {
+                if (childTry->podPayload && inputMetadata.podPreferred) {
+                    foundAny  = true;
+                    attempted = true;
+                    res       = tryPodRead(*childTry, inputMetadata, obj, doExtract);
+                } else {
                     std::lock_guard<std::mutex> lg(childTry->payloadMutex);
                     if (childTry->data) {
                         foundAny = true;
@@ -509,6 +701,15 @@ auto Leaf::outAtNode(Node& node,
         }
 
         if (parsed.index.has_value()) {
+            if (child->podPayload) {
+                InsertReturn upgradeRet;
+                if (!migratePodToNodeData(*child, upgradeRet)) {
+                    if (!upgradeRet.errors.empty()) {
+                        return upgradeRet.errors.front();
+                    }
+                    return Error{Error::Code::UnknownError, "Failed to upgrade POD payload for indexed access"};
+                }
+            }
             std::lock_guard<std::mutex> lg(child->payloadMutex);
             if (!child->data) {
                 sp_log("Leaf::outAtNode(final,indexed) no data present", "Leaf");
@@ -522,7 +723,21 @@ auto Leaf::outAtNode(Node& node,
             return res;
         }
 
-        if (child->hasData()) {
+        if (child->podPayload && !inputMetadata.podPreferred) {
+            return Error{Error::Code::InvalidType, "Type mismatch during deserialization"};
+        }
+
+        if (child->podPayload && inputMetadata.podPreferred) {
+            auto res = tryPodRead(*child, inputMetadata, obj, doExtract);
+            if (res.has_value()) {
+                sp_log("Leaf::outAtNode(final) POD deserialize failed code=" + std::to_string(static_cast<int>(res->code)) + " msg=" + res->message.value_or(""), "Leaf");
+            } else {
+                sp_log("Leaf::outAtNode(final) POD deserialize success on child: " + std::string(name), "Leaf");
+            }
+            return res;
+        }
+
+        if (child->data) {
             std::optional<Error> res;
             {
                 std::lock_guard<std::mutex> lg(child->payloadMutex);

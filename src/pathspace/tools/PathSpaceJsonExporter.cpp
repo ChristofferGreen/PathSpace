@@ -290,6 +290,7 @@ auto buildNode(PathEntry const& entry,
 
     auto reader = makeReader(handle);
     auto readerQueueSize = reader ? reader->queueTypes().size() : static_cast<std::size_t>(snapshot->queueDepth);
+    readerQueueSize      = std::max(readerQueueSize, static_cast<std::size_t>(snapshot->queueDepth));
 
         if (!options.visit.includeValues || options.maxQueueEntries == 0) {
             bool truncated = entry.hasValue && readerQueueSize > 0 && options.maxQueueEntries == 0;

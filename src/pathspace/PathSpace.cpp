@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <deque>
 #include <cstdlib>
+#include <cstddef>
 #include <optional>
 #include <mutex>
 #include <span>
@@ -18,8 +19,6 @@
 #include <vector>
 
 namespace SP {
-
-namespace {
 
 auto gatherOrderedChildren(Node const& node) -> std::vector<std::string> {
     std::vector<std::string> names;
@@ -46,8 +45,11 @@ auto mergeWithNested(Node const& node, std::vector<std::string> names) -> std::v
     for (auto const& entry : nestedList) {
         auto const& nestedSpace = entry.first;
         auto const  idx         = entry.second;
-        auto nestedNames        = nestedSpace->listChildren();
-        for (auto const& child : nestedNames) {
+        auto nestedNames = nestedSpace->read<Children>("/");
+        if (!nestedNames) {
+            continue;
+        }
+        for (auto const& child : nestedNames->names) {
             if (idx == 0) {
                 names.emplace_back(child);
             } else {
@@ -102,8 +104,6 @@ auto baseComponentsFromCanonical(std::string const& canonicalPath) -> Expected<s
     }
     return base;
 }
-
-} // namespace
 
 namespace {
 
@@ -437,16 +437,26 @@ auto PathSpace::in(Iterator const& path, InputData const& data) -> InsertReturn 
     }
 
     if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksInserted > 0) {
-        if (!this->prefix.empty()) {
-            std::string notePath = this->prefix;
-            notePath.append(path.toStringView().data(), path.toStringView().size());
-            sp_log("PathSpace::in notify: " + notePath, "PathSpace");
-            this->context_->notify(notePath);
-        } else {
-            auto sv = path.toStringView();
-            std::string_view notePath{sv.data(), sv.size()};
-            sp_log("PathSpace::in notify: " + std::string(notePath), "PathSpace");
-            this->context_->notify(notePath);
+        if (this->context_ && !this->context_->hasWaiters()) {
+            if (ret.nbrValuesSuppressed > 0 && ret.nbrValuesInserted >= ret.nbrValuesSuppressed) {
+                ret.nbrValuesInserted -= ret.nbrValuesSuppressed;
+            } else if (ret.nbrValuesSuppressed > 0) {
+                ret.nbrValuesInserted = 0;
+            }
+            return ret;
+        }
+        if (this->context_) {
+            if (!this->prefix.empty()) {
+                std::string notePath = this->prefix;
+                notePath.append(path.toStringView().data(), path.toStringView().size());
+                sp_log("PathSpace::in notify: " + notePath, "PathSpace");
+                this->context_->notify(notePath);
+            } else {
+                auto sv = path.toStringView();
+                std::string_view notePath{sv.data(), sv.size()};
+                sp_log("PathSpace::in notify: " + std::string(notePath), "PathSpace");
+                this->context_->notify(notePath);
+            }
         }
     }
     if (ret.nbrValuesSuppressed > 0) {
@@ -721,16 +731,16 @@ auto PathSpace::listChildrenCanonical(std::string_view canonicalPath) const -> s
 
         if (nestedSpace && parsed.index.has_value()) {
             auto remaining = buildRemainingPath(components, idx + 1);
-            ConcretePathString remainingPath{remaining};
-            ConcretePathStringView remainingView{remainingPath.getPath()};
-            return nestedSpace->listChildren(remainingView);
+            auto names = nestedSpace->read<Children>(remaining);
+            if (names) return names->names;
+            return {};
         }
 
         if (nestedSpace && !parsed.index.has_value()) {
             auto remaining = buildRemainingPath(components, idx + 1);
-            ConcretePathString remainingPath{remaining};
-            ConcretePathStringView remainingView{remainingPath.getPath()};
-            return nestedSpace->listChildren(remainingView);
+            auto names = nestedSpace->read<Children>(remaining);
+            if (names) return names->names;
+            return {};
         }
 
         current = child;
@@ -784,6 +794,30 @@ void PathSpace::copyNodeRecursive(Node const& src,
             nestedSpaces.reserve(nestedCount);
             for (std::size_t i = 0; i < nestedCount; ++i) {
                 nestedSpaces.push_back(src.data->borrowNestedShared(i));
+            }
+        } else if (src.podPayload) {
+            auto payload = src.podPayload;
+            auto const& meta = payload->podMetadata();
+            auto elemSize    = payload->elementSize();
+            NodeData tmp;
+            bool ok = true;
+            auto spanErr = payload->withSpanRaw([&](void const* data, std::size_t count) {
+                auto* base = static_cast<std::byte const*>(data);
+                for (std::size_t i = 0; i < count; ++i) {
+                    InputData in{base + i * elemSize, meta};
+                    if (auto e = tmp.serialize(in)) {
+                        ok = false;
+                        return;
+                    }
+                }
+            });
+            if (spanErr.has_value() || !ok) {
+                stats.payloadsSkipped += 1;
+            } else {
+                dst.data = std::make_unique<NodeData>(std::move(tmp));
+                stats.payloadsCopied += 1;
+                stats.valuesCopied += dst.data->valueCount();
+                snapshotRestored = true;
             }
         }
     }

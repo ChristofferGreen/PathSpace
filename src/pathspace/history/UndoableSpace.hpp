@@ -321,7 +321,7 @@ private:
                                  void* obj) -> std::optional<Error>;
     auto interpretSteps(InputData const& data) const -> std::size_t;
 
-    auto resolveRootNode() -> Node*;
+    auto resolveRootNode() const -> Node*;
 
     static auto payloadBytes(NodeData const& data) -> std::size_t;
     static auto payloadBytes(std::optional<NodeData> const& data) -> std::size_t;

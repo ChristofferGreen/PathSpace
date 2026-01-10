@@ -83,8 +83,9 @@ TEST_CASE("clone avoids tree mutex recursion deadlock") {
     auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     CHECK(millis < 200ms);
 
-    auto names = clone.listChildren("/");
-    CHECK_FALSE(names.empty());
+    auto names = clone.read<Children>("/");
+    REQUIRE(names.has_value());
+    CHECK_FALSE(names->names.empty());
 }
 
 TEST_CASE("copy handles nested serialization failures gracefully") {

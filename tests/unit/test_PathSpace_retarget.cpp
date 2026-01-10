@@ -99,10 +99,11 @@ TEST_CASE("copy tolerates nested borrow during listChildren") {
     REQUIRE(root.insert("/mount/space", std::move(nested)).nbrSpacesInserted == 1);
 
     std::thread lister([&]() {
-        auto names = root.listChildren("/mount/space");
-        CHECK(names.size() == 1);
-        if (!names.empty()) {
-            CHECK(names[0] == "spacevalue");
+        auto names = root.read<Children>("/mount/space");
+        REQUIRE(names.has_value());
+        CHECK(names->names.size() == 1);
+        if (!names->names.empty()) {
+            CHECK(names->names[0] == "spacevalue");
         }
     });
 

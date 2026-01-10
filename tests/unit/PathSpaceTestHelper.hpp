@@ -19,6 +19,6 @@ struct PathSpaceTestHelper {
                          PathSpace::CopyStats& stats) {
         PathSpace::copyNodeRecursive(src.leaf.rootNode(), dst.leaf.rootNode(), ctx, basePrefix, currentPath, stats);
     }
+
 };
 } // namespace SP
-

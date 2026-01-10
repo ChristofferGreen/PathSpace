@@ -5,15 +5,12 @@
 #include "core/InsertReturn.hpp"
 #include "core/Out.hpp"
 #include "path/Iterator.hpp"
-#include "path/UnvalidatedPath.hpp"
 #include "task/IFutureAny.hpp"
 
 #include "parallel_hashmap/phmap.h"
 
 #include <atomic>
-#include <chrono>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <shared_mutex>
 #include <string>
@@ -32,6 +29,7 @@ public:
     auto notify(std::string const& notificationPath) -> void override;
     auto shutdown() -> void override;
     auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void> override;
+    auto listChildrenCanonical(std::string_view canonicalPath) const -> std::vector<std::string> override;
 
     void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix) override;
 

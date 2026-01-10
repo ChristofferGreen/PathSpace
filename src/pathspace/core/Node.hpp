@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/NodeData.hpp"
+#include "core/PodPayload.hpp"
 #include "path/TransparentString.hpp"
 
 #include <memory>
@@ -55,13 +56,14 @@ struct Node final {
 
     // Data payload at this node (if present)
     std::unique_ptr<NodeData> data;
+    std::shared_ptr<PodPayloadBase> podPayload;
 
     Node()  = default;
     ~Node() = default;
 
     // Structural queries
     bool hasChildren() const noexcept { return !children.empty(); }
-    bool hasData() const noexcept { return static_cast<bool>(data); }
+    bool hasData() const noexcept { return static_cast<bool>(data) || static_cast<bool>(podPayload); }
     bool isLeaf() const noexcept { return !hasChildren(); }
 
     // Create or fetch a child node for the given name
@@ -98,6 +100,7 @@ struct Node final {
     // Clear payloads at this node (does not clear children)
     void clearLocal() noexcept {
         data.reset();
+        podPayload.reset();
     }
 
     // Clear entire sub-tree (children and payloads)

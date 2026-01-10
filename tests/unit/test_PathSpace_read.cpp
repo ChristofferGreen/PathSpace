@@ -8,6 +8,7 @@
 #include <list>
 #include <map>
 #include <set>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -225,6 +226,56 @@ TEST_CASE("PathSpace Read") {
         auto const val = pspace.read<std::variant<int, double, std::string>>("/variant");
         CHECK(val.has_value());
         CHECK(val.value() == var);
+    }
+
+    SUBCASE("Read children via runtime and compile-time helpers") {
+        CHECK(pspace.insert("/root/a", 1).errors.empty());
+        CHECK(pspace.insert("/root/b", 2).errors.empty());
+
+        auto kids = pspace.read<Children>("/root");
+        REQUIRE(kids.has_value());
+        std::vector<std::string> names = kids->names;
+        std::sort(names.begin(), names.end());
+        CHECK(names == std::vector<std::string>({"a", "b"}));
+
+        auto kidsConst = pspace.read<Children>("/root");
+        REQUIRE(kidsConst.has_value());
+        std::vector<std::string> namesConst = kidsConst->names;
+        std::sort(namesConst.begin(), namesConst.end());
+        CHECK(namesConst == std::vector<std::string>({"a", "b"}));
+
+        auto bad = pspace.read<Children>("/root/*");
+        CHECK_FALSE(bad.has_value());
+    }
+
+    SUBCASE("Span read rejects glob and indexed paths without consuming data") {
+        CHECK(pspace.insert("/glob/value", 9).errors.empty());
+        auto globRead = pspace.read("/glob/*", [&](std::span<const int>) {});
+        CHECK_FALSE(globRead.has_value());
+        CHECK(globRead.error().code == Error::Code::InvalidPath);
+
+        auto indexedRead = pspace.read("/glob/value[0]", [&](std::span<const int>) {});
+        CHECK_FALSE(indexedRead.has_value());
+        CHECK(indexedRead.error().code == Error::Code::InvalidPath);
+
+        auto stillThere = pspace.take<int>("/glob/value");
+        REQUIRE(stillThere.has_value());
+        CHECK(stillThere.value() == 9);
+    }
+
+    SUBCASE("Span take rejects glob and indexed paths without consuming data") {
+        CHECK(pspace.insert("/glob2/value", 5).errors.empty());
+        auto globTake = pspace.take("/glob2/*", [&](std::span<int>) {});
+        CHECK_FALSE(globTake.has_value());
+        CHECK(globTake.error().code == Error::Code::InvalidPath);
+
+        auto indexedTake = pspace.take("/glob2/value[0]", [&](std::span<int>) {});
+        CHECK_FALSE(indexedTake.has_value());
+        CHECK(indexedTake.error().code == Error::Code::InvalidPath);
+
+        auto stillThere = pspace.take<int>("/glob2/value");
+        REQUIRE(stillThere.has_value());
+        CHECK(stillThere.value() == 5);
     }
 
     SUBCASE("PathSpace Read std::bitset") {

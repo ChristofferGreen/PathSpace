@@ -1,6 +1,7 @@
 #include "third_party/doctest.h"
 #include <algorithm>
 #include <vector>
+#include <typeinfo>
 
 #include <pathspace/PathSpace.hpp>
 
@@ -47,6 +48,36 @@ TEST_CASE("PathSpace visit traverses nodes and reads values") {
     CHECK(std::find(visited.begin(), visited.end(), "/alpha") != visited.end());
     CHECK(std::find(visited.begin(), visited.end(), "/alpha/beta") != visited.end());
     CHECK(std::find(visited.begin(), visited.end(), "/gamma") != visited.end());
+}
+
+TEST_CASE("ValueHandle can read POD fast-path payloads during visit") {
+    PathSpace space;
+    REQUIRE(space.insert("/pod", 10).errors.empty());
+    REQUIRE(space.insert("/pod", 20).errors.empty());
+
+    auto ok = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path != "/pod") {
+                return VisitControl::Continue;
+            }
+            auto snapshot = handle.snapshot();
+            REQUIRE(snapshot);
+            CHECK_FALSE(snapshot->hasSerializedPayload); // stays on POD fast path
+            CHECK(snapshot->queueDepth == 2);
+
+            auto value = handle.read<int>();
+            CHECK(value);
+            CHECK(*value == 10);
+            return VisitControl::Stop;
+        });
+    REQUIRE(ok);
+
+    auto first = space.take<int>("/pod");
+    REQUIRE(first.has_value());
+    CHECK(*first == 10);
+    auto second = space.take<int>("/pod");
+    REQUIRE(second.has_value());
+    CHECK(*second == 20);
 }
 
 TEST_CASE("PathSpace visit respects root and depth options") {
@@ -134,6 +165,67 @@ TEST_CASE("PathSpace visit validates indexed roots and nested traversal") {
         CHECK(std::find(shallow.begin(), shallow.end(), "/mount[1]") != shallow.end());
         CHECK(std::find(shallow.begin(), shallow.end(), "/mount[1]/child1") == shallow.end());
     }
+}
+
+TEST_CASE("ValueHandle snapshot reflects POD fast path upgrade to generic") {
+    PathSpace space;
+    REQUIRE(space.insert("/queue", 1).errors.empty());
+    REQUIRE(space.insert("/queue", 2).errors.empty());
+
+    ValueSnapshot before{};
+    auto preVisit = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/queue") {
+                auto snapshot = handle.snapshot();
+                REQUIRE(snapshot);
+                before = *snapshot;
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        });
+    REQUIRE(preVisit);
+    CHECK(before.queueDepth == 2);
+    REQUIRE(before.types.size() == 2);
+    CHECK(before.types[0].typeInfo == &typeid(int));
+    CHECK(before.types[1].typeInfo == &typeid(int));
+
+    // Upgrade the node by inserting a non-POD type.
+    REQUIRE(space.insert("/queue", std::string("tail")).errors.empty());
+
+    ValueSnapshot after{};
+    auto postVisit = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/queue") {
+                auto snapshot = handle.snapshot();
+                REQUIRE(snapshot);
+                after = *snapshot;
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        });
+    REQUIRE(postVisit);
+    CHECK(after.queueDepth >= 2);
+    REQUIRE(after.types.size() >= 2);
+    CHECK(after.hasSerializedPayload); // migrated off POD fast path
+    bool hasInt = false;
+    bool hasString = false;
+    for (auto const& t : after.types) {
+        hasInt |= (t.typeInfo == &typeid(int));
+        hasString |= (t.typeInfo == &typeid(std::string));
+    }
+    CHECK(hasInt);
+    CHECK(hasString);
+
+    // Validate queue contents preserved in order after upgrade.
+    auto first = space.take<int>("/queue");
+    REQUIRE(first.has_value());
+    CHECK(*first == 1);
+    auto second = space.take<int>("/queue");
+    REQUIRE(second.has_value());
+    CHECK(*second == 2);
+    auto tail = space.take<std::string>("/queue");
+    REQUIRE(tail.has_value());
+    CHECK(*tail == "tail");
 }
 
 TEST_SUITE_END();

@@ -101,6 +101,10 @@ struct ValueSnapshot {
     std::size_t rawBufferBytes   = 0;
 };
 
+struct Children {
+    std::vector<std::string> names;
+};
+
 class ValueHandle {
 public:
     ValueHandle() = default;
@@ -147,10 +151,84 @@ private:
 
 namespace VisitDetail {
 struct Access {
-    static auto MakeHandle(PathSpaceBase& owner, Node& node, bool includeValues) -> ValueHandle;
+    static auto MakeHandle(PathSpaceBase const& owner, Node const& node, std::string const& path, bool includeValues) -> ValueHandle;
     static auto SerializeNodeData(ValueHandle const& handle) -> std::optional<std::vector<std::byte>>;
 };
 } // namespace VisitDetail
+
+namespace Detail {
+template <typename T>
+struct SpanTraits {
+    static constexpr bool isSpan    = false;
+    static constexpr bool isConst   = false;
+    using Value                     = void;
+};
+
+template <typename T>
+struct SpanTraits<std::span<T>> {
+    static constexpr bool isSpan  = true;
+    static constexpr bool isConst = false;
+    using Value                   = std::remove_cv_t<T>;
+};
+
+template <typename T>
+struct SpanTraits<std::span<const T>> {
+    static constexpr bool isSpan  = true;
+    static constexpr bool isConst = true;
+    using Value                   = std::remove_cv_t<T>;
+};
+
+template <typename Sig>
+struct SpanCallbackHelper;
+
+template <typename C, typename R, typename Arg>
+struct SpanCallbackHelper<R (C::*)(Arg) const> {
+    using ArgType = Arg;
+};
+
+template <typename C, typename R, typename Arg>
+struct SpanCallbackHelper<R (C::*)(Arg)> {
+    using ArgType = Arg;
+};
+
+template <typename R, typename Arg>
+struct SpanCallbackHelper<R (*)(Arg)> {
+    using ArgType = Arg;
+};
+
+template <typename Fn, typename = void>
+struct SpanCallbackTraits {
+    static constexpr bool isSpan      = false;
+    static constexpr bool isConstSpan = false;
+    using Value                       = void;
+};
+
+template <typename Fn>
+struct SpanCallbackTraits<Fn, std::enable_if_t<std::is_pointer_v<Fn>>> {
+    using ArgHelper = SpanCallbackHelper<Fn>;
+    using Arg       = typename ArgHelper::ArgType;
+    using Traits    = SpanTraits<std::remove_cvref_t<Arg>>;
+    static constexpr bool isSpan      = Traits::isSpan;
+    static constexpr bool isConstSpan = Traits::isSpan && Traits::isConst;
+    using Value = typename Traits::Value;
+};
+
+template <typename Fn>
+struct SpanCallbackTraits<Fn, std::void_t<decltype(&Fn::operator())>> {
+    using ArgHelper = SpanCallbackHelper<decltype(&Fn::operator())>;
+    using Arg       = typename ArgHelper::ArgType;
+    using Traits    = SpanTraits<std::remove_cvref_t<Arg>>;
+    static constexpr bool isSpan      = Traits::isSpan;
+    static constexpr bool isConstSpan = Traits::isSpan && Traits::isConst;
+    using Value = typename Traits::Value;
+};
+
+template <typename Fn>
+concept IsSpanCallback = SpanCallbackTraits<Fn>::isSpan;
+
+template <typename Fn>
+concept IsMutableSpanCallback = SpanCallbackTraits<Fn>::isSpan && !SpanCallbackTraits<Fn>::isConstSpan;
+} // namespace Detail
 
 using PathVisitor = std::function<VisitControl(PathEntry const&, ValueHandle&)>;
 
@@ -233,20 +311,74 @@ public:
         Iterator const path{pathIn};
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
-        DataType obj;
-        if (auto error = const_cast<PathSpaceBase*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj))
-            return std::unexpected{*error};
-        return obj;
+        if constexpr (std::is_same_v<std::remove_cvref_t<DataType>, Children>) {
+            ConcretePathString canonicalRaw{path.toString()};
+            auto canonical = canonicalRaw.canonicalized();
+            if (!canonical) {
+                return std::unexpected(canonical.error());
+            }
+            auto names = this->listChildrenCanonical(canonical->getPath());
+            return Children{std::move(names)};
+        } else {
+            DataType obj;
+            if (auto error = const_cast<PathSpaceBase*>(this)->out(path, InputMetadataT<DataType>{}, options, &obj))
+                return std::unexpected{*error};
+            return obj;
+        }
+    }
+
+    template <typename DataType>
+        requires(std::is_same_v<std::remove_cvref_t<DataType>, Children>)
+    auto read(ConcretePathStringView const& pathIn, Out const& options = {}) const -> Expected<DataType> {
+        auto canonical = pathIn.canonicalized();
+        if (!canonical) {
+            return std::unexpected(canonical.error());
+        }
+        auto names = this->listChildrenCanonical(canonical->getPath());
+        return Children{std::move(names)};
     }
     // Compile-time path overload for read<T>:
     // - Requires a FixedString literal path validated at compile time (validate_path(pathIn))
     // - Runtime validation is disabled using OutNoValidation
     // - For typed reads (non-FutureAny), paths must be concrete (non-glob)
     template <FixedString pathIn, typename DataType>
-        requires(validate_path(pathIn) && !std::is_same_v<std::remove_cvref_t<DataType>, FutureAny>)
+        requires(validate_path(pathIn)
+                 && !std::is_same_v<std::remove_cvref_t<DataType>, FutureAny>
+                 && !std::is_same_v<std::remove_cvref_t<DataType>, Children>)
     auto read(Out const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
         return this->read<DataType>(pathIn, options & OutNoValidation{});
+    }
+
+    // Span callback overload (fast path only; returns Error::NotSupported otherwise).
+    template <StringConvertible S, typename Fn>
+        requires Detail::IsSpanCallback<Fn>
+    auto read(S const& pathIn, Fn&& fn, Out const& options = {}) const -> Expected<void> {
+        sp_log("PathSpace::read<span>", "Function Called");
+        Iterator const path{pathIn};
+        if (auto error = path.validate(options.validationLevel))
+            return std::unexpected(*error);
+
+        using Traits = Detail::SpanCallbackTraits<Fn>;
+        static_assert(Traits::isConstSpan, "Span callback must take std::span<const T>");
+        using Value = typename Traits::Value;
+
+        InputMetadata metadata{InputMetadataT<Value>{}};
+        auto bridge = [&](void const* data, std::size_t count) {
+            fn(std::span<const Value>(static_cast<Value const*>(data), count));
+        };
+        metadata.spanReader = bridge;
+        if (auto error = const_cast<PathSpaceBase*>(this)->out(path, metadata, options, nullptr))
+            return std::unexpected{*error};
+        return {};
+    }
+
+    // Compile-time path overload for span callback (read-only).
+    template <FixedString pathIn, typename Fn>
+        requires Detail::IsSpanCallback<Fn>
+    auto read(Fn&& fn, Out const& options = {}) const -> Expected<void> {
+        sp_log("PathSpace::read<span>", "Function Called");
+        return this->read(pathIn, std::forward<Fn>(fn), options & OutNoValidation{});
     }
 
     [[nodiscard]] auto toJSON(PathSpaceJsonOptions const& options = PathSpaceJsonOptions{}) -> Expected<std::string>;
@@ -297,22 +429,41 @@ public:
         return this->take<DataType>(pathIn, options & Pop{} & OutNoValidation{});
     }
 
-    virtual auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void>;
+    // Mutable span callback (fast path only; does NOT pop). Intended for in-place updates of POD queues.
+    template <StringConvertible S, typename Fn>
+        requires Detail::IsMutableSpanCallback<Fn>
+    auto take(S const& pathIn, Fn&& fn, Out const& options = {}) -> Expected<void> {
+        sp_log("PathSpace::take<span>", "Function Called");
+        Iterator const path{pathIn};
+        if (auto error = path.validate(options.validationLevel))
+            return std::unexpected(*error);
 
-    auto listChildren() const -> std::vector<std::string> {
-        return this->listChildrenCanonical("/");
+        using Traits = Detail::SpanCallbackTraits<Fn>;
+        static_assert(!Traits::isConstSpan, "Mutable span callback must take std::span<T>");
+        using Value = typename Traits::Value;
+
+        InputMetadata metadata{InputMetadataT<Value>{}};
+        auto bridge = [&](void* data, std::size_t count) {
+            fn(std::span<Value>(static_cast<Value*>(data), count));
+        };
+        metadata.spanMutator = bridge;
+        if (auto error = this->out(path, metadata, options, nullptr))
+            return std::unexpected{*error};
+        return {};
     }
+
+    // Compile-time path overload for mutable span callback (non-pop).
+    template <FixedString pathIn, typename Fn>
+        requires Detail::IsMutableSpanCallback<Fn>
+    auto take(Fn&& fn, Out const& options = {}) -> Expected<void> {
+        sp_log("PathSpace::take<span>", "Function Called");
+        return this->take(pathIn, std::forward<Fn>(fn), options & OutNoValidation{});
+    }
+
+    virtual auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void>;
 
     [[nodiscard]] std::shared_ptr<PathSpaceContext> sharedContext() const {
         return context_;
-    }
-
-    auto listChildren(ConcretePathStringView subpath) const -> std::vector<std::string> {
-        auto canonical = subpath.canonicalized();
-        if (!canonical) {
-            return {};
-        }
-        return this->listChildrenCanonical(canonical->getPath());
     }
 
 protected:
@@ -385,6 +536,7 @@ protected:
 
     // Internal helper for layers that need raw trie access; spaces that cannot expose their root should return nullptr.
     virtual auto getRootNode() -> Node* { return nullptr; }
+    virtual auto getRootNode() const -> Node* { return const_cast<PathSpaceBase*>(this)->getRootNode(); }
 
 private:
     // ---------- Private state and virtual hooks ----------
@@ -392,7 +544,7 @@ private:
     std::shared_ptr<PathSpaceContext>         context_;
     Executor*                                 executor_ = nullptr;
 
-    auto makeValueHandle(Node& node, bool includeValues) const -> ValueHandle;
+    auto makeValueHandle(Node const& node, std::string path, bool includeValues) const -> ValueHandle;
 
     friend struct VisitDetail::Access;
     friend class TaskPool;

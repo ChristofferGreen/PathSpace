@@ -189,21 +189,23 @@ TEST_CASE("PathSpace Nesting/listChildren isolates indexed nested space") {
     REQUIRE(root.insert("/mount/hostValue", 9).nbrValuesInserted == 1);
     REQUIRE(root.insert("/mount", std::move(nested)).nbrSpacesInserted == 1);
 
-    auto combined = root.listChildren("/mount");
-    CHECK(std::find(combined.begin(), combined.end(), "hostValue") != combined.end());
-    CHECK(std::find(combined.begin(), combined.end(), "nestedValue") != combined.end());
+    auto combined = root.read<Children>("/mount");
+    REQUIRE(combined.has_value());
+    CHECK(std::find(combined->names.begin(), combined->names.end(), "hostValue") != combined->names.end());
+    CHECK(std::find(combined->names.begin(), combined->names.end(), "nestedValue") != combined->names.end());
 
-    auto indexed = root.listChildren("/mount[0]");
+    auto indexed = root.read<Children>("/mount[0]");
+    REQUIRE(indexed.has_value());
     INFO("indexed: " << [&]() {
              std::string s;
-             for (auto const& c : indexed) {
+             for (auto const& c : indexed->names) {
                  if (!s.empty()) s.append(",");
                  s.append(c);
              }
              return s;
          }());
-    CHECK(std::find(indexed.begin(), indexed.end(), "nestedValue") != indexed.end());
-    CHECK(std::find(indexed.begin(), indexed.end(), "hostValue") == indexed.end());
+    CHECK(std::find(indexed->names.begin(), indexed->names.end(), "nestedValue") != indexed->names.end());
+    CHECK(std::find(indexed->names.begin(), indexed->names.end(), "hostValue") == indexed->names.end());
 }
 
 TEST_CASE("PathSpace Nesting/Nested Space with Functions") {
@@ -239,14 +241,15 @@ TEST_CASE("PathSpace Nesting/Multiple nested spaces at same path with indexing")
     REQUIRE(root.insert("/mount/space", std::move(first)).nbrSpacesInserted == 1);
     REQUIRE(root.insert("/mount/space", std::move(second)).nbrSpacesInserted == 1);
 
-    auto mountChildren = root.listChildren("/mount");
+    auto mountChildren = root.read<Children>("/mount");
+    REQUIRE(mountChildren.has_value());
     std::string childrenStr;
-    for (auto const& c : mountChildren) {
+    for (auto const& c : mountChildren->names) {
         if (!childrenStr.empty()) childrenStr.append(",");
         childrenStr.append(c);
     }
     INFO("mount children: " << childrenStr);
-    CHECK(std::find(mountChildren.begin(), mountChildren.end(), "space") != mountChildren.end());
+    CHECK(std::find(mountChildren->names.begin(), mountChildren->names.end(), "space") != mountChildren->names.end());
 
     auto frontRead = root.read<int>("/mount/space/v", Block{200ms});
     REQUIRE(frontRead.has_value());
@@ -300,8 +303,9 @@ TEST_CASE("PathSpace Nesting/listChildren releases parent lock before nested tra
     REQUIRE(spaceNode != nullptr);
     nestedRaw->setParentMutex(&spaceNode->payloadMutex);
 
-    auto children = root.listChildren("/mount/space");
-    CHECK(std::find(children.begin(), children.end(), "child") != children.end());
+    auto children = root.read<Children>("/mount/space");
+    REQUIRE(children.has_value());
+    CHECK(std::find(children->names.begin(), children->names.end(), "child") != children->names.end());
     CHECK(nestedRaw->lastTryLockSucceeded());
 }
 
@@ -338,8 +342,9 @@ TEST_CASE("PathSpace Nesting/indexed value insert is rejected") {
     REQUIRE(result.errors.size() == 1);
     CHECK(result.errors[0].code == Error::Code::InvalidPath);
 
-    auto children = root.listChildren("/");
-    CHECK(children.empty());
+    auto children = root.read<Children>("/");
+    REQUIRE(children.has_value());
+    CHECK(children->names.empty());
 }
 
 TEST_CASE("PathSpace Nesting/Extract nested space by explicit index") {
@@ -390,28 +395,30 @@ TEST_CASE("PathSpace Nesting/listChildren honours explicit nested index") {
     REQUIRE(root.insert("/mount/space", std::move(first)).nbrSpacesInserted == 1);
     REQUIRE(root.insert("/mount/space", std::move(second)).nbrSpacesInserted == 1);
 
-    auto merged = root.listChildren("/mount/space");
+    auto merged = root.read<Children>("/mount/space");
+    REQUIRE(merged.has_value());
     INFO("merged children: " << [&]() {
              std::string s;
-             for (auto const& c : merged) {
+             for (auto const& c : merged->names) {
                  if (!s.empty()) s.append(",");
                  s.append(c);
              }
              return s;
          }());
 
-    auto children = root.listChildren("/mount/space[1]");
-    std::sort(children.begin(), children.end());
+    auto children = root.read<Children>("/mount/space[1]");
+    REQUIRE(children.has_value());
+    std::sort(children->names.begin(), children->names.end());
     INFO("children: " << [&]() {
              std::string s;
-             for (auto const& c : children) {
+             for (auto const& c : children->names) {
                  if (!s.empty()) s.append(",");
                  s.append(c);
              }
              return s;
          }());
-    CHECK(std::find(children.begin(), children.end(), "b") != children.end());
-    CHECK(std::find(children.begin(), children.end(), "a") == children.end());
+    CHECK(std::find(children->names.begin(), children->names.end(), "b") != children->names.end());
+    CHECK(std::find(children->names.begin(), children->names.end(), "a") == children->names.end());
 
     auto value = root.read<int>("/mount/space[1]/b", Block{});
     CHECK_MESSAGE(value.has_value(),
@@ -536,10 +543,11 @@ TEST_CASE("PathSpace Nesting/clone lists and visits indexed nested children") {
 
     PathSpace clone = root.clone();
 
-    auto children = clone.listChildren("/mount/space[1]");
-    CHECK(std::find(children.begin(), children.end(), "b") != children.end());
-    CHECK(std::find(children.begin(), children.end(), "c") != children.end());
-    CHECK(std::find(children.begin(), children.end(), "a") == children.end());
+    auto children = clone.read<Children>("/mount/space[1]");
+    REQUIRE(children.has_value());
+    CHECK(std::find(children->names.begin(), children->names.end(), "b") != children->names.end());
+    CHECK(std::find(children->names.begin(), children->names.end(), "c") != children->names.end());
+    CHECK(std::find(children->names.begin(), children->names.end(), "a") == children->names.end());
 
     std::vector<std::string> visited;
     VisitOptions             opts;
@@ -593,8 +601,9 @@ TEST_CASE("PathSpace Nesting/listChildren returns empty for missing nested index
     REQUIRE(nested->insert("/a", 1).nbrValuesInserted == 1);
     REQUIRE(root.insert("/mount/space", std::move(nested)).nbrSpacesInserted == 1);
 
-    auto children = root.listChildren("/mount/space[1]");
-    CHECK(children.empty());
+    auto children = root.read<Children>("/mount/space[1]");
+    REQUIRE(children.has_value());
+    CHECK(children->names.empty());
 }
 
 TEST_CASE("PathSpace Nesting/listChildren holds nested alive during concurrent take") {
@@ -606,8 +615,9 @@ TEST_CASE("PathSpace Nesting/listChildren holds nested alive during concurrent t
         REQUIRE(root.insert("/mount/slow", std::move(slow)).nbrSpacesInserted == 1);
 
         std::thread lister([&]() {
-            auto children = root.listChildren("/mount/slow");
-            CHECK(std::find(children.begin(), children.end(), "child") != children.end());
+            auto children = root.read<Children>("/mount/slow");
+            REQUIRE(children.has_value());
+            CHECK(std::find(children->names.begin(), children->names.end(), "child") != children->names.end());
         });
 
         for (int i = 0; i < 10 && !borrowed.load(); ++i) {
@@ -715,8 +725,9 @@ TEST_CASE("PathSpace Nesting/shutdown clears tree even when context is shared by
     REQUIRE(root.insert("/mount/space", std::make_unique<PathSpace>()).nbrSpacesInserted == 1);
 
     root.shutdown();
-    auto children = root.listChildren("/");
-    CHECK(children.empty());
+    auto children = root.read<Children>("/");
+    REQUIRE(children.has_value());
+    CHECK(children->names.empty());
 }
 
 TEST_CASE("PathSpace Nesting/listChildren merges multiple nested spaces") {
@@ -730,18 +741,19 @@ TEST_CASE("PathSpace Nesting/listChildren merges multiple nested spaces") {
     REQUIRE(root.insert("/mount/space", std::move(first)).nbrSpacesInserted == 1);
     REQUIRE(root.insert("/mount/space", std::move(second)).nbrSpacesInserted == 1);
 
-    auto children = root.listChildren("/mount/space");
-    std::sort(children.begin(), children.end());
+    auto children = root.read<Children>("/mount/space");
+    REQUIRE(children.has_value());
+    std::sort(children->names.begin(), children->names.end());
     INFO("children: " << [&]() {
              std::string s;
-             for (auto const& c : children) {
+             for (auto const& c : children->names) {
                  if (!s.empty()) s.append(",");
                  s.append(c);
              }
              return s;
          }());
-    CHECK(std::find(children.begin(), children.end(), "a") != children.end());
-    CHECK(std::find(children.begin(), children.end(), "b[1]") != children.end());
+    CHECK(std::find(children->names.begin(), children->names.end(), "a") != children->names.end());
+    CHECK(std::find(children->names.begin(), children->names.end(), "b[1]") != children->names.end());
 }
 
 TEST_CASE("PathSpace Nesting/visit includes parent node when starting at nested path") {

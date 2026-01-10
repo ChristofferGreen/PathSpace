@@ -85,7 +85,7 @@ void UndoableSpace::adjustLiveBytes(std::size_t& liveBytes,
 
 auto UndoableSpace::computeJournalLiveBytes(UndoJournalRootState const& state) const
     -> std::size_t {
-    auto* rootNode = const_cast<UndoableSpace*>(this)->resolveRootNode();
+    auto* rootNode = resolveRootNode();
     if (!rootNode) {
         return 0;
     }
@@ -180,7 +180,7 @@ auto UndoableSpace::parseJournalRelativeComponents(UndoJournalRootState const& s
 auto UndoableSpace::captureJournalNodeData(UndoJournalRootState const& state,
                                            std::vector<std::string> const& relativeComponents) const
     -> Expected<std::optional<NodeData>> {
-    auto* rootNode = const_cast<UndoableSpace*>(this)->resolveRootNode();
+    auto* rootNode = resolveRootNode();
     if (!rootNode) {
         return std::unexpected(Error{Error::Code::UnknownError, "PathSpace backend unavailable"});
     }
@@ -920,10 +920,13 @@ auto UndoableSpace::gatherJournalStatsLocked(UndoJournalRootState const& state) 
 }
 
 auto UndoableSpace::in(Iterator const& path, InputData const& data) -> InsertReturn {
+    InputData dataNoPod = data;
+    dataNoPod.metadata.podPreferred = false;
+
     auto fullPath       = path.toString();
     auto journalMatched = findJournalRootByPath(fullPath);
     if (!journalMatched.has_value()) {
-        return inner->in(path, data);
+        return inner->in(path, dataNoPod);
     }
 
     auto state = journalMatched->state;
@@ -942,7 +945,7 @@ auto UndoableSpace::in(Iterator const& path, InputData const& data) -> InsertRet
 
     if (!journalMatched->relativePath.empty()
         && journalMatched->relativePath.starts_with(UndoPaths::HistoryRoot)) {
-        return handleJournalControlInsert(*journalMatched, journalMatched->relativePath, data);
+        return handleJournalControlInsert(*journalMatched, journalMatched->relativePath, dataNoPod);
     }
 
     auto componentsExpected = parseJournalRelativeComponents(*state, fullPath);
@@ -969,7 +972,7 @@ auto UndoableSpace::in(Iterator const& path, InputData const& data) -> InsertRet
     }
 
     auto guard  = std::move(guardExpected.value());
-    auto result = inner->in(path, data);
+    auto result = inner->in(path, dataNoPod);
     if (result.errors.empty()) {
         auto afterExpected = captureJournalNodeData(*state, relativeComponents);
         if (!afterExpected) {
@@ -1023,27 +1026,30 @@ auto UndoableSpace::out(Iterator const& path,
                         InputMetadata const& inputMetadata,
                         Out const& options,
                         void* obj) -> std::optional<Error> {
+    InputMetadata metaNoPod = inputMetadata;
+    metaNoPod.podPreferred  = false;
+
     auto fullPath       = path.toString();
     auto journalMatched = findJournalRootByPath(fullPath);
 
     if (!options.doPop) {
         if (!journalMatched.has_value()) {
-            return inner->out(path, inputMetadata, options, obj);
+            return inner->out(path, metaNoPod, options, obj);
         }
         if (journalMatched->diagnostics) {
             return readDiagnosticsHistoryValue(
-                *journalMatched, journalMatched->relativePath, inputMetadata, obj);
+                *journalMatched, journalMatched->relativePath, metaNoPod, obj);
         }
         if (!journalMatched->relativePath.empty()
             && journalMatched->relativePath.starts_with(UndoPaths::HistoryRoot)) {
             return readJournalHistoryValue(
-                *journalMatched, journalMatched->relativePath, inputMetadata, obj);
+                *journalMatched, journalMatched->relativePath, metaNoPod, obj);
         }
-        return inner->out(path, inputMetadata, options, obj);
+        return inner->out(path, metaNoPod, options, obj);
     }
 
     if (!journalMatched.has_value()) {
-        return inner->out(path, inputMetadata, options, obj);
+        return inner->out(path, metaNoPod, options, obj);
     }
 
     auto state = journalMatched->state;
@@ -1078,7 +1084,7 @@ auto UndoableSpace::out(Iterator const& path,
     }
 
     auto guard = std::move(guardExpected.value());
-    auto error = inner->out(path, inputMetadata, options, obj);
+    auto error = inner->out(path, metaNoPod, options, obj);
     if (!error.has_value()) {
         auto afterExpected = captureJournalNodeData(*state, relativeComponents);
         if (!afterExpected) {

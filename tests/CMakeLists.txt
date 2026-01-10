@@ -23,6 +23,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/test_PathSpace_execution.cpp
   unit/test_PathSpace_copy.cpp
   unit/test_PathSpace_indexed.cpp
+  unit/test_PathSpace_pod_fastpath.cpp
   unit/path/test_UnvalidatedPath.cpp
   unit/history/test_UndoJournal.cpp
   unit/history/test_UndoJournalState.cpp

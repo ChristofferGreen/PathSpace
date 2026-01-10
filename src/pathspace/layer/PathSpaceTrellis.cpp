@@ -82,7 +82,24 @@ auto PathSpaceTrellis::out(Iterator const& path,
         return backing_->out(target, inputMetadata, options, obj);
     }
 
+    if (inputMetadata.spanReader || inputMetadata.spanMutator) {
+        return makeError(Error::Code::NotSupported, "Span reads are not supported on the trellis root");
+    }
+
     return tryFanOutRead(inputMetadata, options, obj, options.doPop);
+}
+
+auto PathSpaceTrellis::listChildrenCanonical(std::string_view canonicalPath) const -> std::vector<std::string> {
+    if (!backing_) return {};
+    if (canonicalPath == "/_system" || canonicalPath.rfind("/_system/", 0) == 0) {
+        return {};
+    }
+    auto joined = joinWithMount(canonicalPath);
+    auto kids   = backing_->read<Children>(ConcretePathStringView{joined});
+    if (!kids) {
+        return {};
+    }
+    return kids->names;
 }
 
 auto PathSpaceTrellis::notify(std::string const& notificationPath) -> void {

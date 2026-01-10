@@ -1,9 +1,14 @@
 #include "PathSpaceBase.hpp"
 
 #include "core/Node.hpp"
+#include "core/PodPayload.hpp"
+#include "type/DataCategory.hpp"
 #include "path/utils.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstddef>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -12,14 +17,22 @@
 namespace SP {
 
 struct ValueHandle::Impl {
-    explicit Impl(Node* owner) : node(owner) {}
-    Node* node = nullptr;
+    Impl(Node const* owner, PathSpaceBase const* space, std::string pathIn)
+        : node(owner)
+        , path(std::move(pathIn))
+        , space(space) {}
+    Node const*            node  = nullptr;
+    std::string            path;
+    PathSpaceBase const*   space = nullptr;
 };
+
+template <typename Fn>
+using SpanRawConstFn = std::function<void(void const*, std::size_t)>;
 
 namespace VisitDetail {
 
-auto Access::MakeHandle(PathSpaceBase& owner, Node& node, bool includeValues) -> ValueHandle {
-    return owner.makeValueHandle(node, includeValues);
+auto Access::MakeHandle(PathSpaceBase const& owner, Node const& node, std::string const& path, bool includeValues) -> ValueHandle {
+    return owner.makeValueHandle(node, path, includeValues);
 }
 
 auto Access::SerializeNodeData(ValueHandle const& handle) -> std::optional<std::vector<std::byte>> {
@@ -27,10 +40,34 @@ auto Access::SerializeNodeData(ValueHandle const& handle) -> std::optional<std::
         return std::nullopt;
     }
     std::lock_guard<std::mutex> guard(handle.impl_->node->payloadMutex);
-    if (!handle.impl_->node->data) {
-        return std::nullopt;
+    if (handle.impl_->node->data) {
+        return handle.impl_->node->data->serializeSnapshot();
     }
-    return handle.impl_->node->data->serializeSnapshot();
+    if (handle.impl_->node->podPayload) {
+        auto payload = handle.impl_->node->podPayload;
+        std::optional<std::vector<std::byte>> snapshotBytes;
+        NodeData tmp;
+        bool ok = true;
+        auto const& meta = payload->podMetadata();
+        auto elemSize    = payload->elementSize();
+        auto err = payload->withSpanRaw([&](void const* data, std::size_t count) {
+            auto* base = static_cast<std::byte const*>(data);
+            for (std::size_t i = 0; i < count; ++i) {
+                InputData in{base + i * elemSize, meta};
+                if (auto e = tmp.serialize(in)) {
+                    ok = false;
+                    return;
+                }
+            }
+        });
+        if (!err.has_value() && ok) {
+            snapshotBytes = tmp.serializeSnapshot();
+        }
+        if (snapshotBytes.has_value()) {
+            return snapshotBytes;
+        }
+    }
+    return std::nullopt;
 }
 
 } // namespace VisitDetail
@@ -147,10 +184,13 @@ auto snapshotNode(PathSpaceBase& owner, Node& node, std::string const& path, Vis
             if (!summary.empty()) {
                 capture.entry.frontCategory = summary.front().category;
             }
+        } else if (node.podPayload) {
+            capture.entry.hasValue        = true;
+            capture.entry.frontCategory   = DataCategory::Fundamental;
         }
     }
 
-    capture.handle = VisitDetail::Access::MakeHandle(owner, node, options.includeValues);
+    capture.handle = VisitDetail::Access::MakeHandle(owner, node, path, options.includeValues);
     return capture;
 }
 
@@ -422,11 +462,14 @@ auto ValueHandle::queueDepth() const -> std::size_t {
     if (!impl_ || !impl_->node) {
         return 0;
     }
-    std::lock_guard<std::mutex> guard(impl_->node->payloadMutex);
-    if (!impl_->node->data) {
-        return 0;
+    std::unique_lock<std::mutex> guard(impl_->node->payloadMutex);
+    if (impl_->node->data) {
+        return impl_->node->data->typeSummary().size();
     }
-    return impl_->node->data->typeSummary().size();
+    if (impl_->node->podPayload) {
+        return impl_->node->podPayload->size();
+    }
+    return 0;
 }
 
 auto ValueHandle::readInto(void* destination, InputMetadata const& metadata) const -> std::optional<Error> {
@@ -436,11 +479,60 @@ auto ValueHandle::readInto(void* destination, InputMetadata const& metadata) con
     if (!impl_ || !impl_->node) {
         return Error{Error::Code::UnknownError, "ValueHandle missing node"};
     }
-    std::lock_guard<std::mutex> guard(impl_->node->payloadMutex);
-    if (!impl_->node->data) {
-        return Error{Error::Code::NoObjectFound, "No value present at node"};
+    std::unique_lock<std::mutex> guard(impl_->node->payloadMutex);
+    if (impl_->node->data) {
+        return impl_->node->data->deserialize(destination, metadata);
     }
-    return impl_->node->data->deserialize(destination, metadata);
+    if (impl_->node->podPayload && metadata.typeInfo) {
+        auto payload = impl_->node->podPayload;
+        if (!payload->matches(*metadata.typeInfo)) {
+            return Error{Error::Code::TypeMismatch, "POD fast path type mismatch"};
+        }
+        if (auto err = payload->readTo(destination)) {
+            // Fallback: try snapshotting the front element without pop.
+            bool fixed = false;
+            payload->withSpanRaw([&](void const* data, std::size_t count) {
+                if (count == 0 || fixed) return;
+                auto elemSize = payload->elementSize();
+                std::memcpy(destination, data, std::min(elemSize, payload->elementSize()));
+                fixed = true;
+            });
+            if (!fixed) {
+                // Fallback: snapshot via NodeData
+                NodeData tmp;
+                auto elemSize = payload->elementSize();
+                auto const& meta = payload->podMetadata();
+                auto spanErr = payload->withSpanRaw([&](void const* data, std::size_t count) {
+                    auto* base = static_cast<std::byte const*>(data);
+                    for (std::size_t i = 0; i < count; ++i) {
+                        InputData in{base + i * elemSize, meta};
+                        if (auto e = tmp.serialize(in)) {
+                            err = e;
+                            return;
+                        }
+                    }
+                });
+                if (spanErr.has_value()) {
+                    return spanErr;
+                }
+                if (auto deser = tmp.deserialize(destination, metadata)) {
+                    return deser;
+                }
+                return std::nullopt;
+            }
+            return err;
+        }
+        return std::nullopt;
+    }
+    if (impl_->space) {
+        guard.unlock();
+        if (auto bytes = VisitDetail::Access::SerializeNodeData(*this)) {
+            if (auto restored = NodeData::deserializeSnapshot(std::span<const std::byte>{bytes->data(), bytes->size()})) {
+                return restored->deserialize(destination, metadata);
+            }
+        }
+    }
+    return Error{Error::Code::NoObjectFound, "No value present at node"};
 }
 
 auto ValueHandle::snapshot() const -> Expected<ValueSnapshot> {
@@ -449,19 +541,33 @@ auto ValueHandle::snapshot() const -> Expected<ValueSnapshot> {
     }
     std::lock_guard<std::mutex> guard(impl_->node->payloadMutex);
     ValueSnapshot snapshot{};
-    if (!impl_->node->data) {
+    if (impl_->node->data) {
+        snapshot.queueDepth = impl_->node->data->typeSummary().size();
+        snapshot.types.assign(impl_->node->data->typeSummary().begin(), impl_->node->data->typeSummary().end());
+        snapshot.hasExecutionPayload  = impl_->node->data->hasExecutionPayload();
+        snapshot.hasSerializedPayload = !impl_->node->data->rawBuffer().empty();
+        snapshot.rawBufferBytes       = impl_->node->data->rawBuffer().size();
         return snapshot;
     }
-    snapshot.queueDepth = impl_->node->data->typeSummary().size();
-    snapshot.types.assign(impl_->node->data->typeSummary().begin(), impl_->node->data->typeSummary().end());
-    snapshot.hasExecutionPayload  = impl_->node->data->hasExecutionPayload();
-    snapshot.hasSerializedPayload = !impl_->node->data->rawBuffer().empty();
-    snapshot.rawBufferBytes       = impl_->node->data->rawBuffer().size();
+    if (impl_->node->podPayload) {
+        auto const& ti = impl_->node->podPayload->type();
+        auto const& meta = impl_->node->podPayload->podMetadata();
+        ElementType et;
+        et.typeInfo = &ti;
+        et.category = meta.dataCategory;
+        et.elements = 1;
+        snapshot.queueDepth = impl_->node->podPayload->size();
+        snapshot.types.assign(snapshot.queueDepth, et);
+        snapshot.hasExecutionPayload  = false;
+        snapshot.hasSerializedPayload = false;
+        snapshot.rawBufferBytes       = 0;
+        return snapshot;
+    }
     return snapshot;
 }
 
-auto PathSpaceBase::makeValueHandle(Node& node, bool includeValues) const -> ValueHandle {
-    auto storage = std::make_shared<ValueHandle::Impl>(&node);
+auto PathSpaceBase::makeValueHandle(Node const& node, std::string path, bool includeValues) const -> ValueHandle {
+    auto storage = std::make_shared<ValueHandle::Impl>(&node, this, std::move(path));
     return ValueHandle(std::move(storage), includeValues);
 }
 

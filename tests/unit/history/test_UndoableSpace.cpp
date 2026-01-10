@@ -135,6 +135,34 @@ TEST_CASE("journal undo/redo round trip") {
     CHECK(*restored == std::string{"alpha"});
 }
 
+TEST_CASE("UndoableSpace bypasses POD fast path and still records history") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    auto root = ConcretePathStringView{"/doc"};
+    REQUIRE(space->enableHistory(root).has_value());
+
+    CHECK(space->insert("/doc/value", 7).errors.empty());
+    auto stats = space->getHistoryStats(root);
+    REQUIRE(stats.has_value());
+    CHECK(stats->counts.undo == 1);
+
+    auto spanRead = space->read("/doc/value", [&](std::span<const int>) {});
+    CHECK_FALSE(spanRead.has_value());
+
+    auto value = space->read<int>("/doc/value");
+    REQUIRE(value.has_value());
+    CHECK(*value == 7);
+
+    REQUIRE(space->undo(root).has_value());
+    CHECK_FALSE(space->read<int>("/doc/value").has_value());
+
+    REQUIRE(space->redo(root).has_value());
+    auto restored = space->read<int>("/doc/value");
+    REQUIRE(restored.has_value());
+    CHECK(*restored == 7);
+}
+
 TEST_CASE("journal take undo restores value") {
     auto space = makeUndoableSpace();
     REQUIRE(space);

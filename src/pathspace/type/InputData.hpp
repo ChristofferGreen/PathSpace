@@ -3,6 +3,7 @@
 #include "task/Future.hpp"
 #include "task/Executor.hpp"
 #include "task/IFutureAny.hpp"
+#include "core/PodPayload.hpp"
 
 #include <memory>
 #include <type_traits>
@@ -11,6 +12,10 @@ namespace SP {
 struct Task;
 
 struct InputData {
+    InputData(void const* objIn, InputMetadata const& md)
+        : obj(const_cast<void*>(objIn))
+        , metadata(md) {}
+
     template <typename T>
     InputData(T&& in)
         : metadata(InputMetadataT<T>{}) {
@@ -18,6 +23,11 @@ struct InputData {
             this->obj = reinterpret_cast<void*>(+in);
         else
             this->obj = const_cast<void*>(static_cast<const void*>(&in));
+        if constexpr (InputMetadataT<T>::podPreferred) {
+            if (metadata.createPodPayload == nullptr) {
+                metadata.createPodPayload = &PodPayload<std::remove_cvref_t<T>>::CreateShared;
+            }
+        }
     }
 
     void*                 obj = nullptr;

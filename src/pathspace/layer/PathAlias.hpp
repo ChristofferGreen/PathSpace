@@ -2,6 +2,7 @@
 #include "PathSpaceBase.hpp"
 #include "core/Error.hpp"
 #include "path/Iterator.hpp"
+#include "path/ConcretePath.hpp"
 
 #include <memory>
 #include <mutex>
@@ -173,6 +174,17 @@ private:
             prefixCopy = targetPrefix_;
         }
         return joinPaths_(prefixCopy, path);
+    }
+
+protected:
+    auto listChildrenCanonical(std::string_view canonicalPath) const -> std::vector<std::string> override {
+        if (!upstream_) return {};
+        auto mapped = mapPathRaw_(std::string(canonicalPath));
+        auto kids   = upstream_->read<Children>(ConcretePathStringView{mapped});
+        if (!kids) {
+            return {};
+        }
+        return kids->names;
     }
 
     std::string mapVisitRoot_(std::string const& path) const {

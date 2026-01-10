@@ -51,7 +51,7 @@ auto UndoableSpace::visit(PathVisitor const& visitor, VisitOptions const& option
     return inner->visit(visitor, options);
 }
 
-auto UndoableSpace::resolveRootNode() -> Node* {
+auto UndoableSpace::resolveRootNode() const -> Node* {
     if (!inner)
         return nullptr;
     return inner->getRootNode();
@@ -347,7 +347,11 @@ auto UndoableSpace::listChildrenCanonical(std::string_view canonicalPath) const 
         return {};
     }
     ConcretePathStringView view{canonicalPath};
-    return inner->listChildren(view);
+    auto children = inner->read<Children>(view);
+    if (!children) {
+        return {};
+    }
+    return children->names;
 }
 
 } // namespace SP::History

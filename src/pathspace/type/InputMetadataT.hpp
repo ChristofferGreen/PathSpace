@@ -234,6 +234,8 @@ struct InputMetadataT {
     static constexpr DataCategory          dataCategory     = Traits::category;
     static constexpr FunctionCategory      functionCategory = Traits::functionCategory;
     static constexpr std::type_info const* typeInfo         = Traits::typeInfo;
+    static constexpr bool                  podPreferred     = std::is_trivially_copyable_v<T>
+        && (Traits::category == DataCategory::Fundamental || Traits::category == DataCategory::SerializationLibraryCompatible);
 
     static constexpr auto serialize      = Traits::serialize;
     static constexpr auto deserialize    = Traits::deserialize;
