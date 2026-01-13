@@ -11,8 +11,8 @@
 
 namespace SP::History::UndoJournal {
 
-inline constexpr std::uint32_t kJournalMagic   = 0x50534A4C; // 'PSJL'
-inline constexpr std::uint16_t kJournalVersion = 2;
+inline constexpr std::uint32_t JournalMagic   = 0x50534A4C; // 'PSJL'
+inline constexpr std::uint16_t JournalVersion = 2;
 
 enum class OperationKind : std::uint8_t {
     Insert = 0,

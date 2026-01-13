@@ -671,6 +671,41 @@ auto PathSpace::notify(std::string const& notificationPath) -> void {
     }
 }
 
+auto PathSpace::spanPackConst(std::span<const std::string> paths,
+                              InputMetadata const& metadata,
+                              Out const& options,
+                              SpanPackConstCallback const& fn) const -> Expected<void> {
+    return this->leaf.spanPackConst(paths, metadata, options, fn);
+}
+
+auto PathSpace::spanPackMut(std::span<const std::string> paths,
+                            InputMetadata const& metadata,
+                            Out const& options,
+                            SpanPackMutCallback const& fn) const -> Expected<void> {
+    return this->leaf.spanPackMut(paths, metadata, options, fn);
+}
+
+auto PathSpace::packInsert(std::span<const std::string> paths,
+                           InputMetadata const& metadata,
+                           std::span<void const* const> values) -> InsertReturn {
+    auto ret = this->leaf.packInsert(paths, metadata, values);
+    if (!this->context_) {
+        return ret;
+    }
+
+    if (ret.nbrValuesInserted > 0 || ret.nbrTasksInserted > 0 || ret.nbrSpacesInserted > 0) {
+        // Notify waiters for each affected path; apply prefix when this PathSpace is mounted.
+        for (auto const& path : paths) {
+            if (!this->prefix.empty()) {
+                this->context_->notify(this->prefix + path);
+            } else {
+                this->context_->notify(path);
+            }
+        }
+    }
+    return ret;
+}
+
 auto PathSpace::getRootNode() -> Node* {
     return &this->leaf.rootNode();
 }

@@ -15,7 +15,7 @@
 namespace {
 
 using namespace std::chrono_literals;
-constexpr auto kNotifyLockWatchdog = std::chrono::milliseconds(100);
+constexpr auto NotifyLockWatchdog = std::chrono::milliseconds(100);
 
 auto thread_id_string() -> std::string {
     std::ostringstream os;
@@ -162,7 +162,7 @@ static WaitMap::TrieNode* findTrieNode(std::unique_ptr<WaitMap::TrieNode> const&
 auto WaitMap::notify(std::string_view path) -> void {
     auto const lockAttempt = std::chrono::steady_clock::now();
     std::unique_lock<std::timed_mutex> registryLock(registryMutex, std::defer_lock);
-    if (!registryLock.try_lock_for(kNotifyLockWatchdog)) {
+    if (!registryLock.try_lock_for(NotifyLockWatchdog)) {
         auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - lockAttempt);
         sp_log("WaitMap notify lock waited " + std::to_string(waited.count()) + "ms for path " + std::string(path),

@@ -37,7 +37,7 @@ namespace SP {
 
 struct Node final {
     // Tunable shard count for parallel_node_hash_map
-    static constexpr int kDefaultSubmaps = 12;
+    static constexpr int DefaultSubmaps = 12;
 
     using ChildrenMap = phmap::parallel_node_hash_map<
         std::string,
@@ -45,7 +45,7 @@ struct Node final {
         TransparentStringHash,
         std::equal_to<>,
         std::allocator<std::pair<const std::string, std::unique_ptr<Node>>>,
-        kDefaultSubmaps,
+        DefaultSubmaps,
         std::mutex>;
 
     // Sub-tree structure

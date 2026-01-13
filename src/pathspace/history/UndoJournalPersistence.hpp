@@ -10,8 +10,8 @@
 
 namespace SP::History::UndoJournal {
 
-inline constexpr std::uint32_t kJournalFileMagic   = 0x50534A46; // 'PSJF'
-inline constexpr std::uint16_t kJournalFileVersion = 1;
+inline constexpr std::uint32_t JournalFileMagic   = 0x50534A46; // 'PSJF'
+inline constexpr std::uint16_t JournalFileVersion = 1;
 
 class JournalFileWriter {
 public:

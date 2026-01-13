@@ -20,8 +20,8 @@ using SP::Error;
 using SP::Expected;
 using SP::History::UndoJournal::JournalEntry;
 using SP::History::UndoJournal::JournalFileWriter;
-using SP::History::UndoJournal::kJournalFileMagic;
-using SP::History::UndoJournal::kJournalFileVersion;
+using SP::History::UndoJournal::JournalFileMagic;
+using SP::History::UndoJournal::JournalFileVersion;
 namespace UndoUtils = SP::History::UndoUtils;
 
 inline auto errnoMessage(std::string_view prefix) -> Error {
@@ -164,9 +164,9 @@ auto JournalFileWriter::writeHeader(bool fsync) -> Expected<void> {
 
     auto guard = std::unique_ptr<std::FILE, decltype(&std::fclose)>{headerFile, &std::fclose};
 
-    if (auto writeMagic = writeScalar(headerFile, &kJournalFileMagic, sizeof(kJournalFileMagic)); !writeMagic)
+    if (auto writeMagic = writeScalar(headerFile, &JournalFileMagic, sizeof(JournalFileMagic)); !writeMagic)
         return writeMagic;
-    if (auto writeVersion = writeScalar(headerFile, &kJournalFileVersion, sizeof(kJournalFileVersion)); !writeVersion)
+    if (auto writeVersion = writeScalar(headerFile, &JournalFileVersion, sizeof(JournalFileVersion)); !writeVersion)
         return writeVersion;
 
     std::uint32_t reserved = 0;
@@ -190,7 +190,7 @@ auto JournalFileWriter::validateHeader() -> Expected<void> {
     if (auto readMagic = readScalar(handle, &magic, sizeof(magic)); !readMagic)
         return readMagic;
 
-    if (magic != kJournalFileMagic) {
+    if (magic != JournalFileMagic) {
         return std::unexpected(
             makeError(Error::Code::MalformedInput, "Journal file header magic mismatch"));
     }
@@ -199,7 +199,7 @@ auto JournalFileWriter::validateHeader() -> Expected<void> {
     if (auto readVersion = readScalar(handle, &version, sizeof(version)); !readVersion)
         return readVersion;
 
-    if (version != kJournalFileVersion) {
+    if (version != JournalFileVersion) {
         return std::unexpected(
             makeError(Error::Code::MalformedInput, "Unsupported journal file version"));
     }
@@ -227,13 +227,13 @@ auto replayJournal(
     std::uint32_t magic = 0;
     if (auto readMagic = readScalar(file, &magic, sizeof(magic)); !readMagic)
         return readMagic;
-    if (magic != kJournalFileMagic)
+    if (magic != JournalFileMagic)
         return std::unexpected(makeError(Error::Code::MalformedInput, "Journal file magic mismatch"));
 
     std::uint16_t version = 0;
     if (auto readVersion = readScalar(file, &version, sizeof(version)); !readVersion)
         return readVersion;
-    if (version != kJournalFileVersion)
+    if (version != JournalFileVersion)
         return std::unexpected(makeError(Error::Code::MalformedInput, "Unsupported journal file version"));
 
     std::uint32_t reserved = 0;
@@ -295,9 +295,9 @@ auto compactJournal(
 
     auto guard = std::unique_ptr<std::FILE, decltype(&std::fclose)>{file, &std::fclose};
 
-    if (auto writeMagic = writeScalar(file, &kJournalFileMagic, sizeof(kJournalFileMagic)); !writeMagic)
+    if (auto writeMagic = writeScalar(file, &JournalFileMagic, sizeof(JournalFileMagic)); !writeMagic)
         return writeMagic;
-    if (auto writeVersion = writeScalar(file, &kJournalFileVersion, sizeof(kJournalFileVersion)); !writeVersion)
+    if (auto writeVersion = writeScalar(file, &JournalFileVersion, sizeof(JournalFileVersion)); !writeVersion)
         return writeVersion;
     std::uint32_t reserved = 0;
     if (auto writeReserved = writeScalar(file, &reserved, sizeof(reserved)); !writeReserved)

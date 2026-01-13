@@ -382,4 +382,23 @@ TEST_SUITE("layer.pathspace.trellis") {
         std::sort(sources.begin(), sources.end());
         CHECK(sources == std::vector<std::string>{"/data/gamepad", "/data/mouse"});
     }
+
+    TEST_CASE("pack insert on trellis is not supported") {
+        auto backing = std::make_shared<PathSpace>();
+        PathSpaceTrellis trellis{backing};
+
+        auto ret = trellis.insert<"/a","/b">(1, 2);
+        CHECK_FALSE(ret.errors.empty());
+        CHECK(ret.nbrValuesInserted == 0);
+        CHECK(ret.errors.front().code == Error::Code::NotSupported);
+    }
+
+    TEST_CASE("span pack read on trellis is not supported") {
+        auto backing = std::make_shared<PathSpace>();
+        PathSpaceTrellis trellis{backing};
+
+        auto ret = trellis.read<"a","b">("/root", [&](std::span<const int>, std::span<const int>) {});
+        CHECK_FALSE(ret.has_value());
+        CHECK(ret.error().code == Error::Code::NotSupported);
+    }
 }

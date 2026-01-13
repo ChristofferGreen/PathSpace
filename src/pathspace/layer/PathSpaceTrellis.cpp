@@ -15,7 +15,7 @@
 
 namespace SP {
 namespace {
-constexpr auto kPollSlice = std::chrono::milliseconds{1};
+constexpr auto PollSlice = std::chrono::milliseconds{1};
 
 auto isNoObjectOrTimeout(Error const& error) -> bool {
     return error.code == Error::Code::NoObjectFound || error.code == Error::Code::Timeout;
@@ -404,7 +404,7 @@ auto PathSpaceTrellis::tryFanOutRead(InputMetadata const& metadata,
 
         Out blockOptions = options;
         blockOptions.doBlock = true;
-        blockOptions.timeout = infinite ? kPollSlice : std::min(kPollSlice, remaining);
+        blockOptions.timeout = infinite ? PollSlice : std::min(PollSlice, remaining);
 
         auto result = attemptSources(blockOptions);
         if (!result.has_value()) {

@@ -74,7 +74,7 @@ auto Access::SerializeNodeData(ValueHandle const& handle) -> std::optional<std::
 
 namespace {
 
-constexpr auto kUnlimitedDepth = std::numeric_limits<std::size_t>::max();
+constexpr auto UnlimitedDepth = std::numeric_limits<std::size_t>::max();
 
 struct VisitStart {
     Node*        node      = nullptr;
@@ -211,8 +211,8 @@ auto appendNestedPath(std::string const& prefix, std::string const& nestedPath) 
 }
 
 auto remainingDepthBudget(std::size_t baseDepth, std::size_t nodeDepth, VisitOptions const& options) -> std::optional<std::size_t> {
-    if (options.maxDepth == kUnlimitedDepth) {
-        return kUnlimitedDepth;
+    if (options.maxDepth == UnlimitedDepth) {
+        return UnlimitedDepth;
     }
     auto relativeDepth = nodeDepth - baseDepth;
     if (relativeDepth >= options.maxDepth) {
@@ -327,7 +327,7 @@ auto walkSubtree(VisitStart const& start, VisitState& state) -> Expected<void> {
         }
 
         auto relativeDepth = current.depth >= state.baseDepth ? current.depth - state.baseDepth : 0;
-        if (state.options.maxDepth != kUnlimitedDepth && relativeDepth > state.options.maxDepth) {
+        if (state.options.maxDepth != UnlimitedDepth && relativeDepth > state.options.maxDepth) {
             continue;
         }
 
@@ -337,7 +337,7 @@ auto walkSubtree(VisitStart const& start, VisitState& state) -> Expected<void> {
             state.stopRequested = true;
             break;
         }
-        if (control == VisitControl::SkipChildren || (state.options.maxDepth != kUnlimitedDepth && relativeDepth == state.options.maxDepth)) {
+        if (control == VisitControl::SkipChildren || (state.options.maxDepth != UnlimitedDepth && relativeDepth == state.options.maxDepth)) {
             continue;
         }
 

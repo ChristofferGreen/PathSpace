@@ -8,6 +8,7 @@
 #include <mutex>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace SP {
 
@@ -99,6 +100,56 @@ public:
             return;
         auto mapped = mapPathRaw_(notificationPath);
         upstream_->notify(mapped);
+    }
+
+    auto spanPackConst(std::span<const std::string> paths,
+                       InputMetadata const& metadata,
+                       Out const& options,
+                       SpanPackConstCallback const& fn) const -> Expected<void> override {
+        if (!upstream_) {
+            return std::unexpected(Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"});
+        }
+
+        std::vector<std::string> mapped;
+        mapped.reserve(paths.size());
+        for (auto const& path : paths) {
+            mapped.emplace_back(mapPathRaw_(path));
+        }
+
+        return upstream_->spanPackConst(std::span<const std::string>(mapped.data(), mapped.size()), metadata, options, fn);
+    }
+
+    auto spanPackMut(std::span<const std::string> paths,
+                     InputMetadata const& metadata,
+                     Out const& options,
+                     SpanPackMutCallback const& fn) const -> Expected<void> override {
+        if (!upstream_) {
+            return std::unexpected(Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"});
+        }
+
+        std::vector<std::string> mapped;
+        mapped.reserve(paths.size());
+        for (auto const& path : paths) {
+            mapped.emplace_back(mapPathRaw_(path));
+        }
+
+        return upstream_->spanPackMut(std::span<const std::string>(mapped.data(), mapped.size()), metadata, options, fn);
+    }
+
+    auto packInsert(std::span<const std::string> paths,
+                    InputMetadata const& metadata,
+                    std::span<void const* const> values) -> InsertReturn override {
+        if (!upstream_) {
+            return InsertReturn{.errors = {Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"}}};
+        }
+
+        std::vector<std::string> mapped;
+        mapped.reserve(paths.size());
+        for (auto const& path : paths) {
+            mapped.emplace_back(mapPathRaw_(path));
+        }
+
+        return upstream_->packInsert(std::span<const std::string>(mapped.data(), mapped.size()), metadata, values);
     }
 
     auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void> override {

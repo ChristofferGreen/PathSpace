@@ -20,6 +20,9 @@
 #include "type/InputMetadataT.hpp"
 #include <cstddef>
 #include <functional>
+#include <array>
+#include <tuple>
+#include <utility>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -41,22 +44,22 @@ struct Access;
 }
 
 struct VisitOptions {
-    static constexpr std::size_t kUnlimitedDepth     = std::numeric_limits<std::size_t>::max();
-    static constexpr std::size_t kUnlimitedChildren = 0;
-    static constexpr std::size_t kDefaultMaxChildren = 256;
+    static constexpr std::size_t UnlimitedDepth     = std::numeric_limits<std::size_t>::max();
+    static constexpr std::size_t UnlimitedChildren = 0;
+    static constexpr std::size_t DefaultMaxChildren = 256;
 
     std::string root = "/";
-    std::size_t maxDepth = kUnlimitedDepth;
-    std::size_t maxChildren = kDefaultMaxChildren;
+    std::size_t maxDepth = UnlimitedDepth;
+    std::size_t maxChildren = DefaultMaxChildren;
     bool includeNestedSpaces = true;
     bool includeValues = true;
 
     [[nodiscard]] constexpr auto childLimitEnabled() const noexcept -> bool {
-        return maxChildren != kUnlimitedChildren;
+        return maxChildren != UnlimitedChildren;
     }
 
     [[nodiscard]] static constexpr auto isUnlimitedChildren(std::size_t value) noexcept -> bool {
-        return value == kUnlimitedChildren;
+        return value == UnlimitedChildren;
     }
 };
 
@@ -66,8 +69,8 @@ struct PathSpaceJsonOptions {
     // Defaults mirror the old ctor: nested spaces opt-in; traversal unbounded.
     VisitOptions visit{
         .root                = "/",
-        .maxDepth            = VisitOptions::kUnlimitedDepth,
-        .maxChildren         = VisitOptions::kUnlimitedChildren,
+        .maxDepth            = VisitOptions::UnlimitedDepth,
+        .maxChildren         = VisitOptions::UnlimitedChildren,
         .includeNestedSpaces = false,
         .includeValues       = true,
     };
@@ -104,6 +107,18 @@ struct ValueSnapshot {
 struct Children {
     std::vector<std::string> names;
 };
+
+template <typename PtrT>
+struct RawSpan {
+    PtrT        data  = nullptr;
+    std::size_t count = 0;
+};
+
+using RawConstSpan = RawSpan<void const*>;
+using RawMutSpan   = RawSpan<void*>;
+
+using SpanPackConstCallback = std::function<std::optional<Error>(std::span<RawConstSpan const>)>;
+using SpanPackMutCallback   = std::function<std::optional<Error>(std::span<RawMutSpan const>)>;
 
 class ValueHandle {
 public:
@@ -228,6 +243,91 @@ concept IsSpanCallback = SpanCallbackTraits<Fn>::isSpan;
 
 template <typename Fn>
 concept IsMutableSpanCallback = SpanCallbackTraits<Fn>::isSpan && !SpanCallbackTraits<Fn>::isConstSpan;
+
+template <typename Arg>
+struct SpanArgTraits {
+    static constexpr bool isSpan      = false;
+    static constexpr bool isConstSpan = false;
+    using Value                       = void;
+};
+
+template <typename T>
+struct SpanArgTraits<std::span<T>> {
+    static constexpr bool isSpan      = true;
+    static constexpr bool isConstSpan = false;
+    using Value                       = std::remove_cv_t<T>;
+};
+
+template <typename T>
+struct SpanArgTraits<std::span<const T>> {
+    static constexpr bool isSpan      = true;
+    static constexpr bool isConstSpan = true;
+    using Value                       = std::remove_cv_t<T>;
+};
+
+template <typename Sig>
+struct CallableArgs;
+
+template <typename R, typename... Args>
+struct CallableArgs<R (*)(Args...)> {
+    using ArgsTuple = std::tuple<Args...>;
+};
+
+template <typename C, typename R, typename... Args>
+struct CallableArgs<R (C::*)(Args...) const> {
+    using ArgsTuple = std::tuple<Args...>;
+};
+
+template <typename C, typename R, typename... Args>
+struct CallableArgs<R (C::*)(Args...)> {
+    using ArgsTuple = std::tuple<Args...>;
+};
+
+template <typename Fn>
+using SpanPackSignature = std::conditional_t<std::is_pointer_v<Fn> || std::is_member_function_pointer_v<Fn>,
+                                             Fn,
+                                             decltype(&Fn::operator())>;
+
+template <typename Fn, typename = void>
+struct SpanPackTraits {
+    static constexpr bool isSpanPack    = false;
+    static constexpr bool isConstPack   = false;
+    static constexpr bool isMutablePack = false;
+    static constexpr std::size_t arity  = 0;
+    using Value                         = void;
+};
+
+template <typename Fn>
+struct SpanPackTraits<Fn, std::void_t<typename CallableArgs<SpanPackSignature<Fn>>::ArgsTuple>> {
+private:
+    using ArgsTuple = typename CallableArgs<SpanPackSignature<Fn>>::ArgsTuple;
+    static constexpr std::size_t Arity = std::tuple_size_v<ArgsTuple>;
+
+    template <std::size_t... Is>
+    static constexpr auto checkAll(std::index_sequence<Is...>) {
+        using First = std::tuple_element_t<0, ArgsTuple>;
+        using FirstTraits = SpanArgTraits<std::remove_cvref_t<First>>;
+        constexpr bool allSpan    = (SpanArgTraits<std::remove_cvref_t<std::tuple_element_t<Is, ArgsTuple>>>::isSpan && ...);
+        constexpr bool allConst   = (SpanArgTraits<std::remove_cvref_t<std::tuple_element_t<Is, ArgsTuple>>>::isConstSpan && ...);
+        constexpr bool allMutable = ((!SpanArgTraits<std::remove_cvref_t<std::tuple_element_t<Is, ArgsTuple>>>::isConstSpan) && ...);
+        constexpr bool allSame    = ((std::is_same_v<typename SpanArgTraits<std::remove_cvref_t<std::tuple_element_t<Is, ArgsTuple>>>::Value, typename SpanArgTraits<std::remove_cvref_t<First>>::Value>) && ...);
+        return std::tuple<FirstTraits, std::bool_constant<allSpan>, std::bool_constant<allConst>, std::bool_constant<allMutable>, std::bool_constant<allSame>>{};
+    }
+
+    using Checks = decltype(checkAll(std::make_index_sequence<Arity>{}));
+    using FirstTraits = std::tuple_element_t<0, Checks>;
+    static constexpr bool AllSpan    = std::tuple_element_t<1, Checks>::value;
+    static constexpr bool AllConst   = std::tuple_element_t<2, Checks>::value;
+    static constexpr bool AllMutable = std::tuple_element_t<3, Checks>::value;
+    static constexpr bool AllSame    = std::tuple_element_t<4, Checks>::value;
+
+public:
+    static constexpr bool isSpanPack    = AllSpan && AllSame;
+    static constexpr bool isConstPack   = isSpanPack && AllConst;
+    static constexpr bool isMutablePack = isSpanPack && AllMutable;
+    static constexpr std::size_t arity  = Arity;
+    using Value                         = std::conditional_t<isSpanPack, typename FirstTraits::Value, void>;
+};
 } // namespace Detail
 
 using PathVisitor = std::function<VisitControl(PathEntry const&, ValueHandle&)>;
@@ -300,6 +400,37 @@ public:
     auto insert(DataType&& data, In const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
         return this->insert(pathIn, std::forward<DataType>(data), options & InNoValidation{});
+    }
+
+    // Atomic multi-path insert; values are published together using POD fast-path reservations.
+    template <FixedString... names, typename... DataTypes>
+        requires(sizeof...(names) > 1 && sizeof...(names) == sizeof...(DataTypes))
+    auto insert(DataTypes&&... data) -> InsertReturn {
+        sp_log("PathSpace::insert<pack>", "Function Called");
+        static_assert(sizeof...(names) == sizeof...(DataTypes));
+        using First = std::remove_cvref_t<std::tuple_element_t<0, std::tuple<DataTypes...>>>;
+        static_assert((std::is_same_v<First, std::remove_cvref_t<DataTypes>> && ...),
+                      "Pack insert requires all value types to match");
+        static_assert(std::is_trivially_copyable_v<First>,
+                      "Pack insert requires POD-compatible values");
+
+        constexpr std::size_t Arity = sizeof...(names);
+        std::array<std::string, Arity> paths{std::string(names)...};
+
+        using StoredTuple = std::tuple<std::remove_reference_t<DataTypes>...>;
+        StoredTuple stored(std::forward<DataTypes>(data)...);
+        std::array<void const*, Arity> valuePtrs{};
+        [&, idx = std::size_t{0}]<std::size_t... Is>(std::index_sequence<Is...>) mutable {
+            ((valuePtrs[idx++] = static_cast<void const*>(&std::get<Is>(stored))), ...);
+        }(std::make_index_sequence<Arity>{});
+
+        InputMetadata metadata{InputMetadataT<First>{}};
+        if (metadata.createPodPayload == nullptr) {
+            metadata.createPodPayload = &PodPayload<First>::CreateShared;
+        }
+        return this->packInsert(std::span<const std::string>(paths.data(), paths.size()),
+                                metadata,
+                                std::span<void const* const>(valuePtrs.data(), valuePtrs.size()));
     }
 
     // Read typed values (copy). Paths must be concrete (non-glob).
@@ -381,6 +512,21 @@ public:
         return this->read(pathIn, std::forward<Fn>(fn), options & OutNoValidation{});
     }
 
+    // Multi-array POD span read (compile-time field names, runtime base path).
+    template <FixedString... names, StringConvertible S, typename Fn>
+        requires(sizeof...(names) > 0)
+    auto read(S const& basePath, Fn&& fn, Out const& options = {}) const -> Expected<void> {
+        using Traits = Detail::SpanPackTraits<Fn>;
+        static_assert(Traits::isSpanPack, "Callback must accept spans");
+        static_assert(Traits::isConstPack, "Callback spans must be const for read");
+        constexpr std::size_t Arity = sizeof...(names);
+        static_assert(Arity == Traits::arity, "Template field count must match callback arity");
+        return this->readSpanPackImpl<Arity, typename Traits::Value>(basePath,
+                                                                       std::array<std::string_view, Arity>{std::string_view(names)...},
+                                                                       std::forward<Fn>(fn),
+                                                                       options);
+    }
+
     [[nodiscard]] auto toJSON(PathSpaceJsonOptions const& options = PathSpaceJsonOptions{}) -> Expected<std::string>;
 
     // Read a type-erased execution future (non-blocking peek). Returns NoObjectFound if absent.
@@ -458,6 +604,21 @@ public:
     auto take(Fn&& fn, Out const& options = {}) -> Expected<void> {
         sp_log("PathSpace::take<span>", "Function Called");
         return this->take(pathIn, std::forward<Fn>(fn), options & OutNoValidation{});
+    }
+
+    // Multi-array POD span mutable take (compile-time field names, runtime base path).
+    template <FixedString... names, StringConvertible S, typename Fn>
+        requires(sizeof...(names) > 0)
+    auto take(S const& basePath, Fn&& fn, Out const& options = {}) -> Expected<void> {
+        using Traits = Detail::SpanPackTraits<Fn>;
+        static_assert(Traits::isSpanPack, "Callback must accept spans");
+        static_assert(Traits::isMutablePack, "Callback spans must be mutable for take");
+        constexpr std::size_t Arity = sizeof...(names);
+        static_assert(Arity == Traits::arity, "Template field count must match callback arity");
+        return this->takeSpanPackImpl<Arity, typename Traits::Value>(basePath,
+                                                                       std::array<std::string_view, Arity>{std::string_view(names)...},
+                                                                       std::forward<Fn>(fn),
+                                                                       options);
     }
 
     virtual auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void>;
@@ -539,6 +700,105 @@ protected:
     virtual auto getRootNode() const -> Node* { return const_cast<PathSpaceBase*>(this)->getRootNode(); }
 
 private:
+
+    template <typename Value, std::size_t... Is, typename Fn>
+    static auto invokeConstPack(std::span<RawConstSpan const> spans, Fn& fn, std::index_sequence<Is...>) -> std::optional<Error> {
+        fn(std::span<const Value>(static_cast<Value const*>(spans[Is].data), spans[Is].count)...);
+        return std::nullopt;
+    }
+
+    template <typename Value, std::size_t... Is, typename Fn>
+    static auto invokeMutPack(std::span<RawMutSpan const> spans, Fn& fn, std::index_sequence<Is...>) -> std::optional<Error> {
+        fn(std::span<Value>(static_cast<Value*>(spans[Is].data), spans[Is].count)...);
+        return std::nullopt;
+    }
+
+    static auto joinPathComponent(std::string_view base, std::string_view component) -> std::string {
+        if (base.empty() || base == "/") {
+            std::string result{"/"};
+            result.append(component);
+            return result;
+        }
+        std::string result{base};
+        if (!result.empty() && result.back() != '/') {
+            result.push_back('/');
+        }
+        result.append(component);
+        return result;
+    }
+
+    template <std::size_t N, typename Value, StringConvertible S, typename Fn>
+    auto readSpanPackImpl(S const& basePath,
+                          std::array<std::string_view, N> const& names,
+                          Fn&& fn,
+                          Out const& options) const -> Expected<void> {
+        sp_log("PathSpace::read<span_pack>", "Function Called");
+        if (options.doBlock || options.doPop) {
+            return std::unexpected(Error{Error::Code::NotSupported, "Span pack read does not support blocking or pop"});
+        }
+        Iterator baseIter{basePath};
+        if (auto error = baseIter.validate(options.validationLevel)) {
+            return std::unexpected(*error);
+        }
+        std::vector<std::string> paths;
+        paths.reserve(N);
+        for (std::size_t i = 0; i < N; ++i) {
+            auto fullPath = joinPathComponent(baseIter.toStringView(), names[i]);
+            Iterator check{fullPath};
+            if (auto err = check.validate(options.validationLevel)) {
+                return std::unexpected(*err);
+            }
+            paths.emplace_back(std::move(fullPath));
+        }
+
+        InputMetadata metadata{InputMetadataT<Value>{}};
+        metadata.podPreferred = true;
+
+        auto adapter = [fn = std::forward<Fn>(fn)](std::span<RawConstSpan const> spans) mutable -> std::optional<Error> {
+            return invokeConstPack<Value>(std::span<RawConstSpan const>(spans.data(), spans.size()),
+                                          fn,
+                                          std::make_index_sequence<N>{});
+        };
+
+        return this->spanPackConst(std::span<const std::string>(paths.data(), paths.size()), metadata, options, adapter);
+    }
+
+    template <std::size_t N, typename Value, StringConvertible S, typename Fn>
+    auto takeSpanPackImpl(S const& basePath,
+                          std::array<std::string_view, N> const& names,
+                          Fn&& fn,
+                          Out const& options) -> Expected<void> {
+        sp_log("PathSpace::take<span_pack>", "Function Called");
+        if (options.doBlock || options.doPop) {
+            return std::unexpected(Error{Error::Code::NotSupported, "Span pack take does not support blocking or pop"});
+        }
+        Iterator baseIter{basePath};
+        if (auto error = baseIter.validate(options.validationLevel)) {
+            return std::unexpected(*error);
+        }
+        std::vector<std::string> paths;
+        paths.reserve(N);
+        for (std::size_t i = 0; i < N; ++i) {
+            auto fullPath = joinPathComponent(baseIter.toStringView(), names[i]);
+            Iterator check{fullPath};
+            if (auto err = check.validate(options.validationLevel)) {
+                return std::unexpected(*err);
+            }
+            paths.emplace_back(std::move(fullPath));
+        }
+
+        InputMetadata metadata{InputMetadataT<Value>{}};
+        metadata.podPreferred = true;
+
+        auto adapter = [fn = std::forward<Fn>(fn)](std::span<RawMutSpan const> spans) mutable -> std::optional<Error> {
+            return invokeMutPack<Value>(std::span<RawMutSpan const>(spans.data(), spans.size()),
+                                        fn,
+                                        std::make_index_sequence<N>{});
+        };
+
+        return this->spanPackMut(std::span<const std::string>(paths.data(), paths.size()), metadata, options, adapter);
+    }
+
     // ---------- Private state and virtual hooks ----------
     mutable std::shared_ptr<NotificationSink> notificationSink_;
     std::shared_ptr<PathSpaceContext>         context_;
@@ -563,6 +823,36 @@ private:
     virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> = 0;
     virtual auto shutdown() -> void                                                                                                   = 0;
     virtual auto notify(std::string const& notificationPath) -> void                                                                  = 0;
+    virtual auto spanPackConst(std::span<const std::string> paths,
+                               InputMetadata const& metadata,
+                               Out const& options,
+                               SpanPackConstCallback const& fn) const -> Expected<void> {
+        (void)paths;
+        (void)metadata;
+        (void)options;
+        (void)fn;
+        return std::unexpected(Error{Error::Code::NotSupported, "Span pack not supported"});
+    }
+
+    virtual auto spanPackMut(std::span<const std::string> paths,
+                             InputMetadata const& metadata,
+                             Out const& options,
+                             SpanPackMutCallback const& fn) const -> Expected<void> {
+        (void)paths;
+        (void)metadata;
+        (void)options;
+        (void)fn;
+        return std::unexpected(Error{Error::Code::NotSupported, "Span pack not supported"});
+    }
+
+    virtual auto packInsert(std::span<const std::string> paths,
+                            InputMetadata const& metadata,
+                            std::span<void const* const> values) -> InsertReturn {
+        (void)paths;
+        (void)metadata;
+        (void)values;
+        return InsertReturn{.errors = {Error{Error::Code::NotSupported, "Pack insert not supported"}}};
+    }
 };
 
 } // namespace SP

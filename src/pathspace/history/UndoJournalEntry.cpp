@@ -12,7 +12,7 @@ using SP::Expected;
 using SP::History::UndoJournal::JournalEntry;
 using SP::History::UndoJournal::SerializedPayload;
 
-constexpr std::uint8_t kBarrierFlag = 0x01;
+constexpr std::uint8_t BarrierFlag = 0x01;
 
 template <typename T>
 inline void appendScalar(std::vector<std::byte>& buffer, T value) {
@@ -94,11 +94,11 @@ auto serializeEntry(JournalEntry const& entry) -> Expected<std::vector<std::byte
     buffer.reserve(64 + entry.path.size() + entry.tag.size() + entry.value.bytes.size()
                    + entry.inverseValue.bytes.size());
 
-    appendScalar<std::uint32_t>(buffer, kJournalMagic);
-    appendScalar<std::uint16_t>(buffer, kJournalVersion);
+    appendScalar<std::uint32_t>(buffer, JournalMagic);
+    appendScalar<std::uint16_t>(buffer, JournalVersion);
 
     appendScalar<std::uint8_t>(buffer, static_cast<std::uint8_t>(entry.operation));
-    std::uint8_t flags = entry.barrier ? kBarrierFlag : 0u;
+    std::uint8_t flags = entry.barrier ? BarrierFlag : 0u;
     appendScalar<std::uint8_t>(buffer, flags);
     appendScalar<std::uint16_t>(buffer, 0u); // reserved for future use
 
@@ -127,7 +127,7 @@ auto serializeEntry(JournalEntry const& entry) -> Expected<std::vector<std::byte
 auto deserializeEntry(std::span<const std::byte> bytes) -> Expected<JournalEntry> {
     auto data = bytes;
     auto magic = readScalar<std::uint32_t>(data);
-    if (!magic.has_value() || *magic != kJournalMagic) {
+    if (!magic.has_value() || *magic != JournalMagic) {
         return std::unexpected(Error{Error::Code::MalformedInput, "Journal entry missing magic header"});
     }
 
@@ -135,7 +135,7 @@ auto deserializeEntry(std::span<const std::byte> bytes) -> Expected<JournalEntry
     if (!version.has_value()) {
         return std::unexpected(Error{Error::Code::MalformedInput, "Journal entry missing version"});
     }
-    if (*version < 1 || *version > kJournalVersion) {
+    if (*version < 1 || *version > JournalVersion) {
         return std::unexpected(Error{Error::Code::MalformedInput, "Unsupported journal entry version"});
     }
 
@@ -151,7 +151,7 @@ auto deserializeEntry(std::span<const std::byte> bytes) -> Expected<JournalEntry
         return std::unexpected(Error{Error::Code::MalformedInput, "Unknown journal operation kind"});
     }
     entry.operation = static_cast<OperationKind>(*opByte);
-    entry.barrier   = ((*flagByte & kBarrierFlag) != 0);
+    entry.barrier   = ((*flagByte & BarrierFlag) != 0);
 
     auto timestamp = readScalar<std::uint64_t>(data);
     auto monotonic = readScalar<std::uint64_t>(data);

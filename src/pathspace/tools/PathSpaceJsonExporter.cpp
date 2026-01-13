@@ -267,7 +267,7 @@ auto buildNode(PathEntry const& entry,
     bool childLimitHit = entry.hasChildren && options.visit.childLimitEnabled()
                       && entry.approxChildCount > options.visit.maxChildren;
     bool depthLimited  = entry.hasChildren
-                      && options.visit.maxDepth != VisitOptions::kUnlimitedDepth
+                      && options.visit.maxDepth != VisitOptions::UnlimitedDepth
                       && relativeDepth == options.visit.maxDepth;
     bool childrenTruncated = childLimitHit || depthLimited;
     if (childrenTruncated) {

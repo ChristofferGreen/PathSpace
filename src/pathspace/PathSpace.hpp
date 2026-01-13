@@ -102,6 +102,17 @@ protected:
     virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override;
     virtual auto shutdown() -> void override;
     virtual auto notify(std::string const& notificationPath) -> void override;
+    auto spanPackConst(std::span<const std::string> paths,
+                       InputMetadata const& metadata,
+                       Out const& options,
+                       SpanPackConstCallback const& fn) const -> Expected<void> override;
+    auto spanPackMut(std::span<const std::string> paths,
+                     InputMetadata const& metadata,
+                     Out const& options,
+                     SpanPackMutCallback const& fn) const -> Expected<void> override;
+    auto packInsert(std::span<const std::string> paths,
+                    InputMetadata const& metadata,
+                    std::span<void const* const> values) -> InsertReturn override;
     auto getRootNode() -> Node* override;
     auto listChildrenCanonical(std::string_view canonicalPath) const -> std::vector<std::string> override;
     // Expose typed future peek to PathSpaceBase::readFuture

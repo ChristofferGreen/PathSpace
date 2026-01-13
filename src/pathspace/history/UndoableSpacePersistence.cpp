@@ -63,8 +63,8 @@ static_assert(!isValidPersistenceToken("..", false));
 static_assert(!isValidPersistenceToken("invalid/namespace", false));
 static_assert(!isValidPersistenceToken("invalid namespace", false));
 static_assert(!isValidPersistenceToken("\\", false));
-constexpr char kPreferredSeparatorLiteral[] = {std::filesystem::path::preferred_separator, '\0'};
-static_assert(!isValidPersistenceToken(std::string_view{kPreferredSeparatorLiteral, 1}, false),
+constexpr char PreferredSeparatorLiteral[] = {std::filesystem::path::preferred_separator, '\0'};
+static_assert(!isValidPersistenceToken(std::string_view{PreferredSeparatorLiteral, 1}, false),
               "Directory separators must not be permitted in persistence namespaces");
 
 } // namespace

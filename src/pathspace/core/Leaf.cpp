@@ -9,9 +9,13 @@
 #include "path/utils.hpp"
 #include "type/InputData.hpp"
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace SP {
@@ -230,6 +234,82 @@ static auto tryPodSpanMutable(Node& node, InputMetadata const& inputMetadata, Fn
         return Error{Error::Code::InvalidType, "POD fast path type mismatch or unavailable"};
     }
     return payload->withSpanMutableRaw([&](void* data, std::size_t count) { fn(data, count); });
+}
+
+template <typename Fn>
+static auto tryPodSpanMutableFrom(Node& node, InputMetadata const& inputMetadata, std::size_t startIndex, Fn&& fn) -> std::optional<Error> {
+    if (!inputMetadata.podPreferred) {
+        return Error{Error::Code::NotSupported, "POD span not applicable"};
+    }
+    auto payload = node.podPayload;
+    if (!payload) {
+        return Error{Error::Code::InvalidType, "POD fast path unavailable"};
+    }
+    if (!payload->matches(*inputMetadata.typeInfo)) {
+        return Error{Error::Code::InvalidType, "POD fast path type mismatch or unavailable"};
+    }
+    return payload->withSpanMutableRawFrom(startIndex, [&](void* data, std::size_t count) { fn(data, count); });
+}
+
+template <typename Fn>
+static auto tryPodSpanPinned(Node const& node, InputMetadata const& inputMetadata, Fn&& fn) -> std::optional<Error> {
+    if (!inputMetadata.podPreferred) {
+        return Error{Error::Code::NotSupported, "POD span not applicable"};
+    }
+    auto payload = node.podPayload;
+    if (!payload) {
+        return Error{Error::Code::InvalidType, "POD fast path unavailable"};
+    }
+    if (!payload->matches(*inputMetadata.typeInfo)) {
+        return Error{Error::Code::InvalidType, "POD fast path type mismatch or unavailable"};
+    }
+    return payload->withSpanRawPinned([&](void const* data, std::size_t count, std::shared_ptr<void> const& keeper) {
+        fn(data, count, keeper);
+    });
+}
+
+template <typename Fn>
+static auto tryPodSpanMutableFromPinned(Node& node, InputMetadata const& inputMetadata, std::size_t startIndex, Fn&& fn) -> std::optional<Error> {
+    if (!inputMetadata.podPreferred) {
+        return Error{Error::Code::NotSupported, "POD span not applicable"};
+    }
+    auto payload = node.podPayload;
+    if (!payload) {
+        return Error{Error::Code::InvalidType, "POD fast path unavailable"};
+    }
+    if (!payload->matches(*inputMetadata.typeInfo)) {
+        return Error{Error::Code::InvalidType, "POD fast path type mismatch or unavailable"};
+    }
+    return payload->withSpanMutableRawFromPinned(
+        startIndex, [&](void* data, std::size_t count, std::shared_ptr<void> const& keeper) { fn(data, count, keeper); });
+}
+
+static auto resolveConcreteNode(Node& root, std::string const& pathStr) -> Expected<Node*> {
+    if (pathStr.empty() || pathStr.front() != '/') {
+        return std::unexpected(Error{Error::Code::InvalidPath, "Path must start with '/'"});
+    }
+    Node* current = &root;
+    std::size_t pos = 1;
+    while (pos < pathStr.size()) {
+        auto next = pathStr.find('/', pos);
+        std::size_t len = (next == std::string::npos) ? pathStr.size() - pos : next - pos;
+        if (len == 0) {
+            pos = (next == std::string::npos) ? pathStr.size() : next + 1;
+            continue;
+        }
+        std::string_view name{pathStr.data() + pos, len};
+        if (is_glob(name) || name.find('[') != std::string_view::npos) {
+            return std::unexpected(Error{Error::Code::InvalidPath, "Span pack requires concrete non-indexed paths"});
+        }
+        auto* child = current->getChild(name);
+        if (!child) {
+            return std::unexpected(Error{Error::Code::NoSuchPath, "Path not found"});
+        }
+        current = child;
+        if (next == std::string::npos) break;
+        pos = next + 1;
+    }
+    return current;
 }
 
 } // namespace
@@ -481,6 +561,7 @@ auto Leaf::inAtNode(Node& node,
             }
         } else {
             if (inputData.metadata.podPreferred && !inputData.task) {
+                std::unique_lock<std::mutex> packLock(this->packInsertMutex_);
                 if (auto podErr = tryPodInsert(child, inputData, ret); podErr.has_value()) {
                     if (podErr->code != Error::Code::NotSupported) {
                         ret.errors.emplace_back(*podErr);
@@ -488,10 +569,12 @@ auto Leaf::inAtNode(Node& node,
                     }
                     // Fall through to generic path when not supported.
                 } else {
+                    packLock.unlock();
                     if (parentHasValue)
                         ret.nbrValuesSuppressed++;
                     return;
                 }
+                packLock.unlock();
             }
             auto* data = ensureNodeData(child, inputData, ret);
             if (!data) {
@@ -1003,6 +1086,294 @@ auto Leaf::peekAnyFuture(Iterator const& iter) const -> std::optional<FutureAny>
             return fut;
         return std::nullopt;
     }
+}
+
+auto Leaf::spanPackConst(std::span<const std::string> paths,
+                         InputMetadata const& inputMetadata,
+                         Out const& options,
+                         SpanPackConstCallback const& fn) const -> Expected<void> {
+    if (options.doBlock || options.doPop) {
+        return std::unexpected(Error{Error::Code::NotSupported, "Span pack does not support blocking or pop"});
+    }
+    if (!inputMetadata.podPreferred) {
+        return std::unexpected(Error{Error::Code::NotSupported, "Span pack requires POD fast path"});
+    }
+    constexpr int kMaxAttempts = 4;
+    for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
+        std::vector<RawConstSpan>      spans(paths.size());
+        std::vector<std::shared_ptr<void>> keepers(paths.size());
+        std::optional<std::size_t>     expectedCount;
+        Node&                          rootRef = const_cast<Node&>(this->root);
+        std::optional<Error>           lastError;
+        auto recurse = [&](auto&& self, std::size_t idx) -> Expected<void> {
+            if (idx == paths.size()) {
+                if (auto err = fn(std::span<RawConstSpan const>(spans.data(), spans.size()))) {
+                    return std::unexpected(*err);
+                }
+                return {};
+            }
+
+            auto const& pathStr = paths[idx];
+            auto nodeExpected   = resolveConcreteNode(rootRef, pathStr);
+            if (!nodeExpected) {
+                sp_log("Leaf::spanPackConst resolve failed path=" + pathStr, "Leaf");
+                return std::unexpected(nodeExpected.error());
+            }
+
+            std::optional<Error> nestedErr;
+            auto err = tryPodSpanPinned(*nodeExpected.value(), inputMetadata, [&](void const* data, std::size_t count, std::shared_ptr<void> const& keeper) {
+                if (!expectedCount) {
+                    expectedCount = count;
+                } else if (*expectedCount != count) {
+                    nestedErr = Error{Error::Code::InvalidType, "Span lengths mismatch"};
+                    return;
+                }
+                spans[idx]   = RawConstSpan{data, count};
+                keepers[idx] = keeper;
+                auto next    = self(self, idx + 1);
+                if (!next) {
+                    nestedErr = next.error();
+                }
+            });
+
+            if (err) {
+                sp_log("Leaf::spanPackConst pod span error path=" + pathStr, "Leaf");
+                return std::unexpected(*err);
+            }
+            if (nestedErr) {
+                return std::unexpected(*nestedErr);
+            }
+            return {};
+        };
+
+        auto res = recurse(recurse, 0);
+        if (res) {
+            return res; // success
+        }
+        lastError = res.error();
+        if (lastError->code != Error::Code::InvalidType
+            || lastError->message != std::optional<std::string>{"Span lengths mismatch"}
+            || attempt == kMaxAttempts - 1) {
+            return std::unexpected(*lastError);
+        }
+        // Retry on transient span length mismatches that can occur mid-insert.
+        std::this_thread::yield();
+    }
+    return std::unexpected(Error{Error::Code::UnknownError, "Span pack read retry exhausted"});
+}
+
+auto Leaf::spanPackMut(std::span<const std::string> paths,
+                       InputMetadata const& inputMetadata,
+                       Out const& options,
+                       SpanPackMutCallback const& fn) const -> Expected<void> {
+    if (options.doBlock || options.doPop) {
+        return std::unexpected(Error{Error::Code::NotSupported, "Span pack does not support blocking or pop"});
+    }
+    if (!inputMetadata.podPreferred) {
+        return std::unexpected(Error{Error::Code::NotSupported, "Span pack requires POD fast path"});
+    }
+    if (!packInsertSeen_.load(std::memory_order_acquire)) {
+        for (int i = 0; i < 5 && !packInsertSeen_.load(std::memory_order_acquire); ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+    Node& rootRef = const_cast<Node&>(this->root);
+    std::vector<Node*> nodes;
+    nodes.reserve(paths.size());
+    for (auto const& pathStr : paths) {
+        auto nodeExpected = resolveConcreteNode(rootRef, pathStr);
+        if (!nodeExpected) {
+            sp_log("Leaf::spanPackMut resolve failed path=" + pathStr, "Leaf");
+            return std::unexpected(nodeExpected.error());
+        }
+        nodes.push_back(nodeExpected.value());
+        if (options.isMinimal) {
+            auto payload = nodeExpected.value()->podPayload;
+            if (!payload) {
+                return std::unexpected(Error{Error::Code::InvalidType, "POD fast path unavailable"});
+            }
+        }
+    }
+
+    constexpr int kMaxAttempts = 10;
+    std::optional<Error> lastError;
+
+    for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
+        std::vector<RawMutSpan>          spans(paths.size());
+        std::vector<std::shared_ptr<void>> keepers(paths.size());
+        std::optional<std::size_t>       expectedCount;
+        lastError.reset();
+
+        for (std::size_t idx = 0; idx < paths.size(); ++idx) {
+            auto* node = nodes[idx];
+            std::optional<Error> captureErr;
+            std::size_t          startIndex = 0;
+            if (auto payload = node->podPayload) {
+                auto headIdx = payload->headIndex();
+                if (options.isMinimal) {
+                    auto packStart = payload->packSpanStart();
+                    if (!packStart) {
+                        // No pending pack marker; default minimal window to current head.
+                        payload->markPackSpanStart(headIdx);
+                        packStart = payload->packSpanStart();
+                    }
+                    startIndex = (packStart && *packStart > headIdx) ? *packStart : headIdx;
+                } else {
+                    startIndex = headIdx;
+                }
+            }
+
+            auto err = tryPodSpanMutableFromPinned(*node, inputMetadata, startIndex, [&](void* data, std::size_t count, std::shared_ptr<void> const& keeper) {
+                if (!expectedCount) {
+                    expectedCount = count;
+                } else if (*expectedCount != count) {
+                    captureErr = Error{Error::Code::InvalidType, "Span lengths mismatch"};
+                    return;
+                }
+                spans[idx]   = RawMutSpan{data, count};
+                keepers[idx] = keeper;
+            });
+
+            if (err) {
+                sp_log("Leaf::spanPackMut pod span error path=" + std::string(paths[idx]), "Leaf");
+                lastError = *err;
+                break;
+            }
+            if (captureErr) {
+                lastError = *captureErr;
+                break;
+            }
+        }
+
+        if (!lastError) {
+            if (auto err = fn(std::span<RawMutSpan const>(spans.data(), spans.size()))) {
+                return std::unexpected(*err);
+            }
+            return {};
+        }
+
+        if (lastError->code == Error::Code::InvalidType
+            && lastError->message == std::optional<std::string>{"Span lengths mismatch"}
+            && attempt < kMaxAttempts - 1) {
+            std::this_thread::sleep_for(std::chrono::microseconds(200));
+            continue;
+        }
+
+        return std::unexpected(*lastError);
+    }
+    return std::unexpected(Error{Error::Code::UnknownError, "Span pack take retry exhausted"});
+}
+
+static auto createConcreteNode(Node& root, std::string const& pathStr) -> Expected<Node*> {
+    if (pathStr.empty() || pathStr.front() != '/') {
+        return std::unexpected(Error{Error::Code::InvalidPath, "Pack insert path must start with '/'"});
+    }
+    if (pathStr.size() == 1) {
+        return std::unexpected(Error{Error::Code::InvalidPath, "Pack insert path cannot be root"});
+    }
+    Node*       current = &root;
+    std::size_t pos     = 1;
+    while (pos < pathStr.size()) {
+        auto next = pathStr.find('/', pos);
+        std::size_t len = (next == std::string::npos) ? pathStr.size() - pos : next - pos;
+        if (len == 0) {
+            return std::unexpected(Error{Error::Code::InvalidPath, "Empty path component"});
+        }
+        std::string_view name{pathStr.data() + pos, len};
+        if (is_glob(name) || name.find('[') != std::string_view::npos) {
+            return std::unexpected(Error{Error::Code::InvalidPath, "Pack insert requires concrete non-indexed paths"});
+        }
+        current = &current->getOrCreateChild(name);
+        if (next == std::string::npos) break;
+        pos = next + 1;
+    }
+    return current;
+}
+
+auto Leaf::packInsert(std::span<const std::string> paths,
+                      InputMetadata const& inputMetadata,
+                      std::span<void const* const> values) -> InsertReturn {
+    std::scoped_lock packLock(this->packInsertMutex_);
+    packInsertSeen_.store(true, std::memory_order_release);
+    InsertReturn ret;
+    if (!inputMetadata.podPreferred || inputMetadata.dataCategory == DataCategory::UniquePtr
+        || inputMetadata.dataCategory == DataCategory::Execution) {
+        ret.errors.emplace_back(Error{Error::Code::NotSupported, "Pack insert requires POD fast path"});
+        return ret;
+    }
+    if (paths.size() != values.size()) {
+        ret.errors.emplace_back(Error{Error::Code::InvalidType, "Pack insert arity mismatch"});
+        return ret;
+    }
+
+    std::vector<Node*> nodes;
+    nodes.reserve(paths.size());
+    for (auto const& pathStr : paths) {
+        auto nodeExpected = createConcreteNode(this->root, pathStr);
+        if (!nodeExpected) {
+            ret.errors.emplace_back(nodeExpected.error());
+            return ret;
+        }
+        nodes.push_back(nodeExpected.value());
+    }
+
+    std::vector<std::shared_ptr<PodPayloadBase>> payloads;
+    payloads.reserve(paths.size());
+    std::vector<PodPayloadBase::Reservation> reservations;
+    reservations.reserve(paths.size());
+    std::vector<std::size_t> packStarts;
+    packStarts.reserve(paths.size());
+
+    // First pass: ensure payloads and reserve slots.
+    for (std::size_t i = 0; i < nodes.size(); ++i) {
+        InputData inputData{values[i], inputMetadata};
+        auto payload = ensurePodPayload(*nodes[i], inputData);
+        if (!payload) {
+            ret.errors.emplace_back(Error{Error::Code::InvalidType, "POD fast path unavailable for pack insert"});
+            // Roll back earlier reservations if any
+            for (std::size_t j = 0; j < reservations.size(); ++j) {
+                payloads[j]->rollbackOne(reservations[j].index);
+            }
+            return ret;
+        }
+        auto startIndex = payload->publishedTail();
+
+        auto reservation = payload->reserveOne();
+        if (!reservation) {
+            ret.errors.emplace_back(Error{Error::Code::NotSupported, "Pack insert reservation failed"});
+            for (std::size_t j = 0; j < reservations.size(); ++j) {
+                payloads[j]->rollbackOne(reservations[j].index);
+            }
+            return ret;
+        }
+        payloads.push_back(std::move(payload));
+        reservations.push_back(*reservation);
+        packStarts.push_back(startIndex);
+
+        if (auto hook = testing::GetPackInsertReservationHook()) {
+            hook();
+        }
+    }
+
+    // Stamp pack markers only after all reservations succeed.
+    for (std::size_t i = 0; i < payloads.size(); ++i) {
+        payloads[i]->markPackSpanStart(packStarts[i]);
+    }
+
+    // Second pass: write values into reserved slots.
+    for (std::size_t i = 0; i < reservations.size(); ++i) {
+        auto* dst = reservations[i].ptr;
+        auto* src = values[i];
+        std::memcpy(dst, src, payloads[i]->elementSize());
+    }
+
+    // Final pass: publish all slots so they become visible together.
+    for (std::size_t i = 0; i < reservations.size(); ++i) {
+        payloads[i]->publishOne(reservations[i].index);
+    }
+
+    ret.nbrValuesInserted += static_cast<uint32_t>(reservations.size());
+    return ret;
 }
 
 } // namespace SP

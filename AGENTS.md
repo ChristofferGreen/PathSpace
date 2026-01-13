@@ -25,6 +25,33 @@ This guide collects the conventions and scripts used when pairing with the PathS
 - `scripts/` — automation (`create_pr.sh`, `compile.sh`, tooling helpers).
 - `examples/` — small usage demonstrations.
 
+## Code Guidelines
+- **Language/style:** C++20/23 with trailing return types, `auto` for type locality, `std::optional/expected` for error flows, `std::span` for buffers. Prefer RAII and value semantics; avoid raw `new` outside factories.
+- **Names:** Prefer descriptive PascalCase/camelCase constants—avoid Hungarian `kPrefix` constants when adding or touching code; keep new constants scoped and self-explanatory. Keep legacy on-disk/wire-format identifiers stable but use the descriptive form in new APIs and helpers.
+- **Casing (follow existing code):**
+  - Types/structs/classes/enums/aliases: `PascalCase` (`PathSpaceBase`, `VisitOptions`).
+  - Namespaces: short `PascalCase` when public (`SP`), otherwise `lower_snake_case` for internal helpers.
+  - Functions (free/member/static): `camelCase` (`clone`, `makeValueHandle`, `childLimitEnabled`). Prefer verbs for actions.
+  - Static/constexpr constants: `PascalCase` (`UnlimitedDepth`, `NotifyLockWatchdog`); no `k`-prefix.
+  - Member fields: `camelCase`; no trailing underscores. Disambiguate with `this->member` when shadowing would occur.
+  - Variables/parameters: `camelCase`; reserve `snake_case` for POD interop/layout mirrors or when matching serialized field names.
+  - Macros: avoid new ones; if unavoidable, use ALL_CAPS with a clear prefix.
+- **Ownership & lifetimes:** Prefer `std::unique_ptr` for sole ownership and `std::shared_ptr` only when multiple owners are intentional. Use references or `std::span` for non-owning access. Document ownership in factories and shared-context helpers.
+- **`noexcept` & error flow:** Mark trivially non-throwing helpers `noexcept`; route recoverable failures through `Expected`/`Error` instead of exceptions. Keep exceptions for programmer errors or serialization preconditions.
+- **Chrono/timeouts:** Use `std::chrono` types end-to-end; avoid raw integer durations. Favour `steady_clock` for waits/timeouts.
+- **Threading discipline:** Keep lock scopes minimal and never hold payload/child locks across user callbacks. When adding waits/timeouts, preserve existing wait/notify semantics and related metrics/log sinks.
+- **Includes & deps:** Keep headers lean; prefer forward declarations; order includes as local header, pathspace headers, third_party, STL.
+- **Enums & switches:** Use `enum class`; exhaustively switch on enums (no `default` unless asserting/unreachable).
+- **Logging:** Use `TaggedLogger` or existing loggers; avoid `std::cout`/`printf` in production paths.
+- **Tests first-class:** Add doctests for new behavior (success, failure, concurrency edges); wire new diagnostics/paths into tests so schemas remain enforced.
+- **Paths:** Use `Iterator`, `ConcretePath`, `GlobPath`, and `validation.hpp` helpers instead of hand-built strings. Keep names canonical and update `docs/AI_Paths.md` plus schemas when adding/renaming nodes.
+- **Storage/serialization:** Route payloads through `NodeData` and typed `InputMetadataT<>`; keep POD fast-paths (`PodPayload`) only when `podPreferred` applies. When migrating POD→generic, preserve error propagation and `InsertReturn` accounting.
+- **Concurrency:** Respect per-node mutex scope; do not hold locks across user callbacks. Queue work on `Task/Executor` and avoid blocking the executor threads. Preserve wait/notify by calling `notify()` after observable mutations and wiring `NotificationSink` correctly.
+- **APIs & layering:** Public PathSpace APIs live in `include/pathspace/*`; internal helpers stay under `src/pathspace/*`. Keep views/adapters isolated (`layer/`, `distributed/`).
+- **Error handling/logging:** Return `Error`/`Expected` instead of bools where context matters; populate codes + messages. Log through `log/TaggedLogger` or existing logger instances—no ad-hoc `std::cout`.
+- **Testing hooks:** When adding features, mirror telemetry/paths into `tests/` (doctest) and align with the five-loop harness. Update docs alongside code (plans, schemas, debugging playbook) whenever contracts or diagnostics change.
+- **Resources/UI:** Declarative UI code must resolve themes via the runtime (no hard-coded palettes); keep renderer/HTML adapters aligned with snapshot schemas and update SceneGraph plan files when contracts move.
+
 ## Architecture Snapshot
 - **Core space** — `PathSpace` owns a trie of `Node` objects keyed by path component. Each node holds serialized values plus queued `Task` executions; insert/read/take manage the front element without global locks. Node payloads marshal through `NodeData` (contiguous byte/storage lanes with companion type metadata) using Alpaca today and migrating to C++26 serialization when available (`docs/AI_Architecture.md`).
 - **Paths** — type-safe `ConcretePath`/`GlobPath` wrappers provide component iterators and globbing (`*`, `**`, ranges). Pattern matching is component-wise for predictable performance (`src/pathspace/path/`).

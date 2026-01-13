@@ -205,7 +205,7 @@ TEST_CASE("PathSpace JSON exporter reports unlimited child limit") {
     options.mode                 = PathSpaceJsonOptions::Mode::Debug;
     options.includeStructureFields = true;
     options.visit.root        = "/root";
-    options.visit.maxChildren = VisitOptions::kUnlimitedChildren;
+    options.visit.maxChildren = VisitOptions::UnlimitedChildren;
 
     auto doc        = dump(space, options);
     auto limits     = doc.at("_meta").at("limits");
@@ -213,6 +213,28 @@ TEST_CASE("PathSpace JSON exporter reports unlimited child limit") {
 
     auto rootNode = findNode(doc, "/root", "/root");
     CHECK_FALSE(rootNode.at("children_truncated").get<bool>());
+}
+
+TEST_CASE("PathSpace JSON exporter reports unlimited depth") {
+    PathSpace space;
+    auto ins1 = space.insert("/root/a", 1);
+    REQUIRE(ins1.errors.empty());
+    auto ins2 = space.insert("/root/a/b", 2);
+    REQUIRE(ins2.errors.empty());
+
+    PathSpaceJsonOptions options;
+    options.mode                   = PathSpaceJsonOptions::Mode::Debug;
+    options.includeStructureFields = true;
+    options.visit.root      = "/root";
+    options.visit.maxDepth  = VisitOptions::UnlimitedDepth;
+
+    auto doc    = dump(space, options);
+    auto limits = doc.at("_meta").at("limits");
+    CHECK(limits.at("max_depth") == "unlimited");
+
+    auto node = findNode(doc, "/root", "/root/a/b");
+    CHECK(node.at("values").size() == 1);
+    CHECK_FALSE(node.at("depth_truncated").get<bool>());
 }
 
 TEST_CASE("PathSpace JSON exporter honors friendly converter aliases") {

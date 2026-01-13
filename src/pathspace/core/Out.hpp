@@ -48,6 +48,16 @@ struct Pop : Out {
     }
 };
 
+struct Minimal : Out {
+    Minimal() {
+        this->isMinimal = true;
+    }
+
+    void modify(Out& o) const {
+        o.isMinimal = true;
+    }
+};
+
 struct OutNoValidation : Out {
     OutNoValidation() {
         this->validationLevel = ValidationLevel::None;
