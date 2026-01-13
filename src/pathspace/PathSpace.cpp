@@ -16,6 +16,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <chrono>
 #include <vector>
 
 namespace SP {
@@ -256,28 +257,28 @@ PathSpace::PathSpace(TaskPool* pool) {
         this->pool = pool;
     }
     Executor* exec = static_cast<Executor*>(this->pool);
-    this->context_ = std::make_shared<PathSpaceContext>(exec);
+    this->context = std::make_shared<PathSpaceContext>(exec);
     this->setExecutor(exec);
 };
 
 PathSpace::PathSpace(std::shared_ptr<PathSpaceContext> context, std::string prefix) {
     sp_log("PathSpace::PathSpace(context)", "Function Called");
-    this->context_ = std::move(context);
+    this->context = std::move(context);
 
     this->prefix = std::move(prefix);
 
     // Prefer the executor already attached to the shared context; otherwise, fall back
     // to the global TaskPool so immediate executions still have a scheduler.
     Executor* exec = nullptr;
-    if (this->context_) {
-        exec = this->context_->executor();
+    if (this->context) {
+        exec = this->context->executor();
     }
 
     if (!exec) {
         this->pool = &TaskPool::Instance();
         exec       = static_cast<Executor*>(this->pool);
-        if (this->context_) {
-            this->context_->setExecutor(exec);
+        if (this->context) {
+            this->context->setExecutor(exec);
         }
     } else {
         this->pool = dynamic_cast<TaskPool*>(exec);
@@ -293,9 +294,11 @@ PathSpace::PathSpace(PathSpace const& other) {
     sp_log("PathSpace::PathSpace(copy)", "Function Called");
     this->pool = other.pool ? other.pool : &TaskPool::Instance();
     Executor* exec = static_cast<Executor*>(this->pool);
-    this->context_ = std::make_shared<PathSpaceContext>(exec);
+    this->context = std::make_shared<PathSpaceContext>(exec);
     this->setExecutor(exec);
     this->prefix = other.prefix;
+    this->activeOutCount.store(0, std::memory_order_relaxed);
+    this->clearingInProgress.store(false, std::memory_order_release);
     this->copyFrom(other, nullptr);
 }
 
@@ -308,9 +311,11 @@ auto PathSpace::operator=(PathSpace const& other) -> PathSpace& {
     this->ownedPool.reset();
     this->pool = other.pool ? other.pool : &TaskPool::Instance();
     Executor* exec = static_cast<Executor*>(this->pool);
-    this->context_ = std::make_shared<PathSpaceContext>(exec);
+    this->context = std::make_shared<PathSpaceContext>(exec);
     this->setExecutor(exec);
     this->prefix = other.prefix;
+    this->activeOutCount.store(0, std::memory_order_relaxed);
+    this->clearingInProgress.store(false, std::memory_order_release);
     this->copyFrom(other, nullptr);
     return *this;
 }
@@ -323,13 +328,14 @@ auto PathSpace::clone(CopyStats* stats) const -> PathSpace {
 }
 void PathSpace::adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix) {
     sp_log("PathSpace::adoptContextAndPrefix", "Function Called");
-    this->context_ = std::move(context);
+    auto previousPrefix = this->prefix;
+    this->context = std::move(context);
     this->prefix = std::move(prefix);
-    if (this->context_ && this->context_->executor()) {
-        this->setExecutor(this->context_->executor());
+    if (this->context && this->context->executor()) {
+        this->setExecutor(this->context->executor());
     }
     // Retarget tasks and nested spaces to the newly adopted context/executor.
-    if (this->context_) {
+    if (this->context) {
         auto* root = this->getRootNode();
         if (root) {
             std::vector<std::pair<Node*, std::string>> stack{{root, "/"}};
@@ -339,12 +345,15 @@ void PathSpace::adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context,
                 {
                     std::lock_guard<std::mutex> guard(node->payloadMutex);
                     if (node->data) {
-                        node->data->retargetTasks(this->getNotificationSink(), this->getExecutor());
+                        node->data->retargetTasks(this->getNotificationSink(),
+                                                  this->getExecutor(),
+                                                  previousPrefix,
+                                                  this->prefix);
                         auto nestedCount = node->data->nestedCount();
                         for (std::size_t i = 0; i < nestedCount; ++i) {
                             if (auto* nested = node->data->nestedAt(i)) {
                                 auto mountPrefix = makeMountPrefix(this->prefix, append_index_suffix(path, i));
-                                nested->adoptContextAndPrefix(this->context_, mountPrefix);
+                                nested->adoptContextAndPrefix(this->context, mountPrefix);
                             }
                         }
                     }
@@ -374,7 +383,7 @@ void PathSpace::setOwnedPool(TaskPool* p) {
 
 PathSpace::~PathSpace() {
     sp_log("PathSpace::~PathSpace", "Function Called");
-    if (this->context_) {
+    if (this->context) {
         this->shutdown();
     }
     // If we own a TaskPool instance, ensure worker threads are stopped before destruction.
@@ -393,30 +402,47 @@ PathSpace::~PathSpace() {
 
 auto PathSpace::clear() -> void {
     sp_log("PathSpace::clear", "Function Called");
-    if (!this->context_) {
+    this->clearingInProgress.store(true, std::memory_order_release);
+
+    if (this->context) {
+        // Wake any waiters before clearing to avoid dangling waits
+        this->context->notifyAll();
+    }
+
+    while (this->activeOutCount.load(std::memory_order_acquire) > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    if (!this->context) {
         this->leaf.clear();
+        this->clearingInProgress.store(false, std::memory_order_release);
         return;
     }
-    // Wake any waiters before clearing to avoid dangling waits
-    this->context_->notifyAll();
+
     this->leaf.clear();
-    this->context_->clearWaits();
+    this->context->clearWaits();
+    this->clearingInProgress.store(false, std::memory_order_release);
 }
 
 auto PathSpace::shutdown() -> void {
     sp_log("PathSpace::shutdown", "Function Called");
     sp_log("PathSpace::shutdown Starting shutdown", "PathSpaceShutdown");
-    if (!this->context_) {
+    if (!this->context) {
         return;
     }
-    this->context_->invalidateSink();
+    this->clearingInProgress.store(true, std::memory_order_release);
+    this->context->invalidateSink();
     // Mark shutting down and wake all waiters so blocking outs can exit promptly
-    this->context_->shutdown();
+    this->context->shutdown();
     sp_log("PathSpace::shutdown Context shutdown signaled", "PathSpaceShutdown");
+    while (this->activeOutCount.load(std::memory_order_acquire) > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
     this->leaf.clear();
     // After clearing paths, purge any remaining wait registrations to prevent dangling waiters
-    this->context_->clearWaits();
+    this->context->clearWaits();
     sp_log("PathSpace::shutdown Cleared paths and waits", "PathSpaceShutdown");
+    this->clearingInProgress.store(false, std::memory_order_release);
 }
 
 auto PathSpace::in(Iterator const& path, InputData const& data) -> InsertReturn {
@@ -425,19 +451,19 @@ auto PathSpace::in(Iterator const& path, InputData const& data) -> InsertReturn 
 
     this->leaf.in(path, data, ret);
 
-    if (ret.nbrSpacesInserted > 0 && this->context_) {
+    if (ret.nbrSpacesInserted > 0 && this->context) {
         for (auto const& req : ret.retargets) {
             if (!req.space)
                 continue;
             auto mountPrefix = makeMountPrefix(this->prefix, req.mountPrefix);
-            req.space->adoptContextAndPrefix(this->context_, std::move(mountPrefix));
+            req.space->adoptContextAndPrefix(this->context, std::move(mountPrefix));
         }
         // Prevent upstream callers from re-applying retargets with an incorrect prefix.
         ret.retargets.clear();
     }
 
     if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksInserted > 0) {
-        if (this->context_ && !this->context_->hasWaiters()) {
+        if (this->context && !this->context->hasWaiters()) {
             if (ret.nbrValuesSuppressed > 0 && ret.nbrValuesInserted >= ret.nbrValuesSuppressed) {
                 ret.nbrValuesInserted -= ret.nbrValuesSuppressed;
             } else if (ret.nbrValuesSuppressed > 0) {
@@ -445,17 +471,17 @@ auto PathSpace::in(Iterator const& path, InputData const& data) -> InsertReturn 
             }
             return ret;
         }
-        if (this->context_) {
+        if (this->context) {
             if (!this->prefix.empty()) {
                 std::string notePath = this->prefix;
                 notePath.append(path.toStringView().data(), path.toStringView().size());
                 sp_log("PathSpace::in notify: " + notePath, "PathSpace");
-                this->context_->notify(notePath);
+                this->context->notify(notePath);
             } else {
                 auto sv = path.toStringView();
                 std::string_view notePath{sv.data(), sv.size()};
                 sp_log("PathSpace::in notify: " + std::string(notePath), "PathSpace");
-                this->context_->notify(notePath);
+                this->context->notify(notePath);
             }
         }
     }
@@ -471,8 +497,25 @@ auto PathSpace::in(Iterator const& path, InputData const& data) -> InsertReturn 
 
 auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> {
     sp_log("PathSpace::outBlock", "Function Called");
+
+    struct ActiveOutGuard {
+        PathSpace* self;
+        bool engaged{false};
+        ~ActiveOutGuard() {
+            if (engaged) {
+                self->activeOutCount.fetch_sub(1, std::memory_order_acq_rel);
+            }
+        }
+    } guard{this};
+
+    if (this->clearingInProgress.load(std::memory_order_acquire)) {
+        return Error{Error::Code::Timeout, "PathSpace clearing in progress"};
+    }
+    guard.engaged = true;
+    this->activeOutCount.fetch_add(1, std::memory_order_acq_rel);
+
     auto retargetNestedIfNeeded = [&]() {
-        if (!(options.doPop && inputMetadata.dataCategory == DataCategory::UniquePtr && this->context_)) {
+        if (!(options.doPop && inputMetadata.dataCategory == DataCategory::UniquePtr && this->context)) {
             return;
         }
         ConcretePathString raw{path.toString()};
@@ -514,9 +557,9 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
             retargetNestedIfNeeded();
             // Successful read or pop; notify other waiters to re-check state
             if (!this->prefix.empty())
-                this->context_->notify(this->prefix + std::string(path.toStringView()));
+                this->context->notify(this->prefix + std::string(path.toStringView()));
             else
-                this->context_->notify(path.toStringView());
+                this->context->notify(path.toStringView());
             return error;
         }
         if (options.doBlock == false)
@@ -525,6 +568,10 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
 
     // Clamp blocking wait duration using PATHSPACE_TEST_TIMEOUT_MS (milliseconds) or PATHSPACE_TEST_TIMEOUT (seconds)
     auto maxWait = options.timeout;
+    if (maxWait <= std::chrono::milliseconds{0}) {
+        // Guard against accidental zero/negative timeouts to avoid spurious failures in blocking reads.
+        maxWait = DEFAULT_TIMEOUT;
+    }
     if (const char* envms = std::getenv("PATHSPACE_TEST_TIMEOUT_MS")) {
         char* endptr = nullptr;
         long ms = std::strtol(envms, &endptr, 10);
@@ -558,22 +605,27 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
                 auto sv = path.toStringView();
                 notePath.append(sv.data(), sv.size());
                 sp_log("out(success pre-wait) notify: " + notePath, "PathSpace");
-                this->context_->notify(notePath);
+                this->context->notify(notePath);
             } else {
                 auto sv = path.toStringView();
                 std::string_view notePath{sv.data(), sv.size()};
                 sp_log("out(success pre-wait) notify: " + std::string(notePath), "PathSpace");
-                this->context_->notify(notePath);
+                this->context->notify(notePath);
             }
             return std::nullopt;
         }
     }
 
 
+    static thread_local std::chrono::milliseconds waitSlice{1};
+
     while (true) {
         // Check shutdown and deadline first
-        if (this->context_ && this->context_->isShuttingDown()) {
+        if (this->context && this->context->isShuttingDown()) {
             return Error{Error::Code::Timeout, "Shutting down while waiting for data at path: " + path.toString()};
+        }
+        if (this->clearingInProgress.load(std::memory_order_acquire)) {
+            return Error{Error::Code::Timeout, "PathSpace clearing in progress"};
         }
         auto now = std::chrono::system_clock::now();
         if (now >= deadline)
@@ -590,12 +642,12 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
                     auto sv = path.toStringView();
                     notePath.append(sv.data(), sv.size());
                     sp_log("out(success pre-wait in-loop) notify: " + notePath, "PathSpace");
-                    this->context_->notify(notePath);
+                    this->context->notify(notePath);
                 } else {
                     auto sv = path.toStringView();
                     std::string_view notePath{sv.data(), sv.size()};
                     sp_log("out(success pre-wait in-loop) notify: " + std::string(notePath), "PathSpace");
-                    this->context_->notify(notePath);
+                    this->context->notify(notePath);
                 }
                 return std::nullopt;
             }
@@ -603,14 +655,13 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
 
         // Wait in short slices; never call leaf.out while holding the WatchRegistry lock
         {
-            auto guard  = this->context_->wait(waitPath);
+            auto guard  = this->context->wait(waitPath);
             auto now2   = std::chrono::system_clock::now();
             auto remain = deadline - now2;
             if (remain <= std::chrono::milliseconds(0)) {
                 return Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + path.toString()};
             }
             // Start with a small slice and back off to reduce busy-waiting under contention.
-            static thread_local std::chrono::milliseconds waitSlice{1};
             auto slice = waitSlice;
             // Cap slice and ensure we never exceed the remaining time.
             auto cap = std::chrono::milliseconds(8);
@@ -631,7 +682,6 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
         auto retry = this->leaf.out(path, inputMetadata, obj, options.doPop);
         if (!retry.has_value()) {
             retargetNestedIfNeeded();
-            static thread_local std::chrono::milliseconds waitSlice{1};
             waitSlice = std::chrono::milliseconds(1);
             // Successful read or pop; notify other waiters to re-check state
             if (!this->prefix.empty()) {
@@ -639,12 +689,12 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
                 auto sv = path.toStringView();
                 notePath.append(sv.data(), sv.size());
                 sp_log("out(success in-loop) notify: " + notePath, "PathSpace");
-                this->context_->notify(notePath);
+                this->context->notify(notePath);
             } else {
                 auto sv = path.toStringView();
                 std::string_view notePath{sv.data(), sv.size()};
                 sp_log("out(success in-loop) notify: " + std::string(notePath), "PathSpace");
-                this->context_->notify(notePath);
+                this->context->notify(notePath);
             }
             return std::nullopt;
         } else {
@@ -663,11 +713,11 @@ auto PathSpace::notify(std::string const& notificationPath) -> void {
         std::string notePath = this->prefix;
         notePath.append(notificationPath.data(), notificationPath.size());
         sp_log("PathSpace::notify forwarding: " + notePath, "PathSpace");
-        this->context_->notify(notePath);
+        this->context->notify(notePath);
     } else {
         std::string_view notePath{notificationPath.data(), notificationPath.size()};
         sp_log("PathSpace::notify forwarding: " + std::string(notePath), "PathSpace");
-        this->context_->notify(notificationPath);
+        this->context->notify(notificationPath);
     }
 }
 
@@ -682,7 +732,7 @@ auto PathSpace::spanPackMut(std::span<const std::string> paths,
                             InputMetadata const& metadata,
                             Out const& options,
                             SpanPackMutCallback const& fn) const -> Expected<void> {
-    if (!options.doBlock || !this->context_) {
+    if (!options.doBlock || !this->context) {
         return this->leaf.spanPackMut(paths, metadata, options, fn);
     }
 
@@ -712,7 +762,7 @@ auto PathSpace::spanPackMut(std::span<const std::string> paths,
             pathToWait = this->prefix + pathToWait;
         }
 
-        auto guard = this->context_->wait(pathToWait);
+        auto guard = this->context->wait(pathToWait);
         guard.wait_until(deadline);
     }
 }
@@ -721,7 +771,7 @@ auto PathSpace::packInsert(std::span<const std::string> paths,
                            InputMetadata const& metadata,
                            std::span<void const* const> values) -> InsertReturn {
     auto ret = this->leaf.packInsert(paths, metadata, values);
-    if (!this->context_) {
+    if (!this->context) {
         return ret;
     }
 
@@ -729,9 +779,9 @@ auto PathSpace::packInsert(std::span<const std::string> paths,
         // Notify waiters for each affected path; apply prefix when this PathSpace is mounted.
         for (auto const& path : paths) {
             if (!this->prefix.empty()) {
-                this->context_->notify(this->prefix + path);
+                this->context->notify(this->prefix + path);
             } else {
-                this->context_->notify(path);
+                this->context->notify(path);
             }
         }
     }
@@ -821,7 +871,7 @@ void PathSpace::copyFrom(PathSpace const& other, CopyStats* stats) {
     this->leaf.clear();
     Node& dstRoot       = this->leaf.rootNode();
     Node const& srcRoot = other.leaf.rootNode();
-    copyNodeRecursive(srcRoot, dstRoot, this->context_, this->prefix, "/", local);
+    copyNodeRecursive(srcRoot, dstRoot, this->context, this->prefix, "/", local);
     if (stats) {
         *stats = local;
     }

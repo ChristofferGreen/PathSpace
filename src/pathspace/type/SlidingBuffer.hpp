@@ -18,7 +18,7 @@ struct SlidingBuffer {
 
     // Constructor with pre-allocation
     SlidingBuffer() {
-        data_.reserve(INITIAL_CAPACITY);
+        storage.reserve(INITIAL_CAPACITY);
     }
 
     [[nodiscard]] auto data() const noexcept -> uint8_t const*;
@@ -36,19 +36,19 @@ struct SlidingBuffer {
 
     // Deducing this for iterators
     [[nodiscard]] auto begin(this auto&& self) {
-        return self.data_.begin() + self.virtualFront_;
+        return self.storage.begin() + self.frontOffset;
     }
 
     [[nodiscard]] auto end(this auto&& self) {
-        return self.data_.end();
+        return self.storage.end();
     }
 
     [[nodiscard]] auto rawBegin(this auto&& self) {
-        return self.data_.begin();
+        return self.storage.begin();
     }
 
     [[nodiscard]] auto rawEnd(this auto&& self) {
-        return self.data_.end();
+        return self.storage.end();
     }
 
     [[nodiscard]] auto at(size_t index) & -> uint8_t&;
@@ -58,11 +58,11 @@ struct SlidingBuffer {
     auto append(std::span<uint8_t const> bytes) -> void;
     auto append(uint8_t const* bytes, size_t count) -> void;
     auto advance(size_t bytes) -> void;
-    auto assignRaw(std::vector<uint8_t> data, size_t virtualFront) -> void;
+    auto assignRaw(std::vector<uint8_t> data, size_t frontOffsetIn) -> void;
 
 private:
-    std::vector<uint8_t> data_;
-    size_t               virtualFront_ = 0uz;
+    std::vector<uint8_t> storage;
+    size_t               frontOffset = 0uz;
 
     // Calculate appropriate growth for capacity
     [[nodiscard]] static auto calculateGrowth(size_t required) noexcept -> size_t;

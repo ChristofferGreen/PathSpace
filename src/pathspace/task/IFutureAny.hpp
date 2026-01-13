@@ -66,18 +66,18 @@ public:
 
     // ISharedState interface
     [[nodiscard]] bool ready() const override {
-        std::scoped_lock<std::mutex> lg(mutex_);
-        return ready_;
+        std::scoped_lock<std::mutex> lg(this->stateMutex);
+        return this->readyFlag;
     }
 
     void wait() const override {
-        std::unique_lock<std::mutex> lock(mutex_);
-        cv_.wait(lock, [&]{ return ready_; });
+        std::unique_lock<std::mutex> lock(this->stateMutex);
+        this->stateCv.wait(lock, [&]{ return this->readyFlag; });
     }
 
     bool wait_until(std::chrono::time_point<std::chrono::steady_clock> deadline) const override {
-        std::unique_lock<std::mutex> lock(mutex_);
-        return cv_.wait_until(lock, deadline, [&]{ return ready_; });
+        std::unique_lock<std::mutex> lock(this->stateMutex);
+        return this->stateCv.wait_until(lock, deadline, [&]{ return this->readyFlag; });
     }
 
     [[nodiscard]] const std::type_info& type() const override {
@@ -86,9 +86,9 @@ public:
 
     bool copy_to(void* dest) const override {
         if (dest == nullptr) return false;
-        std::scoped_lock<std::mutex> lg(mutex_);
-        if (!ready_ || !value_.has_value()) return false;
-        *static_cast<T*>(dest) = *value_;
+        std::scoped_lock<std::mutex> lg(this->stateMutex);
+        if (!this->readyFlag || !this->value.has_value()) return false;
+        *static_cast<T*>(dest) = *this->value;
         return true;
     }
 
@@ -96,29 +96,29 @@ public:
     // Set the result if not already set; returns true on first successful set.
     bool set_value(T v) {
         {
-            std::scoped_lock<std::mutex> lg(mutex_);
-            if (ready_) return false;
-            value_ = std::move(v);
-            ready_ = true;
+            std::scoped_lock<std::mutex> lg(this->stateMutex);
+            if (this->readyFlag) return false;
+            this->value = std::move(v);
+            this->readyFlag = true;
         }
-        cv_.notify_all();
+        this->stateCv.notify_all();
         return true;
     }
 
     // Consumer-side typed access (copy). Returns false if not ready.
     bool get(T& out) const {
-        std::scoped_lock<std::mutex> lg(mutex_);
-        if (!ready_ || !value_.has_value()) return false;
-        out = *value_;
+        std::scoped_lock<std::mutex> lg(this->stateMutex);
+        if (!this->readyFlag || !this->value.has_value()) return false;
+        out = *this->value;
         return true;
     }
 
 private:
     // mutable to allow const wait/copy operations to lock
-    mutable std::mutex              mutex_;
-    mutable std::condition_variable cv_;
-    std::optional<T>                value_;
-    bool                            ready_{false};
+    mutable std::mutex              stateMutex;
+    mutable std::condition_variable stateCv;
+    std::optional<T>                value;
+    bool                            readyFlag{false};
 };
 
 /**
@@ -132,19 +132,19 @@ public:
     FutureAny() = default;
 
     explicit FutureAny(std::shared_ptr<ISharedState> state)
-        : state_(std::move(state)) {}
+        : state(std::move(state)) {}
 
     template <typename T>
     explicit FutureAny(FutureT<T> const& fut);
 
-    [[nodiscard]] bool valid() const { return static_cast<bool>(state_); }
+    [[nodiscard]] bool valid() const { return static_cast<bool>(this->state); }
 
     [[nodiscard]] bool ready() const {
-        return state_ ? state_->ready() : false;
+        return this->state ? this->state->ready() : false;
     }
 
     void wait() const {
-        if (state_) state_->wait();
+        if (this->state) this->state->wait();
     }
 
     template <typename Rep, typename Period>
@@ -154,30 +154,30 @@ public:
     }
 
     bool wait_until(std::chrono::time_point<std::chrono::steady_clock> deadline) const {
-        return state_ ? state_->wait_until(deadline) : true;
+        return this->state ? this->state->wait_until(deadline) : true;
     }
 
     [[nodiscard]] const std::type_info& type() const {
-        if (state_) return state_->type();
+        if (this->state) return this->state->type();
         return typeid(void);
     }
 
     // Non-blocking result copy. Returns false if not ready or invalid.
     bool try_copy_to(void* dest) const {
-        return state_ ? state_->copy_to(dest) : false;
+        return this->state ? this->state->copy_to(dest) : false;
     }
 
     // Blocking result copy. Returns false only if invalid.
     bool copy_to(void* dest) const {
-        if (!state_) return false;
-        state_->wait();
-        return state_->copy_to(dest);
+        if (!this->state) return false;
+        this->state->wait();
+        return this->state->copy_to(dest);
     }
 
-    std::shared_ptr<ISharedState> shared_state() const { return state_; }
+    std::shared_ptr<ISharedState> shared_state() const { return this->state; }
 
 private:
-    std::shared_ptr<ISharedState> state_;
+    std::shared_ptr<ISharedState> state;
 };
 
 /**
@@ -190,12 +190,12 @@ class FutureT {
 public:
     FutureT() = default;
     explicit FutureT(std::shared_ptr<SharedState<T>> state)
-        : state_(std::move(state)) {}
+        : state(std::move(state)) {}
 
-    [[nodiscard]] bool valid() const { return static_cast<bool>(state_); }
-    [[nodiscard]] bool ready() const { return state_ ? state_->ready() : false; }
+    [[nodiscard]] bool valid() const { return static_cast<bool>(this->state); }
+    [[nodiscard]] bool ready() const { return this->state ? this->state->ready() : false; }
 
-    void wait() const { if (state_) state_->wait(); }
+    void wait() const { if (this->state) this->state->wait(); }
 
     template <typename Rep, typename Period>
     bool wait_for(std::chrono::duration<Rep, Period> const& d) const {
@@ -204,36 +204,36 @@ public:
     }
 
     bool wait_until(std::chrono::time_point<std::chrono::steady_clock> deadline) const {
-        return state_ ? state_->wait_until(deadline) : true;
+        return this->state ? this->state->wait_until(deadline) : true;
     }
 
     // Copy result to out if ready; returns false if not ready or invalid.
     bool try_get(T& out) const {
-        return state_ ? state_->get(out) : false;
+        return this->state ? this->state->get(out) : false;
     }
 
     // Blocking get; returns false if invalid (no state).
     bool get(T& out) const {
-        if (!state_) return false;
-        state_->wait();
-        return state_->get(out);
+        if (!this->state) return false;
+        this->state->wait();
+        return this->state->get(out);
     }
 
     // Bridge to type-erased FutureAny
     [[nodiscard]] FutureAny to_any() const {
-        return FutureAny(state_);
+        return FutureAny(this->state);
     }
 
-    std::shared_ptr<SharedState<T>> shared_state() const { return state_; }
+    std::shared_ptr<SharedState<T>> shared_state() const { return this->state; }
 
 private:
-    std::shared_ptr<SharedState<T>> state_;
+    std::shared_ptr<SharedState<T>> state;
 };
 
 // FutureAny construction from typed future (defined after FutureT)
 template <typename T>
 FutureAny::FutureAny(FutureT<T> const& fut)
-    : state_(fut.shared_state()) {}
+    : state(fut.shared_state()) {}
 
 /**
  * PromiseT<T> — producer-side handle to fulfill a FutureT<T>.
@@ -242,25 +242,25 @@ template <typename T>
 class PromiseT {
 public:
     PromiseT()
-        : state_(std::make_shared<SharedState<T>>()) {}
+        : state(std::make_shared<SharedState<T>>()) {}
 
     explicit PromiseT(std::shared_ptr<SharedState<T>> state)
-        : state_(std::move(state)) {}
+        : state(std::move(state)) {}
 
     // Obtain a typed future associated with this promise.
     [[nodiscard]] FutureT<T> get_future() const {
-        return FutureT<T>(state_);
+        return FutureT<T>(this->state);
     }
 
     // Set the value if not already set. Returns true on success.
     bool set_value(T v) {
-        return state_->set_value(std::move(v));
+        return this->state->set_value(std::move(v));
     }
 
-    std::shared_ptr<SharedState<T>> shared_state() const { return state_; }
+    std::shared_ptr<SharedState<T>> shared_state() const { return this->state; }
 
 private:
-    std::shared_ptr<SharedState<T>> state_;
+    std::shared_ptr<SharedState<T>> state;
 };
 
 } // namespace SP

@@ -9,48 +9,48 @@
 namespace SP {
 
 auto SlidingBuffer::data() const noexcept -> uint8_t const* {
-    sp_log("Buffer access - front: " + std::to_string(virtualFront_) + ", size: " + std::to_string(data_.size()), "SlidingBuffer");
-    return this->data_.data() + this->virtualFront_;
+    sp_log("Buffer access - front: " + std::to_string(this->frontOffset) + ", size: " + std::to_string(this->storage.size()), "SlidingBuffer");
+    return this->storage.data() + this->frontOffset;
 }
 
 auto SlidingBuffer::size() const noexcept -> size_t {
-    return this->data_.size() - this->virtualFront_;
+    return this->storage.size() - this->frontOffset;
 }
 
 auto SlidingBuffer::rawSize() const noexcept -> size_t {
-    return this->data_.size();
+    return this->storage.size();
 }
 
 auto SlidingBuffer::empty() const noexcept -> bool {
-    return this->data_.empty();
+    return this->storage.empty();
 }
 
 auto SlidingBuffer::virtualFront() const noexcept -> size_t {
-    return this->virtualFront_;
+    return this->frontOffset;
 }
 
 auto SlidingBuffer::rawData() const noexcept -> std::span<uint8_t const> {
-    return std::span<uint8_t const>{this->data_.data(), this->data_.size()};
+    return std::span<uint8_t const>{this->storage.data(), this->storage.size()};
 }
 
 auto SlidingBuffer::rawDataMutable() noexcept -> std::span<uint8_t> {
-    return std::span<uint8_t>{this->data_.data(), this->data_.size()};
+    return std::span<uint8_t>{this->storage.data(), this->storage.size()};
 }
 
 auto SlidingBuffer::capacity() const noexcept -> size_t {
-    return this->data_.capacity();
+    return this->storage.capacity();
 }
 
 auto SlidingBuffer::operator[](size_t index) & -> uint8_t& {
-    return this->data_[this->virtualFront_ + index];
+    return this->storage[this->frontOffset + index];
 }
 
 auto SlidingBuffer::operator[](size_t index) const& -> uint8_t const& {
-    return this->data_[this->virtualFront_ + index];
+    return this->storage[this->frontOffset + index];
 }
 
 auto SlidingBuffer::operator[](size_t index) && -> uint8_t {
-    return this->data_[this->virtualFront_ + index];
+    return this->storage[this->frontOffset + index];
 }
 
 auto SlidingBuffer::at(size_t index) & -> uint8_t& {
@@ -78,23 +78,23 @@ auto SlidingBuffer::calculateGrowth(size_t required) noexcept -> size_t {
 auto SlidingBuffer::resize(size_t newSize) -> void {
     this->compact(); // Ensure data starts at 0
     size_t newCapacity = calculateGrowth(newSize);
-    data_.reserve(newCapacity);
-    this->data_.resize(newSize);
+    this->storage.reserve(newCapacity);
+    this->storage.resize(newSize);
 }
 
 auto SlidingBuffer::append(std::span<uint8_t const> bytes) -> void {
     if (!bytes.empty()) {
-        size_t oldSize = this->data_.size();
+        size_t oldSize = this->storage.size();
         size_t newSize = oldSize + bytes.size();
 
         // Calculate new capacity if needed
-        if (newSize > this->data_.capacity()) {
+        if (newSize > this->storage.capacity()) {
             size_t newCapacity = calculateGrowth(newSize);
-            this->data_.reserve(newCapacity);
+            this->storage.reserve(newCapacity);
         }
 
-        this->data_.resize(newSize);
-        std::memcpy(this->data_.data() + oldSize, bytes.data(), bytes.size());
+        this->storage.resize(newSize);
+        std::memcpy(this->storage.data() + oldSize, bytes.data(), bytes.size());
     }
 }
 
@@ -103,39 +103,39 @@ auto SlidingBuffer::append(uint8_t const* bytes, size_t count) -> void {
 }
 
 auto SlidingBuffer::advance(size_t bytes) -> void {
-    sp_log("Buffer advance - current front: " + std::to_string(virtualFront_) + ", advancing: " + std::to_string(bytes), "SlidingBuffer");
+    sp_log("Buffer advance - current front: " + std::to_string(frontOffset) + ", advancing: " + std::to_string(bytes), "SlidingBuffer");
     if (bytes > this->size()) {
         sp_log("WARNING: Attempting to advance beyond buffer size", "SlidingBuffer");
         return;
     }
-    this->virtualFront_ += bytes;
-    if (this->virtualFront_ > this->data_.size() / 2 && this->data_.size() >= COMPACT_THRESHOLD) {
+    this->frontOffset += bytes;
+    if (this->frontOffset > this->storage.size() / 2 && this->storage.size() >= COMPACT_THRESHOLD) {
         sp_log("Compacting buffer", "SlidingBuffer");
         this->compact();
     }
 }
 
 auto SlidingBuffer::compact() -> void {
-    if (this->virtualFront_ == 0uz) {
+    if (this->frontOffset == 0uz) {
         return;
     }
 
-    sp_log("Compacting buffer - before size: " + std::to_string(data_.size()) + ", front: " + std::to_string(virtualFront_), "SlidingBuffer");
+    sp_log("Compacting buffer - before size: " + std::to_string(storage.size()) + ", front: " + std::to_string(frontOffset), "SlidingBuffer");
 
-    if (this->virtualFront_ < this->data_.size()) {
-        size_t remaining = this->data_.size() - this->virtualFront_;
-        std::memmove(this->data_.data(), this->data_.data() + this->virtualFront_, remaining);
-        this->data_.resize(remaining);
+    if (this->frontOffset < this->storage.size()) {
+        size_t remaining = this->storage.size() - this->frontOffset;
+        std::memmove(this->storage.data(), this->storage.data() + this->frontOffset, remaining);
+        this->storage.resize(remaining);
     } else {
-        this->data_.clear();
+        this->storage.clear();
     }
-    this->virtualFront_ = 0uz;
-    sp_log("After compact - size: " + std::to_string(data_.size()) + ", front: " + std::to_string(virtualFront_), "SlidingBuffer");
+    this->frontOffset = 0uz;
+    sp_log("After compact - size: " + std::to_string(storage.size()) + ", front: " + std::to_string(frontOffset), "SlidingBuffer");
 }
 
-auto SlidingBuffer::assignRaw(std::vector<uint8_t> data, size_t virtualFront) -> void {
-    this->data_         = std::move(data);
-    this->virtualFront_ = std::min(virtualFront, this->data_.size());
+auto SlidingBuffer::assignRaw(std::vector<uint8_t> data, size_t frontOffsetIn) -> void {
+    this->storage     = std::move(data);
+    this->frontOffset = std::min(frontOffsetIn, this->storage.size());
 }
 
 } // namespace SP

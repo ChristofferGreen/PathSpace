@@ -87,8 +87,8 @@ private:
     static void mergeInsertReturn(InsertReturn& into, InsertReturn const& from);
 
     Node                       root;
-    mutable std::mutex         packInsertMutex_;
-    mutable std::atomic<bool>  packInsertSeen_{false};
+    mutable std::mutex         packInsertMutex;
+    mutable std::atomic<bool>  packInsertSeen{false};
     friend class History::UndoableSpace;
 };
 

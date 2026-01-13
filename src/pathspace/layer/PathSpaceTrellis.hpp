@@ -63,13 +63,13 @@ private:
     static auto mergeInsertReturn(InsertReturn& target, InsertReturn const& source) -> void;
     static auto isSystemPath(Iterator const& path) -> bool;
 
-    std::shared_ptr<PathSpaceBase> backing_;
-    std::string                    mountPrefix_;
-    mutable std::shared_mutex      registryMutex_;
-    SourceSet                      sourceSet_;
-    std::vector<std::string>       sourceOrder_;
-    mutable std::atomic<size_t>    roundRobinCursor_{0};
-    std::atomic<bool>              isShutdown_{false};
+    std::shared_ptr<PathSpaceBase> backing;
+    std::string                    mountPrefix;
+    mutable std::shared_mutex      registryMutex;
+    SourceSet                      sourceSet;
+    std::vector<std::string>       sourceOrder;
+    mutable std::atomic<size_t>    roundRobinCursor{0};
+    std::atomic<bool>              isShutdown{false};
 };
 
 } // namespace SP

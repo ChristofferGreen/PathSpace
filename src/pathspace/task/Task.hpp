@@ -39,7 +39,7 @@ struct Task {
                 task.result = fun();
                 sp_log("Task lambda completed", "Task");
             };
-            task->resultCopy_ = [](std::any const& from, void* const to) {
+            task->resultCopyFn = [](std::any const& from, void* const to) {
                 sp_log("Task copying result", "Task");
                 *static_cast<ResultType*>(to) = std::any_cast<ResultType>(from);
             };
@@ -68,7 +68,7 @@ struct Task {
                 task.result = fun();
                 sp_log("Task lambda completed", "Task");
             };
-            task->resultCopy_ = [](std::any const& from, void* const to) {
+            task->resultCopyFn = [](std::any const& from, void* const to) {
                 sp_log("Task copying result", "Task");
                 *static_cast<ResultType*>(to) = std::any_cast<ResultType>(from);
             };
@@ -91,7 +91,7 @@ struct Task {
         // Wait for result to be ready before copying
         while (!this->state.isCompleted())
             std::this_thread::yield();
-        resultCopy_(result, dest);
+        resultCopyFn(result, dest);
     }
 
     // Set preferred executor for (re)submission
@@ -112,7 +112,7 @@ private:
     PathSpaceBase*                                            space = nullptr;   // Pointer to a PathSpace where the return values from lazy executions will be inserted
     TaskStateAtomic                                           state;             // Atomic state of the task
     std::function<void(Task& task, bool const objIsData)>     function;          // Function to be executed by the task
-    std::function<void(std::any const& from, void* const to)> resultCopy_;       // Function to copy the result
+    std::function<void(std::any const& from, void* const to)> resultCopyFn;       // Function to copy the result
     std::any                                                  result;            // Result of the task execution
     ExecutionCategory                                         executionCategory; // Optional execution options for the task
     std::weak_ptr<NotificationSink>                           notifier;          // Weak reference to notification sink for lifetime-safe notifications

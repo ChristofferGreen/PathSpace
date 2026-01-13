@@ -114,10 +114,10 @@ private:
                                      InputMetadata metadata,
                                      TypeOperations operations);
 
-    mutable std::mutex mutex_;
-    std::vector<std::unique_ptr<Entry>> entries_;
-    std::unordered_map<std::string, Entry*, TypeNameHash, TypeNameEqual>      by_name_;
-    std::unordered_map<std::type_index, Entry*, TypeIndexHash, TypeIndexEqual> by_type_;
+    mutable std::mutex registryMutex;
+    std::vector<std::unique_ptr<Entry>> entries;
+    std::unordered_map<std::string, Entry*, TypeNameHash, TypeNameEqual>      byName;
+    std::unordered_map<std::type_index, Entry*, TypeIndexHash, TypeIndexEqual> byType;
 };
 
 template <typename T>

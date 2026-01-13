@@ -124,17 +124,17 @@ private:
         void markDirty();
         auto commit() -> Expected<void>;
         void deactivate();
-        explicit operator bool() const noexcept { return active_; }
+        explicit operator bool() const noexcept { return this->active; }
 
         [[nodiscard]] auto state() const noexcept -> std::shared_ptr<UndoJournalRootState> const& {
-            return state_;
+            return this->statePtr;
         }
 
     private:
-        UndoableSpace*                        owner_  = nullptr;
-        std::shared_ptr<UndoJournalRootState> state_;
-        bool                                  active_ = false;
-        bool                                  dirty_  = false;
+        UndoableSpace*                        owner   = nullptr;
+        std::shared_ptr<UndoJournalRootState> statePtr;
+        bool                                  active  = false;
+        bool                                  dirty   = false;
     };
 
     class HistoryTransaction {
@@ -148,13 +148,13 @@ private:
         HistoryTransaction& operator=(HistoryTransaction const&) = delete;
 
         auto commit() -> Expected<void>;
-        explicit operator bool() const noexcept { return guard_.has_value(); }
+        explicit operator bool() const noexcept { return this->guard.has_value(); }
 
     private:
         friend class UndoableSpace;
         explicit HistoryTransaction(JournalTransactionGuard&& journalGuard);
 
-        std::optional<JournalTransactionGuard> guard_;
+        std::optional<JournalTransactionGuard> guard;
     };
 
     class JournalOperationScope {

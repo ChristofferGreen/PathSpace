@@ -156,22 +156,56 @@ TEST_CASE("SlidingBuffer") {
             buffer.append(large.data(), large.size());
 
             buffer.advance(100); // Should trigger compaction
-            CHECK(buffer.virtualFront() == 0);
-            CHECK(buffer.rawSize() < 128);
-        }
+        CHECK(buffer.virtualFront() == 0);
+        CHECK(buffer.rawSize() < 128);
+    }
 
-        SUBCASE("resize behavior") {
+    SUBCASE("resize behavior") {
             std::vector<uint8_t> testData = {1, 2, 3, 4, 5};
             buffer.append(testData.data(), testData.size());
             buffer.advance(2);
             buffer.resize(2); // Should compact and resize
 
-            CHECK(buffer.virtualFront() == 0);
-            CHECK(buffer.size() == 2);
-            CHECK(buffer[0] == 3);
-            CHECK(buffer[1] == 4);
+        CHECK(buffer.virtualFront() == 0);
+        CHECK(buffer.size() == 2);
+        CHECK(buffer[0] == 3);
+        CHECK(buffer[1] == 4);
+    }
+
+    SUBCASE("data and virtualFront stay consistent across multiple compactions") {
+        SP::SlidingBuffer buffer;
+        // Seed with sequential bytes.
+        std::vector<uint8_t> initial(128);
+        std::iota(initial.begin(), initial.end(), 0);
+        buffer.append(initial.data(), initial.size());
+
+        // First advance should compact and reset front.
+        buffer.advance(100);
+        CHECK(buffer.virtualFront() == 0);
+        CHECK(buffer.size() == initial.size() - 100);
+        CHECK(buffer.data()[0] == initial[100]);
+
+        // Append another block and advance far enough to trigger another compaction.
+        std::vector<uint8_t> extra(128);
+        std::iota(extra.begin(), extra.end(), 200);
+        buffer.append(extra.data(), extra.size());
+
+        // Build expected remaining data after consuming 100 bytes of the combined buffer.
+        std::vector<uint8_t> combined;
+        combined.reserve((initial.size() - 100) + extra.size());
+        combined.insert(combined.end(), initial.begin() + 100, initial.end());
+        combined.insert(combined.end(), extra.begin(), extra.end());
+
+        buffer.advance(100); // triggers compaction again
+        std::vector<uint8_t> expectedRemaining(combined.begin() + 100, combined.end());
+
+        CHECK(buffer.virtualFront() == 0);
+        REQUIRE(buffer.size() == expectedRemaining.size());
+        for (std::size_t i = 0; i < expectedRemaining.size(); ++i) {
+            CHECK(buffer[i] == expectedRemaining[i]);
         }
     }
+}
 
     SUBCASE("Serialization Tests") {
         SP::SlidingBuffer buffer;

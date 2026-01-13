@@ -56,27 +56,27 @@ struct ConverterEntry {
 class NodeDataValueReader final : public detail::PathSpaceJsonValueReader {
 public:
     explicit NodeDataValueReader(NodeData data)
-        : snapshot_(std::move(data)) {
-        auto const& summary = snapshot_.typeSummary();
-        types_.assign(summary.begin(), summary.end());
+        : snapshot(std::move(data)) {
+        auto const& summary = snapshot.typeSummary();
+        types.assign(summary.begin(), summary.end());
     }
 
-    auto queueTypes() const -> std::vector<ElementType> const& { return types_; }
+    auto queueTypes() const -> std::vector<ElementType> const& { return types; }
 
 private:
     auto popImpl(void* destination, InputMetadata const& metadata) -> std::optional<Error> override {
-        if (auto error = snapshot_.deserializePop(destination, metadata)) {
+        if (auto error = snapshot.deserializePop(destination, metadata)) {
             return error;
         }
-        if (nextIndex_ < types_.size()) {
-            ++nextIndex_;
+        if (nextIndex < types.size()) {
+            ++nextIndex;
         }
         return std::nullopt;
     }
 
-    NodeData                 snapshot_;
-    std::vector<ElementType> types_;
-    std::size_t              nextIndex_ = 0;
+    NodeData                 snapshot;
+    std::vector<ElementType> types;
+    std::size_t              nextIndex = 0;
 };
 
 auto makeReader(ValueHandle const& handle) -> std::unique_ptr<NodeDataValueReader> {

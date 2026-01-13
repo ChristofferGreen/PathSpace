@@ -14,6 +14,8 @@
 #include <atomic>
 #include <vector>
 #include <limits>
+#include <string>
+#include <string_view>
 
 namespace {
 constexpr std::uint32_t HISTORY_PAYLOAD_VERSION = 2;
@@ -702,13 +704,60 @@ auto NodeData::borrowNestedShared(std::size_t index) const -> std::shared_ptr<Pa
     return holder;
 }
 
-void NodeData::retargetTasks(std::weak_ptr<NotificationSink> sink, Executor* exec) {
+namespace {
+auto rewriteNotificationPath(std::string const& current,
+                             std::string const& oldPrefix,
+                             std::string const& newPrefix) -> std::string {
+    // Fast-path: nothing to change.
+    if (oldPrefix == newPrefix || current.empty()) {
+        if (!newPrefix.empty() && oldPrefix.empty() && current.rfind(newPrefix, 0) != 0) {
+            // Mounting onto a new prefix for the first time (oldPrefix empty): prepend.
+            std::string updated = newPrefix;
+            if (!updated.empty() && updated.back() != '/' && current.front() != '/') {
+                updated.push_back('/');
+            }
+            updated.append(current);
+            return updated;
+        }
+        return current;
+    }
+
+    auto startsWithOld = !oldPrefix.empty() && current.rfind(oldPrefix, 0) == 0;
+    if (!startsWithOld) {
+        // If the new prefix is already present, leave unchanged; otherwise prepend new prefix.
+        if (!newPrefix.empty() && current.rfind(newPrefix, 0) != 0) {
+            std::string updated = newPrefix;
+            if (!updated.empty() && updated.back() != '/' && current.front() != '/') {
+                updated.push_back('/');
+            }
+            updated.append(current);
+            return updated;
+        }
+        return current;
+    }
+
+    // Replace oldPrefix with newPrefix.
+    std::string_view suffix{current.data() + oldPrefix.size(), current.size() - oldPrefix.size()};
+    std::string updated = newPrefix;
+    if (!updated.empty() && !suffix.empty() && updated.back() != '/' && suffix.front() != '/') {
+        updated.push_back('/');
+    }
+    updated.append(suffix);
+    return updated;
+}
+} // namespace
+
+void NodeData::retargetTasks(std::weak_ptr<NotificationSink> sink,
+                             Executor* exec,
+                             std::string const& oldPrefix,
+                             std::string const& newPrefix) {
     for (auto const& task : tasks) {
         if (!task) {
             continue;
         }
         task->notifier = sink;
         task->setExecutor(exec);
+        task->notificationPath = rewriteNotificationPath(task->notificationPath, oldPrefix, newPrefix);
     }
 }
 

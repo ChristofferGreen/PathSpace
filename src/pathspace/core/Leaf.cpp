@@ -561,7 +561,7 @@ auto Leaf::inAtNode(Node& node,
             }
         } else {
             if (inputData.metadata.podPreferred && !inputData.task) {
-                std::unique_lock<std::mutex> packLock(this->packInsertMutex_);
+                std::unique_lock<std::mutex> packLock(this->packInsertMutex);
                 if (auto podErr = tryPodInsert(child, inputData, ret); podErr.has_value()) {
                     if (podErr->code != Error::Code::NotSupported) {
                         ret.errors.emplace_back(*podErr);
@@ -1098,8 +1098,8 @@ auto Leaf::spanPackConst(std::span<const std::string> paths,
     if (!inputMetadata.podPreferred) {
         return std::unexpected(Error{Error::Code::NotSupported, "Span pack requires POD fast path"});
     }
-    constexpr int kMaxAttempts = 4;
-    for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
+    constexpr int MaxAttempts = 4;
+    for (int attempt = 0; attempt < MaxAttempts; ++attempt) {
         std::vector<RawConstSpan>      spans(paths.size());
         std::vector<std::shared_ptr<void>> keepers(paths.size());
         std::optional<std::size_t>     expectedCount;
@@ -1153,7 +1153,7 @@ auto Leaf::spanPackConst(std::span<const std::string> paths,
         lastError = res.error();
         if (lastError->code != Error::Code::InvalidType
             || lastError->message != std::optional<std::string>{"Span lengths mismatch"}
-            || attempt == kMaxAttempts - 1) {
+            || attempt == MaxAttempts - 1) {
             return std::unexpected(*lastError);
         }
         // Retry on transient span length mismatches that can occur mid-insert.
@@ -1169,8 +1169,8 @@ auto Leaf::spanPackMut(std::span<const std::string> paths,
     if (!inputMetadata.podPreferred) {
         return std::unexpected(Error{Error::Code::NotSupported, "Span pack requires POD fast path"});
     }
-    if (!packInsertSeen_.load(std::memory_order_acquire)) {
-        for (int i = 0; i < 5 && !packInsertSeen_.load(std::memory_order_acquire); ++i) {
+    if (!this->packInsertSeen.load(std::memory_order_acquire)) {
+        for (int i = 0; i < 5 && !this->packInsertSeen.load(std::memory_order_acquire); ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
@@ -1192,10 +1192,10 @@ auto Leaf::spanPackMut(std::span<const std::string> paths,
         }
     }
 
-    constexpr int kMaxAttempts = 10;
+    constexpr int MaxAttempts = 10;
     std::optional<Error> lastError;
 
-    for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
+    for (int attempt = 0; attempt < MaxAttempts; ++attempt) {
         std::vector<RawMutSpan>            spans(paths.size());
         std::vector<std::shared_ptr<void>> keepers(paths.size());
         std::vector<std::size_t>           heads(paths.size());
@@ -1282,7 +1282,7 @@ auto Leaf::spanPackMut(std::span<const std::string> paths,
 
         if (lastError->code == Error::Code::InvalidType
             && lastError->message == std::optional<std::string>{"Span lengths mismatch"}
-            && attempt < kMaxAttempts - 1) {
+            && attempt < MaxAttempts - 1) {
             std::this_thread::sleep_for(std::chrono::microseconds(200));
             continue;
         }
@@ -1321,8 +1321,8 @@ static auto createConcreteNode(Node& root, std::string const& pathStr) -> Expect
 auto Leaf::packInsert(std::span<const std::string> paths,
                       InputMetadata const& inputMetadata,
                       std::span<void const* const> values) -> InsertReturn {
-    std::scoped_lock packLock(this->packInsertMutex_);
-    packInsertSeen_.store(true, std::memory_order_release);
+    std::scoped_lock packLock(this->packInsertMutex);
+    this->packInsertSeen.store(true, std::memory_order_release);
     InsertReturn ret;
     if (!inputMetadata.podPreferred || inputMetadata.dataCategory == DataCategory::UniquePtr
         || inputMetadata.dataCategory == DataCategory::Execution) {

@@ -3,17 +3,47 @@
 #include "core/NotificationSink.hpp"
 #include "type/InputMetadataT.hpp"
 #include <pathspace/PathSpace.hpp>
+#include "task/TaskT.hpp"
+#include "task/Executor.hpp"
+#include "task/TaskPool.hpp"
 
 #include "third_party/doctest.h"
 
 #include <atomic>
 #include <chrono>
 #include <future>
+#include <condition_variable>
+#include <optional>
 #include <memory>
 #include <string>
 #include <thread>
 
 using namespace SP;
+
+namespace {
+struct CaptureSink : NotificationSink {
+    void notify(const std::string& notificationPath) override {
+        {
+            std::lock_guard<std::mutex> lg(mutex);
+            lastPath = notificationPath;
+        }
+        cv.notify_all();
+    }
+
+    std::optional<std::string> waitFor(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lk(mutex);
+        if (!cv.wait_for(lk, timeout, [&] { return !lastPath.empty(); })) {
+            return std::nullopt;
+        }
+        return lastPath;
+    }
+
+    std::mutex              mutex;
+    std::condition_variable cv;
+    std::string             lastPath;
+};
+
+} // namespace
 
 TEST_SUITE("core.nodedata.nested") {
     TEST_CASE("copy/assign drop nested payload metadata") {
@@ -68,8 +98,85 @@ TEST_SUITE("core.nodedata.nested") {
         REQUIRE_FALSE(data.serialize(input).has_value());
 
         // Retarget to a mock sink/executor (nullptr ok for this test)
-        CHECK_NOTHROW(data.retargetTasks(std::weak_ptr<NotificationSink>{}, nullptr));
+        CHECK_NOTHROW(data.retargetTasks(std::weak_ptr<NotificationSink>{}, nullptr, "", ""));
         CHECK_FALSE(data.peekFuture().has_value());
+    }
+
+    TEST_CASE("retargetTasks rewrites notification path with new prefix") {
+        auto sink = std::make_shared<CaptureSink>();
+        TaskPool exec(1);
+
+        auto taskT = TaskT<int>::Create(std::weak_ptr<NotificationSink>(sink),
+                                        "/old/p",
+                                        []() { return 7; },
+                                        ExecutionCategory::Lazy,
+                                        &exec);
+        auto task = taskT->legacy_task();
+
+        auto func = []() -> int { return 7; };
+        InputData input{func};
+        input.task      = task;
+        input.anyFuture = taskT->any_future();
+        input.executor  = &exec;
+
+        NodeData data;
+        REQUIRE_FALSE(data.serialize(input).has_value());
+
+        data.retargetTasks(std::weak_ptr<NotificationSink>(sink), &exec, "/old", "/new");
+
+        int out = 0;
+        InputMetadataT<int> meta{};
+        auto err = data.deserializePop(&out, meta);
+        for (int i = 0; err.has_value() && err->code == Error::Code::UnknownError && i < 10; ++i) {
+            std::this_thread::sleep_for(10ms);
+            err = data.deserializePop(&out, meta);
+        }
+        REQUIRE_FALSE(err.has_value());
+        CHECK(out == 7);
+
+        auto notified = sink->waitFor(500ms);
+        REQUIRE(notified.has_value());
+        CHECK(*notified == "/new/p");
+        exec.shutdown();
+    }
+
+    TEST_CASE("retargetTasks prepends prefix when none set") {
+        auto sink = std::make_shared<CaptureSink>();
+        TaskPool exec(1);
+
+        auto taskT = TaskT<int>::Create(std::weak_ptr<NotificationSink>(sink),
+                                        "/child/task",
+                                        []() { return 5; },
+                                        ExecutionCategory::Lazy,
+                                        &exec);
+        auto task = taskT->legacy_task();
+
+        auto func = []() -> int { return 5; };
+        InputData input{func};
+        input.task      = task;
+        input.anyFuture = taskT->any_future();
+        input.executor  = &exec;
+
+        NodeData data;
+        REQUIRE_FALSE(data.serialize(input).has_value());
+
+        data.retargetTasks(std::weak_ptr<NotificationSink>(sink), &exec, "", "/root");
+        data.retargetTasks(std::weak_ptr<NotificationSink>(sink), &exec, "", "/root"); // idempotent
+
+        int out = 0;
+        InputMetadataT<int> meta{};
+        auto err = data.deserializePop(&out, meta);
+        for (int i = 0; err.has_value() && err->code == Error::Code::UnknownError && i < 10; ++i) {
+            std::this_thread::sleep_for(10ms);
+            err = data.deserializePop(&out, meta);
+        }
+        REQUIRE_FALSE(err.has_value());
+        CHECK(out == 5);
+
+        auto notified = sink->waitFor(500ms);
+        REQUIRE(notified.has_value());
+        CHECK(*notified == "/root/child/task");
+        exec.shutdown();
     }
 
     TEST_CASE("serializeSnapshot retains nested ordering placeholders") {

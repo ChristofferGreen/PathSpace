@@ -17,6 +17,7 @@
 #include <vector>
 #include <mutex>
 #include <atomic>
+#include <string>
 
 namespace SP {
 class InsertReturn;
@@ -65,7 +66,10 @@ struct NodeData {
     // Replace an existing placeholder slot (if present) without changing type metadata.
     auto emplaceNestedAt(std::size_t index, std::unique_ptr<PathSpaceBase>& space) -> std::optional<Error>;
     // Rebind existing tasks to a new notification sink/executor (used when a PathSpace is mounted).
-    void retargetTasks(std::weak_ptr<NotificationSink> sink, Executor* exec);
+    void retargetTasks(std::weak_ptr<NotificationSink> sink,
+                       Executor* exec,
+                       std::string const& oldPrefix,
+                       std::string const& newPrefix);
     auto append(NodeData const& other) -> std::optional<Error>;
     [[nodiscard]] auto valueCount() const -> std::size_t;
     [[nodiscard]] auto typeSummary() const -> std::deque<ElementType> const& { return types; }

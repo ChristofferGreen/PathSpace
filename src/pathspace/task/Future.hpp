@@ -72,7 +72,7 @@ private:
     // Steady-clock-based timed wait used by templated wait helpers
     auto wait_until_steady(std::chrono::time_point<std::chrono::steady_clock> deadline) const -> bool;
 
-    std::weak_ptr<Task> task_;
+    std::weak_ptr<Task> taskWeak;
 };
 
 } // namespace SP

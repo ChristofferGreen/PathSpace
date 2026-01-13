@@ -31,9 +31,9 @@ public:
     using WaitType = WaitMap;
 
     explicit PathSpaceContext(Executor* exec = nullptr)
-        : executor_(exec)
-        , wait_(std::make_unique<WaitMap>())
-        , shuttingDown_(false) {}
+        : executorPtr(exec)
+        , waitRegistry(std::make_unique<WaitMap>())
+        , shuttingDown(false) {}
 
     ~PathSpaceContext() = default;
 
@@ -41,117 +41,117 @@ public:
 
     // Set or replace the executor used for task submission.
     void setExecutor(Executor* exec) noexcept {
-        executor_ = exec;
+        executorPtr = exec;
     }
 
     // Current executor (may be nullptr if not configured).
     Executor* executor() const noexcept {
-        return executor_;
+        return executorPtr;
     }
 
     // ----- Notification sink management -----
 
     // Install a shared NotificationSink implementation.
-    void setSink(std::shared_ptr<NotificationSink> sink) {
-        std::lock_guard<std::mutex> lg(mutex_);
-        sink_ = std::move(sink);
+    void setSink(std::shared_ptr<NotificationSink> sinkIn) {
+        std::lock_guard<std::mutex> lg(this->mutex);
+        this->sink = std::move(sinkIn);
     }
 
     // Acquire a weak handle to the NotificationSink for safe cross-thread notifications.
     std::weak_ptr<NotificationSink> getSink() const {
-        std::lock_guard<std::mutex> lg(mutex_);
-        return std::weak_ptr<NotificationSink>(sink_);
+        std::lock_guard<std::mutex> lg(this->mutex);
+        return std::weak_ptr<NotificationSink>(this->sink);
     }
 
     // Invalidate the sink so late notifications are safely dropped.
     void invalidateSink() {
-        std::lock_guard<std::mutex> lg(mutex_);
-        sink_.reset();
+        std::lock_guard<std::mutex> lg(this->mutex);
+        this->sink.reset();
     }
 
     // ----- Wait/notify -----
 
     // Wait for notifications on a concrete or glob path.
-    // Guard exposes wait_until(...) while holding the registry's lock.
+    // Guard exposes waitRegistryuntil(...) while holding the registry's lock.
     WaitGuard wait(std::string_view path) {
-        ensureWait_();
-        return wait_->wait(path);
+        ensureWait();
+        return waitRegistry->wait(path);
     }
 
     // Notify waiters (path may be concrete or glob; semantics provided by underlying registry).
     void notify(std::string_view path) {
-        ensureWait_();
-        wait_->notify(path);
+        ensureWait();
+        waitRegistry->notify(path);
         std::shared_ptr<NotificationSink> sinkCopy;
         {
-            std::lock_guard<std::mutex> lg(mutex_);
-            if (!sink_ || notifyingSink_) {
+            std::lock_guard<std::mutex> lg(this->mutex);
+            if (!this->sink || this->notifyingSink) {
                 return;
             }
-            notifyingSink_ = true;
-            sinkCopy       = sink_;
+            this->notifyingSink = true;
+            sinkCopy            = this->sink;
         }
         std::string pathCopy(path);
         sinkCopy->notify(pathCopy);
         {
-            std::lock_guard<std::mutex> lg(mutex_);
-            notifyingSink_ = false;
+            std::lock_guard<std::mutex> lg(this->mutex);
+            this->notifyingSink = false;
         }
     }
 
     // Notify all waiters (used during shutdown and broad updates).
     void notifyAll() {
-        ensureWait_();
-        wait_->notifyAll();
+        ensureWait();
+        waitRegistry->notifyAll();
     }
 
     // Clear all registered waiters (generally called when clearing the tree).
     void clearWaits() {
-        ensureWait_();
-        wait_->clear();
+        ensureWait();
+        waitRegistry->clear();
     }
 
     // ----- Shutdown coordination -----
 
     // Mark the context as shutting down and wake all waiters.
     void shutdown() {
-        shuttingDown_.store(true, std::memory_order_release);
+        this->shuttingDown.store(true, std::memory_order_release);
         notifyAll();
     }
 
     // Indicates whether shutdown has been initiated.
     bool isShuttingDown() const noexcept {
-        return shuttingDown_.load(std::memory_order_acquire);
+        return this->shuttingDown.load(std::memory_order_acquire);
     }
 
     // Whether there are any registered waiters (concrete or glob)
     bool hasWaiters() const noexcept {
-        // ensureWait_ is non-const; use const_cast for lazy init
-        const_cast<PathSpaceContext*>(this)->ensureWait_();
-        return wait_->hasWaiters();
+        // ensureWait is non-const; use const_cast for lazy init
+        const_cast<PathSpaceContext*>(this)->ensureWait();
+        return this->waitRegistry->hasWaiters();
     }
 
 private:
-    void ensureWait_() {
-        if (!wait_) {
+    void ensureWait() {
+        if (!waitRegistry) {
             // Late initialization in case context was default-constructed without wait registry
-            wait_ = std::make_unique<WaitMap>();
+            waitRegistry = std::make_unique<WaitMap>();
         }
     }
 
     // Shared notification sink for lifetime-safe delivery.
-    mutable std::mutex                 mutex_;
-    std::shared_ptr<NotificationSink>  sink_;
-    bool                               notifyingSink_ = false;
+    mutable std::mutex                 mutex;
+    std::shared_ptr<NotificationSink>  sink;
+    bool                               notifyingSink = false;
 
     // Preferred executor for task scheduling.
-    Executor*                          executor_ = nullptr;
+    Executor*                          executorPtr = nullptr;
 
     // Wait/notify registry (backed by WaitMap for glob/concrete semantics).
-    std::unique_ptr<WaitMap>           wait_;
+    std::unique_ptr<WaitMap>           waitRegistry;
 
     // Shutdown flag visible across threads.
-    std::atomic<bool>                  shuttingDown_;
+    std::atomic<bool>                  shuttingDown;
 };
 
 } // namespace SP

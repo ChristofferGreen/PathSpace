@@ -134,8 +134,8 @@ public:
     ValueHandle& operator=(ValueHandle&&) noexcept = default;
     ~ValueHandle() = default;
 
-    [[nodiscard]] auto valid() const noexcept -> bool { return static_cast<bool>(impl_); }
-    [[nodiscard]] auto hasValues() const noexcept -> bool { return valid() && includesValues_; }
+    [[nodiscard]] auto valid() const noexcept -> bool { return static_cast<bool>(this->implPtr); }
+    [[nodiscard]] auto hasValues() const noexcept -> bool { return this->valid() && this->includesValues; }
     [[nodiscard]] auto queueDepth() const -> std::size_t;
 
     template <typename DataType>
@@ -157,13 +157,13 @@ private:
     struct Impl;
 
     explicit ValueHandle(std::shared_ptr<Impl> impl, bool includesValues)
-        : impl_(std::move(impl))
-        , includesValues_(includesValues) {}
+        : implPtr(std::move(impl))
+        , includesValues(includesValues) {}
 
     auto readInto(void* destination, InputMetadata const& metadata) const -> std::optional<Error>;
 
-    std::shared_ptr<Impl> impl_;
-    bool                  includesValues_ = false;
+    std::shared_ptr<Impl> implPtr;
+    bool                  includesValues = false;
 
     friend class PathSpaceBase;
     friend struct VisitDetail::Access;
@@ -629,7 +629,7 @@ public:
     virtual auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void>;
 
     [[nodiscard]] std::shared_ptr<PathSpaceContext> sharedContext() const {
-        return context_;
+        return this->context;
     }
 
 protected:
@@ -640,8 +640,8 @@ protected:
     // ---------- Protected API ----------
     // Provide a weak NotificationSink; downstream users should use notify(notificationPath) instead.
     std::weak_ptr<NotificationSink> getNotificationSink() const {
-        if (context_) {
-            auto w = context_->getSink();
+        if (this->context) {
+            auto w = this->context->getSink();
             if (!w.lock()) {
                 struct DefaultNotificationSinkImpl : NotificationSink {
                     explicit DefaultNotificationSinkImpl(PathSpaceBase* owner) : owner(owner) {}
@@ -649,33 +649,33 @@ protected:
                     PathSpaceBase* owner;
                 };
                 auto sink = std::shared_ptr<NotificationSink>(new DefaultNotificationSinkImpl(const_cast<PathSpaceBase*>(this)));
-                context_->setSink(sink);
+                this->context->setSink(sink);
                 return std::weak_ptr<NotificationSink>(sink);
             }
             return w;
         }
-        if (!notificationSink_) {
+        if (!this->notificationSinkPtr) {
             struct DefaultNotificationSinkImpl : NotificationSink {
                 explicit DefaultNotificationSinkImpl(PathSpaceBase* owner) : owner(owner) {}
                 void notify(const std::string& notificationPath) override { owner->notify(notificationPath); }
                 PathSpaceBase* owner;
             };
-            notificationSink_ = std::shared_ptr<NotificationSink>(new DefaultNotificationSinkImpl(const_cast<PathSpaceBase*>(this)));
+            this->notificationSinkPtr = std::shared_ptr<NotificationSink>(new DefaultNotificationSinkImpl(const_cast<PathSpaceBase*>(this)));
         }
-        return std::weak_ptr<NotificationSink>(notificationSink_);
+        return std::weak_ptr<NotificationSink>(this->notificationSinkPtr);
     }
     // Executor injection point for task scheduling.
     void setExecutor(Executor* exec) {
-        if (context_) context_->setExecutor(exec);
-        executor_ = exec;
+        if (this->context) this->context->setExecutor(exec);
+        this->executorPtr = exec;
     }
     Executor* getExecutor() const {
-        if (context_ && context_->executor()) return context_->executor();
-        return executor_;
+        if (this->context && this->context->executor()) return this->context->executor();
+        return this->executorPtr;
     }
 
     // Shared context access & adoption (used when mounting nested spaces).
-    std::shared_ptr<PathSpaceContext> getContext() const { return context_; }
+    std::shared_ptr<PathSpaceContext> getContext() const { return this->context; }
 
     // - Called by the parent space when this object is mounted under a path.
     // - Supplies a shared PathSpaceContext for wait/notify and an absolute mount prefix.
@@ -688,9 +688,9 @@ protected:
     // - Avoid blocking work or spawning threads here; this hook should be lightweight.
     // - Treat the prefix as read-only and stable for the lifetime of the mount unless explicitly retargeted.
     virtual void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string /*prefix*/) {
-        context_ = std::move(context);
-        if (context_ && context_->executor()) {
-            executor_ = context_->executor();
+        this->context = std::move(context);
+        if (this->context && this->context->executor()) {
+            this->executorPtr = this->context->executor();
         }
     }
 
@@ -810,9 +810,9 @@ private:
     }
 
     // ---------- Private state and virtual hooks ----------
-    mutable std::shared_ptr<NotificationSink> notificationSink_;
-    std::shared_ptr<PathSpaceContext>         context_;
-    Executor*                                 executor_ = nullptr;
+    mutable std::shared_ptr<NotificationSink> notificationSinkPtr;
+    std::shared_ptr<PathSpaceContext>         context;
+    Executor*                                 executorPtr = nullptr;
 
     auto makeValueHandle(Node const& node, std::string path, bool includeValues) const -> ValueHandle;
 

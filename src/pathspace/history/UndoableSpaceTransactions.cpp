@@ -22,44 +22,44 @@ UndoableSpace::JournalTransactionGuard::JournalTransactionGuard(
     UndoableSpace& owner,
     std::shared_ptr<UndoJournalRootState> state,
     bool active)
-    : owner_(&owner)
-    , state_(std::move(state))
-    , active_(active) {}
+    : owner(&owner)
+    , statePtr(std::move(state))
+    , active(active) {}
 
 void UndoableSpace::JournalTransactionGuard::markDirty() {
-    if (active_ && state_) {
-        owner_->markJournalTransactionDirty(*state_);
-        dirty_ = true;
+    if (active && statePtr) {
+        owner->markJournalTransactionDirty(*statePtr);
+        dirty = true;
     }
 }
 
 auto UndoableSpace::JournalTransactionGuard::commit() -> Expected<void> {
-    if (!active_ || !owner_ || !state_) {
-        active_ = false;
+    if (!active || !owner || !statePtr) {
+        active = false;
         return {};
     }
-    auto result = owner_->commitJournalTransaction(*state_);
-    active_ = false;
-    state_.reset();
-    owner_ = nullptr;
+    auto result = owner->commitJournalTransaction(*statePtr);
+    active = false;
+    statePtr.reset();
+    owner = nullptr;
     return result;
 }
 
 void UndoableSpace::JournalTransactionGuard::deactivate() {
-    active_ = false;
-    state_.reset();
-    owner_ = nullptr;
+    active = false;
+    statePtr.reset();
+    owner = nullptr;
 }
 
 UndoableSpace::HistoryTransaction::HistoryTransaction(JournalTransactionGuard&& guard)
-    : guard_(std::move(guard)) {}
+    : guard(std::move(guard)) {}
 
 auto UndoableSpace::HistoryTransaction::commit() -> Expected<void> {
-    if (!guard_) {
+    if (!guard) {
         return {};
     }
-    auto result = guard_->commit();
-    guard_.reset();
+    auto result = guard->commit();
+    guard.reset();
     return result;
 }
 

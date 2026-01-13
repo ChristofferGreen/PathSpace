@@ -33,7 +33,7 @@ namespace SP {
 class PathAlias final : public PathSpaceBase {
 public:
     PathAlias(std::shared_ptr<PathSpaceBase> upstream, std::string targetPrefix)
-        : upstream_(std::move(upstream)) {
+        : upstream(std::move(upstream)) {
         setTargetPrefix(std::move(targetPrefix));
     }
 
@@ -48,17 +48,17 @@ public:
             newPrefix.pop_back();
 
         {
-            std::lock_guard<std::mutex> lg(mutex_);
-            targetPrefix_ = std::move(newPrefix);
+            std::lock_guard<std::mutex> lg(this->aliasMutex);
+            this->targetPrefixValue = std::move(newPrefix);
         }
 
         // Wake waiters on the alias mount to re-check after retarget
         if (auto ctx = this->getContext(); ctx) {
             std::string aliasRoot;
             {
-                std::lock_guard<std::mutex> lg(mutex_);
-                aliasRoot = mountPrefix_;
-            }
+            std::lock_guard<std::mutex> lg(this->aliasMutex);
+            aliasRoot = this->mountPrefixValue;
+        }
             if (!aliasRoot.empty()) {
                 ctx->notify(aliasRoot);
             } else {
@@ -70,103 +70,103 @@ public:
 
     // Current target prefix (thread-safe snapshot).
     std::string targetPrefix() const {
-        std::lock_guard<std::mutex> lg(mutex_);
-        return targetPrefix_;
+        std::lock_guard<std::mutex> lg(this->aliasMutex);
+        return this->targetPrefixValue;
     }
 
     // Forward insert: map alias path under the current target prefix and forward upstream.
     auto in(Iterator const& path, InputData const& data) -> InsertReturn override {
-        if (!upstream_) {
+        if (!this->upstream) {
             return InsertReturn{.errors = {Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"}}};
         }
-        auto mappedStr = mapPath_(path);
+        auto mappedStr = this->mapPath(path);
         Iterator mapped{mappedStr};
-        return upstream_->in(mapped, data);
+        return this->upstream->in(mapped, data);
     }
 
     // Forward read/take: map alias path under the current target prefix and forward upstream.
     auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override {
-        if (!upstream_) {
+        if (!this->upstream) {
             return Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"};
         }
-        auto mappedStr = mapPath_(path);
+        auto mappedStr = this->mapPath(path);
         Iterator mapped{mappedStr};
-        return upstream_->out(mapped, inputMetadata, options, obj);
+        return this->upstream->out(mapped, inputMetadata, options, obj);
     }
 
     // Forward notify: map alias path under the current target prefix and notify upstream.
     auto notify(std::string const& notificationPath) -> void override {
-        if (!upstream_)
+        if (!this->upstream)
             return;
-        auto mapped = mapPathRaw_(notificationPath);
-        upstream_->notify(mapped);
+        auto mapped = this->mapPathRaw(notificationPath);
+        this->upstream->notify(mapped);
     }
 
     auto spanPackConst(std::span<const std::string> paths,
                        InputMetadata const& metadata,
                        Out const& options,
                        SpanPackConstCallback const& fn) const -> Expected<void> override {
-        if (!upstream_) {
+        if (!this->upstream) {
             return std::unexpected(Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"});
         }
 
         std::vector<std::string> mapped;
         mapped.reserve(paths.size());
         for (auto const& path : paths) {
-            mapped.emplace_back(mapPathRaw_(path));
+            mapped.emplace_back(this->mapPathRaw(path));
         }
 
-        return upstream_->spanPackConst(std::span<const std::string>(mapped.data(), mapped.size()), metadata, options, fn);
+        return this->upstream->spanPackConst(std::span<const std::string>(mapped.data(), mapped.size()), metadata, options, fn);
     }
 
     auto spanPackMut(std::span<const std::string> paths,
                      InputMetadata const& metadata,
                      Out const& options,
                      SpanPackMutCallback const& fn) const -> Expected<void> override {
-        if (!upstream_) {
+        if (!this->upstream) {
             return std::unexpected(Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"});
         }
 
         std::vector<std::string> mapped;
         mapped.reserve(paths.size());
         for (auto const& path : paths) {
-            mapped.emplace_back(mapPathRaw_(path));
+            mapped.emplace_back(this->mapPathRaw(path));
         }
 
-        return upstream_->spanPackMut(std::span<const std::string>(mapped.data(), mapped.size()), metadata, options, fn);
+        return this->upstream->spanPackMut(std::span<const std::string>(mapped.data(), mapped.size()), metadata, options, fn);
     }
 
     auto packInsert(std::span<const std::string> paths,
                     InputMetadata const& metadata,
                     std::span<void const* const> values) -> InsertReturn override {
-        if (!upstream_) {
+        if (!this->upstream) {
             return InsertReturn{.errors = {Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"}}};
         }
 
         std::vector<std::string> mapped;
         mapped.reserve(paths.size());
         for (auto const& path : paths) {
-            mapped.emplace_back(mapPathRaw_(path));
+            mapped.emplace_back(this->mapPathRaw(path));
         }
 
-        return upstream_->packInsert(std::span<const std::string>(mapped.data(), mapped.size()), metadata, values);
+        return this->upstream->packInsert(std::span<const std::string>(mapped.data(), mapped.size()), metadata, values);
     }
 
     auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void> override {
-        if (!upstream_) {
+        if (!this->upstream) {
             return std::unexpected(Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"});
         }
 
         VisitOptions mapped = options;
-        mapped.root        = mapVisitRoot_(options.root);
+        mapped.root        = mapVisitRoot(options.root);
 
         auto aliasVisitor = [&](PathEntry const& upstreamEntry, ValueHandle& handle) -> VisitControl {
             PathEntry remapped = upstreamEntry;
-            remapped.path      = stripTargetPrefix_(upstreamEntry.path);
+            remapped.path      = stripTargetPrefix(upstreamEntry.path);
             return visitor(remapped, handle);
         };
 
-        return upstream_->visit(aliasVisitor, mapped);
+        return this->upstream->visit(aliasVisitor, mapped);
     }
 
     // No special shutdown behavior; upstream should be managed externally.
@@ -175,20 +175,20 @@ public:
     // Capture shared context and remember alias mount prefix for targeted notifications.
     void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix) override {
         PathSpaceBase::adoptContextAndPrefix(std::move(context), prefix);
-        std::lock_guard<std::mutex> lg(mutex_);
-        mountPrefix_ = std::move(prefix);
+        std::lock_guard<std::mutex> lg(this->aliasMutex);
+        this->mountPrefixValue = std::move(prefix);
     }
 
 protected:
     auto getRootNode() -> Node* override {
-        if (!upstream_)
+        if (!this->upstream)
             return nullptr;
-        return upstream_->getRootNode();
+        return this->upstream->getRootNode();
     }
 
 private:
-    // Join targetPrefix_ and a tail path, ensuring exactly one slash at the boundary.
-    static std::string joinPaths_(std::string const& prefix, std::string const& tail) {
+    // Join targetPrefix and a tail path, ensuring exactly one slash at the boundary.
+    static std::string joinPaths(std::string const& prefix, std::string const& tail) {
         if (prefix.empty())
             return tail;
         if (tail.empty())
@@ -207,50 +207,50 @@ private:
     }
 
     // Thread-safe mapping of Iterator tail (current->end) to a new full-path string.
-    std::string mapPath_(Iterator const& path) const {
+    std::string mapPath(Iterator const& path) const {
         std::string prefixCopy;
         {
-            std::lock_guard<std::mutex> lg(mutex_);
-            prefixCopy = targetPrefix_;
+            std::lock_guard<std::mutex> lg(this->aliasMutex);
+            prefixCopy = this->targetPrefixValue;
         }
         // Use currentToEnd() so nested sub-iterators map correctly (e.g., after alias component)
-        return joinPaths_(prefixCopy, std::string(path.currentToEnd()));
+        return joinPaths(prefixCopy, std::string(path.currentToEnd()));
     }
 
     // Thread-safe mapping of raw path string (used for notify).
-    std::string mapPathRaw_(std::string const& path) const {
+    std::string mapPathRaw(std::string const& path) const {
         std::string prefixCopy;
         {
-            std::lock_guard<std::mutex> lg(mutex_);
-            prefixCopy = targetPrefix_;
+            std::lock_guard<std::mutex> lg(this->aliasMutex);
+            prefixCopy = this->targetPrefixValue;
         }
-        return joinPaths_(prefixCopy, path);
+        return joinPaths(prefixCopy, path);
     }
 
 protected:
     auto listChildrenCanonical(std::string_view canonicalPath) const -> std::vector<std::string> override {
-        if (!upstream_) return {};
-        auto mapped = mapPathRaw_(std::string(canonicalPath));
-        auto kids   = upstream_->read<Children>(ConcretePathStringView{mapped});
+        if (!this->upstream) return {};
+        auto mapped = this->mapPathRaw(std::string(canonicalPath));
+        auto kids   = this->upstream->read<Children>(ConcretePathStringView{mapped});
         if (!kids) {
             return {};
         }
         return kids->names;
     }
 
-    std::string mapVisitRoot_(std::string const& path) const {
+    std::string mapVisitRoot(std::string const& path) const {
         if (path.empty() || path == "/") {
-            std::lock_guard<std::mutex> lg(mutex_);
-            return targetPrefix_.empty() ? std::string{"/"} : targetPrefix_;
+            std::lock_guard<std::mutex> lg(this->aliasMutex);
+            return this->targetPrefixValue.empty() ? std::string{"/"} : this->targetPrefixValue;
         }
-        return mapPathRaw_(path);
+        return this->mapPathRaw(path);
     }
 
-    std::string stripTargetPrefix_(std::string const& upstreamPath) const {
+    std::string stripTargetPrefix(std::string const& upstreamPath) const {
         std::string prefixCopy;
         {
-            std::lock_guard<std::mutex> lg(mutex_);
-            prefixCopy = targetPrefix_;
+            std::lock_guard<std::mutex> lg(this->aliasMutex);
+            prefixCopy = this->targetPrefixValue;
         }
         if (prefixCopy.empty() || prefixCopy == "/") {
             return upstreamPath;
@@ -272,10 +272,10 @@ protected:
     }
 
 private:
-    std::shared_ptr<PathSpaceBase> upstream_;
-    mutable std::mutex             mutex_;
-    std::string                    targetPrefix_; // e.g., "/system/input/mouse/0"
-    std::string                    mountPrefix_;  // alias location within parent (for notifications)
+    std::shared_ptr<PathSpaceBase> upstream;
+    mutable std::mutex             aliasMutex;
+    std::string                    targetPrefixValue; // e.g., "/system/input/mouse/0"
+    std::string                    mountPrefixValue;  // alias location within parent (for notifications)
 };
 
 } // namespace SP

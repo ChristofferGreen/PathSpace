@@ -15,10 +15,10 @@ namespace SP {
 class BoundedPathSpace final : public PathSpaceBase {
 public:
     BoundedPathSpace(std::shared_ptr<PathSpaceBase> backing, std::size_t maxItems)
-        : backing_(std::move(backing)), maxItems_(maxItems ? maxItems : 1) {}
+        : backing(std::move(backing)), maxItems(maxItems ? maxItems : 1) {}
 
     auto in(Iterator const& path, InputData const& data) -> InsertReturn override {
-        if (!backing_) return {.errors = {Error{Error::Code::InvalidPermissions, "No backing PathSpace"}}};
+        if (!this->backing) return {.errors = {Error{Error::Code::InvalidPermissions, "No backing PathSpace"}}};
 
         std::string p = path.toString();
 
@@ -32,17 +32,17 @@ public:
         // Pop until there is room (same type only).
         while (true) {
             {
-                std::lock_guard<std::mutex> lock(m_);
-                if (counts_[p] < maxItems_) break;
+                std::lock_guard<std::mutex> lock(this->countsMutex);
+                if (this->counts[p] < this->maxItems) break;
             }
-            auto err = backing_->out(path, data.metadata, Out{.doPop = true}, data.obj);
+            auto err = this->backing->out(path, data.metadata, Out{.doPop = true}, data.obj);
             if (err) {
                 // type mismatch or other failure: drop insert
                 return {};
             }
             {
-                std::lock_guard<std::mutex> lock(m_);
-                auto& cnt = counts_[p];
+                std::lock_guard<std::mutex> lock(this->countsMutex);
+                auto& cnt = this->counts[p];
                 if (cnt > 0) --cnt;
             }
         }
@@ -52,10 +52,10 @@ public:
             data.metadata.deserialize(data.obj, originalBytes);
         }
 
-        auto ret = backing_->in(path, data);
+        auto ret = this->backing->in(path, data);
         if (ret.errors.empty()) {
-            std::lock_guard<std::mutex> lock(m_);
-            ++counts_[p];
+            std::lock_guard<std::mutex> lock(this->countsMutex);
+            ++this->counts[p];
         }
         return ret;
     }
@@ -64,45 +64,45 @@ public:
              InputMetadata const& inputMetadata,
              Out const& options,
              void* obj) -> std::optional<Error> override {
-        if (!backing_) return Error{Error::Code::InvalidPermissions, "No backing PathSpace"};
-        auto err = backing_->out(path, inputMetadata, options, obj);
+        if (!this->backing) return Error{Error::Code::InvalidPermissions, "No backing PathSpace"};
+        auto err = this->backing->out(path, inputMetadata, options, obj);
         if (!err && options.doPop) {
             std::string p = path.toString();
-            std::lock_guard<std::mutex> lock(m_);
-            auto it = counts_.find(p);
-            if (it != counts_.end() && it->second > 0) --it->second;
+            std::lock_guard<std::mutex> lock(this->countsMutex);
+            auto it = this->counts.find(p);
+            if (it != this->counts.end() && it->second > 0) --it->second;
         }
         return err;
     }
 
     void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix) override {
-        if (backing_) backing_->adoptContextAndPrefix(std::move(context), std::move(prefix));
+        if (this->backing) this->backing->adoptContextAndPrefix(std::move(context), std::move(prefix));
     }
 
     auto notify(std::string const& notificationPath) -> void override {
-        if (backing_) backing_->notify(notificationPath);
+        if (this->backing) this->backing->notify(notificationPath);
     }
 
     auto shutdown() -> void override {
-        if (backing_) backing_->shutdown();
+        if (this->backing) this->backing->shutdown();
     }
 
     auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void> override {
-        if (!backing_) return std::unexpected(Error{Error::Code::InvalidPermissions, "No backing PathSpace"});
-        return backing_->visit(visitor, options);
+        if (!this->backing) return std::unexpected(Error{Error::Code::InvalidPermissions, "No backing PathSpace"});
+        return this->backing->visit(visitor, options);
     }
 
 protected:
     auto getRootNode() -> Node* override {
-        if (!backing_) return nullptr;
-        return backing_->getRootNode();
+        if (!this->backing) return nullptr;
+        return this->backing->getRootNode();
     }
 
 private:
-    std::shared_ptr<PathSpaceBase> backing_;
-    std::size_t maxItems_;
-    std::unordered_map<std::string, std::size_t> counts_;
-    std::mutex m_;
+    std::shared_ptr<PathSpaceBase> backing;
+    std::size_t maxItems;
+    std::unordered_map<std::string, std::size_t> counts;
+    std::mutex countsMutex;
 };
 
 } // namespace SP

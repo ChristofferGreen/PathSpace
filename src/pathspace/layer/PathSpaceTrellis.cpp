@@ -28,10 +28,10 @@ auto makeError(Error::Code code, std::string message) -> Error {
 } // namespace
 
 PathSpaceTrellis::PathSpaceTrellis(std::shared_ptr<PathSpaceBase> backing)
-    : backing_(std::move(backing)) {}
+    : backing(std::move(backing)) {}
 
 auto PathSpaceTrellis::in(Iterator const& path, InputData const& data) -> InsertReturn {
-    if (!backing_) {
+    if (!this->backing) {
         InsertReturn ret;
         ret.errors.emplace_back(makeError(Error::Code::InvalidPermissions, "PathSpaceTrellis backing not set"));
         return ret;
@@ -62,14 +62,14 @@ auto PathSpaceTrellis::in(Iterator const& path, InputData const& data) -> Insert
 
     // Pass-through for regular subpaths.
     Iterator const target{joinWithMount(path.toStringView())};
-    return backing_->in(target, data);
+    return this->backing->in(target, data);
 }
 
 auto PathSpaceTrellis::out(Iterator const& path,
                            InputMetadata const& inputMetadata,
                            Out const& options,
                            void* obj) -> std::optional<Error> {
-    if (!backing_) {
+    if (!this->backing) {
         return makeError(Error::Code::InvalidPermissions, "PathSpaceTrellis backing not set");
     }
 
@@ -79,7 +79,7 @@ auto PathSpaceTrellis::out(Iterator const& path,
             return makeError(Error::Code::InvalidPermissions, "PathSpaceTrellis system paths are not readable");
         }
         Iterator const target{joinWithMount(path.toStringView())};
-        return backing_->out(target, inputMetadata, options, obj);
+        return this->backing->out(target, inputMetadata, options, obj);
     }
 
     if (inputMetadata.spanReader || inputMetadata.spanMutator) {
@@ -90,12 +90,12 @@ auto PathSpaceTrellis::out(Iterator const& path,
 }
 
 auto PathSpaceTrellis::listChildrenCanonical(std::string_view canonicalPath) const -> std::vector<std::string> {
-    if (!backing_) return {};
+    if (!this->backing) return {};
     if (canonicalPath == "/_system" || canonicalPath.rfind("/_system/", 0) == 0) {
         return {};
     }
     auto joined = joinWithMount(canonicalPath);
-    auto kids   = backing_->read<Children>(ConcretePathStringView{joined});
+    auto kids   = this->backing->read<Children>(ConcretePathStringView{joined});
     if (!kids) {
         return {};
     }
@@ -103,12 +103,12 @@ auto PathSpaceTrellis::listChildrenCanonical(std::string_view canonicalPath) con
 }
 
 auto PathSpaceTrellis::notify(std::string const& notificationPath) -> void {
-    if (!backing_)
+    if (!this->backing)
         return;
 
     if (notificationPath.empty() || notificationPath == "/") {
         for (auto const& source : snapshotSources()) {
-            backing_->notify(source);
+            this->backing->notify(source);
         }
         return;
     }
@@ -120,11 +120,11 @@ auto PathSpaceTrellis::notify(std::string const& notificationPath) -> void {
     if (trimmed.rfind("_system", 0) == 0)
         return;
 
-    backing_->notify(joinWithMount(notificationPath));
+    this->backing->notify(joinWithMount(notificationPath));
 }
 
 auto PathSpaceTrellis::visit(PathVisitor const& visitor, VisitOptions const& options) -> Expected<void> {
-    if (!backing_) {
+    if (!this->backing) {
         return std::unexpected(Error{Error::Code::InvalidPermissions, "PathSpaceTrellis backing not set"});
     }
 
@@ -141,19 +141,19 @@ auto PathSpaceTrellis::visit(PathVisitor const& visitor, VisitOptions const& opt
         return visitor(remapped, handle);
     };
 
-    return backing_->visit(trellisVisitor, mapped);
+    return this->backing->visit(trellisVisitor, mapped);
 }
 
 auto PathSpaceTrellis::shutdown() -> void {
-    isShutdown_.store(true, std::memory_order_relaxed);
+    this->isShutdown.store(true, std::memory_order_relaxed);
     for (auto const& source : snapshotSources()) {
-        backing_->notify(source);
+        this->backing->notify(source);
     }
 }
 
 void PathSpaceTrellis::adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix) {
     PathSpaceBase::adoptContextAndPrefix(std::move(context), prefix);
-    mountPrefix_ = std::move(prefix);
+    this->mountPrefix = std::move(prefix);
 }
 
 auto PathSpaceTrellis::debugSources() const -> std::vector<std::string> {
@@ -161,13 +161,13 @@ auto PathSpaceTrellis::debugSources() const -> std::vector<std::string> {
 }
 
 auto PathSpaceTrellis::getRootNode() -> Node* {
-    if (!backing_)
+    if (!this->backing)
         return nullptr;
-    return backing_->getRootNode();
+    return this->backing->getRootNode();
 }
 
 auto PathSpaceTrellis::typedPeekFuture(std::string_view pathIn) const -> std::optional<FutureAny> {
-    if (!backing_)
+    if (!this->backing)
         return std::nullopt;
 
     if (pathIn.empty() || pathIn == "/" || pathIn == ".") {
@@ -181,19 +181,19 @@ auto PathSpaceTrellis::typedPeekFuture(std::string_view pathIn) const -> std::op
             return std::nullopt;
         }
         auto joined = joinWithMount(pathIn);
-        return backing_->typedPeekFuture(joined);
+        return this->backing->typedPeekFuture(joined);
     }
 
     return tryFanOutFuture();
 }
 
 auto PathSpaceTrellis::joinWithMount(std::string_view tail) const -> std::string {
-    if (mountPrefix_.empty())
+    if (this->mountPrefix.empty())
         return std::string{tail};
     if (tail.empty())
-        return mountPrefix_;
+        return this->mountPrefix;
 
-    std::string result = mountPrefix_;
+    std::string result = this->mountPrefix;
     bool        prefixEndsWithSlash = !result.empty() && result.back() == '/';
     bool        tailStartsWithSlash = !tail.empty() && tail.front() == '/';
 
@@ -208,12 +208,12 @@ auto PathSpaceTrellis::joinWithMount(std::string_view tail) const -> std::string
 }
 
 auto PathSpaceTrellis::stripMount(std::string const& absolute) const -> std::string {
-    if (mountPrefix_.empty() || mountPrefix_ == "/")
+    if (this->mountPrefix.empty() || this->mountPrefix == "/")
         return absolute;
-    if (absolute == mountPrefix_)
+    if (absolute == this->mountPrefix)
         return "/";
-    if (absolute.size() > mountPrefix_.size() && absolute.rfind(mountPrefix_, 0) == 0) {
-        auto remainder = absolute.substr(mountPrefix_.size());
+    if (absolute.size() > this->mountPrefix.size() && absolute.rfind(this->mountPrefix, 0) == 0) {
+        auto remainder = absolute.substr(this->mountPrefix.size());
         if (remainder.empty())
             return "/";
         if (remainder.front() != '/')
@@ -224,8 +224,8 @@ auto PathSpaceTrellis::stripMount(std::string const& absolute) const -> std::str
 }
 
 auto PathSpaceTrellis::snapshotSources() const -> std::vector<std::string> {
-    std::shared_lock<std::shared_mutex> guard{registryMutex_};
-    return sourceOrder_;
+    std::shared_lock<std::shared_mutex> guard{this->registryMutex};
+    return this->sourceOrder;
 }
 
 auto PathSpaceTrellis::canonicalize(std::string const& path) const -> std::optional<std::string> {
@@ -268,12 +268,12 @@ auto PathSpaceTrellis::handleRootInsert(InputData const& data) -> InsertReturn {
     }
 
     bool   moveOnly   = isMoveOnly(data);
-    size_t baseCursor = roundRobinCursor_.fetch_add(1, std::memory_order_relaxed);
+    size_t baseCursor = this->roundRobinCursor.fetch_add(1, std::memory_order_relaxed);
     size_t startIndex = sources.empty() ? 0 : baseCursor % sources.size();
 
     auto routeInsert = [&](std::string const& target) {
         Iterator const iter{target};
-        InsertReturn  partial = backing_->in(iter, data);
+        InsertReturn  partial = this->backing->in(iter, data);
         mergeInsertReturn(aggregate, partial);
     };
 
@@ -316,13 +316,13 @@ auto PathSpaceTrellis::handleEnable(std::string const& payload) -> InsertReturn 
         return ret;
     }
 
-    std::unique_lock<std::shared_mutex> guard{registryMutex_};
+    std::unique_lock<std::shared_mutex> guard{this->registryMutex};
     auto const& canonical = *canonicalOpt;
-    if (sourceSet_.contains(canonical))
+    if (this->sourceSet.contains(canonical))
         return ret;
 
-    sourceSet_.insert(canonical);
-    sourceOrder_.push_back(canonical);
+    this->sourceSet.insert(canonical);
+    this->sourceOrder.push_back(canonical);
     return ret;
 }
 
@@ -333,13 +333,13 @@ auto PathSpaceTrellis::handleDisable(std::string const& payload) -> InsertReturn
     if (!canonicalOpt)
         return ret;
 
-    std::unique_lock<std::shared_mutex> guard{registryMutex_};
+    std::unique_lock<std::shared_mutex> guard{this->registryMutex};
     auto const& canonical = *canonicalOpt;
-    if (!sourceSet_.erase(canonical))
+    if (!this->sourceSet.erase(canonical))
         return ret;
 
-    auto newEnd = std::remove(sourceOrder_.begin(), sourceOrder_.end(), canonical);
-    sourceOrder_.erase(newEnd, sourceOrder_.end());
+    auto newEnd = std::remove(sourceOrder.begin(), sourceOrder.end(), canonical);
+    sourceOrder.erase(newEnd, sourceOrder.end());
     return ret;
 }
 
@@ -352,7 +352,7 @@ auto PathSpaceTrellis::tryFanOutRead(InputMetadata const& metadata,
         return makeError(Error::Code::NoObjectFound, "No trellis sources registered");
     }
 
-    size_t baseCursor = roundRobinCursor_.fetch_add(1, std::memory_order_relaxed);
+    size_t baseCursor = this->roundRobinCursor.fetch_add(1, std::memory_order_relaxed);
     size_t startIndex = baseCursor % sources.size();
 
     auto attemptSources = [&](Out const& attemptOptions) -> std::optional<Error> {
@@ -360,7 +360,7 @@ auto PathSpaceTrellis::tryFanOutRead(InputMetadata const& metadata,
         for (size_t offset = 0; offset < sources.size(); ++offset) {
             size_t index = (startIndex + offset) % sources.size();
             Iterator const iter{sources[index]};
-            auto           error = backing_->out(iter, metadata, attemptOptions, obj);
+            auto           error = this->backing->out(iter, metadata, attemptOptions, obj);
             if (!error.has_value()) {
                 return std::nullopt;
             }
@@ -389,7 +389,7 @@ auto PathSpaceTrellis::tryFanOutRead(InputMetadata const& metadata,
     auto const infinite  = options.timeout == DEFAULT_TIMEOUT;
 
     while (true) {
-        if (isShutdown_.load(std::memory_order_relaxed)) {
+        if (this->isShutdown.load(std::memory_order_relaxed)) {
             return makeError(Error::Code::Timeout, "PathSpaceTrellis shutting down");
         }
 
@@ -428,12 +428,12 @@ auto PathSpaceTrellis::tryFanOutFuture() const -> std::optional<FutureAny> {
     if (sources.empty())
         return std::nullopt;
 
-    size_t baseCursor = roundRobinCursor_.fetch_add(1, std::memory_order_relaxed);
+    size_t baseCursor = this->roundRobinCursor.fetch_add(1, std::memory_order_relaxed);
     size_t startIndex = baseCursor % sources.size();
 
     for (size_t offset = 0; offset < sources.size(); ++offset) {
         size_t index = (startIndex + offset) % sources.size();
-        if (auto fut = backing_->typedPeekFuture(sources[index])) {
+        if (auto fut = this->backing->typedPeekFuture(sources[index])) {
             return fut;
         }
     }

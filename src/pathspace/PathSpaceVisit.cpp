@@ -36,15 +36,15 @@ auto Access::MakeHandle(PathSpaceBase const& owner, Node const& node, std::strin
 }
 
 auto Access::SerializeNodeData(ValueHandle const& handle) -> std::optional<std::vector<std::byte>> {
-    if (!handle.impl_ || !handle.impl_->node) {
+    if (!handle.implPtr || !handle.implPtr->node) {
         return std::nullopt;
     }
-    std::lock_guard<std::mutex> guard(handle.impl_->node->payloadMutex);
-    if (handle.impl_->node->data) {
-        return handle.impl_->node->data->serializeSnapshot();
+    std::lock_guard<std::mutex> guard(handle.implPtr->node->payloadMutex);
+    if (handle.implPtr->node->data) {
+        return handle.implPtr->node->data->serializeSnapshot();
     }
-    if (handle.impl_->node->podPayload) {
-        auto payload = handle.impl_->node->podPayload;
+    if (handle.implPtr->node->podPayload) {
+        auto payload = handle.implPtr->node->podPayload;
         std::optional<std::vector<std::byte>> snapshotBytes;
         NodeData tmp;
         bool ok = true;
@@ -459,15 +459,15 @@ auto resolveStart(PathSpaceBase& space,
 } // namespace
 
 auto ValueHandle::queueDepth() const -> std::size_t {
-    if (!impl_ || !impl_->node) {
+    if (!this->implPtr || !this->implPtr->node) {
         return 0;
     }
-    std::unique_lock<std::mutex> guard(impl_->node->payloadMutex);
-    if (impl_->node->data) {
-        return impl_->node->data->typeSummary().size();
+    std::unique_lock<std::mutex> guard(this->implPtr->node->payloadMutex);
+    if (this->implPtr->node->data) {
+        return this->implPtr->node->data->typeSummary().size();
     }
-    if (impl_->node->podPayload) {
-        return impl_->node->podPayload->size();
+    if (this->implPtr->node->podPayload) {
+        return this->implPtr->node->podPayload->size();
     }
     return 0;
 }
@@ -476,15 +476,15 @@ auto ValueHandle::readInto(void* destination, InputMetadata const& metadata) con
     if (!this->hasValues()) {
         return Error{Error::Code::NotSupported, "Value sampling disabled for this visit"};
     }
-    if (!impl_ || !impl_->node) {
+    if (!this->implPtr || !this->implPtr->node) {
         return Error{Error::Code::UnknownError, "ValueHandle missing node"};
     }
-    std::unique_lock<std::mutex> guard(impl_->node->payloadMutex);
-    if (impl_->node->data) {
-        return impl_->node->data->deserialize(destination, metadata);
+    std::unique_lock<std::mutex> guard(this->implPtr->node->payloadMutex);
+    if (this->implPtr->node->data) {
+        return this->implPtr->node->data->deserialize(destination, metadata);
     }
-    if (impl_->node->podPayload && metadata.typeInfo) {
-        auto payload = impl_->node->podPayload;
+    if (this->implPtr->node->podPayload && metadata.typeInfo) {
+        auto payload = this->implPtr->node->podPayload;
         if (!payload->matches(*metadata.typeInfo)) {
             return Error{Error::Code::TypeMismatch, "POD fast path type mismatch"};
         }
@@ -524,7 +524,7 @@ auto ValueHandle::readInto(void* destination, InputMetadata const& metadata) con
         }
         return std::nullopt;
     }
-    if (impl_->space) {
+    if (this->implPtr->space) {
         guard.unlock();
         if (auto bytes = VisitDetail::Access::SerializeNodeData(*this)) {
             if (auto restored = NodeData::deserializeSnapshot(std::span<const std::byte>{bytes->data(), bytes->size()})) {
@@ -536,27 +536,28 @@ auto ValueHandle::readInto(void* destination, InputMetadata const& metadata) con
 }
 
 auto ValueHandle::snapshot() const -> Expected<ValueSnapshot> {
-    if (!impl_ || !impl_->node) {
+    if (!this->implPtr || !this->implPtr->node) {
         return std::unexpected(Error{Error::Code::UnknownError, "ValueHandle missing node"});
     }
-    std::lock_guard<std::mutex> guard(impl_->node->payloadMutex);
+    std::lock_guard<std::mutex> guard(this->implPtr->node->payloadMutex);
     ValueSnapshot snapshot{};
-    if (impl_->node->data) {
-        snapshot.queueDepth = impl_->node->data->typeSummary().size();
-        snapshot.types.assign(impl_->node->data->typeSummary().begin(), impl_->node->data->typeSummary().end());
-        snapshot.hasExecutionPayload  = impl_->node->data->hasExecutionPayload();
-        snapshot.hasSerializedPayload = !impl_->node->data->rawBuffer().empty();
-        snapshot.rawBufferBytes       = impl_->node->data->rawBuffer().size();
+    if (this->implPtr->node->data) {
+        snapshot.queueDepth = this->implPtr->node->data->typeSummary().size();
+        snapshot.types.assign(this->implPtr->node->data->typeSummary().begin(),
+                              this->implPtr->node->data->typeSummary().end());
+        snapshot.hasExecutionPayload  = this->implPtr->node->data->hasExecutionPayload();
+        snapshot.hasSerializedPayload = !this->implPtr->node->data->rawBuffer().empty();
+        snapshot.rawBufferBytes       = this->implPtr->node->data->rawBuffer().size();
         return snapshot;
     }
-    if (impl_->node->podPayload) {
-        auto const& ti = impl_->node->podPayload->type();
-        auto const& meta = impl_->node->podPayload->podMetadata();
+    if (this->implPtr->node->podPayload) {
+        auto const& ti   = this->implPtr->node->podPayload->type();
+        auto const& meta = this->implPtr->node->podPayload->podMetadata();
         ElementType et;
         et.typeInfo = &ti;
         et.category = meta.dataCategory;
         et.elements = 1;
-        snapshot.queueDepth = impl_->node->podPayload->size();
+        snapshot.queueDepth = this->implPtr->node->podPayload->size();
         snapshot.types.assign(snapshot.queueDepth, et);
         snapshot.hasExecutionPayload  = false;
         snapshot.hasSerializedPayload = false;

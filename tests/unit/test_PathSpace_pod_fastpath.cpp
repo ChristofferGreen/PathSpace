@@ -1084,15 +1084,15 @@ TEST_CASE("User POD upgrades on mismatch while preserving order") {
 
 TEST_CASE("Concurrent POD insert/take retains every value") {
     PathSpace space;
-    constexpr int kTotal = 20000;
+    constexpr int TotalValues = 20000;
     std::barrier start(2);
 
     std::vector<int> consumed;
-    consumed.reserve(kTotal);
+    consumed.reserve(TotalValues);
 
     std::thread producer([&]() {
         start.arrive_and_wait();
-        for (int i = 1; i <= kTotal; ++i) {
+        for (int i = 1; i <= TotalValues; ++i) {
             auto ret = space.insert("/ints", i);
             REQUIRE(ret.errors.empty());
         }
@@ -1100,7 +1100,7 @@ TEST_CASE("Concurrent POD insert/take retains every value") {
 
     std::thread consumer([&]() {
         start.arrive_and_wait();
-        while (static_cast<int>(consumed.size()) < kTotal) {
+        while (static_cast<int>(consumed.size()) < TotalValues) {
             auto val = space.take<int>("/ints");
             if (val.has_value()) {
                 consumed.push_back(*val);
@@ -1111,9 +1111,9 @@ TEST_CASE("Concurrent POD insert/take retains every value") {
     producer.join();
     consumer.join();
 
-    REQUIRE(static_cast<int>(consumed.size()) == kTotal);
+    REQUIRE(static_cast<int>(consumed.size()) == TotalValues);
     std::sort(consumed.begin(), consumed.end());
-    for (int i = 1; i <= kTotal; ++i) {
+    for (int i = 1; i <= TotalValues; ++i) {
         CHECK(consumed[i - 1] == i);
     }
 }
@@ -1358,27 +1358,27 @@ TEST_CASE("Span pack handles larger arity") {
 
 TEST_CASE("Span pack keeps POD buffers alive during callback") {
     PathSpace space;
-    constexpr std::size_t kFill = 2048;
-    for (std::size_t i = 0; i < kFill; ++i) {
+    constexpr std::size_t FillCount = 2048;
+    for (std::size_t i = 0; i < FillCount; ++i) {
         CHECK(space.insert("/ints/values/x", static_cast<int>(i)).errors.empty());
         CHECK(space.insert("/ints/values/y", static_cast<int>(1000 + i)).errors.empty());
     }
 
     auto ret = space.read<"x","y">("/ints/values", [&](std::span<const int> xs, std::span<const int> ys) {
-        REQUIRE(xs.size() == kFill);
-        REQUIRE(ys.size() == kFill);
+        REQUIRE(xs.size() == FillCount);
+        REQUIRE(ys.size() == FillCount);
 
         // Force both payloads to resize and free their original buffers.
         CHECK(space.insert("/ints/values/x", 999999).errors.empty());
         CHECK(space.insert("/ints/values/y", 888888).errors.empty());
 
         // Allocate similarly sized buffers to encourage reuse of the freed memory.
-        std::vector<int> clobberA(kFill, 42);
-        std::vector<int> clobberB(kFill, 84);
+        std::vector<int> clobberA(FillCount, 42);
+        std::vector<int> clobberB(FillCount, 84);
         (void)clobberA;
         (void)clobberB;
 
-        for (std::size_t i = 0; i < kFill; ++i) {
+        for (std::size_t i = 0; i < FillCount; ++i) {
             CHECK(xs[i] == static_cast<int>(i));
             CHECK(ys[i] == static_cast<int>(1000 + i));
         }
@@ -1436,12 +1436,12 @@ TEST_CASE("Pack insert concurrent writers preserves alignment") {
     PathSpace space;
     CHECK(space.insert("/ints/x", 0).errors.empty());
     CHECK(space.insert("/ints/y", 0).errors.empty());
-    constexpr int kThreads    = 4;
-    constexpr int kPerThread  = 200;
+    constexpr int ThreadCount    = 4;
+    constexpr int ValuesPerThread  = 200;
     std::atomic<int> next{1};
 
     auto worker = [&]() {
-        for (int i = 0; i < kPerThread; ++i) {
+        for (int i = 0; i < ValuesPerThread; ++i) {
             int v = next.fetch_add(1, std::memory_order_relaxed);
             auto ret = space.insert<"/ints/x","/ints/y">(v, v);
             REQUIRE(ret.errors.empty());
@@ -1449,12 +1449,12 @@ TEST_CASE("Pack insert concurrent writers preserves alignment") {
     };
 
     std::vector<std::thread> threads;
-    for (int i = 0; i < kThreads; ++i) threads.emplace_back(worker);
+    for (int i = 0; i < ThreadCount; ++i) threads.emplace_back(worker);
     for (auto& t : threads) t.join();
 
     auto check = space.read<"x","y">("/ints", [&](std::span<const int> xs, std::span<const int> ys) {
         REQUIRE(xs.size() == ys.size());
-        REQUIRE(xs.size() == static_cast<std::size_t>(kThreads * kPerThread + 1)); // +1 seed per lane above
+        REQUIRE(xs.size() == static_cast<std::size_t>(ThreadCount * ValuesPerThread + 1)); // +1 seed per lane above
         std::unordered_set<int> seen;
         for (std::size_t i = 0; i < xs.size(); ++i) {
             CHECK(xs[i] == ys[i]);
@@ -1485,18 +1485,18 @@ TEST_CASE("Pack insert concurrent readers never see skew") {
         }
     });
 
-    constexpr int kThreads    = 3;
-    constexpr int kPerThread  = 150;
+    constexpr int ThreadCount    = 3;
+    constexpr int ValuesPerThread  = 150;
     std::atomic<int> next{10000};
     auto worker = [&]() {
-        for (int i = 0; i < kPerThread; ++i) {
+        for (int i = 0; i < ValuesPerThread; ++i) {
             int v = next.fetch_add(1, std::memory_order_relaxed);
             auto ret = space.insert<"/ints/x","/ints/y">(v, v);
             REQUIRE(ret.errors.empty());
         }
     };
     std::vector<std::thread> writers;
-    for (int i = 0; i < kThreads; ++i) writers.emplace_back(worker);
+    for (int i = 0; i < ThreadCount; ++i) writers.emplace_back(worker);
     for (auto& t : writers) t.join();
 
     stop.store(true, std::memory_order_release);
@@ -1510,13 +1510,13 @@ TEST_CASE("Pack insert concurrent take keeps lanes aligned") {
     CHECK(space.insert("/ints/x", 0).errors.empty());
     CHECK(space.insert("/ints/y", 0).errors.empty());
 
-    constexpr int kWrites = 400;
+    constexpr int WriteCount = 400;
     std::atomic<int> produced{0};
     std::atomic<int> consumed{0};
     std::atomic<bool> skew{false};
 
     std::thread writer([&]() {
-        for (int i = 0; i < kWrites; ++i) {
+        for (int i = 0; i < WriteCount; ++i) {
             auto ret = space.insert<"/ints/x","/ints/y">(i, i);
             REQUIRE(ret.errors.empty());
             produced.fetch_add(1, std::memory_order_release);
@@ -1525,7 +1525,7 @@ TEST_CASE("Pack insert concurrent take keeps lanes aligned") {
 
     std::thread taker([&]() {
         int backoff = 0;
-        while (consumed.load(std::memory_order_acquire) < kWrites) {
+        while (consumed.load(std::memory_order_acquire) < WriteCount) {
             auto ret = space.take<"x","y">("/ints", [&](std::span<int> xs, std::span<int> ys) {
                 if (xs.size() != ys.size()) {
                     skew.store(true, std::memory_order_release);
@@ -1548,7 +1548,7 @@ TEST_CASE("Pack insert concurrent take keeps lanes aligned") {
     taker.join();
 
     CHECK_FALSE(skew.load(std::memory_order_acquire));
-    CHECK(consumed.load(std::memory_order_acquire) == kWrites);
+    CHECK(consumed.load(std::memory_order_acquire) == WriteCount);
     auto final = space.read<"x","y">("/ints", [&](std::span<const int> xs, std::span<const int> ys) {
         CHECK(xs.size() == ys.size());
     });
@@ -2053,13 +2053,13 @@ TEST_CASE("Pack insert multi-thread stress maintains alignment") {
     CHECK(space.insert("/ints/x", 0).errors.empty());
     CHECK(space.insert("/ints/y", 0).errors.empty());
 
-    constexpr int kThreads   = 6;
-    constexpr int kPerThread = 150;
+    constexpr int ThreadCount   = 6;
+    constexpr int ValuesPerThread = 150;
     std::atomic<int> next{1};
     std::atomic<bool> skew{false};
 
     auto worker = [&]() {
-        for (int i = 0; i < kPerThread; ++i) {
+        for (int i = 0; i < ValuesPerThread; ++i) {
             int v = next.fetch_add(1, std::memory_order_relaxed);
             auto ret = space.insert<"/ints/x","/ints/y">(v, v);
             REQUIRE(ret.errors.empty());
@@ -2067,7 +2067,7 @@ TEST_CASE("Pack insert multi-thread stress maintains alignment") {
     };
 
     std::vector<std::thread> writers;
-    for (int i = 0; i < kThreads; ++i) writers.emplace_back(worker);
+    for (int i = 0; i < ThreadCount; ++i) writers.emplace_back(worker);
 
     std::thread reader([&]() {
         for (int i = 0; i < 300; ++i) {
@@ -2084,7 +2084,7 @@ TEST_CASE("Pack insert multi-thread stress maintains alignment") {
     CHECK_FALSE(skew.load(std::memory_order_acquire));
     auto final = space.read<"x","y">("/ints", [&](std::span<const int> xs, std::span<const int> ys) {
         REQUIRE(xs.size() == ys.size());
-        REQUIRE(xs.size() == static_cast<std::size_t>(kThreads * kPerThread + 1)); // +1 seed
+        REQUIRE(xs.size() == static_cast<std::size_t>(ThreadCount * ValuesPerThread + 1)); // +1 seed
         for (std::size_t i = 0; i < xs.size(); ++i) {
             CHECK(xs[i] == ys[i]);
         }

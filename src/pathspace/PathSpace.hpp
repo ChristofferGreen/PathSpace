@@ -17,6 +17,7 @@
 #include <memory>
 #include <string_view>
 #include <vector>
+#include <atomic>
 #include "task/IFutureAny.hpp"
 
 namespace SP {
@@ -87,7 +88,7 @@ protected:
     // Protected test utilities:
     // - notifyAll(): wakes all waiters across paths via the shared context
     // - shutdownPublic(): cooperatively signals shutdown() for tests; expose via a test-only subclass if needed
-    void notifyAll() { this->context_->notifyAll(); }
+    void notifyAll() { this->context->notifyAll(); }
     void shutdownPublic() { this->shutdown(); }
 
     // Protected probe: non-blocking peek of a typed Future at a concrete path (if present).
@@ -141,6 +142,8 @@ private:
 
     friend struct PathSpaceTestHelper; // unit tests
 
+    std::atomic<std::size_t> activeOutCount{0};
+    std::atomic<bool>        clearingInProgress{false};
 };
 
 } // namespace SP

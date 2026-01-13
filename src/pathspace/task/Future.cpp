@@ -9,25 +9,25 @@ namespace SP {
 Future::Future() = default;
 
 Future::Future(std::weak_ptr<Task> task)
-    : task_(std::move(task)) {}
+    : taskWeak(std::move(task)) {}
 
 auto Future::FromShared(const std::shared_ptr<Task>& task) -> Future {
     return Future(std::weak_ptr<Task>(task));
 }
 
 auto Future::valid() const -> bool {
-    return !task_.expired();
+    return !this->taskWeak.expired();
 }
 
 auto Future::ready() const -> bool {
-    if (auto t = task_.lock()) {
+    if (auto t = this->taskWeak.lock()) {
         return t->isCompleted();
     }
     return false;
 }
 
 auto Future::wait() const -> void {
-    if (auto t = task_.lock()) {
+    if (auto t = this->taskWeak.lock()) {
         while (!t->isCompleted()) {
             std::this_thread::yield();
         }
@@ -35,7 +35,7 @@ auto Future::wait() const -> void {
 }
 
 auto Future::wait_until_steady(std::chrono::time_point<std::chrono::steady_clock> deadline) const -> bool {
-    if (auto t = task_.lock()) {
+    if (auto t = this->taskWeak.lock()) {
         while (!t->isCompleted()) {
             if (std::chrono::steady_clock::now() >= deadline)
                 return false;
@@ -49,7 +49,7 @@ auto Future::wait_until_steady(std::chrono::time_point<std::chrono::steady_clock
 auto Future::try_copy_result_to(void* dest) const -> bool {
     if (!this->ready())
         return false;
-    if (auto t = task_.lock()) {
+    if (auto t = this->taskWeak.lock()) {
         t->resultCopy(dest);
         return true;
     }
@@ -58,7 +58,7 @@ auto Future::try_copy_result_to(void* dest) const -> bool {
 
 auto Future::copy_result_to(void* dest) const -> bool {
     this->wait();
-    if (auto t = task_.lock()) {
+    if (auto t = this->taskWeak.lock()) {
         t->resultCopy(dest);
         return true;
     }
@@ -66,7 +66,7 @@ auto Future::copy_result_to(void* dest) const -> bool {
 }
 
 auto Future::weak_task() const -> std::weak_ptr<Task> {
-    return task_;
+    return this->taskWeak;
 }
 
 } // namespace SP

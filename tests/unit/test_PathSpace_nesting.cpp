@@ -25,6 +25,9 @@ namespace {
 struct IntrospectablePathSpace : PathSpace {
     using PathSpace::PathSpace;
     using PathSpace::shutdown;
+    void rehome(std::shared_ptr<PathSpaceContext> ctx, std::string prefix) {
+        this->adoptContextAndPrefix(std::move(ctx), std::move(prefix));
+    }
     std::string prefixStr() const { return this->prefix; }
     std::shared_ptr<PathSpaceContext> contextPtr() const { return this->getContext(); }
     Node* rootNodePtr() { return this->getRootNode(); }
@@ -228,6 +231,26 @@ TEST_CASE("PathSpace Nesting/Nested Space with Functions") {
         CHECK(result.value() == 42);
     }
 
+}
+
+TEST_CASE("PathSpace Nesting/lazy nested task survives remount") {
+    IntrospectablePathSpace root;
+    auto                     subspace = std::make_unique<IntrospectablePathSpace>();
+
+    auto func = []() -> int { return 42; };
+    REQUIRE(subspace->insert("/func", func, In{.executionCategory = ExecutionCategory::Lazy}).nbrTasksInserted == 1);
+    REQUIRE(root.insert("/sub", std::move(subspace)).nbrSpacesInserted == 1);
+
+    auto newCtx = std::make_shared<PathSpaceContext>(PathSpaceTestHelper::executor(root));
+    root.rehome(newCtx, "/mount");
+
+    auto result = root.read<int>("/sub/func", Block{200ms});
+    REQUIRE_MESSAGE(result.has_value(),
+                    "remounted func read error code=" << static_cast<int>(result.error().code)
+                                                      << " msg=" << result.error().message.value_or(""));
+    if (result.has_value()) {
+        CHECK(result.value() == 42);
+    }
 }
 
 TEST_CASE("PathSpace Nesting/Multiple nested spaces at same path with indexing") {
