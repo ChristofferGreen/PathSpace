@@ -896,6 +896,156 @@ TEST_CASE("Span glob and indexed paths rejected via alias and trellis") {
     CHECK(trellisIndexed.error().code == Error::Code::InvalidPath);
 }
 
+TEST_CASE("Span pack take pops when callback returns true") {
+    PathSpace space;
+    auto ins = space.insert<"/pair/a","/pair/b">(1, 2);
+    REQUIRE(ins.errors.empty());
+
+    auto take = space.take<"a","b">("/pair",
+                                    [&](std::span<int> a, std::span<int> b) {
+                                        REQUIRE(a.size() == 1);
+                                        REQUIRE(b.size() == 1);
+                                        CHECK(a[0] == 1);
+                                        CHECK(b[0] == 2);
+                                        return true; // request pop
+                                    });
+    if (!take) {
+        CAPTURE(take.error().code);
+        if (take.error().message) CAPTURE(*take.error().message);
+    }
+    REQUIRE(take.has_value());
+
+    auto next = space.take<int>("/pair/a");
+    CHECK_FALSE(next.has_value());
+    CHECK(next.error().code == Error::Code::NoObjectFound);
+}
+
+TEST_CASE("Span pack take keeps data when callback returns void/false") {
+    PathSpace space;
+    auto ins = space.insert<"/keep/a","/keep/b">(3, 4);
+    REQUIRE(ins.errors.empty());
+
+    auto takeVoid = space.take<"a","b">("/keep",
+                                        [&](std::span<int> a, std::span<int> b) {
+                                            CHECK(a.size() == 1);
+                                            CHECK(b.size() == 1);
+                                            a[0] = 30;
+                                            b[0] = 40;
+                                        });
+    REQUIRE(takeVoid.has_value());
+
+    auto a = space.take<int>("/keep/a");
+    auto b = space.take<int>("/keep/b");
+    REQUIRE(a.has_value());
+    REQUIRE(b.has_value());
+    CHECK(a.value() == 30);
+    CHECK(b.value() == 40);
+
+    auto takeFalse = space.insert<"/keep/a","/keep/b">(5, 6);
+    REQUIRE(takeFalse.errors.empty());
+    auto noop = space.take<"a","b">("/keep",
+                                    [&](std::span<int> aSpan, std::span<int> bSpan) {
+                                        CHECK(aSpan[0] == 5);
+                                        CHECK(bSpan[0] == 6);
+                                        return false; // explicit no-pop
+                                    });
+    REQUIRE(noop.has_value());
+    auto a2 = space.take<int>("/keep/a");
+    auto b2 = space.take<int>("/keep/b");
+    REQUIRE(a2.has_value());
+    REQUIRE(b2.has_value());
+    CHECK(a2.value() == 5);
+    CHECK(b2.value() == 6);
+}
+
+TEST_CASE("Span pack take blocks until data available") {
+    PathSpace space;
+    auto start = std::chrono::steady_clock::now();
+
+    std::thread producer([&]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        auto ins = space.insert<"/block/a","/block/b">(7, 8);
+        REQUIRE(ins.errors.empty());
+    });
+
+    auto res = space.take<"a","b">("/block",
+                                   [&](std::span<int> a, std::span<int> b) {
+                                       CHECK(a.size() == 1);
+                                       CHECK(b.size() == 1);
+                                       return true;
+                                   },
+                                   Out{} & Block{std::chrono::milliseconds(200)});
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start);
+
+    if (!res) {
+        CAPTURE(res.error().code);
+        if (res.error().message) CAPTURE(*res.error().message);
+    }
+    REQUIRE(res.has_value());
+    CHECK(elapsed.count() >= 40); // verify it actually waited
+
+    producer.join();
+}
+
+TEST_CASE("Span pack take pops without Pop flag when callback returns true") {
+    PathSpace space;
+    auto ins = space.insert<"/nopop/a","/nopop/b">(11, 22);
+    REQUIRE(ins.errors.empty());
+
+    auto res = space.take<"a","b">("/nopop",
+                                   [&](std::span<int> a, std::span<int> b) {
+                                       REQUIRE(a.size() == 1);
+                                       REQUIRE(b.size() == 1);
+                                       return true; // pop even without Pop{}
+                                   });
+    REQUIRE(res.has_value());
+
+    auto a = space.take<int>("/nopop/a");
+    auto b = space.take<int>("/nopop/b");
+    CHECK_FALSE(a.has_value());
+    CHECK_FALSE(b.has_value());
+}
+
+TEST_CASE("Span pack take blocks until paths materialize") {
+    PathSpace space;
+    std::thread producer([&]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        auto ins = space.insert<"/appear/a","/appear/b">(9, 10);
+        REQUIRE(ins.errors.empty());
+    });
+
+    auto res = space.take<"a","b">("/appear",
+                                   [&](std::span<int> a, std::span<int> b) {
+                                       REQUIRE(a.size() == 1);
+                                       REQUIRE(b.size() == 1);
+                                       return true;
+                                   },
+                                   Out{} & Block{std::chrono::milliseconds(200)});
+    if (!res) {
+        CAPTURE(res.error().code);
+        if (res.error().message) CAPTURE(*res.error().message);
+    }
+    REQUIRE(res.has_value());
+    producer.join();
+}
+
+TEST_CASE("Span pack pop rejected on minimal misaligned window") {
+    PathSpace space;
+    REQUIRE(space.insert("/mis/x", 1).errors.empty());
+    REQUIRE(space.insert("/mis/y", 2).errors.empty());
+    // New pack begins after existing head, so minimal window will start past head.
+    REQUIRE(space.insert<"/mis/x","/mis/y">(3, 4).errors.empty());
+
+    auto take = space.take<"x","y">("/mis",
+                                    [&](std::span<int>, std::span<int>) {
+                                        return true; // request pop
+                                    },
+                                    Out{} & Minimal{});
+    CHECK_FALSE(take.has_value());
+    CHECK(take.error().code == Error::Code::InvalidType);
+}
+
 TEST_CASE("Visit snapshot reports user POD depth and category") {
     PathSpace space;
     CHECK(space.insert("/vecsnap", Vec2{1.0f, 2.0f}).errors.empty());
@@ -1135,7 +1285,7 @@ TEST_CASE("Span pack mutable take length mismatch keeps data unchanged") {
     REQUIRE(yVals.has_value());
 }
 
-TEST_CASE("Span pack rejects blocking or pop options") {
+TEST_CASE("Span pack read rejects blocking; take allows optional pop") {
     PathSpace space;
     CHECK(space.insert("/ints/values/x", 1.f).errors.empty());
     CHECK(space.insert("/ints/values/y", 2.f).errors.empty());
@@ -1146,10 +1296,17 @@ TEST_CASE("Span pack rejects blocking or pop options") {
     CHECK(block.error().code == Error::Code::NotSupported);
 
     auto pop = space.take<"x","y">("/ints/values",
-                                   [&](std::span<float>, std::span<float>) {},
+                                   [&](std::span<float> xs, std::span<float> ys) {
+                                       REQUIRE(xs.size() == 1);
+                                       REQUIRE(ys.size() == 1);
+                                       return true;
+                                   },
                                    Out{} & Pop{});
-    CHECK_FALSE(pop.has_value());
-    CHECK(pop.error().code == Error::Code::NotSupported);
+    REQUIRE(pop.has_value());
+    auto x = space.take<float>("/ints/values/x");
+    auto y = space.take<float>("/ints/values/y");
+    CHECK_FALSE(x.has_value());
+    CHECK_FALSE(y.has_value());
 }
 
 TEST_CASE("Span pack rejects glob and indexed paths") {
@@ -1575,21 +1732,27 @@ TEST_CASE("Span pack read rejects block and pop options") {
     CHECK(pop.error().code == Error::Code::NotSupported);
 }
 
-TEST_CASE("Span pack take rejects block and pop options") {
+TEST_CASE("Span pack take supports block and optional pop flag") {
     PathSpace space;
     REQUIRE(space.insert<"/ints/x","/ints/y">(1, 2).errors.empty());
 
     auto block = space.take<"x","y">("/ints",
                                      [&](std::span<int>, std::span<int>) {},
                                      Out{} & Block{std::chrono::milliseconds{5}});
-    CHECK_FALSE(block.has_value());
-    CHECK(block.error().code == Error::Code::NotSupported);
+    REQUIRE(block.has_value());
 
     auto pop = space.take<"x","y">("/ints",
-                                   [&](std::span<int>, std::span<int>) {},
+                                   [&](std::span<int> a, std::span<int> b) {
+                                       REQUIRE(a.size() == 1);
+                                       REQUIRE(b.size() == 1);
+                                       return true;
+                                   },
                                    Out{} & Pop{});
-    CHECK_FALSE(pop.has_value());
-    CHECK(pop.error().code == Error::Code::NotSupported);
+    REQUIRE(pop.has_value());
+    auto a = space.take<int>("/ints/x");
+    auto b = space.take<int>("/ints/y");
+    CHECK_FALSE(a.has_value());
+    CHECK_FALSE(b.has_value());
 }
 
 TEST_CASE("Span pack read rejects glob and indexed base paths") {

@@ -117,8 +117,13 @@ struct RawSpan {
 using RawConstSpan = RawSpan<void const*>;
 using RawMutSpan   = RawSpan<void*>;
 
+struct SpanPackResult {
+    std::optional<Error> error;
+    bool                 shouldPop = false;
+};
+
 using SpanPackConstCallback = std::function<std::optional<Error>(std::span<RawConstSpan const>)>;
-using SpanPackMutCallback   = std::function<std::optional<Error>(std::span<RawMutSpan const>)>;
+using SpanPackMutCallback   = std::function<SpanPackResult(std::span<RawMutSpan const>)>;
 
 class ValueHandle {
 public:
@@ -708,9 +713,17 @@ private:
     }
 
     template <typename Value, std::size_t... Is, typename Fn>
-    static auto invokeMutPack(std::span<RawMutSpan const> spans, Fn& fn, std::index_sequence<Is...>) -> std::optional<Error> {
-        fn(std::span<Value>(static_cast<Value*>(spans[Is].data), spans[Is].count)...);
-        return std::nullopt;
+    static auto invokeMutPack(std::span<RawMutSpan const> spans, Fn& fn, std::index_sequence<Is...>) -> SpanPackResult {
+        using Return = std::invoke_result_t<Fn&, decltype((void)Is, std::declval<std::span<Value>>())...>;
+        if constexpr (std::is_void_v<Return>) {
+            fn(std::span<Value>(static_cast<Value*>(spans[Is].data), spans[Is].count)...);
+            return SpanPackResult{.error = std::nullopt, .shouldPop = false};
+        } else {
+            auto result = fn(std::span<Value>(static_cast<Value*>(spans[Is].data), spans[Is].count)...);
+            static_assert(std::is_convertible_v<decltype(result), bool>,
+                          "Span pack mutable callback must return void or bool");
+            return SpanPackResult{.error = std::nullopt, .shouldPop = static_cast<bool>(result)};
+        }
     }
 
     static auto joinPathComponent(std::string_view base, std::string_view component) -> std::string {
@@ -769,9 +782,6 @@ private:
                           Fn&& fn,
                           Out const& options) -> Expected<void> {
         sp_log("PathSpace::take<span_pack>", "Function Called");
-        if (options.doBlock || options.doPop) {
-            return std::unexpected(Error{Error::Code::NotSupported, "Span pack take does not support blocking or pop"});
-        }
         Iterator baseIter{basePath};
         if (auto error = baseIter.validate(options.validationLevel)) {
             return std::unexpected(*error);
@@ -790,7 +800,7 @@ private:
         InputMetadata metadata{InputMetadataT<Value>{}};
         metadata.podPreferred = true;
 
-        auto adapter = [fn = std::forward<Fn>(fn)](std::span<RawMutSpan const> spans) mutable -> std::optional<Error> {
+        auto adapter = [fn = std::forward<Fn>(fn)](std::span<RawMutSpan const> spans) mutable -> SpanPackResult {
             return invokeMutPack<Value>(std::span<RawMutSpan const>(spans.data(), spans.size()),
                                         fn,
                                         std::make_index_sequence<N>{});

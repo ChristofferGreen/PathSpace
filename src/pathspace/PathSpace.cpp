@@ -682,7 +682,39 @@ auto PathSpace::spanPackMut(std::span<const std::string> paths,
                             InputMetadata const& metadata,
                             Out const& options,
                             SpanPackMutCallback const& fn) const -> Expected<void> {
-    return this->leaf.spanPackMut(paths, metadata, options, fn);
+    if (!options.doBlock || !this->context_) {
+        return this->leaf.spanPackMut(paths, metadata, options, fn);
+    }
+
+    auto deadline = std::chrono::system_clock::now() + options.timeout;
+    Out nonBlockingOptions = options;
+    nonBlockingOptions.doBlock = false;
+
+    std::size_t waitIndex = 0;
+    while (true) {
+        auto res = this->leaf.spanPackMut(paths, metadata, nonBlockingOptions, fn);
+        if (res) {
+            return res;
+        }
+        auto err = res.error();
+        if (err.code != Error::Code::NoObjectFound && err.code != Error::Code::NoSuchPath) {
+            return std::unexpected(err);
+        }
+
+        auto now = std::chrono::system_clock::now();
+        if (now >= deadline) {
+            return std::unexpected(Error{Error::Code::Timeout, "Span pack take timed out"});
+        }
+
+        auto pathToWait = paths[waitIndex % paths.size()];
+        ++waitIndex;
+        if (!this->prefix.empty()) {
+            pathToWait = this->prefix + pathToWait;
+        }
+
+        auto guard = this->context_->wait(pathToWait);
+        guard.wait_until(deadline);
+    }
 }
 
 auto PathSpace::packInsert(std::span<const std::string> paths,

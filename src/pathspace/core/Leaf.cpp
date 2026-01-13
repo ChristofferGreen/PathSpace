@@ -1166,9 +1166,6 @@ auto Leaf::spanPackMut(std::span<const std::string> paths,
                        InputMetadata const& inputMetadata,
                        Out const& options,
                        SpanPackMutCallback const& fn) const -> Expected<void> {
-    if (options.doBlock || options.doPop) {
-        return std::unexpected(Error{Error::Code::NotSupported, "Span pack does not support blocking or pop"});
-    }
     if (!inputMetadata.podPreferred) {
         return std::unexpected(Error{Error::Code::NotSupported, "Span pack requires POD fast path"});
     }
@@ -1199,40 +1196,48 @@ auto Leaf::spanPackMut(std::span<const std::string> paths,
     std::optional<Error> lastError;
 
     for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
-        std::vector<RawMutSpan>          spans(paths.size());
+        std::vector<RawMutSpan>            spans(paths.size());
         std::vector<std::shared_ptr<void>> keepers(paths.size());
-        std::optional<std::size_t>       expectedCount;
+        std::vector<std::size_t>           heads(paths.size());
+        std::vector<std::size_t>           starts(paths.size());
+        std::optional<std::size_t>         expectedCount;
         lastError.reset();
 
         for (std::size_t idx = 0; idx < paths.size(); ++idx) {
             auto* node = nodes[idx];
             std::optional<Error> captureErr;
             std::size_t          startIndex = 0;
+            std::size_t          headIndex  = 0;
             if (auto payload = node->podPayload) {
-                auto headIdx = payload->headIndex();
+                headIndex = payload->headIndex();
                 if (options.isMinimal) {
                     auto packStart = payload->packSpanStart();
                     if (!packStart) {
                         // No pending pack marker; default minimal window to current head.
-                        payload->markPackSpanStart(headIdx);
+                        payload->markPackSpanStart(headIndex);
                         packStart = payload->packSpanStart();
                     }
-                    startIndex = (packStart && *packStart > headIdx) ? *packStart : headIdx;
+                    startIndex = (packStart && *packStart > headIndex) ? *packStart : headIndex;
                 } else {
-                    startIndex = headIdx;
+                    startIndex = headIndex;
                 }
             }
+            heads[idx]  = headIndex;
+            starts[idx] = startIndex;
 
-            auto err = tryPodSpanMutableFromPinned(*node, inputMetadata, startIndex, [&](void* data, std::size_t count, std::shared_ptr<void> const& keeper) {
-                if (!expectedCount) {
-                    expectedCount = count;
-                } else if (*expectedCount != count) {
-                    captureErr = Error{Error::Code::InvalidType, "Span lengths mismatch"};
-                    return;
-                }
-                spans[idx]   = RawMutSpan{data, count};
-                keepers[idx] = keeper;
-            });
+            auto err = tryPodSpanMutableFromPinned(*node,
+                                                   inputMetadata,
+                                                   startIndex,
+                                                   [&](void* data, std::size_t count, std::shared_ptr<void> const& keeper) {
+                                                       if (!expectedCount) {
+                                                           expectedCount = count;
+                                                       } else if (*expectedCount != count) {
+                                                           captureErr = Error{Error::Code::InvalidType, "Span lengths mismatch"};
+                                                           return;
+                                                       }
+                                                       spans[idx]   = RawMutSpan{data, count};
+                                                       keepers[idx] = keeper;
+                                                   });
 
             if (err) {
                 sp_log("Leaf::spanPackMut pod span error path=" + std::string(paths[idx]), "Leaf");
@@ -1246,8 +1251,31 @@ auto Leaf::spanPackMut(std::span<const std::string> paths,
         }
 
         if (!lastError) {
-            if (auto err = fn(std::span<RawMutSpan const>(spans.data(), spans.size()))) {
-                return std::unexpected(*err);
+            if (expectedCount && *expectedCount == 0) {
+                return std::unexpected(Error{Error::Code::NoObjectFound, "No data available"});
+            }
+
+            auto result = fn(std::span<RawMutSpan const>(spans.data(), spans.size()));
+            if (result.error) {
+                return std::unexpected(*result.error);
+            }
+
+            if (result.shouldPop) {
+                // Require all spans to start at head to avoid skipping prior elements.
+                for (std::size_t idx = 0; idx < nodes.size(); ++idx) {
+                    if (starts[idx] != heads[idx]) {
+                        return std::unexpected(Error{Error::Code::InvalidType, "Pop requires head-aligned spans"});
+                    }
+                }
+                for (std::size_t idx = 0; idx < nodes.size(); ++idx) {
+                    auto payload = nodes[idx]->podPayload;
+                    if (!payload) {
+                        return std::unexpected(Error{Error::Code::InvalidType, "POD fast path unavailable"});
+                    }
+                    if (auto popErr = payload->popCount(*expectedCount)) {
+                        return std::unexpected(*popErr);
+                    }
+                }
             }
             return {};
         }

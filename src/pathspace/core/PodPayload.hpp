@@ -65,6 +65,7 @@ struct PodPayloadBase {
                                                                std::function<void(void*, std::size_t, std::shared_ptr<void> const&)> const& fn) {
         return withSpanMutableRawFrom(startIndex, [&](void* data, std::size_t count) { fn(data, count, {}); });
     }
+    virtual std::optional<Error>  popCount(std::size_t count) = 0;
     virtual bool                  freezeForUpgrade()             = 0;
     struct Reservation {
         void*        ptr   = nullptr;
@@ -164,6 +165,26 @@ public:
                 return std::nullopt;
             }
             return Error{Error::Code::UnknownError, "PodPayload buffer bounds error"};
+        }
+    }
+
+    std::optional<Error> popCount(std::size_t count) override {
+        if (count == 0) {
+            return std::nullopt;
+        }
+        for (;;) {
+            auto head = head_.load(std::memory_order_acquire);
+            auto tail = publishedTail_.load(std::memory_order_acquire);
+            if (head + count > tail) {
+                return Error{Error::Code::NoObjectFound, "Pop exceeds available elements"};
+            }
+            if (head_.compare_exchange_weak(head, head + count, std::memory_order_acq_rel)) {
+                auto marker = packSpanStart_.load(std::memory_order_acquire);
+                if (marker != NoPackSpanStart && marker < head + count) {
+                    packSpanStart_.compare_exchange_strong(marker, head + count, std::memory_order_release, std::memory_order_relaxed);
+                }
+                return std::nullopt;
+            }
         }
     }
 
