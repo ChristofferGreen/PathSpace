@@ -21,9 +21,32 @@
 
 namespace SP {
 
+static bool subtree_has_payload(Node const& node) {
+    if (node.data && !node.data->empty()) {
+        return true;
+    }
+    if (node.podPayload && node.podPayload->size() > 0) {
+        return true;
+    }
+    bool has = false;
+    node.children.for_each([&](auto const& kv) {
+        if (has) return;
+        auto const& child = kv.second;
+        if (child && subtree_has_payload(*child)) {
+            has = true;
+        }
+    });
+    return has;
+}
+
 auto gatherOrderedChildren(Node const& node) -> std::vector<std::string> {
     std::vector<std::string> names;
-    node.children.for_each([&](auto const& kv) { names.emplace_back(kv.first); });
+    node.children.for_each([&](auto const& kv) {
+        auto const& child = kv.second;
+        if (child && subtree_has_payload(*child)) {
+            names.emplace_back(kv.first);
+        }
+    });
     std::sort(names.begin(), names.end());
     names.erase(std::unique(names.begin(), names.end()), names.end());
     return names;
