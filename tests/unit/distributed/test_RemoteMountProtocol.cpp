@@ -24,6 +24,7 @@ namespace {
 
 } // namespace
 
+TEST_SUITE("distributed.remotemount.protocol") {
 TEST_CASE("RemoteMountProtocol roundtrips MountOpenRequest frames") {
     RemoteFrame frame;
     frame.kind   = FrameKind::MountOpenRequest;
@@ -169,4 +170,5 @@ TEST_CASE("RemoteMountProtocol validates wait subscriptions") {
     REQUIRE(parsed_wait != nullptr);
     CHECK(parsed_wait->after_version.has_value());
     CHECK_EQ(*parsed_wait->after_version, 3U);
+}
 }

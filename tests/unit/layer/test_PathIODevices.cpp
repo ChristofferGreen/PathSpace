@@ -8,6 +8,7 @@
 
 using namespace SP;
 
+TEST_SUITE("layer.pathio.devices") {
 TEST_CASE("PathIOMouse - Simulation queue basic operations") {
     PathIOMouse mice{PathIOMouse::BackendMode::Off};
 
@@ -259,4 +260,5 @@ TEST_CASE("PathIO devices expose push config nodes") {
     auto spaceRead = space.read<bool>("/system/devices/in/pointer/default/config/push/enabled");
     REQUIRE(spaceRead.has_value());
     CHECK(*spaceRead);
+}
 }

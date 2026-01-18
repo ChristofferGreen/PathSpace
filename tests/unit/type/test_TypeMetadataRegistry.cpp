@@ -16,6 +16,7 @@ struct RuntimeRegisteredType {
 
 } // namespace
 
+TEST_SUITE("type.metadata.registry") {
 TEST_CASE("TypeMetadataRegistry registers template types once") {
     auto& registry = TypeMetadataRegistry::instance();
     CHECK(registry.registerType<RegistrySampleType>("app.RegistrySample"));
@@ -39,4 +40,5 @@ TEST_CASE("TypeMetadataRegistry surfaces registered type metadata for lookups") 
     REQUIRE(by_name.has_value());
     CHECK_EQ(by_name->metadata.typeInfo, &typeid(RuntimeRegisteredType));
     CHECK_EQ(by_name->operations.size, sizeof(RuntimeRegisteredType));
+}
 }

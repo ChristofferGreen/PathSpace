@@ -202,6 +202,7 @@ auto open_session(RemoteMountServer& server) -> MountOpenResponse {
 
 } // namespace
 
+TEST_SUITE("distributed.remotemount.server") {
 TEST_CASE("RemoteMountServer handles mount open and read value") {
     PathSpace space;
     PathSpace metrics;
@@ -549,4 +550,5 @@ TEST_CASE("RemoteMountServer handles serialized NodeData insert") {
     CHECK_EQ(payload_value.encoding, kEncodingTypedSlidingBuffer);
     auto extracted = decode_typed_payload<int>(payload_value);
     CHECK_EQ(extracted, counter);
+}
 }

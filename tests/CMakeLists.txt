@@ -30,7 +30,20 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/history/test_UndoJournalPersistence.cpp
   unit/history/test_UndoableSpace.cpp
   unit/pathspace/test_PathSpaceJsonExporter.cpp
+  unit/pathspace/test_PathSpaceHeader.cpp
   unit/test_BoundedPathSpace.cpp
+  unit/core/test_Error.cpp
+  unit/core/test_PodPayloadCoverage.cpp
+  unit/core/test_PodPayloadFullCoverage.cpp
+  unit/path/test_GlobMatch.cpp
+  unit/layer/test_PathSpaceTrellisCore.cpp
+  unit/layer/test_PathSpaceTrellisBlocking.cpp
+  unit/layer/test_PathAliasCoverage.cpp
+  unit/path/test_PathViewCoverage.cpp
+  unit/path/test_validation.cpp
+  unit/task/test_FutureCoverage.cpp
+  unit/task/test_TaskStateAtomic.cpp
+  unit/task/test_IFutureAny.cpp
   test_main.cpp
 )
 
@@ -59,6 +72,8 @@ if(PATHSPACE_ENABLE_LOG_DEBUG)
 endif()
 
 target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+# Treat CI/test builds as coverage-friendly to reduce timing flake sensitivity.
+target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_COVERAGE_BUILD=1)
 
 target_link_libraries(PathSpaceTests
   PRIVATE

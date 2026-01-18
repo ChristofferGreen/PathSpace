@@ -167,6 +167,7 @@ Philosopher philosopher_action(PathSpace& space, int i) {
     return philosopher;
 }
 
+TEST_SUITE("pathspace.multithreading.scenario") {
 TEST_CASE("PathSpace Multithreading Scenario") {
     SUBCASE("Dining Philosophers") {
         PathSpace space;
@@ -184,4 +185,5 @@ TEST_CASE("PathSpace Multithreading Scenario") {
             REQUIRE(philosopher.rightForkUnavailable > 0);
         }
     }
+}
 }

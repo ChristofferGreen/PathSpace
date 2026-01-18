@@ -13,6 +13,7 @@
 
 using namespace std::chrono_literals;
 
+TEST_SUITE("io.iotrellis") {
 TEST_CASE("IoTrellis normalizes device streams") {
     SP::PathSpace space;
 
@@ -137,4 +138,5 @@ TEST_CASE("IoTrellis normalizes gamepad axis events") {
     CHECK(pointer->motion.absolute_x == doctest::Approx(0.5f));
 
     handle.shutdown();
+}
 }

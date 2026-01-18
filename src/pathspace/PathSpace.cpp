@@ -531,6 +531,9 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
         }
     } guard{this};
 
+    auto contextPtr = this->context;
+    auto prefixCopy = this->prefix;
+
     if (this->clearingInProgress.load(std::memory_order_acquire)) {
         return Error{Error::Code::Timeout, "PathSpace clearing in progress"};
     }
@@ -538,7 +541,7 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
     this->activeOutCount.fetch_add(1, std::memory_order_acq_rel);
 
     auto retargetNestedIfNeeded = [&]() {
-        if (!(options.doPop && inputMetadata.dataCategory == DataCategory::UniquePtr && this->context)) {
+        if (!(options.doPop && inputMetadata.dataCategory == DataCategory::UniquePtr && contextPtr)) {
             return;
         }
         ConcretePathString raw{path.toString()};
@@ -579,10 +582,10 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
         if (!error.has_value()) {
             retargetNestedIfNeeded();
             // Successful read or pop; notify other waiters to re-check state
-            if (!this->prefix.empty())
-                this->context->notify(this->prefix + std::string(path.toStringView()));
+            if (!prefixCopy.empty())
+                contextPtr->notify(prefixCopy + std::string(path.toStringView()));
             else
-                this->context->notify(path.toStringView());
+                contextPtr->notify(path.toStringView());
             return error;
         }
         if (options.doBlock == false)
@@ -615,7 +618,7 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
         }
     }
     auto const deadline = std::chrono::system_clock::now() + maxWait;
-    std::string waitPath = this->prefix.empty() ? path.toString() : this->prefix + path.toString();
+    std::string waitPath = prefixCopy.empty() ? path.toString() : prefixCopy + path.toString();
     sp_log("PathSpace::out waiting on: " + waitPath, "PathSpace");
     sp_log(std::string("PathSpace::out block wait timeout(ms)=") + std::to_string(maxWait.count()), "PathSpace");
     // Second immediate re-check to close race between initial read and wait registration
@@ -623,17 +626,17 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
         auto secondTry = this->leaf.out(path, inputMetadata, obj, options.doPop);
         if (!secondTry.has_value()) {
             // Successful read or pop; notify other waiters to re-check state
-            if (!this->prefix.empty()) {
-                std::string notePath = this->prefix;
+            if (!prefixCopy.empty()) {
+                std::string notePath = prefixCopy;
                 auto sv = path.toStringView();
                 notePath.append(sv.data(), sv.size());
                 sp_log("out(success pre-wait) notify: " + notePath, "PathSpace");
-                this->context->notify(notePath);
+                contextPtr->notify(notePath);
             } else {
                 auto sv = path.toStringView();
                 std::string_view notePath{sv.data(), sv.size()};
                 sp_log("out(success pre-wait) notify: " + std::string(notePath), "PathSpace");
-                this->context->notify(notePath);
+                contextPtr->notify(notePath);
             }
             return std::nullopt;
         }
@@ -644,7 +647,7 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
 
     while (true) {
         // Check shutdown and deadline first
-        if (this->context && this->context->isShuttingDown()) {
+        if (contextPtr && contextPtr->isShuttingDown()) {
             return Error{Error::Code::Timeout, "Shutting down while waiting for data at path: " + path.toString()};
         }
         if (this->clearingInProgress.load(std::memory_order_acquire)) {
@@ -660,17 +663,17 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
             if (!quick.has_value()) {
                 retargetNestedIfNeeded();
                 // Successful read or pop; notify other waiters to re-check state
-                if (!this->prefix.empty()) {
-                    std::string notePath = this->prefix;
+                if (!prefixCopy.empty()) {
+                    std::string notePath = prefixCopy;
                     auto sv = path.toStringView();
                     notePath.append(sv.data(), sv.size());
                     sp_log("out(success pre-wait in-loop) notify: " + notePath, "PathSpace");
-                    this->context->notify(notePath);
+                    contextPtr->notify(notePath);
                 } else {
                     auto sv = path.toStringView();
                     std::string_view notePath{sv.data(), sv.size()};
                     sp_log("out(success pre-wait in-loop) notify: " + std::string(notePath), "PathSpace");
-                    this->context->notify(notePath);
+                    contextPtr->notify(notePath);
                 }
                 return std::nullopt;
             }
@@ -678,7 +681,7 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
 
         // Wait in short slices; never call leaf.out while holding the WatchRegistry lock
         {
-            auto guard  = this->context->wait(waitPath);
+            auto guard  = contextPtr->wait(waitPath);
             auto now2   = std::chrono::system_clock::now();
             auto remain = deadline - now2;
             if (remain <= std::chrono::milliseconds(0)) {
@@ -707,20 +710,20 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
             retargetNestedIfNeeded();
             waitSlice = std::chrono::milliseconds(1);
             // Successful read or pop; notify other waiters to re-check state
-            if (!this->prefix.empty()) {
-                std::string notePath = this->prefix;
-                auto sv = path.toStringView();
-                notePath.append(sv.data(), sv.size());
-                sp_log("out(success in-loop) notify: " + notePath, "PathSpace");
-                this->context->notify(notePath);
+                if (!prefixCopy.empty()) {
+                    std::string notePath = prefixCopy;
+                    auto sv = path.toStringView();
+                    notePath.append(sv.data(), sv.size());
+                    sp_log("out(success in-loop) notify: " + notePath, "PathSpace");
+                    contextPtr->notify(notePath);
+                } else {
+                    auto sv = path.toStringView();
+                    std::string_view notePath{sv.data(), sv.size()};
+                    sp_log("out(success in-loop) notify: " + std::string(notePath), "PathSpace");
+                    contextPtr->notify(notePath);
+                }
+                return std::nullopt;
             } else {
-                auto sv = path.toStringView();
-                std::string_view notePath{sv.data(), sv.size()};
-                sp_log("out(success in-loop) notify: " + std::string(notePath), "PathSpace");
-                this->context->notify(notePath);
-            }
-            return std::nullopt;
-        } else {
             // Log why retry failed to help diagnose missed-notify or readiness races
             sp_log(std::string("out(retry) still failing, error=")
                        + retry->message.value_or("no-message")

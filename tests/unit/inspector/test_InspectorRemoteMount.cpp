@@ -38,6 +38,7 @@ InspectorSnapshot make_local_snapshot() {
 
 } // namespace
 
+TEST_SUITE("inspector.remotemount") {
 TEST_CASE("RemoteMountRegistry augments local snapshot with placeholders") {
     RemoteMountOptions options;
     options.alias       = "alpha";
@@ -93,4 +94,5 @@ TEST_CASE("RemoteMountRegistry reports status metadata") {
     CHECK_EQ(statuses.front().path, "/remote/beta");
     CHECK_EQ(statuses.front().access_hint, "Prod auth scope");
     CHECK_FALSE(statuses.front().connected);
+}
 }

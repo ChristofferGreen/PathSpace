@@ -11,6 +11,7 @@ struct RS {
     float z = 0.0;
 };
 
+TEST_SUITE("pathspace.reflection") {
 TEST_CASE("PathSpace Reflection") {
     PathSpace pspace;
 
@@ -41,4 +42,5 @@ TEST_CASE("PathSpace Scripting") {
 }
 
 TEST_CASE("PathSpace Scripting UI") {
+}
 }

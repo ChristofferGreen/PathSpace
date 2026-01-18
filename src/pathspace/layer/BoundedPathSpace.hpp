@@ -22,6 +22,11 @@ public:
 
         std::string p = path.toString();
 
+        if (data.replaceExistingPayload) {
+            std::lock_guard<std::mutex> lock(this->countsMutex);
+            this->counts[p] = 0;
+        }
+
         // Preserve original payload bytes so we can restore after pop loop.
         SlidingBuffer originalBytes;
         // Only snapshot when we have a known size to restore.

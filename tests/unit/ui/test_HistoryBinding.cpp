@@ -5,6 +5,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/ui/declarative/HistoryBinding.hpp>
 
+TEST_SUITE("ui.history.binding") {
 TEST_CASE("HistoryBinding initializes metrics") {
     SP::PathSpace space;
     auto widget_path = std::string("/widgets/paint");
@@ -85,3 +86,4 @@ TEST_CASE("HistoryBinding lookup exposes registered bindings and cleans up expir
 }
 
 #endif // PATHSPACE_ENABLE_UI
+}

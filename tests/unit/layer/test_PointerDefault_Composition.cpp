@@ -42,6 +42,7 @@ static std::optional<T> poll_take(Space& space, std::string const& path, std::ch
 
 // Demonstrates user-level wiring of: mouse -> pointer mixer -> alias to "default pointer".
 // Providers remain path-agnostic; the user composes them and chooses paths.
+TEST_SUITE("layer.pointerdefault.composition") {
 TEST_CASE("Composition: mouse -> mixer -> alias (user-level wiring, providers are path-agnostic)") {
     // User-owned PathSpace (can be heap or stack; use heap to show shared ownership for alias upstream)
     auto root = std::make_shared<PathSpace>();
@@ -205,4 +206,5 @@ TEST_CASE("Composition: mouse -> mixer -> alias (user-level wiring, providers ar
     // Tear down
     forwarderRunning.store(false, std::memory_order_release);
     forwarder.join();
+}
 }

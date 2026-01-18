@@ -112,6 +112,7 @@ struct HtmlServerFixture {
 
 } // namespace
 
+TEST_SUITE("web.pathspace.htmlserver") {
 TEST_CASE("PathSpaceHtmlServer rejects invalid options") {
     SP::ServeHtml::ServeHtmlSpace          space{};
     SP::ServeHtml::PathSpaceHtmlServerOptions options{};
@@ -466,4 +467,5 @@ TEST_CASE("PathSpaceHtmlServer attaches default HTML mirror targets") {
     auto mode      = fx.space.read<std::string, std::string>(html_base + "/mode");
     REQUIRE(mode);
     CHECK_FALSE(mode->empty());
+}
 }

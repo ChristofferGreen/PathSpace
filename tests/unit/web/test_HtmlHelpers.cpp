@@ -5,6 +5,7 @@
 
 #include <string>
 
+TEST_SUITE("web.html.helpers") {
 TEST_CASE("BuildHtmlResponseBody escapes embedded script payloads") {
     SP::ServeHtml::HtmlPayload payload{};
     payload.dom = "<div id=\"root\"></div>";
@@ -34,4 +35,5 @@ TEST_CASE("IsAssetPath validates relative asset identifiers") {
     CHECK_FALSE(IsAssetPath(""));
     CHECK_FALSE(IsAssetPath("../secret.txt"));
     CHECK_FALSE(IsAssetPath("bad//asset"));
+}
 }

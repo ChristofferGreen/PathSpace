@@ -15,6 +15,7 @@ struct Person {
   }
 };
 
+TEST_SUITE("ext.glaze") {
 /*TEST_CASE("External: Glaze") {
     auto const person = Person{"John", 22, {"Ripper", "Silverhand"}};
     std::vector<std::byte> bytes;
@@ -26,3 +27,4 @@ struct Person {
         REQUIRE(john==person);
     }
 }*/
+}

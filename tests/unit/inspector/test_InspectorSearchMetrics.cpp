@@ -10,6 +10,7 @@ using SP::Inspector::SearchMetricsRecorder;
 using SP::Inspector::SearchQueryEvent;
 using SP::Inspector::SearchWatchlistEvent;
 
+TEST_SUITE("inspector.searchmetrics") {
 TEST_CASE("Inspector search metrics publish counters") {
     SP::PathSpace        space;
     SearchMetricsRecorder recorder(space);
@@ -50,4 +51,5 @@ TEST_CASE("Inspector search metrics publish counters") {
     auto snapshot_after = recorder.snapshot();
     CHECK(snapshot_after.watch.live == 2);
     CHECK(snapshot_after.watch.total == 4);
+}
 }

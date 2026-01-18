@@ -50,6 +50,7 @@ This guide collects the conventions and scripts used when pairing with the PathS
 - **APIs & layering:** Public PathSpace APIs live in `include/pathspace/*`; internal helpers stay under `src/pathspace/*`. Keep views/adapters isolated (`layer/`, `distributed/`).
 - **Error handling/logging:** Return `Error`/`Expected` instead of bools where context matters; populate codes + messages. Log through `log/TaggedLogger` or existing logger instances—no ad-hoc `std::cout`.
 - **Testing hooks:** When adding features, mirror telemetry/paths into `tests/` (doctest) and align with the five-loop harness. Update docs alongside code (plans, schemas, debugging playbook) whenever contracts or diagnostics change.
+- **Test naming:** Group doctest cases under dot-delimited suites (use `TEST_SUITE`/`TEST_SUITE_BEGIN` like `TEST_SUITE("core.nodedata.nested")`) and keep per-case titles concise but descriptive.
 - **Resources/UI:** Declarative UI code must resolve themes via the runtime (no hard-coded palettes); keep renderer/HTML adapters aligned with snapshot schemas and update SceneGraph plan files when contracts move.
 
 ## Architecture Snapshot

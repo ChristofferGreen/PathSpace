@@ -55,6 +55,7 @@ struct ArgvBuilder {
 
 } // namespace
 
+TEST_SUITE("web.servehtml.options") {
 TEST_CASE("ServeHtmlOptions validation helpers guard ranges") {
     CHECK(SP::ServeHtml::IsValidServeHtmlPort(80));
     CHECK_FALSE(SP::ServeHtml::IsValidServeHtmlPort(0));
@@ -95,4 +96,5 @@ TEST_CASE("Invalid environment override fails early") {
     auto        parsed = SP::ServeHtml::ParseServeHtmlArguments(argv.argc(), argv.argv());
 
     CHECK_FALSE(parsed.has_value());
+}
 }

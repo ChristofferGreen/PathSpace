@@ -192,6 +192,20 @@ static auto tryPodInsert(Node& node, InputData const& inputData, InsertReturn& r
     return std::nullopt;
 }
 
+static auto clearNodePayload(Node& node) -> std::size_t {
+    std::lock_guard<std::mutex> lg(node.payloadMutex);
+    std::size_t removed = 0;
+    if (node.data) {
+        removed += node.data->valueCount();
+        node.data.reset();
+    }
+    if (node.podPayload) {
+        removed += node.podPayload->size();
+        node.podPayload.reset();
+    }
+    return removed;
+}
+
 static auto tryPodRead(Node& node, InputMetadata const& inputMetadata, void* obj, bool doExtract) -> std::optional<Error> {
     if (!inputMetadata.podPreferred || inputMetadata.dataCategory == DataCategory::UniquePtr) {
         return Error{Error::Code::NotSupported, "POD fast path not applicable"};
@@ -511,6 +525,9 @@ auto Leaf::inAtNode(Node& node,
             for (auto const& key : matchingKeys) {
                 if (Node* childPtr = node.getChild(key)) {
                     Node& child = *childPtr;
+                    if (inputData.replaceExistingPayload) {
+                        clearNodePayload(child);
+                    }
                     auto* data = ensureNodeData(child, inputData, ret);
                     if (!data) {
                         continue;
@@ -539,6 +556,9 @@ auto Leaf::inAtNode(Node& node,
         }
         auto const& childKey = parsed.base;
         Node& child = node.getOrCreateChild(childKey);
+        if (inputData.replaceExistingPayload) {
+            clearNodePayload(child);
+        }
         if (inputData.metadata.dataCategory == DataCategory::UniquePtr) {
             if (parsed.index.has_value()) {
                 ret.errors.emplace_back(Error{Error::Code::InvalidPath,

@@ -9,6 +9,7 @@
 using namespace SP;
 using namespace std::chrono_literals;
 
+TEST_SUITE("layer.pathio.pointermixer") {
 TEST_CASE("PathIOPointerMixer - Basic aggregation order and peek/pop") {
     PathIOPointerMixer mixer;
 
@@ -174,4 +175,5 @@ TEST_CASE("PathIOPointerMixer - Mounted under PathSpace (notifyAll wake)") {
     CHECK(got.load(std::memory_order_acquire) == true);
     CHECK(ev.type == PathIOPointerMixer::PointerEventType::ButtonDown);
     CHECK(ev.sourceId == 1);
+}
 }

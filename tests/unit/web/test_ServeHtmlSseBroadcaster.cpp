@@ -42,6 +42,7 @@ auto make_base_paths() {
 
 } // namespace
 
+TEST_SUITE("web.servehtml.sse.broadcaster") {
 TEST_CASE("HtmlEventStreamSessionSseBroadcaster") {
     auto [html_base, common_base, diag_path, watch_glob] = make_base_paths();
 
@@ -113,4 +114,5 @@ TEST_CASE("HtmlEventStreamSessionSseBroadcaster") {
         CHECK(second_chunk.buffer.find("event: reload") != std::string::npos);
         CHECK(second_chunk.buffer.find("event: frame") != std::string::npos);
     }
+}
 }

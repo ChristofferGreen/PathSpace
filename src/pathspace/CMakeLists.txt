@@ -96,6 +96,11 @@ add_library(PathSpace
     layer/PathView.cpp
 )
 
+if(PATHSPACE_NEEDS_EXPECTED_SHIM)
+    target_sources(PathSpace PRIVATE core/ExpectedShim.cpp)
+    target_compile_definitions(PathSpace PRIVATE PATHSPACE_NEEDS_EXPECTED_SHIM=1)
+endif()
+
 target_compile_options(PathSpace PUBLIC "-Wno-deprecated")
 
 target_include_directories(PathSpace

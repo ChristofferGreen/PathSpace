@@ -47,6 +47,7 @@ void ensure_window_entry(SP::PathSpace& space,
 
 } // namespace
 
+TEST_SUITE("runtime.iopump") {
 TEST_CASE("IOPump routes subscribed pointer events") {
     SP::PathSpace space;
     auto window_path = std::string{"/system/applications/demo/windows/main"};
@@ -109,4 +110,5 @@ TEST_CASE("IOPump falls back to global queues when no subscription exists") {
     CHECK(routed->motion.delta_y == doctest::Approx(-4.0f));
 
     SP::Runtime::ShutdownIOPump(space);
+}
 }

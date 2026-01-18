@@ -17,6 +17,7 @@ static bool contains_line(std::string const& haystack, std::string const& needle
     return with_newlines.find(pat) != std::string::npos;
 }
 
+TEST_SUITE("layer.pathio.devicediscovery") {
 TEST_CASE("PathIODeviceDiscovery - Empty and basic listing") {
     PathIODeviceDiscovery dev;
 
@@ -171,4 +172,5 @@ TEST_CASE("PathIODeviceDiscovery - Mounted under PathSpace at /dev") {
         REQUIRE(caps.has_value());
         CHECK(contains_line(caps.value(), "wheel"));
     }
+}
 }

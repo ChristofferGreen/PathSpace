@@ -5,6 +5,7 @@
 using namespace SP;
 using namespace std::chrono_literals;
 
+TEST_SUITE("layer.pathfilesystem") {
 TEST_CASE("PathSpace FileSystem") {
     SUBCASE("Basic") {
         PathFileSystem space(std::string(PATHSPACE_SOURCE_DIR) + "/tests/data/filesystem/");
@@ -33,4 +34,5 @@ TEST_CASE("PathSpace FileSystem") {
         CHECK(space.read<"/fs/c/d.txt", std::string>().has_value());
         CHECK(space.read<"/fs/c/d.txt", std::string>().value() == "!");
     }
+}
 }

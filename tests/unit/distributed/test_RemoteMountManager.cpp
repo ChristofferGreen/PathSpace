@@ -249,6 +249,7 @@ private:
 
 } // namespace
 
+TEST_SUITE("distributed.remotemount.manager") {
 TEST_CASE("RemoteMountManager reads remote values") {
     PathSpace remote;
     PathSpace local;
@@ -740,4 +741,5 @@ TEST_CASE("RemoteMountManager mirrorSingleNode enforces payload compatibility") 
     auto stored = local.read<std::string>("/apps/demo/legacy");
     REQUIRE(stored.has_value());
     CHECK(stored.value() == "legacy");
+}
 }

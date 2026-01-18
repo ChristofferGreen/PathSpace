@@ -380,6 +380,7 @@ public:
             return InsertReturn{.errors = {*error}};
 
         InputData inputData{std::forward<DataType>(data)};
+        inputData.replaceExistingPayload = options.replaceExistingPayload;
 
         sp_log(std::string("PathSpaceBase::insert dataCategory=") + std::to_string(static_cast<int>(inputData.metadata.dataCategory))
                + " type=" + (inputData.metadata.typeInfo ? inputData.metadata.typeInfo->name() : "null"), "PathSpaceBase");

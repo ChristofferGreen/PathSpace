@@ -38,8 +38,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Add options for sanitizers
 option(ENABLE_THREAD_SANITIZER "Enable Thread Sanitizer" OFF)
-option(ENABLE_ADDRESS_SANITIZER "Enable Address Sanitizer" OFF)
+option(ENABLE_ADDRESS_SANITIZER "Enable Address Sanitizer" ON)
 option(ENABLE_UNDEFINED_SANITIZER "Enable Undefined Behavior Sanitizer" OFF)
+option(ENABLE_CODE_COVERAGE "Enable coverage instrumentation (gcov/llvm-cov)" OFF)
 
 # Check if Clang is used, set it to use libc++
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -61,6 +62,34 @@ elseif(ENABLE_ADDRESS_SANITIZER)
 elseif(ENABLE_UNDEFINED_SANITIZER)
     add_compile_options(-fsanitize=undefined)
     add_link_options(-fsanitize=undefined)
+endif()
+
+if(ENABLE_CODE_COVERAGE)
+    add_compile_options(--coverage)
+    add_link_options(--coverage)
+    add_compile_definitions(PATHSPACE_COVERAGE_BUILD=1)
+endif()
+
+# Some libc++ SDKs lack std::bad_expected_access<void> symbols in the dylib.
+# Detect linkability up-front and enable a local shim if needed.
+include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_STANDARD 23)
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -stdlib=libc++")
+endif()
+check_cxx_source_compiles("
+    #include <expected>
+    struct BadVoid : std::bad_expected_access<void> {
+        BadVoid() : std::bad_expected_access<void>() {}
+        using std::bad_expected_access<void>::what;
+    };
+    int main() {
+        BadVoid v;
+        return v.what()[0] == 0;
+    }
+" PATHSPACE_STD_EXPECTED_LINKS)
+if (NOT PATHSPACE_STD_EXPECTED_LINKS)
+    set(PATHSPACE_NEEDS_EXPECTED_SHIM ON)
 endif()
 
 # Architectural features permanently enabled (no gating)

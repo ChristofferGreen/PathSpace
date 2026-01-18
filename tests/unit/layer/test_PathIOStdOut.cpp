@@ -6,6 +6,7 @@
 
 using namespace SP;
 
+TEST_SUITE("layer.pathio.stdout") {
 TEST_CASE("PathIOStdOut - direct usage accepts std::string") {
     PathIOStdOut out(/*addNewline=*/true, /*prefix=*/"[stdout] ");
 
@@ -59,4 +60,5 @@ TEST_CASE("PathIOStdOut - mounting under PathSpace forwards insert") {
         REQUIRE(ret.errors.size() == 1);
         CHECK(ret.errors[0].code == Error::Code::InvalidType);
     }
+}
 }

@@ -2,6 +2,7 @@
 
 #include "pathspace/web/serve_html/auth/OAuthGoogle.hpp"
 
+TEST_SUITE("web.servehtml.oauth.google") {
 TEST_CASE("parse_url handles https endpoints") {
     auto parsed = SP::ServeHtml::OAuthGoogle::parse_url("https://example.com:8443/oauth");
     REQUIRE(parsed.has_value());
@@ -31,3 +32,4 @@ TEST_CASE("compute_code_challenge matches RFC example") {
     CHECK(challenge == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
 }
 
+}

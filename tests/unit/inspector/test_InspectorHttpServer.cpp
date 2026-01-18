@@ -13,6 +13,7 @@
 #include <thread>
 #include <vector>
 
+TEST_SUITE("inspector.httpserver") {
 TEST_CASE("Inspector HTTP server serves snapshot JSON") {
     SP::PathSpace space;
     space.insert("/http/node/value", std::string{"demo"});
@@ -149,4 +150,5 @@ TEST_CASE("Inspector HTTP server exposes mailbox metrics") {
 
     server.stop();
     server.join();
+}
 }

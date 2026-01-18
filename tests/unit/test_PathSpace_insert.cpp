@@ -45,6 +45,28 @@ TEST_CASE("PathSpace Insert") {
         CHECK(pspace.insert("/test*", 4).nbrValuesInserted == 2);
     }
 
+    SUBCASE("ReplaceExisting clears prior payload on concrete path") {
+        CHECK(pspace.insert("/replace", 1).nbrValuesInserted == 1);
+        auto ret = pspace.insert("/replace", 2, In{} & ReplaceExisting{});
+        CHECK(ret.errors.empty());
+        CHECK(ret.nbrValuesInserted == 1);
+        CHECK(pspace.read<int>("/replace", Block{}).value() == 2);
+        CHECK(pspace.take<int>("/replace", Block{}).value() == 2);
+        CHECK_FALSE(pspace.take<int>("/replace").has_value());
+    }
+
+    SUBCASE("ReplaceExisting applies per-node under glob") {
+        CHECK(pspace.insert("/glob/a", 10).nbrValuesInserted == 1);
+        CHECK(pspace.insert("/glob/b", 20).nbrValuesInserted == 1);
+        auto ret = pspace.insert("/glob/*", 99, In{} & ReplaceExisting{});
+        CHECK(ret.errors.empty());
+        CHECK(ret.nbrValuesInserted == 2);
+        CHECK(pspace.take<int>("/glob/a", Block{}).value() == 99);
+        CHECK_FALSE(pspace.take<int>("/glob/a").has_value());
+        CHECK(pspace.take<int>("/glob/b", Block{}).value() == 99);
+        CHECK_FALSE(pspace.take<int>("/glob/b").has_value());
+    }
+
     SUBCASE("Simple PathSpace Insert Compiletime Check") {
         CHECK(pspace.insert<"/test1">(1).nbrValuesInserted == 1);
         CHECK(pspace.insert<"/test2">(2).nbrValuesInserted == 1);

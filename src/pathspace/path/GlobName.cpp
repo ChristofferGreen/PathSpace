@@ -65,40 +65,43 @@ auto GlobName::match(const std::string_view& str) const -> std::tuple<bool /*mat
             globIdx = nextGlobIdx;
             strIdx = matchIdx;
         } else if (globIdx < this->name.size() && this->name[globIdx] == '[') {
-            globIdx++;
+            ++globIdx;
+
             bool invert = false;
             if (globIdx < this->name.size() && this->name[globIdx] == '!') {
                 invert = true;
-                globIdx++;
+                ++globIdx;
+            }
+
+            if (strIdx >= str.size()) {
+                return {false, false};
             }
 
             bool matched = false;
-            char prevChar = '\0';
-            bool inRange = false;
-
             while (globIdx < this->name.size() && this->name[globIdx] != ']') {
-                if (this->name[globIdx] == '-' && prevChar != '\0' && globIdx + 1 < this->name.size()) {
-                    inRange = true;
-                    prevChar = this->name[globIdx + 1];
-                    globIdx += 2;
-                } else {
-                    if (inRange) {
-                        if (strIdx < str.size() && str[strIdx] >= prevChar && str[strIdx] <= this->name[globIdx]) {
-                            matched = true;
-                        }
-                        inRange = false;
-                    } else {
-                        if (strIdx < str.size() && str[strIdx] == this->name[globIdx]) {
-                            matched = true;
-                        }
+                if (globIdx + 2 < this->name.size() && this->name[globIdx + 1] == '-' && this->name[globIdx + 2] != ']') {
+                    const char low = this->name[globIdx];
+                    const char high = this->name[globIdx + 2];
+                    if (str[strIdx] >= low && str[strIdx] <= high) {
+                        matched = true;
                     }
-                    prevChar = this->name[globIdx];
-                    globIdx++;
+                    globIdx += 3;
+                    continue;
                 }
+
+                if (str[strIdx] == this->name[globIdx]) {
+                    matched = true;
+                }
+                ++globIdx;
             }
 
-            if ((invert && !matched) || (!invert && matched)) {
-                strIdx++;
+            if (globIdx == this->name.size()) { // Unterminated character class
+                return {false, false};
+            }
+            ++globIdx; // Skip closing ']'
+
+            if ((matched && !invert) || (!matched && invert)) {
+                ++strIdx;
             } else {
                 return {false, false};
             }

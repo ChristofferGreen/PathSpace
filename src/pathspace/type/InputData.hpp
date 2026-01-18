@@ -35,6 +35,7 @@ struct InputData {
     Future                future;    // Optional: future handle for legacy task results
     FutureAny             anyFuture; // Optional: type-erased future for typed task results
     Executor*             executor = nullptr; // Optional: injected executor for task scheduling
+    bool                  replaceExistingPayload = false; // Optional: clear existing payload before insert
     InputMetadata         metadata;
 };
 

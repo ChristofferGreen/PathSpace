@@ -48,6 +48,7 @@ RUNTIME_FLAG_REPORT=0
 RUNTIME_FLAG_REPORT_PATH=""
 LOOP_KEEP_LOGS="${PATHSPACE_LOOP_KEEP_LOGS:-}"
 LOOP_LABEL_FILTER="${PATHSPACE_LOOP_LABEL_FILTER:-}"
+COVERAGE=0           # enable coverage instrumentation (gcov/llvm-cov)
 
 # ----------------------------
 # Helpers
@@ -91,6 +92,7 @@ Options:
                              guardrail baseline (default baseline path: $SIZE_BASELINE_DEFAULT).
       --size-write-baseline[=PATH]
                              Record the current binary sizes as the new guardrail baseline.
+      --coverage             Enable coverage instrumentation (adds --coverage to compile/link)
   -h, --help                 Show this help and exit.
 
 Sanitizers (mutually exclusive, maps to CMake options in this repo):
@@ -332,6 +334,9 @@ while [[ $# -gt 0 ]]; do
         LOOP=15
       fi
       ;;
+    --coverage)
+      COVERAGE=1
+      ;;
     -h|--help)
       print_help
       exit 0
@@ -408,6 +413,9 @@ case "$SANITIZER" in
     ;;
 esac
 
+if [[ "$COVERAGE" -eq 1 ]]; then
+  CMAKE_FLAGS+=("-DENABLE_CODE_COVERAGE=ON")
+fi
 # Always export compile_commands.json (redundant with project default, but safe)
 CMAKE_FLAGS+=("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON")
 if [[ "$SIZE_REPORT" -eq 1 || -n "$SIZE_WRITE_BASELINE" || "$TEST" -eq 1 ]]; then
@@ -776,7 +784,9 @@ PY
       local artifact_dir=""
       if command -v python3 >/dev/null 2>&1 && [[ -n "${TEST_LOG_MANIFEST:-}" && -s "$TEST_LOG_MANIFEST" ]]; then
         local -a manifest_lookup=()
-        if mapfile -t manifest_lookup < <(python3 - "$TEST_LOG_MANIFEST" "$label" "${iteration:-}" <<'PY'
+        local manifest_tmp=""
+        manifest_tmp="$(mktemp 2>/dev/null || mktemp -t pathspace_manifest)"
+        if python3 - "$TEST_LOG_MANIFEST" "$label" "${iteration:-}" <<'PY' > "$manifest_tmp"
 import csv
 import sys
 
@@ -800,13 +810,19 @@ row = rows[-1]
 print(row[3])
 print(row[4])
 PY
-); then
+        then
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            manifest_lookup+=("$line")
+          done < "$manifest_tmp"
           if [[ ${#manifest_lookup[@]} -ge 1 ]]; then
             log_path="${manifest_lookup[0]}"
           fi
           if [[ ${#manifest_lookup[@]} -ge 2 ]]; then
             artifact_dir="${manifest_lookup[1]}"
           fi
+        fi
+        if [[ -n "$manifest_tmp" ]]; then
+          rm -f "$manifest_tmp"
         fi
       fi
 

@@ -1,4 +1,5 @@
 build/
+build-coverage/
 .cache
 myenv/
 prompt.txt

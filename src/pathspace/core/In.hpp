@@ -9,6 +9,7 @@ namespace SP {
 struct In {
     ExecutionCategory executionCategory = ExecutionCategory::Unknown;
     ValidationLevel   validationLevel   = ValidationLevel::Basic;
+    bool              replaceExistingPayload = false;
 
     template <typename T>
         requires requires(T const& t, In& i) { t.modify(i); }
@@ -66,6 +67,16 @@ struct InFullValidation : In {
 
     void modify(In& i) const {
         i.validationLevel = ValidationLevel::Full;
+    }
+};
+
+struct ReplaceExisting : In {
+    ReplaceExisting() {
+        this->replaceExistingPayload = true;
+    }
+
+    void modify(In& i) const {
+        i.replaceExistingPayload = true;
     }
 };
 

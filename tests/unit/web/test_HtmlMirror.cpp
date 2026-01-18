@@ -111,6 +111,7 @@ struct HtmlMirrorFixture {
 
 } // namespace
 
+TEST_SUITE("web.html.mirror") {
 TEST_CASE("CreateHtmlMirrorTargets wires renderer and target") {
     HtmlMirrorFixture fx;
 
@@ -139,4 +140,5 @@ TEST_CASE("CreateHtmlMirrorTargets wires renderer and target") {
     auto mode = fx.space.read<std::string, std::string>(html_base + "/mode");
     REQUIRE(mode);
     CHECK_FALSE(mode->empty());
+}
 }

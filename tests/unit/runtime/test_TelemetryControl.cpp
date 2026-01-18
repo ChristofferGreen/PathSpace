@@ -75,6 +75,7 @@ void ensure_device_defaults(SP::PathSpace& space, std::string const& device) {
 
 } // namespace
 
+TEST_SUITE("runtime.telemetrycontrol") {
 TEST_CASE("TelemetryControl toggles telemetry state via command queues") {
     SP::PathSpace space;
     SP::Runtime::TelemetryControlOptions options;
@@ -196,4 +197,5 @@ TEST_CASE("TelemetryControl throttles multiple devices") {
     CHECK(wait_for_uint(space, keyboard_device + "/config/push/max_queue", 32u));
 
     SP::Runtime::ShutdownTelemetryControl(space);
+}
 }

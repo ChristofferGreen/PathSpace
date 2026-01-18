@@ -6,6 +6,7 @@
 
 using namespace SP;
 
+TEST_SUITE("layer.pathalias") {
 TEST_CASE("PathAlias - Forwarding insert and read to upstream") {
     // Upstream concrete space where data is actually stored
     auto upstream = std::make_shared<PathSpace>();
@@ -118,4 +119,5 @@ TEST_CASE("PathAlias - Nested mounting under a parent PathSpace") {
         REQUIRE(viaAlias.has_value());
         CHECK(viaAlias.value() == "new");
     }
+}
 }

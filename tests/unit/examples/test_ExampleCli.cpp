@@ -18,6 +18,7 @@ auto make_argv(std::initializer_list<const char*> list) {
 }
 }
 
+TEST_SUITE("examples.cli") {
 TEST_CASE("ExampleCli parses flags and integer options") {
     using SP::Examples::CLI::ExampleCli;
     ExampleCli cli;
@@ -110,4 +111,5 @@ TEST_CASE("ExampleCli unknown handler can mark failures") {
     auto argv = make_argv({"prog", "--mystery"});
     CHECK_FALSE(cli.parse(static_cast<int>(argv.size()), argv.data()));
     CHECK(handler_called);
+}
 }

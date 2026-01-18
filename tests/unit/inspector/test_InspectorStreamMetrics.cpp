@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 
+TEST_SUITE("inspector.streammetrics") {
 TEST_CASE("Inspector stream metrics publish counters") {
     SP::PathSpace space;
     SP::Inspector::StreamMetricsRecorder recorder(space);
@@ -36,4 +37,5 @@ TEST_CASE("Inspector stream metrics publish counters") {
     CHECK(snapshot.disconnect_backpressure == 1);
 
     CHECK(read_metric("/inspector/metrics/stream/disconnect/backpressure") == 1);
+}
 }

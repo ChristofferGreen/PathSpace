@@ -6,6 +6,7 @@
 using SP::Inspector::InspectorSnapshotOptions;
 using SP::Inspector::BuildInspectorSnapshot;
 
+TEST_SUITE("inspector.snapshot") {
 TEST_CASE("Inspector snapshot captures tree structure and summaries") {
     SP::PathSpace space;
     space.insert("/demo/button/meta/label", std::string{"Launch"});
@@ -49,4 +50,5 @@ TEST_CASE("Inspector snapshot respects child limit") {
     REQUIRE(snapshot);
     CHECK(snapshot->root.children.size() == 3);
     CHECK(snapshot->root.children_truncated);
+}
 }

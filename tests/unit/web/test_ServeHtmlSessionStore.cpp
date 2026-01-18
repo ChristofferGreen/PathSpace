@@ -18,6 +18,7 @@ auto make_config() -> SP::ServeHtml::SessionConfig {
 
 } // namespace
 
+TEST_SUITE("web.servehtml.sessionstore") {
 TEST_CASE("InMemorySessionStore creates validates and revokes sessions") {
     auto config = make_config();
     SP::ServeHtml::InMemorySessionStore store{config};
@@ -63,3 +64,4 @@ TEST_CASE("PathSpaceSessionStore persists JSON metadata") {
     CHECK_FALSE(store->validate(*session_id).has_value());
 }
 
+}
