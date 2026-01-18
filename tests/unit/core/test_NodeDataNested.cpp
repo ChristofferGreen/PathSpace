@@ -99,7 +99,9 @@ TEST_SUITE("core.nodedata.nested") {
 
         // Retarget to a mock sink/executor (nullptr ok for this test)
         CHECK_NOTHROW(data.retargetTasks(std::weak_ptr<NotificationSink>{}, nullptr, "", ""));
-        CHECK_FALSE(data.peekFuture().has_value());
+        auto fut = data.peekFuture();
+        REQUIRE(fut.has_value());
+        CHECK_FALSE(fut->ready());
     }
 
     TEST_CASE("retargetTasks rewrites notification path with new prefix") {

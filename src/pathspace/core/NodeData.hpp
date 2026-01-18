@@ -52,7 +52,8 @@ struct NodeData {
     // Return a type-erased future aligned with the front typed task (if present)
     auto peekAnyFuture() const -> std::optional<FutureAny>;
     [[nodiscard]] auto serializeSnapshot() const -> std::optional<std::vector<std::byte>>;
-    static auto        deserializeSnapshot(std::span<const std::byte> bytes) -> std::optional<NodeData>;
+    static auto        deserializeSnapshot(std::span<const std::byte> bytes,
+                                           bool preserveTypeInfo = true) -> std::optional<NodeData>;
     static auto        fromSerializedValue(InputMetadata const& metadata,
                                            std::span<const std::byte> bytes) -> Expected<NodeData>;
     [[nodiscard]] auto hasExecutionPayload() const noexcept -> bool;

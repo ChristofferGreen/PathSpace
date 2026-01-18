@@ -120,6 +120,7 @@ private:
     std::condition_variable         noActiveWaitersCv;
     std::atomic<size_t>             activeWaiterCount{0};
 
+public:
     static bool debug_enabled();
     static void debug_log(char const* event,
                           std::string_view path,
@@ -128,5 +129,10 @@ private:
                           std::size_t notified);
 
 };
+
+namespace testing {
+// Test-only override to force WaitMap debug logging without relying on PATHSPACE_DEBUG_WAITMAP.
+std::atomic<bool>& waitMapDebugOverride();
+} // namespace testing
 
 } // namespace SP

@@ -208,6 +208,8 @@ struct AlpacaSerializationTraits {
             return nullptr;
         else if constexpr (std::is_same_v<T, std::string>) // Only allow deserialization to std::string
             return &StringSerializationHelper<T>::Deserialize;
+        else if constexpr (StringLiteral<T> || StringType<T>)
+            return nullptr; // string_view and literals are serialize-only
         else if constexpr (FundamentalType<T> || AlpacaCompatible<T>)
             return &ValueSerializationHelper<T>::Deserialize;
         else
@@ -219,6 +221,8 @@ struct AlpacaSerializationTraits {
             return nullptr;
         else if constexpr (std::is_same_v<T, std::string>) // Only allow deserialization to std::string
             return &StringSerializationHelper<T>::DeserializePop;
+        else if constexpr (StringLiteral<T> || StringType<T>)
+            return nullptr; // string_view and literals are serialize-only
         else if constexpr (FundamentalType<T> || AlpacaCompatible<T>)
             return &ValueSerializationHelper<T>::DeserializePop;
         else

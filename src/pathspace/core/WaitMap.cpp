@@ -27,7 +27,17 @@ auto thread_id_string() -> std::string {
 
 namespace SP {
 
+namespace testing {
+std::atomic<bool>& waitMapDebugOverride() {
+    static std::atomic<bool> enabled{false};
+    return enabled;
+}
+} // namespace testing
+
 bool WaitMap::debug_enabled() {
+    if (testing::waitMapDebugOverride().load(std::memory_order_relaxed)) {
+        return true;
+    }
     static bool enabled = [] {
         if (const char* flag = std::getenv("PATHSPACE_DEBUG_WAITMAP")) {
             return std::strcmp(flag, "0") != 0;

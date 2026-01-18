@@ -66,12 +66,19 @@ auto split_absolute_impl(std::string_view absolutePath) -> Expected<std::vector<
 }
 
 auto contains_relative_tokens_impl(std::string_view candidate) -> bool {
+    if (candidate.empty()) {
+        return false;
+    }
+    if (candidate.back() == '/') {
+        return true; // trailing slash counts as an empty component
+    }
+
     std::size_t pos = 0;
     auto const size = candidate.size();
 
     while (pos <= size) {
         if (pos == size) {
-            return false;
+            return size > 0 && candidate.back() == '/';
         }
 
         auto next = candidate.find('/', pos);
@@ -138,4 +145,3 @@ auto UnvalidatedPathView::canonicalize_absolute() const -> Expected<std::string>
 }
 
 } // namespace SP
-

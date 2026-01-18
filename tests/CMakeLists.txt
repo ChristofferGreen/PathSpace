@@ -4,12 +4,18 @@ project(PathSpaceTests VERSION 1.0)
 
 set(PATHSPACE_CORE_TEST_SOURCES
   unit/path/test_Iterator.cpp
+  unit/path/test_IteratorValidation.cpp
   unit/path/test_ConcretePath.cpp
+  unit/path/test_PathCoverage.cpp
   unit/core/test_WaitMap.cpp
+  unit/type/test_InputData.cpp
   unit/type/test_InputMetadata.cpp
+  unit/type/test_TypeMetadataRegistry.cpp
   unit/type/test_SlidingBuffer.cpp
   unit/core/test_NodeDataSnapshot.cpp
   unit/core/test_NodeDataNested.cpp
+  unit/core/test_NodeDataCoverage.cpp
+  unit/core/test_PathSpaceContext.cpp
   unit/ext/test_alpaca.cpp
   unit/task/test_TaskPool.cpp
   unit/test_PathSpace_read.cpp
@@ -22,6 +28,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/test_PathSpace_multithreading.cpp
   unit/test_PathSpace_execution.cpp
   unit/test_PathSpace_copy.cpp
+  unit/test_PathSpace_internal.cpp
   unit/test_PathSpace_indexed.cpp
   unit/test_PathSpace_pod_fastpath.cpp
   unit/path/test_UnvalidatedPath.cpp
@@ -33,6 +40,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/pathspace/test_PathSpaceHeader.cpp
   unit/test_BoundedPathSpace.cpp
   unit/core/test_Error.cpp
+  unit/core/test_ExpectedShim.cpp
   unit/core/test_PodPayloadCoverage.cpp
   unit/core/test_PodPayloadFullCoverage.cpp
   unit/path/test_GlobMatch.cpp
@@ -44,6 +52,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/task/test_FutureCoverage.cpp
   unit/task/test_TaskStateAtomic.cpp
   unit/task/test_IFutureAny.cpp
+  unit/task/test_ExecutorForwarding.cpp
   test_main.cpp
 )
 

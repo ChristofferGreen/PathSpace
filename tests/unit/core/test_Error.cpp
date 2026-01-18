@@ -2,32 +2,27 @@
 
 #include "third_party/doctest.h"
 
+#include <vector>
+
 using namespace SP;
 
 TEST_SUITE("core.error") {
     TEST_CASE("Error string helpers") {
-        // Touch every enum value to cover the switch.
-        for (auto code : {
-                 Error::Code::InvalidError,
-                 Error::Code::UnknownError,
-                 Error::Code::NoSuchPath,
-                 Error::Code::InvalidPath,
-                 Error::Code::InvalidPathSubcomponent,
-                 Error::Code::InvalidType,
-                 Error::Code::Timeout,
-                 Error::Code::MalformedInput,
-                 Error::Code::InvalidPermissions,
-                 Error::Code::SerializationFunctionMissing,
-                 Error::Code::UnserializableType,
-                 Error::Code::NoObjectFound,
-                 Error::Code::TypeMismatch,
-                 Error::Code::NotFound,
-                 Error::Code::NotSupported,
-                 Error::Code::CapacityExceeded}) {
-            auto label = errorCodeToString(code);
+        // Touch every enum value using a runtime loop so the compiler cannot
+        // constant-fold the switch and skip instrumentation.
+        std::vector<Error::Code> codes;
+        for (int i = static_cast<int>(Error::Code::InvalidError);
+             i <= static_cast<int>(Error::Code::CapacityExceeded);
+             ++i) {
+            codes.push_back(static_cast<Error::Code>(i));
+        }
+
+        for (auto code : codes) {
+            auto runtimeCode = code;
+            auto label       = errorCodeToString(runtimeCode);
             CHECK_FALSE(label.empty());
             // describeError should echo the label when message is absent.
-            Error e{code, {}};
+            Error e{runtimeCode, {}};
             CHECK(describeError(e) == std::string{label});
         }
 
@@ -36,5 +31,11 @@ TEST_SUITE("core.error") {
 
         Error withoutMsg{Error::Code::NoSuchPath, {}};
         CHECK(describeError(withoutMsg) == "no_such_path");
+
+        // Unknown enum value should still return fallback label.
+        auto unknownLabel = errorCodeToString(static_cast<Error::Code>(999));
+        CHECK(unknownLabel == "unknown_error");
+        Error synthetic{static_cast<Error::Code>(999), {}};
+        CHECK(describeError(synthetic) == "unknown_error");
     }
 }

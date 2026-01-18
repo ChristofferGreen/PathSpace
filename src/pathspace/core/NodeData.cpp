@@ -16,6 +16,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <exception>
 
 namespace {
 constexpr std::uint32_t HISTORY_PAYLOAD_VERSION = 2;
@@ -130,6 +131,8 @@ auto NodeData::serialize(const InputData& inputData) -> std::optional<Error> {
             return err;
         }
         this->appendNested(std::move(*ptr));
+        pushType(inputData.metadata);
+        return std::nullopt;
     } else if (inputData.task) {
         // Store task and aligned future handle
         this->tasks.push_back(std::move(inputData.task));
@@ -154,6 +157,10 @@ auto NodeData::serialize(const InputData& inputData) -> std::optional<Error> {
                 return Error{Error::Code::UnknownError, "No executor available for immediate task submission"};
             }
         }
+        auto execMeta            = inputData.metadata;
+        execMeta.dataCategory    = DataCategory::Execution;
+        pushType(execMeta);
+        return std::nullopt;
     } else {
         if (!inputData.metadata.serialize)
             return Error{Error::Code::SerializationFunctionMissing, "Serialization function is missing."};
@@ -162,10 +169,9 @@ auto NodeData::serialize(const InputData& inputData) -> std::optional<Error> {
         auto appended = data.size() - oldSize;
         valueSizes.push_back(appended);
         sp_log("Buffer size before: " + std::to_string(oldSize) + ", after: " + std::to_string(data.size()), "NodeData");
+        pushType(inputData.metadata);
+        return std::nullopt;
     }
-
-    pushType(inputData.metadata);
-    return std::nullopt;
 }
 
 auto NodeData::deserialize(void* obj, const InputMetadata& inputMetadata) const -> std::optional<Error> {
@@ -222,8 +228,10 @@ auto NodeData::deserializeIndexed(std::size_t matchIndex,
             auto const len = this->valueSizes[serializedIdx];
 
             if (absoluteValueIndex == matchIndex) {
-                // Type must match the requested output
-                if (entry.typeInfo != inputMetadata.typeInfo || entry.category != inputMetadata.dataCategory) {
+                // Type must match the requested output; tolerate missing persisted type_info.
+                bool typesMismatch = (entry.typeInfo != nullptr && inputMetadata.typeInfo != nullptr
+                                      && entry.typeInfo != inputMetadata.typeInfo);
+                if (typesMismatch || entry.category != inputMetadata.dataCategory) {
                     return Error{Error::Code::InvalidType, "Type mismatch during indexed deserialization"};
                 }
                 targetTypeIndex     = typeIdx;
@@ -256,7 +264,11 @@ FOUND_TARGET:
         if (!inputMetadata.deserialize) {
             return Error{Error::Code::UnserializableType, "No deserialization function provided"};
         }
-        inputMetadata.deserialize(obj, tmp);
+        try {
+            inputMetadata.deserialize(obj, tmp);
+        } catch (std::exception const& ex) {
+            return Error{Error::Code::MalformedInput, ex.what()};
+        }
         return std::nullopt;
     }
 
@@ -264,7 +276,11 @@ FOUND_TARGET:
     if (!inputMetadata.deserializePop) {
         return Error{Error::Code::UnserializableType, "No pop deserialization function provided"};
     }
-    inputMetadata.deserializePop(obj, tmp);
+    try {
+        inputMetadata.deserializePop(obj, tmp);
+    } catch (std::exception const& ex) {
+        return Error{Error::Code::MalformedInput, ex.what()};
+    }
 
     // Remove the payload bytes from the sliding buffer.
     std::vector<uint8_t> newRaw;
@@ -389,10 +405,11 @@ auto NodeData::validateInputs(const InputMetadata& inputMetadata) -> std::option
         return Error{Error::Code::NoObjectFound, "No data available for deserialization"};
     }
 
-    if (!this->types.empty() && this->types.front().typeInfo != inputMetadata.typeInfo) {
-        auto have = this->types.front().typeInfo ? this->types.front().typeInfo->name() : "nullptr";
-        auto want = inputMetadata.typeInfo ? inputMetadata.typeInfo->name() : "nullptr";
-        sp_log(std::string("NodeData::validateInputs - type mismatch: have=") + have + " want=" + want, "NodeData");
+    if (!this->types.empty()
+        && this->types.front().typeInfo != nullptr
+        && inputMetadata.typeInfo != nullptr
+        && this->types.front().typeInfo != inputMetadata.typeInfo) {
+        sp_log("NodeData::validateInputs - type mismatch: persisted type metadata differs", "NodeData");
         return Error{Error::Code::InvalidType, "Type mismatch during deserialization"};
     }
 
@@ -486,19 +503,41 @@ auto NodeData::deserializeData(void* obj, const InputMetadata& inputMetadata, bo
     sp_log("Deserializing data of type: " + std::string(inputMetadata.typeInfo->name()), "NodeData");
     sp_log("Current buffer size: " + std::to_string(data.size()), "NodeData");
 
-    if (doPop) {
-        if (!inputMetadata.deserializePop)
-            return Error{Error::Code::UnserializableType, "No pop deserialization function provided"};
-        inputMetadata.deserializePop(obj, data);
-        if (!valueSizes.empty()) {
-            valueSizes.pop_front();
+    if (!valueSizes.empty()) {
+        auto const declaredLength = valueSizes.front();
+        if (declaredLength > data.size()) {
+            return Error{Error::Code::MalformedInput, "Serialized payload exceeds buffer"};
         }
-        sp_log("After pop, buffer size: " + std::to_string(data.size()), "NodeData");
-        popType();
-    } else {
-        if (!inputMetadata.deserialize)
-            return Error{Error::Code::UnserializableType, "No deserialization function provided"};
-        inputMetadata.deserialize(obj, data);
+    }
+
+    if (this->valueSizes.empty()) {
+        return Error{Error::Code::MalformedInput, "Serialized payload missing value length metadata"};
+    }
+    auto const required = this->valueSizes.front();
+    if (required == 0) {
+        return Error{Error::Code::MalformedInput, "Serialized payload missing value data"};
+    }
+    if (this->data.size() < required) {
+        return Error{Error::Code::MalformedInput, "Serialized payload exceeds buffer"};
+    }
+
+    try {
+        if (doPop) {
+            if (!inputMetadata.deserializePop)
+                return Error{Error::Code::UnserializableType, "No pop deserialization function provided"};
+            inputMetadata.deserializePop(obj, data);
+            if (!valueSizes.empty()) {
+                valueSizes.pop_front();
+            }
+            sp_log("After pop, buffer size: " + std::to_string(data.size()), "NodeData");
+            popType();
+        } else {
+            if (!inputMetadata.deserialize)
+                return Error{Error::Code::UnserializableType, "No deserialization function provided"};
+            inputMetadata.deserialize(obj, data);
+        }
+    } catch (std::exception const& ex) {
+        return Error{Error::Code::MalformedInput, ex.what()};
     }
     return std::nullopt;
 }
@@ -833,7 +872,8 @@ std::optional<std::vector<std::byte>> NodeData::serializeSnapshot() const {
     return bytes;
 }
 
-std::optional<NodeData> NodeData::deserializeSnapshot(std::span<const std::byte> bytes) {
+std::optional<NodeData> NodeData::deserializeSnapshot(std::span<const std::byte> bytes,
+                                                      bool preserveTypeInfo) {
     sp_log("NodeData::deserializeSnapshot", "Function Called");
     auto version = readScalar<std::uint32_t>(bytes);
     if (!version.has_value()) {
@@ -862,7 +902,9 @@ std::optional<NodeData> NodeData::deserializeSnapshot(std::span<const std::byte>
         bytes = bytes.subspan(4);
 
         ElementType element{};
-        element.typeInfo = reinterpret_cast<std::type_info const*>(*typePtrOpt);
+        element.typeInfo = preserveTypeInfo
+            ? reinterpret_cast<std::type_info const*>(*typePtrOpt)
+            : nullptr;
         element.elements = *elementsOpt;
         element.category = static_cast<DataCategory>(categoryByte);
         restoredTypes[i] = element;

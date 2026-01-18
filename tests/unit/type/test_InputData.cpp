@@ -1,0 +1,52 @@
+#include "type/InputData.hpp"
+#include "core/PodPayload.hpp"
+#include "third_party/doctest.h"
+
+#include <functional>
+#include <memory>
+#include <string>
+
+using namespace SP;
+
+TEST_SUITE_BEGIN("type.inputdata");
+
+TEST_CASE("Pod preferred types wire POD factory and point to object") {
+    int value = 5;
+    InputData data{value};
+
+    CHECK(data.obj == &value);
+    CHECK(data.metadata.podPreferred);
+    REQUIRE(data.metadata.createPodPayload != nullptr);
+
+    auto payload = data.metadata.createPodPayload();
+    REQUIRE(payload != nullptr);
+    CHECK(payload->matches(typeid(int)));
+}
+
+TEST_CASE("Function pointers are stored as callable addresses without POD fast path") {
+    static int callCount = 0;
+    auto fnImpl          = []() -> int {
+        ++callCount;
+        return 3;
+    };
+    using Fn      = int (*)();
+    Fn fn         = fnImpl;
+
+    InputData data{fn};
+    auto recovered = reinterpret_cast<Fn>(data.obj);
+    CHECK(recovered() == 3);
+    CHECK(callCount == 1);
+    CHECK_FALSE(data.metadata.podPreferred);
+    CHECK(data.metadata.createPodPayload == nullptr);
+}
+
+TEST_CASE("Unique pointer inputs leave POD factory unset") {
+    std::unique_ptr<int> ptr = std::make_unique<int>(7);
+    InputData            data{ptr};
+
+    CHECK(data.obj == &ptr);
+    CHECK_FALSE(data.metadata.podPreferred);
+    CHECK(data.metadata.createPodPayload == nullptr);
+}
+
+TEST_SUITE_END();

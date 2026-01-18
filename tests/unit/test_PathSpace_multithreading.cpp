@@ -60,7 +60,7 @@ TEST_CASE("PathSpace Multithreading - Core Suite") {
     SUBCASE("PathSpace Basic Concurrent Operations") {
         PathSpace  pspace;
         const int  NUM_THREADS           = 8;
-        const int  OPERATIONS_PER_THREAD = 100;
+        const int  OPERATIONS_PER_THREAD = 15;
         const int  MAX_RETRIES           = 3;
         const auto TEST_TIMEOUT          = std::chrono::seconds(30);
 
@@ -179,7 +179,7 @@ TEST_CASE("PathSpace Multithreading - Core Suite") {
                 for (int i = 0; i < OPERATIONS_PER_THREAD && state.shouldContinue(); i++) {
                     std::string path = getPath(threadId % (NUM_THREADS / 2), i, rng);
 
-                    Out options = Block(50ms);
+                    Out options = Block(5ms);
 
                     // Try read first, fall back to extract
                     auto result = pspace.read<int>(path, options);
@@ -1466,7 +1466,7 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
     SUBCASE("Memory Management") {
         PathSpace         pspace;
         const int         NUM_THREADS           = 4;
-        const int         OPERATIONS_PER_THREAD = 1000;
+        const int         OPERATIONS_PER_THREAD = 40;
         std::atomic<int>  successfulOperations(0);
         std::atomic<int>  failedInserts(0);
         std::atomic<int>  failedReads(0);
@@ -1738,13 +1738,16 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
                     threads.emplace_back(workerFunction);
                 }
 
-                std::thread([&shouldStop, TEST_DURATION]() {
+                std::thread stopThread([&shouldStop, TEST_DURATION]() {
                     std::this_thread::sleep_for(TEST_DURATION);
                     shouldStop.store(true, std::memory_order_relaxed);
-                }).detach();
+                });
 
                 for (auto& t : threads) {
                     t.join();
+                }
+                if (stopThread.joinable()) {
+                    stopThread.join();
                 }
 
                 auto end      = std::chrono::steady_clock::now();

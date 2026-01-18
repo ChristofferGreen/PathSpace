@@ -68,6 +68,16 @@ TEST_CASE("Path Iterator and Utilities") {
             ++iter;
             CHECK(iter.toStringView() == path);
         }
+
+        SUBCASE("startToCurrent and currentToEnd slices") {
+            Iterator iter("/alpha/beta/gamma");
+            CHECK(iter.startToCurrent() == "");
+            CHECK(iter.currentToEnd() == "alpha/beta/gamma");
+
+            ++iter; // now at "beta"
+            CHECK(iter.startToCurrent() == "alpha");
+            CHECK(iter.currentToEnd() == "beta/gamma");
+        }
     }
 
     SUBCASE("Path Iterator State Tracking") {
@@ -237,6 +247,27 @@ TEST_CASE("Path Iterator and Utilities") {
             CHECK(*iter == "test");
             ++iter;
             CHECK(*iter == "path");
+        }
+    }
+
+    SUBCASE("Iterator Validation") {
+        SUBCASE("Basic validation rejects missing slash or trailing slash") {
+            Iterator missingSlash("noslash");
+            auto     err1 = missingSlash.validate(ValidationLevel::Basic);
+            REQUIRE(err1.has_value());
+            CHECK(err1->code == Error::Code::InvalidPath);
+
+            Iterator trailing("/foo/");
+            auto     err2 = trailing.validate(ValidationLevel::Basic);
+            REQUIRE(err2.has_value());
+            CHECK(err2->code == Error::Code::InvalidPath);
+        }
+
+        SUBCASE("Full validation catches malformed index syntax") {
+            Iterator malformed("/foo[bar");
+            auto     err = malformed.validate(ValidationLevel::Full);
+            REQUIRE(err.has_value());
+            CHECK(err->code == Error::Code::InvalidPath);
         }
     }
 

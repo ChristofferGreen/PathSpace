@@ -24,6 +24,54 @@ TEST_CASE("GlobName matches complex patterns") {
     auto [m3, super3] = cls.match(std::string_view{"bz"});
     CHECK(m3);
     CHECK_FALSE(super3);
+
+    // Trailing '*' should match remaining characters without supermatch
+    GlobName trailing{"foo*"};
+    auto [m4, super4] = trailing.match(std::string_view{"foobar"});
+    CHECK(m4);
+    CHECK_FALSE(super4);
+}
+
+TEST_CASE("GlobName character classes and escapes edge cases") {
+    GlobName inverted{"[!a-c]z"};
+    auto [m1, super1] = inverted.match(std::string_view{"dz"});
+    CHECK(m1);
+    CHECK_FALSE(super1);
+
+    auto [m2, super2] = inverted.match(std::string_view{"az"});
+    CHECK_FALSE(m2);
+    CHECK_FALSE(super2);
+
+    GlobName range{"[a-c]?*"};
+    auto [m3, super3] = range.match(std::string_view{"b12"});
+    CHECK(m3);
+    CHECK_FALSE(super3);
+
+    GlobName unterminated{"[abc"};
+    auto [m4, super4] = unterminated.match(std::string_view{"a"});
+    CHECK_FALSE(m4);
+    CHECK_FALSE(super4);
+}
+
+TEST_CASE("GlobName comparisons and negative matches") {
+    GlobName exact{"alpha"};
+    GlobName same{"alpha"};
+    CHECK((exact <=> same) == std::strong_ordering::equal);
+    CHECK(exact == same);
+    CHECK(exact == "alpha");
+    CHECK(exact.isConcrete());
+    CHECK_FALSE(GlobName{"*"}.isConcrete());
+    CHECK(GlobName{"*"} .isGlob());
+
+    // Star search that never finds the following token should fail.
+    auto [miss, super] = GlobName{"*z"}.match(std::string_view{"abc"});
+    CHECK_FALSE(miss);
+    CHECK_FALSE(super);
+
+    // Character class with empty input should hit early return.
+    auto [emptyMatch, emptySuper] = GlobName{"[ab]"}.match(std::string_view{""});
+    CHECK_FALSE(emptyMatch);
+    CHECK_FALSE(emptySuper);
 }
 
 TEST_CASE("GlobPath supermatch with **") {
@@ -36,6 +84,14 @@ TEST_CASE("GlobPath supermatch with **") {
     CHECK(gv == cv);
     CHECK(gv.isGlob());
     CHECK_FALSE(GlobPathString{"/root/a"}.isGlob());
+
+    GlobPathString middleStar{"/root/*/leaf"};
+    ConcretePathString deeper{"/root/a/b/leaf"};
+    CHECK_FALSE(middleStar == deeper); // single '*' should not cross components
+
+    GlobPathString middleSuper{"/root/**/leaf"};
+    ConcretePathString deepMatch{"/root/a/b/leaf"};
+    CHECK(middleSuper == deepMatch);
 }
 
 TEST_CASE("GlobPath and ConcretePath equality overloads") {
@@ -44,5 +100,8 @@ TEST_CASE("GlobPath and ConcretePath equality overloads") {
     CHECK(glob == concrete);
     CHECK(concrete == "/foo/bar");
     CHECK(concrete.canonicalized().has_value());
+
+    GlobPathString extraComponent{"/foo/bar/baz"};
+    CHECK_FALSE(extraComponent == concrete); // glob longer than concrete without supermatch
 }
 }

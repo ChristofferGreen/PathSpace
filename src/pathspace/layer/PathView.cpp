@@ -130,4 +130,14 @@ auto PathView::getRootNode() -> Node* {
     return this->space->getRootNode();
 }
 
+namespace testing {
+auto joinCanonicalForTest(std::string const& prefix, std::string const& suffix) -> std::string {
+    return joinCanonical(prefix, suffix);
+}
+
+auto stripPrefixForTest(std::string const& absolute, std::string const& prefix) -> std::optional<std::string> {
+    return stripPrefix(absolute, prefix);
+}
+} // namespace testing
+
 } // namespace SP

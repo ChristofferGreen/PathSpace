@@ -4,6 +4,7 @@
 #include "core/PathSpaceContext.hpp"
 #include "core/Node.hpp"
 #include "task/TaskPool.hpp"
+#include <atomic>
 
 namespace SP {
 struct PathSpaceTestHelper {
@@ -18,6 +19,15 @@ struct PathSpaceTestHelper {
                          std::string const& currentPath,
                          PathSpace::CopyStats& stats) {
         PathSpace::copyNodeRecursive(src.leaf.rootNode(), dst.leaf.rootNode(), ctx, basePrefix, currentPath, stats);
+    }
+
+    // Test-only accessors to internal counters used by shutdown/clear paths.
+    static std::atomic<std::size_t>& activeOut(PathSpace& ps) { return ps.activeOutCount; }
+    static std::atomic<bool>&        clearing(PathSpace& ps) { return ps.clearingInProgress; }
+
+    // Cover retarget guard paths directly.
+    static void retarget(PathSpace& ps, Node const* node, std::string const& basePath) {
+        ps.retargetNestedMounts(node, basePath);
     }
 
 };

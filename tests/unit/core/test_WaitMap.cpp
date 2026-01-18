@@ -11,6 +11,18 @@ using namespace SP;
 using namespace std::chrono_literals;
 
 TEST_SUITE("core.waitmap") {
+    TEST_CASE("Debug override forces logging path") {
+        testing::waitMapDebugOverride().store(true, std::memory_order_relaxed);
+        WaitMap waitMap;
+
+        // Trigger both notify and wait debug logging without touching private helpers directly.
+        waitMap.notify("/debug/path");
+        auto guard = waitMap.wait("/debug/path");
+        guard.wait_until(std::chrono::system_clock::now() + 1ms);
+
+        testing::waitMapDebugOverride().store(false, std::memory_order_relaxed);
+    }
+
     TEST_CASE("Basic Operations") {
         WaitMap waitMap;
 

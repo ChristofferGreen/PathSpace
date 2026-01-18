@@ -52,4 +52,24 @@ TEST_CASE("Future handles expired task gracefully") {
     CHECK_FALSE(invalid.wait_until_steady(deadline));
     invalid.wait(); // Should be a no-op for expired tasks.
 }
+
+TEST_CASE("Future wait_until_steady times out when task is not completed") {
+    auto task = std::make_shared<Task>();
+    task->function = [](Task& t, bool const) { t.result = 7; };
+    task->resultCopyFn = [](std::any const& from, void* const to) {
+        *static_cast<int*>(to) = std::any_cast<int>(from);
+    };
+
+    // Start the task but never transition it to Completed so wait_until_steady
+    // must respect the deadline and return false.
+    REQUIRE(task->tryStart());
+    REQUIRE(task->transitionToRunning());
+
+    Future fut = Future::FromShared(task);
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1);
+    CHECK_FALSE(fut.wait_until_steady(deadline));
+
+    // Finish the task afterward to avoid leaving it in Running for other tests.
+    task->markCompleted();
+}
 }

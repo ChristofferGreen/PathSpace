@@ -220,7 +220,8 @@ auto decodeNodeDataPayload(SerializedPayload const& payload) -> Expected<NodeDat
         return std::unexpected(makeError("Journal payload missing NodeData content"));
     }
     auto span = std::span<const std::byte>{payload.bytes.data(), payload.bytes.size()};
-    auto nodeOpt = NodeData::deserializeSnapshot(span);
+    // Journal payloads may outlive the process that created them; avoid trusting type_info pointers.
+    auto nodeOpt = NodeData::deserializeSnapshot(span, /*preserveTypeInfo=*/false);
     if (!nodeOpt.has_value()) {
         return std::unexpected(Error{Error::Code::MalformedInput, "Unable to decode NodeData from journal payload"});
     }

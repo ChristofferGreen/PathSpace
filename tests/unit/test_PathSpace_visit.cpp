@@ -228,4 +228,49 @@ TEST_CASE("ValueHandle snapshot reflects POD fast path upgrade to generic") {
     CHECK(*tail == "tail");
 }
 
+TEST_CASE("PathSpace visit rejects malformed roots and empty visitors") {
+    PathSpace space;
+
+    // Empty visitor callback should surface InvalidType.
+    PathVisitor emptyVisitor;
+    auto emptyResult = space.visit(emptyVisitor, VisitOptions{});
+    CHECK_FALSE(emptyResult);
+    CHECK(emptyResult.error().code == Error::Code::InvalidType);
+
+    // Malformed indexed root should not crash even if it canonicalizes to '/'.
+    auto badRoot = space.visit(
+        [&](PathEntry const&, ValueHandle&) { return VisitControl::Continue; },
+        VisitOptions{.root = "/alpha[abc]"}); // non-numeric index
+    if (badRoot) {
+        CHECK(badRoot.has_value());
+    } else {
+        CHECK(badRoot.error().code == Error::Code::InvalidPath);
+    }
+}
+
+TEST_CASE("ValueHandle snapshot handles nodes without payload") {
+    PathSpace space;
+    // Create a subtree so root has children but no payload.
+    REQUIRE(space.insert("/root/child", 1).errors.empty());
+
+    VisitOptions opts;
+    opts.includeValues = true;
+    bool sawRoot       = false;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/") {
+                sawRoot = true;
+                auto snap = handle.snapshot();
+                REQUIRE(snap);
+                CHECK(snap->queueDepth == 0);
+                CHECK_FALSE(snap->hasSerializedPayload);
+                CHECK_FALSE(snap->hasExecutionPayload);
+            }
+            return VisitControl::Continue;
+        },
+        opts);
+    REQUIRE(result);
+    CHECK(sawRoot);
+}
+
 TEST_SUITE_END();

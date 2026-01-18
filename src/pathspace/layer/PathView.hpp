@@ -1,6 +1,8 @@
 #pragma once
 #include "PathSpace.hpp"
 
+#include <optional>
+
 namespace SP {
 
 struct Permission {
@@ -26,5 +28,10 @@ private:
     std::function<Permission(Iterator const&)> permission;
     std::shared_ptr<PathSpaceBase>             space;
 };
+
+namespace testing {
+std::string joinCanonicalForTest(std::string const& prefix, std::string const& suffix);
+std::optional<std::string> stripPrefixForTest(std::string const& absolute, std::string const& prefix);
+} // namespace testing
 
 } // namespace SP

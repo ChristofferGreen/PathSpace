@@ -56,7 +56,11 @@ auto Iterator::startToCurrent() const noexcept -> std::string_view {
         startIdx = 1;
     }
     size_t currentIdx = static_cast<size_t>(this->current - this->storage.begin());
-    size_t len        = currentIdx >= startIdx ? currentIdx - startIdx : 0;
+    // Drop a trailing separator so the slice reflects completed components only.
+    if (currentIdx > startIdx && this->storage[currentIdx - 1] == '/') {
+        currentIdx -= 1;
+    }
+    size_t len = currentIdx >= startIdx ? currentIdx - startIdx : 0;
     return std::string_view{this->storage.data() + startIdx, len};
 }
 
@@ -95,7 +99,12 @@ auto Iterator::operator++(int) noexcept -> Iterator {
 }
 
 auto Iterator::operator==(const Iterator& other) const noexcept -> bool {
-    return current == other.current;
+    if (this->path != other.path) {
+        return false;
+    }
+    auto offset      = static_cast<size_t>(this->current - this->storage.begin());
+    auto otherOffset = static_cast<size_t>(other.current - other.storage.begin());
+    return offset == otherOffset;
 }
 
 auto Iterator::validate(ValidationLevel const& level) const noexcept -> std::optional<Error> {
@@ -129,8 +138,9 @@ auto Iterator::validateBasic() const noexcept -> std::optional<Error> {
 
 auto Iterator::validateFull() const noexcept -> std::optional<Error> {
     auto result = validate_path_impl(std::string_view(this->path));
-    if (result.code != ValidationError::Code::None)
+    if (result.code != ValidationError::Code::None) {
         return Error{Error::Code::InvalidPath, get_error_message(result.code)};
+    }
     return std::nullopt;
 }
 
