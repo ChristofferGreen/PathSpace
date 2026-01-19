@@ -59,6 +59,23 @@ inline auto deserialize_with_alpaca(SlidingBuffer const& buffer) -> Expected<std
             return std::unexpected(Error{Error::Code::MalformedInput, "Buffer too small for data"});
         }
 
+        if (header.size == 0) {
+            if constexpr (std::is_default_constructible_v<T>) {
+                return std::pair<T, size_t>{T{}, totalSize};
+            }
+            return std::unexpected(
+                Error{Error::Code::UnserializableType, "Zero-length payload for non-default-constructible type"});
+        }
+
+        if constexpr (std::is_default_constructible_v<T>) {
+            std::vector<uint8_t> expectedSizeBuffer;
+            (void)alpaca::serialize<Wrapper<T>, 1>(Wrapper<T>{}, expectedSizeBuffer);
+            if (!expectedSizeBuffer.empty() && header.size < expectedSizeBuffer.size()) {
+                return std::unexpected(
+                    Error{Error::Code::UnserializableType, "Encoded payload shorter than expected"});
+            }
+        }
+
         std::vector<uint8_t> tempBuffer(buffer.data() + sizeof(header),
                                         buffer.data() + sizeof(header) + header.size);
 
@@ -66,6 +83,12 @@ inline auto deserialize_with_alpaca(SlidingBuffer const& buffer) -> Expected<std
         auto const      wrapper = alpaca::deserialize<Wrapper<T>, 1>(tempBuffer, ec);
         if (ec) {
             return std::unexpected(Error{Error::Code::UnserializableType, ec.message()});
+        }
+
+        std::vector<uint8_t> canonicalBuffer;
+        (void)alpaca::serialize<Wrapper<T>, 1>(wrapper, canonicalBuffer);
+        if (canonicalBuffer.size() != tempBuffer.size()) {
+            return std::unexpected(Error{Error::Code::UnserializableType, "Encoded payload size mismatch"});
         }
 
         return std::pair<T, size_t>{wrapper.obj, totalSize};

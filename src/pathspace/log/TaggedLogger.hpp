@@ -62,7 +62,7 @@ private:
     static auto getShortPath(const char* filepath) -> std::string;
 };
 
-TaggedLogger& logger();
+auto logger() -> TaggedLogger&;
 
 template <typename... Tags>
 auto TaggedLogger::log_impl(const std::string& message, const std::source_location& location, Tags&&... tags) -> void {

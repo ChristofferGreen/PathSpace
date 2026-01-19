@@ -38,6 +38,9 @@ TEST_CASE("Iterator basic validation surfaces expected errors") {
     Iterator nonNumericIndex{"/foo[abc]"};
     auto     indexErr = nonNumericIndex.validate(ValidationLevel::Full);
     CHECK_FALSE(indexErr.has_value()); // glob character classes are permitted at full validation
+
+    Iterator noneLevel{"/ok/path"};
+    CHECK_FALSE(noneLevel.validate(ValidationLevel::None).has_value());
 }
 
 TEST_CASE("Iterator iteration utilities expose start and end slices") {
@@ -78,5 +81,9 @@ TEST_CASE("Iterator constructed from iterator range canonicalizes slashes and eq
     CHECK(copy.isAtFinalComponent());
     ++copy;
     CHECK(copy.isAtEnd());
+
+    Iterator unequalA{"/a"};
+    Iterator unequalB{"/b"};
+    CHECK_FALSE(unequalA == unequalB);
 }
 }

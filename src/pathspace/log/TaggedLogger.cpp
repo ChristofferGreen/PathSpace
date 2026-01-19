@@ -27,10 +27,7 @@ std::string join_with_impl(const Range& range, const Delimiter& delim) {
 
 std::mutex TaggedLogger::coutMutex;
 
-TaggedLogger& logger() {
-    static TaggedLogger instance;
-    return instance;
-}
+auto logger() -> TaggedLogger& { static TaggedLogger instance; return instance; }
 
 TaggedLogger::TaggedLogger() : running(true), nextThreadNumber(0), loggingEnabled(false) {
     // Configure defaults from environment

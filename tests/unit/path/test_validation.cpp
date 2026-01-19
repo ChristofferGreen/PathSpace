@@ -13,6 +13,8 @@ TEST_CASE("validate_path_impl reports detailed errors") {
     CHECK(validate_path_impl("/../bad").code == ValidationError::Code::RelativePath);
     CHECK(validate_path_impl("/[[]").code == ValidationError::Code::NestedBrackets);
     CHECK(validate_path_impl("/[unclosed").code == ValidationError::Code::UnclosedBracket);
+    CHECK(validate_path_impl("/[!").code == ValidationError::Code::EmptyNegatedBracket);
+    CHECK(validate_path_impl("/[-").code == ValidationError::Code::InvalidRangeSpec);
     CHECK(validate_path_impl("/[!]").code == ValidationError::Code::EmptyBracket);
     CHECK(validate_path_impl("/path]").code == ValidationError::Code::UnmatchedClosingBracket);
     CHECK(validate_path_impl("/[]").code == ValidationError::Code::EmptyBracket);
@@ -24,7 +26,20 @@ TEST_CASE("validate_path_impl reports detailed errors") {
 }
 
 TEST_CASE("get_error_message returns helpful strings") {
-    CHECK(get_error_message(ValidationError::Code::EmptyPath) != nullptr);
     CHECK(get_error_message(ValidationError::Code::None) == nullptr);
+    CHECK(get_error_message(ValidationError::Code::EmptyPath) != nullptr);
+    CHECK(get_error_message(ValidationError::Code::MustStartWithSlash) != nullptr);
+    CHECK(get_error_message(ValidationError::Code::EndsWithSlash) != nullptr);
+    CHECK(get_error_message(ValidationError::Code::EmptyPathComponent) != nullptr);
+    CHECK(get_error_message(ValidationError::Code::SlashInBrackets) != nullptr);
+    CHECK(get_error_message(ValidationError::Code::RelativePath) != nullptr);
+    CHECK(get_error_message(ValidationError::Code::NestedBrackets) != nullptr);
+    CHECK(get_error_message(ValidationError::Code::UnclosedBracket) != nullptr);
+    CHECK(get_error_message(ValidationError::Code::EmptyNegatedBracket) != nullptr);
+    CHECK(get_error_message(ValidationError::Code::UnmatchedClosingBracket) != nullptr);
+    CHECK(get_error_message(ValidationError::Code::EmptyBracket) != nullptr);
+    CHECK(get_error_message(ValidationError::Code::InvalidRangeSpec) != nullptr);
+    CHECK(get_error_message(ValidationError::Code::InvalidCharRange) != nullptr);
+    CHECK(get_error_message(ValidationError::Code::NoContent) != nullptr);
 }
 }

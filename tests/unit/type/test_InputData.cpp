@@ -49,4 +49,24 @@ TEST_CASE("Unique pointer inputs leave POD factory unset") {
     CHECK(data.metadata.createPodPayload == nullptr);
 }
 
+TEST_CASE("std::function inputs keep object address without POD fast path") {
+    std::function<void()> fn = []() {};
+    InputData               data{fn};
+
+    auto* stored = static_cast<std::function<void()>*>(data.obj);
+    REQUIRE(stored != nullptr);
+    (*stored)();
+    CHECK_FALSE(data.metadata.podPreferred);
+    CHECK(data.metadata.createPodPayload == nullptr);
+}
+
+TEST_CASE("String literal inputs avoid POD factory and preserve pointer") {
+    static char const literal[] = "hello";
+    InputData          data{literal};
+
+    CHECK(data.obj == literal);
+    CHECK_FALSE(data.metadata.podPreferred);
+    CHECK(data.metadata.createPodPayload == nullptr);
+}
+
 TEST_SUITE_END();

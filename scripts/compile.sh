@@ -35,15 +35,12 @@ TEST=0        # run tests after build if 1
 LOOP=0        # run tests in a loop N times (default 15 if provided without value)
 PER_TEST_TIMEOUT=""  # override seconds per test; default 60 (single), 120 (when --loop is used)
 EXTRA_ARGS=""        # extra args passed to test executable (doctest)
-UI_TEST_EXTRA_ARGS="${PATHSPACE_UI_TEST_EXTRA_ARGS:-}" # extra args passed only to PathSpaceUITests
 DOCS=0               # generate Doxygen docs if 1
-ENABLE_METAL_TESTS=0 # Metal presenter tests removed
 SIZE_REPORT=0
 SIZE_BASELINE=""
 SIZE_WRITE_BASELINE=""
 SIZE_BASELINE_DEFAULT="$ROOT_DIR/docs/perf/example_size_baseline.json"
 SIZE_PRINT_DONE=0
-METAL_FLAG_EXPLICIT=0
 RUNTIME_FLAG_REPORT=0
 RUNTIME_FLAG_REPORT_PATH=""
 LOOP_KEEP_LOGS="${PATHSPACE_LOOP_KEEP_LOGS:-}"
@@ -81,10 +78,6 @@ Options:
       --per-test-timeout SECS  Override per-test timeout (default: 60; 120 when --loop is used).
       --docs                 Generate Doxygen docs into build/docs/html (requires doxygen).
       --args "..."           Extra arguments passed to the test runner (doctest)
-      --ui-test-extra-args "..."
-                             Extra arguments passed only to PathSpaceUITests (e.g. "--success")
-      --enable-metal-tests   (no-op; Metal presenter tests removed)
-      --disable-metal-tests  (no-op)
       --loop-keep-logs LABELS  Comma/space separated labels whose logs are preserved even on success
                              (default when --loop is used: PathSpaceUITests). Use "none" to disable.
       --loop-label LABEL       Restrict --loop runs to one or more labels (repeat or comma-separate, supports globs)
@@ -261,28 +254,6 @@ while [[ $# -gt 0 ]]; do
     --args=*)
       EXTRA_ARGS="${1#*=}"
       ;;
-    --ui-test-extra-args)
-      shift || die "Missing argument for $1"
-      if [[ -z "$UI_TEST_EXTRA_ARGS" ]]; then
-        UI_TEST_EXTRA_ARGS="$1"
-      else
-        UI_TEST_EXTRA_ARGS+=" $1"
-      fi
-      ;;
-    --ui-test-extra-args=*)
-      value="${1#*=}"
-      if [[ -z "$UI_TEST_EXTRA_ARGS" ]]; then
-        UI_TEST_EXTRA_ARGS="$value"
-      else
-        UI_TEST_EXTRA_ARGS+=" $value"
-      fi
-      ;;
-    --enable-metal-tests)
-      METAL_FLAG_EXPLICIT=1
-      ;;
-    --disable-metal-tests)
-      METAL_FLAG_EXPLICIT=1
-      ;;
     --loop-keep-logs)
       shift || die "Missing argument for $1"
       LOOP_KEEP_LOGS="$1"
@@ -355,8 +326,6 @@ fi
 if [[ -n "$SANITIZER" && -z "$BUILD_DIR" ]]; then
   BUILD_DIR="$ROOT_DIR/build-$SANITIZER"
 fi
-
-ENABLE_METAL_TESTS=0
 
 # ----------------------------
 # Validations and setup
@@ -527,15 +496,9 @@ fi
 if [[ -d "$BUILD_DIR/tests" ]]; then
   TEST_RUNNER="$ROOT_DIR/scripts/run-test-with-logs.sh"
   CORE_TEST_EXE="$BUILD_DIR/tests/PathSpaceTests"
-  UI_TEST_EXE="$BUILD_DIR/tests/PathSpaceUITests"
 
   if [[ -x "$CORE_TEST_EXE" ]]; then
     info "Test executable: $CORE_TEST_EXE"
-  fi
-  if [[ -x "$UI_TEST_EXE" ]]; then
-    info "UI test executable: $UI_TEST_EXE"
-  else
-    info "UI test executable: not found (will skip PathSpaceUITests unless built)."
   fi
 
   if [[ "$TEST" -eq 1 ]]; then
@@ -558,12 +521,6 @@ if [[ -d "$BUILD_DIR/tests" ]]; then
       IFS=' ' read -r -a EXTRA_ARGS_ARRAY <<< "$EXTRA_ARGS"
     else
       EXTRA_ARGS_ARRAY=()
-    fi
-
-    if [[ -n "$UI_TEST_EXTRA_ARGS" ]]; then
-      IFS=' ' read -r -a UI_TEST_EXTRA_ARGS_ARRAY <<< "$UI_TEST_EXTRA_ARGS"
-    else
-      UI_TEST_EXTRA_ARGS_ARRAY=()
     fi
 
     PATHSPACE_TEST_TIMEOUT_VALUE="${PATHSPACE_TEST_TIMEOUT:-1}"
@@ -961,33 +918,6 @@ PY
     }
 
     add_test_command "PathSpaceTests" "$CORE_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}"
-    if [[ -x "$UI_TEST_EXE" ]]; then
-      ui_suite_names=()
-      read_ui_suite_names || true
-      ui_suite_batches=()
-      read_ui_suite_batches || true
-
-      if [[ ${#ui_suite_batches[@]} -gt 0 ]]; then
-        for batch_entry in "${ui_suite_batches[@]}"; do
-          batch_label="${batch_entry%%:*}"
-          suite_spec="${batch_entry#*:}"
-          if [[ -z "$batch_label" || "$batch_label" == "$suite_spec" || -z "$suite_spec" ]]; then
-            continue
-          fi
-          suite_value="${suite_spec//;/,}"
-          suite_command=(env "PATHSPACE_TEST_SUITE=${suite_value}" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}" "${UI_TEST_EXTRA_ARGS_ARRAY[@]}")
-          add_test_command "$batch_label" "${suite_command[@]}"
-        done
-      elif [[ ${#ui_suite_names[@]} -gt 0 ]]; then
-        for suite_name in "${ui_suite_names[@]}"; do
-          label_suffix="$(sanitize_ui_suite_label "$suite_name")"
-          suite_command=(env "PATHSPACE_TEST_SUITE=${suite_name}" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}" "${UI_TEST_EXTRA_ARGS_ARRAY[@]}")
-          add_test_command "PathSpaceUITests_${label_suffix}" "${suite_command[@]}"
-        done
-      else
-        add_test_command "PathSpaceUITests_All" "$UI_TEST_EXE" "${EXTRA_ARGS_ARRAY[@]}" "${UI_TEST_EXTRA_ARGS_ARRAY[@]}"
-      fi
-    fi
 
     if [[ "$LOOP" -gt 0 && ${#LOOP_FILTER_LABELS[@]} -gt 0 ]]; then
       for entry in "${LOOP_FILTER_LABELS[@]}"; do

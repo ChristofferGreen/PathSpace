@@ -1,0 +1,49 @@
+#include "path/GlobPath.hpp"
+#include "path/ConcretePath.hpp"
+#include "third_party/doctest.h"
+
+#include <string_view>
+
+using namespace SP;
+
+TEST_SUITE("path.globpath") {
+TEST_CASE("glob equality supports supermatch segments") {
+    GlobPathString    superGlob{"/root/**"};
+    ConcretePathString deepPath{"/root/child/grandchild"};
+    CHECK(superGlob == deepPath);
+}
+
+TEST_CASE("glob equality respects path length when no supermatch") {
+    GlobPathString glob{"/alpha/beta"};
+    ConcretePathString shorter{"/alpha"};
+    ConcretePathString longer{"/alpha/beta/gamma"};
+    ConcretePathString equal{"/alpha/beta"};
+    CHECK_FALSE(glob == shorter);
+    CHECK_FALSE(glob == longer);
+    CHECK(glob == equal);
+}
+
+TEST_CASE("invalid glob paths never match") {
+    GlobPathString invalid{"relative"};
+    ConcretePathString concrete{"/relative"};
+    GlobPathString another{"/relative"};
+    CHECK_FALSE(invalid == concrete);
+    CHECK_FALSE(invalid == another);
+    CHECK_FALSE(invalid.isValid());
+}
+
+TEST_CASE("isConcrete and isGlob reflect wildcard usage") {
+    GlobPathString concrete{"/plain/path"};
+    GlobPathString wildcard{"/plain/*"};
+    CHECK(concrete.isConcrete());
+    CHECK_FALSE(concrete.isGlob());
+    CHECK_FALSE(wildcard.isConcrete());
+    CHECK(wildcard.isGlob());
+}
+
+TEST_CASE("string_view equality delegates to path comparison") {
+    GlobPathStringView view{std::string_view{"/alpha/*"}};
+    CHECK(view == std::string_view{"/alpha/*"});
+    CHECK_FALSE(view == std::string_view{"/alpha/beta/gamma"});
+}
+}

@@ -3,6 +3,8 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <limits>
+#include <memory>
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/tools/PathSpaceJsonExporter.hpp>
 #include <pathspace/tools/PathSpaceJsonConverters.hpp>
@@ -324,6 +326,96 @@ TEST_CASE("JSON namespace Export supports flat paths") {
     CHECK(doc.at("/flat/one") == 1);
     CHECK(doc.at("/flat/two") == 2);
     CHECK(doc.size() == 2);
+}
+
+TEST_CASE("PathSpace JSON exporter emits placeholders for function pointers") {
+    auto sampleFunction = +[]() -> int { return 21; };
+
+    PathSpace space;
+    auto ret = space.insert("/fn/pointer", sampleFunction);
+    REQUIRE(ret.errors.empty());
+
+    PathSpaceJsonOptions opts;
+    opts.mode                   = PathSpaceJsonOptions::Mode::Debug;
+    opts.includeStructureFields = true;
+
+    auto doc  = dump(space, opts);
+    auto node = findNode(doc, "/", "/fn/pointer");
+    REQUIRE(node.at("values").size() == 1);
+
+    auto entry = node.at("values")[0];
+    INFO(entry.dump());
+    CHECK(entry.at("category") == "Execution");
+    CHECK(entry.at("placeholder") == "execution");
+    CHECK(entry.at("state") == "pending");
+}
+
+TEST_CASE("PathSpace JSON exporter reports enabled child limits and unlimited queue entries") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/a", 1).errors.empty());
+    REQUIRE(space.insert("/root/b", 2).errors.empty());
+    REQUIRE(space.insert("/root/c", 3).errors.empty());
+
+    PathSpaceJsonOptions opts;
+    opts.mode                    = PathSpaceJsonOptions::Mode::Debug;
+    opts.includeStructureFields  = true;
+    opts.includeMetadata         = true;
+    opts.visit.root              = "/root";
+    opts.visit.maxChildren       = 1; // enable child limit branch
+    opts.maxQueueEntries         = std::numeric_limits<std::size_t>::max();
+    opts.dumpIndent              = -1; // exercise compact dump branch
+
+    auto jsonStr = space.toJSON(opts);
+    REQUIRE(jsonStr);
+    auto doc = Json::parse(*jsonStr);
+
+    auto meta = doc.at("_meta").at("limits");
+    CHECK(meta.at("max_children") == 1);
+    CHECK(meta.at("max_queue_entries") == "unlimited");
+
+    auto rootNode = findNode(doc, "/root", "/root");
+    CHECK(rootNode.at("children_truncated").get<bool>());
+}
+
+TEST_CASE("Flat path export flattens multi-value queues") {
+    PathSpace space;
+    REQUIRE(space.insert("/queue/item", 1).errors.empty());
+    REQUIRE(space.insert("/queue/item", 2).errors.empty());
+
+    PathSpaceJsonOptions opts;
+    opts.flatPaths        = true;
+    opts.flatSimpleValues = true;
+    opts.visit.root       = "/queue";
+
+    auto flat = JSON::Export(space, opts);
+    REQUIRE(flat);
+    auto doc = Json::parse(*flat);
+
+    auto values = doc.at("/queue/item");
+    REQUIRE(values.is_array());
+    REQUIRE(values.size() == 2);
+    CHECK(values[0] == 1);
+    CHECK(values[1] == 2);
+}
+
+TEST_CASE("PathSpace JSON exporter emits opaque placeholder for PathSpace unique_ptr payloads") {
+    PathSpace space;
+    auto      nested = std::make_unique<PathSpace>();
+    auto ret         = space.insert("/ptr/value", std::move(nested));
+    REQUIRE(ret.errors.empty());
+
+    PathSpaceJsonOptions opts;
+    opts.mode                   = PathSpaceJsonOptions::Mode::Debug;
+    opts.includeStructureFields = true;
+
+    auto doc  = dump(space, opts);
+    auto node = findNode(doc, "/", "/ptr/value");
+
+    REQUIRE(node.at("values").size() == 1);
+    auto entry = node.at("values")[0];
+    CHECK(entry.at("placeholder") == "opaque");
+    CHECK(entry.at("category") == "UniquePtr");
+    CHECK(entry.at("reason") == "converter-missing");
 }
 
 TEST_SUITE_END();

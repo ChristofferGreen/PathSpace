@@ -177,7 +177,13 @@ TEST_CASE("PathSpace Read") {
         pspace.insert("/umap", umap);
         auto const val = pspace.read<std::unordered_map<std::string, double>>("/umap");
         CHECK(val.has_value());
-        CHECK(val.value() == umap);
+        REQUIRE(val.has_value());
+        CHECK(val->size() == umap.size());
+        for (auto const& [key, expected] : umap) {
+            auto it = val->find(key);
+            REQUIRE(it != val->end());
+            CHECK(it->second == doctest::Approx(expected));
+        }
     }
 
     SUBCASE("PathSpace Read std::set") {
@@ -193,7 +199,11 @@ TEST_CASE("PathSpace Read") {
         pspace.insert("/uset", uset);
         auto const val = pspace.read<std::unordered_set<int>>("/uset");
         CHECK(val.has_value());
-        CHECK(val.value() == uset);
+        REQUIRE(val.has_value());
+        CHECK(val->size() == uset.size());
+        for (auto element : uset) {
+            CHECK(val->count(element) == 1);
+        }
     }
 
     SUBCASE("PathSpace Read std::pair") {

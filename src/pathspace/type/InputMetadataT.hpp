@@ -67,7 +67,16 @@ template <typename T>
 concept SharedPtrType = is_shared_ptr<std::remove_cvref_t<T>>::value;
 
 template <typename T>
-concept AlpacaCompatible = !std::is_pointer_v<T> && !SharedPtrType<T>
+struct is_std_function : std::false_type {};
+
+template <typename R, typename... Args>
+struct is_std_function<std::function<R(Args...)>> : std::true_type {};
+
+template <typename T>
+concept StdFunctionType = is_std_function<std::remove_cvref_t<T>>::value;
+
+template <typename T>
+concept AlpacaCompatible = !std::is_pointer_v<T> && !SharedPtrType<T> && !StdFunctionType<T>
     && requires(T t, SlidingBuffer& buffer) { SP::serialize<T>(t, buffer); };
 
 // ########### Serialization Helpers ###########
