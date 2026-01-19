@@ -95,6 +95,7 @@ TEST_CASE("Type InputMetadata Fundamental") {
 
         REQUIRE(im3.functionCategory == FunctionCategory::None);
     }
+
 }
 
 TEST_CASE("String-like metadata serialize/deserialize") {
@@ -133,6 +134,72 @@ TEST_CASE("String-like metadata serialize/deserialize") {
         CHECK(bytes.size() == sizeof(uint32_t) + view.size());
         CHECK(meta.deserialize == nullptr);
     }
+
+    SUBCASE("std::string deserializePop consumes buffer") {
+        std::string   value{"buffer-pop"};
+        std::string   out;
+        InputMetadata meta(InputMetadataT<std::string>{});
+        SlidingBuffer bytes;
+
+        REQUIRE(meta.serialize != nullptr);
+        meta.serialize(&value, bytes);
+        REQUIRE(meta.deserializePop != nullptr);
+
+        meta.deserializePop(&out, bytes);
+        CHECK(out == value);
+        CHECK(bytes.size() == 0);
+    }
+
+    SUBCASE("std::string deserialize throws when advertised size exceeds buffer") {
+        InputMetadata meta(InputMetadataT<std::string>{});
+        SlidingBuffer bytes;
+        // Write header with size but omit payload.
+        uint32_t size = 5;
+        bytes.append(reinterpret_cast<uint8_t*>(&size), sizeof(size));
+        std::string out;
+        CHECK_THROWS_AS(StringSerializationHelper<std::string>::Deserialize(&out, bytes), std::runtime_error);
+    }
+}
+
+TEST_CASE("InputMetadata covers typeInfo mapping and std::invoke_result deductions") {
+    struct Callable {
+        int operator()() const { return 3; }
+    } callable;
+
+    InputMetadata callableMeta(InputMetadataT<Callable>{});
+    CHECK(callableMeta.typeInfo == &typeid(int));
+    CHECK(callableMeta.dataCategory == DataCategory::Execution);
+
+    // function pointer returns type maps through invoke_result
+    using FnPtr = int (*)();
+    InputMetadata fnMeta(InputMetadataT<FnPtr>{});
+    CHECK(fnMeta.functionCategory == FunctionCategory::FunctionPointer);
+    CHECK(fnMeta.typeInfo == &typeid(int));
+}
+
+TEST_CASE("ValueSerializationHelper fundamental paths serialize and reject undersized buffers") {
+    SlidingBuffer buffer;
+    int           value = 1234;
+
+    ValueSerializationHelper<int>::Serialize(&value, buffer);
+    REQUIRE(buffer.size() == sizeof(int));
+
+    int out = 0;
+    ValueSerializationHelper<int>::Deserialize(&out, buffer);
+    CHECK(out == value);
+
+    SlidingBuffer small;
+    small.append(reinterpret_cast<uint8_t*>(&value), sizeof(int) - 1); // too small
+    CHECK_THROWS_AS(ValueSerializationHelper<int>::Deserialize(&out, small), std::runtime_error);
+}
+
+TEST_CASE("StringSerializationHelper detects truncated payloads") {
+    SlidingBuffer bytes;
+    uint32_t size = 4;
+    bytes.append(reinterpret_cast<uint8_t*>(&size), sizeof(size)); // omit payload
+
+    std::string out;
+    CHECK_THROWS_AS(StringSerializationHelper<std::string>::Deserialize(&out, bytes), std::runtime_error);
 }
 
 TEST_CASE("InputMetadata execution and pointer categories") {
@@ -188,6 +255,50 @@ TEST_CASE("InputMetadata execution and pointer categories") {
     }
 }
 
+TEST_CASE("InputMetadata covers additional literals, optionals, unique_ptr, and function pointers") {
+    SUBCASE("string literal maps to std::string typeInfo and serialize-only path") {
+        InputMetadata meta(InputMetadataT<char[6]>{});
+        CHECK(meta.typeInfo == &typeid(std::string));
+        CHECK(meta.dataCategory == DataCategory::SerializedData);
+        CHECK(meta.serialize != nullptr);
+        CHECK(meta.deserialize == nullptr);
+    }
+
+    SUBCASE("std::optional<int> is alpaca-compatible but not POD preferred") {
+        using Opt = std::optional<int>;
+        InputMetadata meta(InputMetadataT<Opt>{});
+        CHECK(meta.dataCategory == DataCategory::SerializationLibraryCompatible);
+        CHECK(meta.podPreferred);
+        REQUIRE(meta.serialize != nullptr);
+        REQUIRE(meta.deserialize != nullptr);
+
+        Opt           value = 9;
+        Opt           out{};
+        SlidingBuffer bytes;
+        meta.serialize(&value, bytes);
+        meta.deserialize(&out, bytes);
+        CHECK(out == value);
+    }
+
+    SUBCASE("unique_ptr is categorized but never serializable") {
+        using Ptr = std::unique_ptr<int>;
+        InputMetadata meta(InputMetadataT<Ptr>{});
+        CHECK(meta.dataCategory == DataCategory::UniquePtr);
+        CHECK_FALSE(meta.podPreferred);
+        CHECK(meta.serialize == nullptr);
+        CHECK(meta.deserialize == nullptr);
+    }
+
+    SUBCASE("function pointer is classified as FunctionPointer and keeps its type") {
+        using Fn = double (*)(int);
+        InputMetadata meta(InputMetadataT<Fn>{});
+        CHECK(meta.functionCategory == FunctionCategory::None);
+        CHECK(meta.dataCategory == DataCategory::FunctionPointer);
+        CHECK(meta.typeInfo == &typeid(Fn));
+    }
+}
+
+
 TEST_CASE("InputMetadata treats raw and shared pointers as non-serializable") {
     int value = 3;
     InputMetadata rawMeta(InputMetadataT<int*>{});
@@ -202,6 +313,13 @@ TEST_CASE("InputMetadata treats raw and shared pointers as non-serializable") {
     CHECK_FALSE(sharedMeta.podPreferred);
     CHECK(sharedMeta.serialize == nullptr);
     CHECK(sharedMeta.deserialize == nullptr);
+
+    using Unique = std::unique_ptr<int>;
+    InputMetadata uniqueMeta(InputMetadataT<Unique>{});
+    CHECK(uniqueMeta.dataCategory == DataCategory::UniquePtr);
+    CHECK_FALSE(uniqueMeta.podPreferred);
+    CHECK(uniqueMeta.serialize == nullptr);
+    CHECK(uniqueMeta.deserialize == nullptr);
 }
 
 TEST_CASE("InputMetadata Alpaca-compatible containers serialize/deserialize") {

@@ -12,6 +12,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/core/test_WaitMap.cpp
   unit/core/test_InsertReturn.cpp
   unit/type/test_InputData.cpp
+  unit/type/test_InputDataCoverage.cpp
   unit/type/test_InputMetadata.cpp
   unit/type/test_Serialization.cpp
   unit/type/test_TypeMetadataRegistry.cpp
@@ -21,6 +22,8 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/core/test_NodeDataCoverage.cpp
   unit/core/test_PathSpaceContext.cpp
   unit/ext/test_alpaca.cpp
+  unit/core/test_ExpectedShimCoverage.cpp
+  unit/core/test_Out.cpp
   unit/task/test_TaskPool.cpp
   unit/test_PathSpace_read.cpp
   unit/test_PathSpace_nesting.cpp
@@ -40,6 +43,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/history/test_UndoJournal.cpp
   unit/history/test_UndoJournalState.cpp
   unit/history/test_UndoJournalPersistence.cpp
+  unit/history/test_UndoJournalEntry.cpp
   unit/history/test_UndoHistoryUtils.cpp
   unit/history/test_UndoSavefileCodec.cpp
   unit/history/test_UndoableSpace.cpp
@@ -92,6 +96,9 @@ set(PATHSPACE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/..")
 target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_SOURCE_DIR="${PATHSPACE_ROOT_DIR}")
 # Treat CI/test builds as coverage-friendly to reduce timing flake sensitivity.
 target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_COVERAGE_BUILD=1)
+if(PATHSPACE_NEEDS_EXPECTED_SHIM)
+  target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_NEEDS_EXPECTED_SHIM=1)
+endif()
 
 target_link_libraries(PathSpaceTests
   PRIVATE

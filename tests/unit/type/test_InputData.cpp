@@ -73,6 +73,19 @@ TEST_CASE("InputData tracks executor and replaceExistingPayload flag") {
     CHECK(data.executor == execPtr);
 }
 
+TEST_CASE("InputData accepts explicit metadata constructor without altering factories") {
+    InputMetadataT<double> sourceMeta{};
+    InputMetadata          metadata{sourceMeta};
+    double                 payload = 3.5;
+
+    InputData data{&payload, metadata};
+
+    CHECK(data.obj == &payload);
+    CHECK(data.metadata.typeInfo == metadata.typeInfo);
+    CHECK(data.metadata.podPreferred == metadata.podPreferred);
+    CHECK(data.metadata.createPodPayload == nullptr);
+}
+
 TEST_CASE("String literal inputs avoid POD factory and preserve pointer") {
     static char const literal[] = "hello";
     InputData          data{literal};

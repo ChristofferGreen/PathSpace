@@ -47,6 +47,19 @@ std::vector<std::string> split_suite_filters(const char* raw) {
 
 }  // namespace
 
+TEST_CASE("split_suite_filters trims whitespace and treats commas/semicolons as separators") {
+    auto filters = split_suite_filters("  alpha , beta;gamma ;  delta  ");
+    std::vector<std::string> expected{"alpha", "beta", "gamma", "delta"};
+    CHECK(filters == expected);
+
+    auto empty = split_suite_filters(" , ;  ; ");
+    CHECK(empty.empty());
+
+    auto single = split_suite_filters(" solo ");
+    CHECK(single.size() == 1);
+    CHECK(single.front() == "solo");
+}
+
 struct ShowTestStart : public doctest::IReporter {
     ShowTestStart(const doctest::ContextOptions& /* in */) {
     }

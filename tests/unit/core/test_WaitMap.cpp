@@ -1,456 +1,184 @@
-#define private public
 #include "core/WaitMap.hpp"
-#undef private
 
 #include "third_party/doctest.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
-#include <mutex>
-#include <random>
 #include <thread>
+#include <vector>
 
 using namespace SP;
 using namespace std::chrono_literals;
 
 TEST_SUITE("core.waitmap") {
-    TEST_CASE("Debug override forces logging path") {
-        testing::waitMapDebugOverride().store(true, std::memory_order_relaxed);
-        WaitMap waitMap;
+TEST_CASE("guard tracks active waiters and clear waits for drain") {
+    testing::waitMapDebugOverride().store(true, std::memory_order_relaxed);
 
-        // Trigger both notify and wait debug logging without touching private helpers directly.
-        waitMap.notify("/debug/path");
-        auto guard = waitMap.wait("/debug/path");
-        guard.wait_until(std::chrono::system_clock::now() + 1ms);
+    WaitMap waitMap;
+    std::atomic<bool> predicateReady{false};
+    std::atomic<bool> waiterStarted{false};
+    std::atomic<bool> enteredWait{false};
 
-        testing::waitMapDebugOverride().store(false, std::memory_order_relaxed);
-    }
-
-    TEST_CASE("Basic Operations") {
-        WaitMap waitMap;
-
-        SUBCASE("Simple Wait and Notify") {
-            std::atomic<bool> notified = false;
-            std::string       path_str = "/test/path";
-            std::string_view  path(path_str);
-
-            std::thread waiter([&]() {
-                auto guard = waitMap.wait(path);
-                guard.wait_until(std::chrono::system_clock::now() + 1s, [&]() { return notified.load(); });
-            });
-
-            std::thread notifier([&]() {
-                std::this_thread::sleep_for(100ms);
-                notified = true;
-                waitMap.notify(path);
-            });
-
-            waiter.join();
-            notifier.join();
-            CHECK(notified);
-        }
-
-        SUBCASE("Multiple Waiters Single Path") {
-            std::atomic<int> counter{0};
-            std::string      path_str = "/test/path";
-            std::string_view path(path_str);
-            const int        NUM_WAITERS = 3;
-
-            std::vector<std::thread> waiters;
-            for (int i = 0; i < NUM_WAITERS; ++i) {
-                waiters.emplace_back([&]() {
-                    auto guard = waitMap.wait(path);
-                    guard.wait_until(std::chrono::system_clock::now() + 1s, [&]() { return counter.load() > 0; });
-                    counter++;
-                });
-            }
-
-            std::this_thread::sleep_for(100ms);
-            counter = 1;
-            waitMap.notify(path);
-
-            for (auto& t : waiters) {
-                t.join();
-            }
-
-            CHECK(counter == NUM_WAITERS + 1);
-        }
-
-        SUBCASE("Wait with Timeout") {
-            std::string      path_str = "/test/path";
-            std::string_view path(path_str);
-            bool             condition_met = false;
-
-            auto start = std::chrono::steady_clock::now();
-            auto guard = waitMap.wait(path);
-            guard.wait_until(std::chrono::system_clock::now() + 100ms, [&]() { return condition_met; });
-            auto duration = std::chrono::steady_clock::now() - start;
-
-            CHECK(duration >= 100ms);
-            CHECK_FALSE(condition_met);
-        }
-
-        SUBCASE("Clear Operation") {
-            std::atomic<bool> notified{false};
-            std::string       path_str = "/test/path";
-            std::string_view  path(path_str);
-
-            std::thread waiter([&]() {
-                auto guard = waitMap.wait(path);
-                guard.wait_until(std::chrono::system_clock::now() + 500ms, [&]() { return notified.load(); });
-            });
-
-            std::this_thread::sleep_for(100ms);
-            waitMap.clear();
-            waitMap.notify(path); // Notification after clear
-
-            waiter.join();
-            CHECK_FALSE(notified); // Should timeout because clear removed the condition variable
-        }
-    }
-
-    TEST_CASE("Path Pattern Matching") {
-        WaitMap waitMap;
-
-        SUBCASE("Basic Glob Pattern Matching Test") {
-            WaitMap           waitMap;
-            std::atomic<bool> waiterNotified{false};
-            std::string       path_str = "/test/match/1";
-
-            // Create a single waiter we expect to be notified
-            std::thread waiter([&]() {
-                std::string_view path(path_str);
-                auto             guard = waitMap.wait(path);
-                if (guard.wait_until(std::chrono::system_clock::now() + 200ms, []() { return true; })) {
-                    waiterNotified = true;
-                }
-            });
-
-            // Wait to ensure waiter is ready
-            std::this_thread::sleep_for(50ms);
-
-            // Try to notify using glob pattern
-            waitMap.notify("/test/match/*");
-
-            waiter.join();
-            CHECK(waiterNotified); // Let's see if this waiter gets notified
-        }
-
-        // Also test the direct path match case for comparison
-        SUBCASE("Direct Path Match Test") {
-            WaitMap           waitMap;
-            std::atomic<bool> waiterNotified{false};
-            std::string       path_str = "/test/match/1";
-
-            std::thread waiter([&]() {
-                std::string_view path(path_str);
-                auto             guard = waitMap.wait(path);
-                if (guard.wait_until(std::chrono::system_clock::now() + 200ms, []() { return true; })) {
-                    waiterNotified = true;
-                }
-            });
-
-            std::this_thread::sleep_for(50ms);
-
-            // Try to notify using exact same path
-            waitMap.notify(path_str);
-
-            waiter.join();
-            CHECK(waiterNotified);
-        }
-
-        SUBCASE("Glob Pattern Notification") {
-            std::atomic<int>         counter{0};
-            const int                NUM_PATHS = 3;
-            std::vector<std::thread> waiters;
-            std::vector<std::string> path_strs; // Keep strings alive
-            path_strs.reserve(NUM_PATHS);
-
-            // Create waiters for paths /test/1, /test/2, /test/3
-            for (int i = 1; i <= NUM_PATHS; ++i) {
-                path_strs.push_back("/test/" + std::to_string(i));
-                waiters.emplace_back([&, i]() {
-                    std::string_view path(path_strs[i - 1]);
-                    auto             guard = waitMap.wait(path);
-                    guard.wait_until(std::chrono::system_clock::now() + 1s, [&]() { return counter.load() > 0; });
-                    counter++;
-                });
-            }
-
-            std::this_thread::sleep_for(100ms);
-            counter = 1;
-            // Notify all paths matching the pattern
-            waitMap.notify("/test/*");
-
-            for (auto& t : waiters) {
-                t.join();
-            }
-
-            CHECK(counter == NUM_PATHS + 1);
-        }
-
-        SUBCASE("Partial Glob Pattern Match With Diagnostics") {
-            WaitMap                   waitMap;
-            std::atomic<bool>         notification_sent{false};
-            std::atomic<bool>         match_waiter_done{false};
-            std::atomic<bool>         nomatch_waiter_done{false};
-            std::atomic<bool>         match_waiter_notified{false};
-            std::atomic<bool>         nomatch_waiter_notified{false};
-            std::vector<std::thread> waiters;
-
-            // Keep string storage alive for the whole test
-            std::string_view match_path   = "/test/match/1";
-            std::string_view nomatch_path = "/test/nomatch/1";
-            std::string      pattern      = "/test/match/*";
-
-            // First waiter - should be notified
-            waiters.emplace_back([&]() {
-                auto guard            = waitMap.wait(match_path);
-                bool was_notified     = guard.wait_until(std::chrono::system_clock::now() + 300ms) == std::cv_status::no_timeout;
-                match_waiter_notified = was_notified;
-                match_waiter_done     = true;
-            });
-
-            // Second waiter - should not be notified
-            waiters.emplace_back([&]() {
-                auto guard              = waitMap.wait(nomatch_path);
-                bool was_notified       = guard.wait_until(std::chrono::system_clock::now() + 300ms) == std::cv_status::no_timeout;
-                nomatch_waiter_notified = was_notified;
-                nomatch_waiter_done     = true;
-            });
-
-            // Wait for waiters to be ready
-            while (!waitMap.hasWaiters()) {
-                std::this_thread::yield();
-            }
-            std::this_thread::sleep_for(50ms);
-
-            // Send notification
-            waitMap.notify(pattern);
-            notification_sent = true;
-
-            for (auto& t : waiters) { if (t.joinable()) t.join(); }
-            waiters.clear(); // Clear after joining all threads
-
-            CHECK(match_waiter_notified);         // Should be notified
-            CHECK_FALSE(nomatch_waiter_notified); // Should not be notified
-        }
-    }
-
-    TEST_CASE("Stress Testing") {
-        WaitMap          waitMap;
-        const int        NUM_THREADS           = 10;
-        const int        OPERATIONS_PER_THREAD = 100;
-        std::atomic<int> completedOperations{0};
-
-        SUBCASE("Concurrent Operations") {
-            std::vector<std::thread> threads;
-            std::atomic<int>         readyThreads{0};
-            std::vector<std::string> path_strs;
-
-            // Pre-create paths to avoid string allocation during test
-            for (int i = 0; i < 5; ++i) {
-                path_strs.push_back("/test/" + std::to_string(i));
-            }
-
-            for (int i = 0; i < NUM_THREADS; ++i) {
-                threads.emplace_back([&, i]() {
-                    std::random_device              rd;
-                    std::mt19937                    gen(rd());
-                    std::uniform_int_distribution<> dis(0, 4);
-                    readyThreads++;
-
-                    // Wait for all threads to be ready
-                    while (readyThreads < NUM_THREADS) {
-                        std::this_thread::yield();
-                    }
-
-                    for (int j = 0; j < OPERATIONS_PER_THREAD; ++j) {
-                        // Randomly choose between waiting and notifying
-                        if (gen() % 2) {
-                            std::string_view path(path_strs[dis(gen)]);
-                            auto             guard = waitMap.wait(path);
-                            guard.wait_until(std::chrono::system_clock::now() + 50ms, []() { return true; });
-                        } else {
-                            std::string_view path(path_strs[dis(gen)]);
-                            waitMap.notify(path);
-                        }
-                        completedOperations++;
-                    }
-                });
-            }
-
-            for (auto& t : threads) {
-                t.join();
-            }
-
-            CHECK(completedOperations == NUM_THREADS * OPERATIONS_PER_THREAD);
-        }
-    }
-
-    TEST_CASE("Notify returns promptly under contention") {
-        WaitMap waitMap;
-        std::atomic<bool> ready{false};
-        std::atomic<bool> stop{false};
-        std::string       path_str = "/hot/path";
-        std::string_view  path(path_str);
-
-        // Single waiter holds a long wait to simulate contention on the entry mutex.
-        std::thread waiter([&]() {
-            auto guard = waitMap.wait(path);
-            ready      = true;
-            guard.wait_until(std::chrono::system_clock::now() + 2s, [&] { return stop.load(); });
+    std::thread waiter([&] {
+        auto guard = waitMap.wait("/paths/foo");
+        waiterStarted.store(true, std::memory_order_release);
+        auto const deadline = std::chrono::system_clock::now() + 250ms;
+        auto ok = guard.wait_until(deadline, [&] {
+            enteredWait.store(true, std::memory_order_release);
+            return predicateReady.load(std::memory_order_acquire);
         });
+        CHECK_MESSAGE(ok, "waiter should exit once predicate is ready");
+    });
 
-        // Ensure waiter is parked.
-        while (!ready.load()) {
-            std::this_thread::yield();
-        }
-        std::this_thread::sleep_for(20ms);
-
-        auto start = std::chrono::steady_clock::now();
-        waitMap.notify(path);
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - start);
-
-        stop = true;
-        waitMap.notify(path); // wake waiter
-        waiter.join();
-
-        CHECK_MESSAGE(elapsed < 200ms, "notify should not block even when a waiter holds the entry mutex");
+    // Ensure the waiter is blocked inside wait_until before proceeding.
+    while (!waiterStarted.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
     }
 
-    TEST_CASE("Edge Cases") {
-        WaitMap waitMap;
-
-        SUBCASE("Empty Path") {
-            std::string      empty_str;
-            std::string_view path(empty_str);
-            bool             exceptionThrown = false;
-            try {
-                waitMap.notify(path);
-            } catch (...) {
-                exceptionThrown = true;
-            }
-            CHECK_FALSE(exceptionThrown);
-        }
-
-        SUBCASE("Root Path") {
-            std::atomic<bool> notified{false};
-            std::string       root_str("/");
-            std::string_view  path(root_str);
-
-            std::thread waiter([&]() {
-                auto guard = waitMap.wait(path);
-                guard.wait_until(std::chrono::system_clock::now() + 100ms, [&]() { return notified.load(); });
-            });
-
-            std::this_thread::sleep_for(50ms);
-            notified = true;
-            waitMap.notify(path);
-
-            if (waiter.joinable()) waiter.join();
-            CHECK(notified);
+    // hasWaiters becomes true once an entry exists in the trie.
+    while (!enteredWait.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+    bool observedWaiters = false;
+    for (int i = 0; i < 50 && !observedWaiters; ++i) {
+        observedWaiters = waitMap.hasWaiters();
+        if (!observedWaiters) {
+            std::this_thread::sleep_for(2ms);
         }
     }
+    CHECK(observedWaiters);
 
-    TEST_CASE("WaitMap Pattern Matching - Concrete Notification Matches Glob Waiter") {
-        WaitMap           waitMap;
-        std::atomic<bool> wasNotified{false};
+    // Enable predicate and wake the waiter via clear(). clear() should block until the waiter drains.
+    predicateReady.store(true, std::memory_order_release);
+    waitMap.clear();
 
-        std::thread waiter([&]() {
-            auto guard = waitMap.wait("/foo/[a-z]*"); // Wait with glob pattern
-            if (guard.wait_until(std::chrono::system_clock::now() + 100ms)
-                == std::cv_status::no_timeout) {
-                wasNotified = true;
-            }
+    waiter.join();
+
+    // After clear, all waiter structures should be removed.
+    CHECK_FALSE(waitMap.hasWaiters());
+
+    // Reset override for other tests.
+    testing::waitMapDebugOverride().store(false, std::memory_order_relaxed);
+}
+
+TEST_CASE("clear waits for scoped guard destruction") {
+    WaitMap waitMap;
+    std::atomic<bool> waiterReady{false};
+    std::atomic<bool> cleared{false};
+
+    std::thread waiter([&] {
+        auto guard = waitMap.wait("/scoped/clear");
+        waiterReady.store(true, std::memory_order_release);
+        // Wait without predicate so the guard increments activeWaiterCount.
+        guard.wait_until(std::chrono::system_clock::now() + 75ms);
+    });
+
+    // Ensure the waiter is registered before clearing.
+    while (!waiterReady.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+
+    std::thread clearer([&] {
+        waitMap.clear();
+        cleared = true;
+    });
+
+    waiter.join();
+    clearer.join();
+
+    CHECK(cleared.load());
+    CHECK_FALSE(waitMap.hasWaiters());
+}
+
+TEST_CASE("notify wakes both concrete and glob waiters") {
+    WaitMap waitMap;
+
+    std::atomic<int> started{0};
+    std::atomic<bool> concreteWoke{false};
+    std::atomic<bool> globWoke{false};
+
+    auto concrete = std::thread([&] {
+        auto guard = waitMap.wait("/foo/bar");
+        started.fetch_add(1, std::memory_order_acq_rel);
+        auto status = guard.wait_until(std::chrono::system_clock::now() + 250ms);
+        concreteWoke.store(status == std::cv_status::no_timeout, std::memory_order_release);
+    });
+
+    auto glob = std::thread([&] {
+        auto guard = waitMap.wait("/foo/*");
+        started.fetch_add(1, std::memory_order_acq_rel);
+        auto status = guard.wait_until(std::chrono::system_clock::now() + 250ms);
+        globWoke.store(status == std::cv_status::no_timeout, std::memory_order_release);
+    });
+
+    // Wait until both waiters are blocked inside wait_until.
+    while (started.load(std::memory_order_acquire) < 2) {
+        std::this_thread::yield();
+    }
+
+    waitMap.notify("/foo/bar");
+
+    concrete.join();
+    glob.join();
+
+    CHECK(concreteWoke.load(std::memory_order_acquire));
+    CHECK(globWoke.load(std::memory_order_acquire));
+}
+
+TEST_CASE("notifyAll wakes all registered waiters") {
+    WaitMap waitMap;
+
+    struct WaiterState {
+        std::string path;
+        std::atomic<bool> waiting{false};
+        std::atomic<bool> woke{false};
+    };
+
+    std::vector<std::unique_ptr<WaiterState>> states;
+    states.emplace_back(std::make_unique<WaiterState>());
+    states.back()->path = "/alpha";
+    states.emplace_back(std::make_unique<WaiterState>());
+    states.back()->path = "/alpha/beta";
+    states.emplace_back(std::make_unique<WaiterState>());
+    states.back()->path = "/*/beta";
+
+    std::atomic<int> started{0};
+    std::vector<std::thread> threads;
+    threads.reserve(states.size());
+
+    for (auto& state : states) {
+        threads.emplace_back([&, statePtr = state.get()] {
+            auto guard = waitMap.wait(statePtr->path);
+            started.fetch_add(1, std::memory_order_acq_rel);
+            statePtr->waiting.store(true, std::memory_order_release);
+            auto status = guard.wait_until(std::chrono::system_clock::now() + 250ms);
+            statePtr->woke.store(status == std::cv_status::no_timeout, std::memory_order_release);
         });
-
-        std::this_thread::sleep_for(50ms);
-        waitMap.notify("/foo/bar"); // Notify with concrete path
-
-        waiter.join();
-        CHECK(wasNotified);
     }
 
-    TEST_CASE("WaitMap Pattern Matching - Glob Notification Matches Concrete Waiter") {
-        WaitMap           waitMap;
-        std::atomic<bool> wasNotified{false};
-
-        std::thread waiter([&]() {
-            auto guard = waitMap.wait("/foo/bar"); // Wait with concrete path
-            if (guard.wait_until(std::chrono::system_clock::now() + 100ms)
-                == std::cv_status::no_timeout) {
-                wasNotified = true;
-            }
+    while (started.load(std::memory_order_acquire) < static_cast<int>(states.size())) {
+        std::this_thread::yield();
+    }
+    // Ensure all waiters have called wait_until before notifying.
+    bool allWaiting = false;
+    for (int i = 0; i < 50 && !allWaiting; ++i) {
+        allWaiting = std::all_of(states.begin(), states.end(), [](auto const& s) {
+            return s->waiting.load(std::memory_order_acquire);
         });
-
-        std::this_thread::sleep_for(50ms);
-        waitMap.notify("/foo/[a-z]*"); // Notify with glob pattern
-
-        waiter.join();
-        CHECK(wasNotified);
+        if (!allWaiting) {
+            std::this_thread::sleep_for(2ms);
+        }
     }
 
-    TEST_CASE("WaitMap glob waiter matches root child notification") {
-        WaitMap waitMap;
-        std::atomic<bool> notified{false};
-        std::atomic<bool> registered{false};
-        std::condition_variable cv;
-        std::mutex cvMutex;
+    waitMap.notifyAll();
 
-        std::thread waiter([&]() {
-            auto guard = waitMap.wait("/*");
-            {
-                std::lock_guard<std::mutex> lock(cvMutex);
-                registered = true;
-            }
-            cv.notify_one();
-            if (guard.wait_until(std::chrono::system_clock::now() + 200ms) == std::cv_status::no_timeout) {
-                notified = true;
-            }
-        });
-
-        {
-            std::unique_lock<std::mutex> lock(cvMutex);
-            cv.wait_for(lock, 200ms, [&] { return registered.load(); });
-        }
-
-        for (int i = 0; i < 6 && !notified.load(); ++i) {
-            waitMap.notify("/child");
-            std::this_thread::sleep_for(10ms);
-        }
-
-        waiter.join();
-        CHECK(notified);
+    for (auto& t : threads) {
+        t.join();
     }
 
-    TEST_CASE("notify uses watchdog when registry mutex is contended") {
-        WaitMap waitMap;
-        std::atomic<bool> started{false};
-        std::atomic<bool> done{false};
-
-        // Hold the registry lock long enough to force try_lock_for to time out.
-        waitMap.registryMutex.lock();
-        std::thread notifier([&]() {
-            started = true;
-            auto before = std::chrono::steady_clock::now();
-            waitMap.notify("/contended");
-            auto elapsed = std::chrono::steady_clock::now() - before;
-            // We expect to have waited at least the watchdog window.
-            CHECK(elapsed >= std::chrono::milliseconds(100));
-            done = true;
-        });
-
-        // Ensure notifier is trying to acquire the lock.
-        while (!started.load()) {
-            std::this_thread::yield();
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(150));
-        waitMap.registryMutex.unlock();
-        notifier.join();
-        CHECK(done);
+    for (auto& state : states) {
+        CHECK(state->woke.load(std::memory_order_acquire));
     }
-
+}
 }

@@ -166,6 +166,52 @@ TEST_CASE("PathSpace visit validates indexed roots and nested traversal") {
         CHECK(std::find(shallow.begin(), shallow.end(), "/mount[1]") != shallow.end());
         CHECK(std::find(shallow.begin(), shallow.end(), "/mount[1]/child1") == shallow.end());
     }
+
+    SUBCASE("Nested path without child resolves through includeNestedSpaces") {
+        auto nested = std::make_unique<PathSpace>();
+        REQUIRE(nested->insert("/inner/value", 5).nbrValuesInserted == 1);
+        REQUIRE(space.insert("/mount", std::move(nested)).nbrSpacesInserted == 1);
+
+        VisitOptions opts;
+        opts.includeNestedSpaces = true;
+        opts.root                = "/mount/inner";
+
+        std::vector<std::string> visited;
+        auto ok = space.visit(
+            [&](PathEntry const& entry, ValueHandle&) {
+                visited.push_back(entry.path);
+                return VisitControl::Continue;
+            },
+            opts);
+        REQUIRE(ok);
+        CHECK(std::find(visited.begin(), visited.end(), "/mount/inner") != visited.end());
+        CHECK(std::find(visited.begin(), visited.end(), "/mount/inner/value") != visited.end());
+
+        VisitOptions disallow;
+        disallow.includeNestedSpaces = false;
+        disallow.root                = "/mount/inner";
+        auto missing = space.visit(
+            [&](PathEntry const&, ValueHandle&) { return VisitControl::Continue; },
+            disallow);
+        CHECK_FALSE(missing);
+        CHECK(missing.error().code == Error::Code::NoSuchPath);
+    }
+
+    SUBCASE("Nested mount visit rejects ancestor roots when includeNestedSpaces disabled") {
+        auto nested = std::make_unique<PathSpace>();
+        REQUIRE(nested->insert("/child", 1).nbrValuesInserted == 1);
+        REQUIRE(space.insert("/mount", std::move(nested)).nbrSpacesInserted == 1);
+
+        VisitOptions opts;
+        opts.includeNestedSpaces = false;
+        opts.root                = "/mount/child";
+
+        auto result = space.visit(
+            [&](PathEntry const&, ValueHandle&) { return VisitControl::Continue; },
+            opts);
+        CHECK_FALSE(result);
+        CHECK(result.error().code == Error::Code::NoSuchPath);
+    }
 }
 
 TEST_CASE("ValueHandle snapshot reflects POD fast path upgrade to generic") {
@@ -334,6 +380,91 @@ TEST_CASE("PathSpace visit caps nested traversal at maxDepth") {
     CHECK(std::find(visited.begin(), visited.end(), "/") != visited.end());
     CHECK(std::find(visited.begin(), visited.end(), "/mount") != visited.end());
     CHECK(std::find(visited.begin(), visited.end(), "/mount/deep") == visited.end());
+}
+
+TEST_CASE("PathSpace visit stops traversal when visitor requests Stop") {
+    PathSpace space;
+    REQUIRE(space.insert("/alpha", 1).errors.empty());
+    REQUIRE(space.insert("/beta", 2).errors.empty());
+
+    std::vector<std::string> seen;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            seen.push_back(entry.path);
+            return VisitControl::Stop; // stop immediately after first node
+        });
+    REQUIRE(result);
+    CHECK(seen.size() == 1);
+    CHECK(seen.front() == "/");
+}
+
+TEST_CASE("PathSpace visit skips nested spaces when depth budget is exhausted") {
+    PathSpace space;
+    auto nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/inside", 1).errors.empty());
+    REQUIRE(space.insert("/mount", std::move(nested)).nbrSpacesInserted == 1);
+
+    VisitOptions opts;
+    opts.includeNestedSpaces = true;
+    opts.maxDepth            = 0; // only the starting node should be visited
+
+    std::vector<std::string> visited;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            visited.push_back(entry.path);
+            return VisitControl::Continue;
+        },
+        opts);
+    REQUIRE(result);
+    CHECK(visited.size() == 1);
+    CHECK(visited.front() == "/");
+}
+
+TEST_CASE("PathSpace visit honors SkipChildren and includeValues=false") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/child/grand", 9).errors.empty());
+
+    VisitOptions opts;
+    opts.includeValues = false; // disable value access
+
+    std::vector<std::string> visited;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            visited.push_back(entry.path);
+            // Attempting to read with values disabled should surface NotSupported.
+            auto val = handle.read<int>();
+            CHECK_FALSE(val);
+            CHECK(val.error().code == Error::Code::NotSupported);
+
+            if (entry.path == "/root/child") {
+                return VisitControl::SkipChildren; // should prevent visiting /root/child/grand
+            }
+            return VisitControl::Continue;
+        },
+        opts);
+    REQUIRE(result);
+
+    CHECK(std::find(visited.begin(), visited.end(), "/") != visited.end());
+    CHECK(std::find(visited.begin(), visited.end(), "/root") != visited.end());
+    CHECK(std::find(visited.begin(), visited.end(), "/root/child") != visited.end());
+    CHECK(std::find(visited.begin(), visited.end(), "/root/child/grand") == visited.end());
+}
+
+TEST_CASE("PathSpace visit rejects missing indexed nested space") {
+    PathSpace space;
+    auto nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/child", 3).errors.empty());
+    REQUIRE(space.insert("/mount", std::move(nested)).nbrSpacesInserted == 1);
+
+    VisitOptions opts;
+    opts.includeNestedSpaces = true;
+    opts.root                = "/mount[2]"; // only one nested space exists
+
+    auto result = space.visit(
+        [&](PathEntry const&, ValueHandle&) { return VisitControl::Continue; },
+        opts);
+    CHECK_FALSE(result);
+    CHECK(result.error().code == Error::Code::NoSuchPath);
 }
 
 TEST_CASE("SerializeNodeData snapshots node data and POD payloads") {

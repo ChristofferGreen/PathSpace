@@ -142,4 +142,45 @@ TEST_CASE("PodPayload pack span marker updates through popCount and rollback") {
     payload.rollbackOne(reservation->index);
     CHECK(payload.size() == 3);
 }
+
+namespace {
+std::atomic<int> gHookCount{0};
+void hookIncrement() {
+    gHookCount.fetch_add(1, std::memory_order_relaxed);
+}
+} // namespace
+
+TEST_CASE("PodPayload push hook and error cases") {
+    testing::SetPodPayloadPushHook(&hookIncrement);
+
+    PodPayload<int> payload;
+    CHECK(payload.push(123));
+    CHECK(gHookCount.load(std::memory_order_relaxed) == 1);
+
+    // popCount fails when requesting more elements than available.
+    auto popErr = payload.popCount(5);
+    REQUIRE(popErr.has_value());
+    CHECK(popErr->code == Error::Code::NoObjectFound);
+
+    // take succeeds once, then reports NoObjectFound on empty queue.
+    int out = 0;
+    auto takeErr = payload.take(&out);
+    CHECK_FALSE(takeErr.has_value());
+    CHECK(out == 123);
+
+    auto emptyTakeErr = payload.take(&out);
+    REQUIRE(emptyTakeErr.has_value());
+    CHECK(emptyTakeErr->code == Error::Code::NoObjectFound);
+
+    // withSpanMutable returns an empty span when the queue is empty.
+    bool visited = false;
+    auto spanErr = payload.withSpanMutable([&](std::span<int> sp) {
+        visited = true;
+        CHECK(sp.empty());
+    });
+    CHECK_FALSE(spanErr.has_value());
+    CHECK(visited);
+
+    testing::SetPodPayloadPushHook(nullptr);
+}
 }

@@ -42,6 +42,16 @@ TEST_CASE("parse_indexed_component handles malformed or escaped brackets") {
     auto unterminated = parse_indexed_component("node[1");
     CHECK_FALSE(unterminated.index.has_value());
     CHECK_FALSE(unterminated.malformed);
+
+    // Escaped closing bracket inside index should mark the index malformed.
+    auto escapedClose = parse_indexed_component("child[1\\]]");
+    CHECK_FALSE(escapedClose.index.has_value());
+    CHECK(escapedClose.malformed);
+
+    // Escaped digit inside index yields malformed index detection.
+    auto escapedDigit = parse_indexed_component("child[1\\2]");
+    CHECK_FALSE(escapedDigit.index.has_value());
+    CHECK(escapedDigit.malformed);
 }
 
 TEST_CASE("append_index_suffix elides zero and formats numeric suffixes") {
@@ -79,6 +89,27 @@ TEST_CASE("is_glob handles escapes and malformed brackets") {
 TEST_CASE("match_names rejects malformed character classes") {
     CHECK_FALSE(match_names("[abc", "a"));
     CHECK_FALSE(match_names("test[!", "testa"));
+}
+
+TEST_CASE("match_names covers wildcards, ranges, and escapes") {
+    CHECK(match_names("fo*", "foobar"));
+    CHECK(match_names("ba?r", "baar"));
+    CHECK_FALSE(match_names("ba?r", "bar")); // missing char for '?'
+    CHECK(match_names("h[ae]llo", "hello"));
+    CHECK(match_names("h[!a]llo", "hello"));
+    CHECK(match_names("h[!a]llo", "hbllo"));
+    CHECK(match_names("star\\*", "star*"));
+    CHECK_FALSE(match_names("star\\*", "starX"));
+}
+
+TEST_CASE("match_paths handles mismatched lengths and escaped components") {
+    CHECK_FALSE(match_paths("/a/b", "/a/b/c"));
+    CHECK_FALSE(match_paths("/a/b/c", "/a/b"));
+    CHECK(match_paths("/foo/ba\\*/c", "/foo/ba*/c"));
+    CHECK_FALSE(match_paths("/foo/ba\\*/c", "/foo/baX/c"));
+
+    CHECK(match_paths("/a/*/c", "/a/b/c"));
+    CHECK_FALSE(match_paths("/a/*/c", "/a/b/d"));
 }
 
 TEST_SUITE_END();
