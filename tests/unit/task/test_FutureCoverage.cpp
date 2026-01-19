@@ -7,6 +7,7 @@
 #include <chrono>
 #include <memory>
 #include <any>
+#include <thread>
 
 using namespace SP;
 
@@ -71,5 +72,65 @@ TEST_CASE("Future wait_until_steady times out when task is not completed") {
 
     // Finish the task afterward to avoid leaving it in Running for other tests.
     task->markCompleted();
+}
+
+TEST_CASE("Future wait spins until task completes") {
+    auto task = std::make_shared<Task>();
+    task->function = [](Task& t, bool const) { t.result = 99; };
+    task->resultCopyFn = [](std::any const& from, void* const to) {
+        *static_cast<int*>(to) = std::any_cast<int>(from);
+    };
+
+    REQUIRE(task->tryStart());
+    REQUIRE(task->transitionToRunning());
+
+    Future fut = Future::FromShared(task);
+    std::thread finisher([&]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        task->result = 99;
+        task->markCompleted();
+    });
+
+    fut.wait(); // Should spin/yield until finisher marks completion.
+    finisher.join();
+
+    int out = 0;
+    CHECK(fut.copy_result_to(&out));
+    CHECK(out == 99);
+}
+
+TEST_CASE("Future try_copy_result_to succeeds after completion without waiting") {
+    auto task = std::make_shared<Task>();
+    task->resultCopyFn = [](std::any const& from, void* const to) {
+        *static_cast<int*>(to) = std::any_cast<int>(from);
+    };
+
+    REQUIRE(task->tryStart());
+    REQUIRE(task->transitionToRunning());
+    task->result = 123;
+    task->markCompleted();
+
+    Future fut = Future::FromShared(task);
+    int    out = 0;
+    CHECK(fut.try_copy_result_to(&out));
+    CHECK(out == 123);
+}
+
+TEST_CASE("Future copy_result_to returns false once task expires") {
+    auto task = std::make_shared<Task>();
+    task->function = [](Task& t, bool const) { t.result = 1; };
+    task->resultCopyFn = [](std::any const& from, void* const to) {
+        *static_cast<int*>(to) = std::any_cast<int>(from);
+    };
+
+    REQUIRE(task->tryStart());
+    REQUIRE(task->transitionToRunning());
+    task->markCompleted();
+
+    Future fut = Future::FromShared(task);
+    task.reset(); // drop last shared ownership so the weak_ptr expires
+
+    int out = 0;
+    CHECK_FALSE(fut.copy_result_to(&out));
 }
 }

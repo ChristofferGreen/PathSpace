@@ -1,4 +1,5 @@
 #include "third_party/doctest.h"
+#include "core/NodeData.hpp"
 #include <algorithm>
 #include <vector>
 #include <typeinfo>
@@ -271,6 +272,123 @@ TEST_CASE("ValueHandle snapshot handles nodes without payload") {
         opts);
     REQUIRE(result);
     CHECK(sawRoot);
+}
+
+TEST_CASE("ValueHandle surfaces type mismatch for POD payloads") {
+    PathSpace space;
+    REQUIRE(space.insert("/pod", 7).errors.empty());
+
+    auto visitResult = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path != "/pod") {
+                return VisitControl::Continue;
+            }
+            auto wrongType = handle.read<double>();
+            CHECK_FALSE(wrongType);
+            CHECK(wrongType.error().code == Error::Code::TypeMismatch);
+            return VisitControl::Stop;
+        });
+    REQUIRE(visitResult);
+}
+
+TEST_CASE("ValueHandle read reports missing payload when node has no value") {
+    PathSpace space;
+    // Root has a child but no payload of its own.
+    REQUIRE(space.insert("/root/child", 1).errors.empty());
+
+    bool sawRoot = false;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path != "/") {
+                return VisitControl::Continue;
+            }
+            sawRoot = true;
+            auto missing = handle.read<int>();
+            CHECK_FALSE(missing);
+            CHECK(missing.error().code == Error::Code::NoObjectFound);
+            return VisitControl::Stop;
+        });
+    REQUIRE(result);
+    CHECK(sawRoot);
+}
+
+TEST_CASE("PathSpace visit caps nested traversal at maxDepth") {
+    PathSpace space;
+    auto nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/deep/value", 9).errors.empty());
+    REQUIRE(space.insert("/mount", std::move(nested)).nbrSpacesInserted == 1);
+
+    VisitOptions opts;
+    opts.includeNestedSpaces = true;
+    opts.maxDepth            = 1; // "/" (0) and "/mount" (1) only
+
+    std::vector<std::string> visited;
+    auto ok = space.visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            visited.push_back(entry.path);
+            return VisitControl::Continue;
+        },
+        opts);
+    REQUIRE(ok);
+
+    CHECK(std::find(visited.begin(), visited.end(), "/") != visited.end());
+    CHECK(std::find(visited.begin(), visited.end(), "/mount") != visited.end());
+    CHECK(std::find(visited.begin(), visited.end(), "/mount/deep") == visited.end());
+}
+
+TEST_CASE("SerializeNodeData snapshots node data and POD payloads") {
+    PathSpace space;
+
+    // Case 1: Serialize NodeData-backed payload.
+    REQUIRE(space.insert("/nodes/alpha", std::string{"alpha"}).errors.empty());
+    ValueHandle nodeDataHandle;
+    auto nodeDataVisit = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/nodes/alpha") {
+                nodeDataHandle = handle;
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        });
+    REQUIRE(nodeDataVisit);
+    auto nodeDataBytes = VisitDetail::Access::SerializeNodeData(nodeDataHandle);
+    REQUIRE(nodeDataBytes.has_value());
+    auto nodeDataSnapshot = NodeData::deserializeSnapshot(std::span<const std::byte>{
+        reinterpret_cast<const std::byte*>(nodeDataBytes->data()), nodeDataBytes->size()});
+    REQUIRE(nodeDataSnapshot);
+    std::string recovered{};
+    InputMetadata strMeta{InputMetadataT<std::string>{}};
+    auto nodeDataErr = nodeDataSnapshot->deserialize(&recovered, strMeta);
+    CHECK_FALSE(nodeDataErr);
+    CHECK(recovered == "alpha");
+
+    // Case 2: Serialize POD fast-path payload.
+    REQUIRE(space.insert("/pod", 11).errors.empty());
+    REQUIRE(space.insert("/pod", 22).errors.empty());
+    ValueHandle podHandle;
+    auto podVisit = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/pod") {
+                podHandle = handle;
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        });
+    REQUIRE(podVisit);
+    auto podBytes = VisitDetail::Access::SerializeNodeData(podHandle);
+    REQUIRE(podBytes.has_value());
+    auto podSnapshot = NodeData::deserializeSnapshot(std::span<const std::byte>{
+        reinterpret_cast<const std::byte*>(podBytes->data()), podBytes->size()});
+    REQUIRE(podSnapshot);
+    int frontValue = 0;
+    InputMetadata intMeta{InputMetadataT<int>{}};
+    auto podErr = podSnapshot->deserialize(&frontValue, intMeta);
+    CHECK_FALSE(podErr);
+    CHECK((frontValue == 11 || frontValue == 22));
+
+    // Case 3: Invalid handle returns no snapshot.
+    ValueHandle emptyHandle{};
+    CHECK_FALSE(VisitDetail::Access::SerializeNodeData(emptyHandle).has_value());
 }
 
 TEST_SUITE_END();

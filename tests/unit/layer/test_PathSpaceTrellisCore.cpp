@@ -278,6 +278,20 @@ TEST_CASE("PathSpaceTrellis notify fan-out and system ignores") {
     CHECK(notes == std::vector<std::string>{"/data/a", "/data/b"});
 }
 
+TEST_CASE("PathSpaceTrellis notify with empty path fans out to all sources") {
+    auto backing = std::make_shared<RecordingPathSpaceCore>();
+    PathSpaceTrellis trellis{backing};
+
+    trellis.in(Iterator{"/_system/enable"}, InputData{std::string{"/data/a"}});
+    trellis.in(Iterator{"/_system/enable"}, InputData{std::string{"/data/b"}});
+
+    trellis.notify(""); // empty notification path should behave like root fan-out
+
+    auto notes = backing->flush();
+    std::sort(notes.begin(), notes.end());
+    CHECK(notes == std::vector<std::string>{"/data/a", "/data/b"});
+}
+
 TEST_CASE("PathSpaceTrellis notify and join/strip helpers") {
     auto backing = std::make_shared<PathSpace>();
     PathSpaceTrellis trellis{backing};

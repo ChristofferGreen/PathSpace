@@ -10,6 +10,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/path/test_PathCoverage.cpp
   unit/path/test_PathUtils.cpp
   unit/core/test_WaitMap.cpp
+  unit/core/test_InsertReturn.cpp
   unit/type/test_InputData.cpp
   unit/type/test_InputMetadata.cpp
   unit/type/test_Serialization.cpp

@@ -2,6 +2,7 @@
 #include "path/ConcretePath.hpp"
 #include "third_party/doctest.h"
 
+#include <compare>
 #include <string_view>
 
 using namespace SP;
@@ -45,5 +46,16 @@ TEST_CASE("string_view equality delegates to path comparison") {
     GlobPathStringView view{std::string_view{"/alpha/*"}};
     CHECK(view == std::string_view{"/alpha/*"});
     CHECK_FALSE(view == std::string_view{"/alpha/beta/gamma"});
+}
+
+TEST_CASE("three-way comparison mirrors underlying path ordering") {
+    GlobPathString a{"/a"};
+    GlobPathString b{"/b"};
+
+    auto cmp = (a <=> b);
+    CHECK(std::is_lt(cmp));
+
+    auto cmpEq = (a <=> GlobPathString{"/a"});
+    CHECK(std::is_eq(cmpEq));
 }
 }

@@ -3,6 +3,7 @@
 #include "core/Error.hpp"
 #include "path/Iterator.hpp"
 #include "path/ConcretePath.hpp"
+#include "path/utils.hpp"
 
 #include <memory>
 #include <mutex>
@@ -79,7 +80,14 @@ public:
         if (!this->upstream) {
             return InsertReturn{.errors = {Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"}}};
         }
+        auto const rawPath = path.toStringView();
+        if (is_glob(rawPath)) {
+            return InsertReturn{.errors = {Error{Error::Code::InvalidPath, "PathAlias does not accept glob inserts"}}};
+        }
         auto mappedStr = this->mapPath(path);
+        if (is_glob(mappedStr)) {
+            return InsertReturn{.errors = {Error{Error::Code::InvalidPath, "PathAlias does not accept glob inserts"}}};
+        }
         Iterator mapped{mappedStr};
         return this->upstream->in(mapped, data);
     }
@@ -89,7 +97,14 @@ public:
         if (!this->upstream) {
             return Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"};
         }
+        auto const rawPath = path.toStringView();
+        if (is_glob(rawPath)) {
+            return Error{Error::Code::InvalidPath, "PathAlias does not accept glob reads"};
+        }
         auto mappedStr = this->mapPath(path);
+        if (is_glob(mappedStr)) {
+            return Error{Error::Code::InvalidPath, "PathAlias does not accept glob reads"};
+        }
         Iterator mapped{mappedStr};
         return this->upstream->out(mapped, inputMetadata, options, obj);
     }
@@ -113,7 +128,13 @@ public:
         std::vector<std::string> mapped;
         mapped.reserve(paths.size());
         for (auto const& path : paths) {
+            if (is_glob(path)) {
+                return std::unexpected(Error{Error::Code::InvalidPath, "PathAlias does not accept glob span reads"});
+            }
             mapped.emplace_back(this->mapPathRaw(path));
+            if (is_glob(mapped.back())) {
+                return std::unexpected(Error{Error::Code::InvalidPath, "PathAlias does not accept glob span reads"});
+            }
         }
 
         return this->upstream->spanPackConst(std::span<const std::string>(mapped.data(), mapped.size()), metadata, options, fn);
@@ -130,7 +151,13 @@ public:
         std::vector<std::string> mapped;
         mapped.reserve(paths.size());
         for (auto const& path : paths) {
+            if (is_glob(path)) {
+                return std::unexpected(Error{Error::Code::InvalidPath, "PathAlias does not accept glob span writes"});
+            }
             mapped.emplace_back(this->mapPathRaw(path));
+            if (is_glob(mapped.back())) {
+                return std::unexpected(Error{Error::Code::InvalidPath, "PathAlias does not accept glob span writes"});
+            }
         }
 
         return this->upstream->spanPackMut(std::span<const std::string>(mapped.data(), mapped.size()), metadata, options, fn);
@@ -146,7 +173,17 @@ public:
         std::vector<std::string> mapped;
         mapped.reserve(paths.size());
         for (auto const& path : paths) {
+            if (is_glob(path)) {
+                InsertReturn ret;
+                ret.errors.emplace_back(Error{Error::Code::InvalidPath, "PathAlias does not accept glob inserts"});
+                return ret;
+            }
             mapped.emplace_back(this->mapPathRaw(path));
+            if (is_glob(mapped.back())) {
+                InsertReturn ret;
+                ret.errors.emplace_back(Error{Error::Code::InvalidPath, "PathAlias does not accept glob inserts"});
+                return ret;
+            }
         }
 
         return this->upstream->packInsert(std::span<const std::string>(mapped.data(), mapped.size()), metadata, values);

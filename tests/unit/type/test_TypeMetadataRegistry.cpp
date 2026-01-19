@@ -29,6 +29,14 @@ struct AggregateType {
     double weight{0.0};
     auto operator==(AggregateType const&) const -> bool = default;
 };
+
+struct SharedNameA {
+    int x{0};
+};
+
+struct SharedNameB {
+    int y{0};
+};
 } // namespace
 
 TEST_SUITE("type.typemetadata.registry") {
@@ -43,6 +51,7 @@ TEST_CASE("registerType exposes operations and views") {
     CHECK_FALSE(registry.findByName("aggregate_type").has_value());
     REQUIRE(registry.registerType<AggregateType>("aggregate_type"));
     CHECK_FALSE(registry.registerType<AggregateType>("aggregate_type"));
+    CHECK_FALSE(registry.registerType<AggregateType>("aggregate_type_alt"));
 
     auto view = registry.findByName("aggregate_type");
     REQUIRE(view.has_value());
@@ -88,8 +97,27 @@ TEST_CASE("RegisterBuiltinTypeMetadata is idempotent and findByName handles miss
     REQUIRE(intViewAgain.has_value());
     CHECK(intView->type_name == intViewAgain->type_name);
     CHECK_FALSE(registry.registerType<int>("int")); // duplicate stays rejected
+    CHECK_FALSE(registry.registerType<int>("int_duplicate_name")); // same type, new name rejected
 
     auto missing = registry.findByName("pathspace::definitely_missing");
     CHECK_FALSE(missing.has_value());
+}
+
+TEST_CASE("registerType rejects duplicate type names across different types") {
+    auto& registry = TypeMetadataRegistry::instance();
+
+    REQUIRE(registry.registerType<SharedNameA>("shared_type_registry_name"));
+    CHECK_FALSE(registry.registerType<SharedNameB>("shared_type_registry_name"));
+
+    auto view = registry.findByName("shared_type_registry_name");
+    REQUIRE(view.has_value());
+    CHECK(view->metadata.typeInfo == &typeid(SharedNameA));
+    auto typeLookup = registry.findByType(typeid(SharedNameB));
+    CHECK_FALSE(typeLookup.has_value());
+}
+
+TEST_CASE("findByType returns nullopt for unregistered types") {
+    auto& registry = TypeMetadataRegistry::instance();
+    CHECK_FALSE(registry.findByType(typeid(SharedNameB)).has_value());
 }
 }

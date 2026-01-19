@@ -1,4 +1,5 @@
 #include "history/UndoableSpace.hpp"
+#include "history/UndoHistoryUtils.hpp"
 
 #include "PathSpace.hpp"
 #include "path/ConcretePath.hpp"
@@ -111,6 +112,10 @@ TEST_CASE("history diagnostics mirror stats and entries") {
     auto entryValueBytes = space->read<std::size_t>("/diagnostics/history/_doc/entries/0/valueBytes");
     REQUIRE(entryValueBytes.has_value());
     CHECK(*entryValueBytes > 0);
+
+    auto missingEntry = space->read<std::string>("/diagnostics/history/_doc/entries/99/path");
+    CHECK_FALSE(missingEntry.has_value());
+    CHECK(missingEntry.error().code == Error::Code::NoObjectFound);
 }
 
 TEST_CASE("journal undo/redo round trip") {
@@ -352,6 +357,38 @@ TEST_CASE("journal manual garbage collect trims entries when invoked") {
     auto secondUndo = space->undo(ConcretePathStringView{"/doc"});
     CHECK_FALSE(secondUndo.has_value());
     CHECK(secondUndo.error().code == Error::Code::NoObjectFound);
+}
+
+TEST_CASE("manual garbage collect updates trim telemetry paths") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal   = true;
+    opts.maxEntries           = 1;
+    opts.manualGarbageCollect = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space->insert("/doc/value", 1).errors.empty());
+    REQUIRE(space->insert("/doc/value", 2).errors.empty());
+    REQUIRE(space->insert("/doc/value", 3).errors.empty());
+
+    auto gc = space->insert("/doc/_history/garbage_collect", true);
+    CHECK(gc.errors.empty());
+
+    auto stats = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(stats.has_value());
+    CHECK(stats->trim.operationCount >= 1);
+    CHECK(stats->trim.entries > 0);
+    CHECK(stats->trim.bytes > 0);
+
+    auto trimmedEntries = space->read<std::size_t>("/doc/_history/stats/trimmedEntries");
+    REQUIRE(trimmedEntries.has_value());
+    CHECK(*trimmedEntries == stats->trim.entries);
+
+    auto trimmedBytes = space->read<std::size_t>("/doc/_history/stats/trimmedBytes");
+    REQUIRE(trimmedBytes.has_value());
+    CHECK(*trimmedBytes == stats->trim.bytes);
 }
 
 TEST_CASE("journal history commands toggle manual garbage collect mode") {
@@ -894,6 +931,32 @@ TEST_CASE("history rejects unsupported payloads") {
         CHECK(stats->counts.redo == 0);
         CHECK(stats->unsupported.total >= 0);
         CHECK(stats->unsupported.recent.empty());
+    }
+}
+
+TEST_CASE("unsupported payload log evicts oldest entries beyond cap") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    constexpr int totalUnsupported = 20;
+    for (int i = 0; i < totalUnsupported; ++i) {
+        auto nested = std::make_unique<PathSpace>();
+        REQUIRE(nested->insert("/value", i).nbrValuesInserted == 1);
+        auto result = space->insert("/doc/nested" + std::to_string(i), std::move(nested));
+        CHECK(result.nbrSpacesInserted == 1);
+        CHECK_FALSE(result.errors.empty());
+    }
+
+    auto stats = space->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(stats.has_value());
+
+    CHECK(stats->unsupported.total >= 0);
+    CHECK(stats->unsupported.recent.size()
+          <= SP::History::UndoUtils::MaxUnsupportedLogEntries);
+    if (!stats->unsupported.recent.empty()) {
+        CHECK(stats->unsupported.recent.back().path == "/doc/nested19");
     }
 }
 

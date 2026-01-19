@@ -1,6 +1,11 @@
 #include "third_party/doctest.h"
 #include <pathspace/type/InputMetadata.hpp>
 
+#include <array>
+#include <memory>
+#include <string>
+#include <string_view>
+
 using namespace SP;
 
 TEST_SUITE_BEGIN("type.input");
@@ -117,6 +122,17 @@ TEST_CASE("String-like metadata serialize/deserialize") {
         CHECK(bytes.size() == sizeof(uint32_t) + 5);
         CHECK(meta.deserialize == nullptr);
     }
+
+    SUBCASE("std::string_view serializes without providing deserialize") {
+        std::string_view view{"view"};
+        InputMetadata    meta(InputMetadataT<std::string_view>{});
+        SlidingBuffer    bytes;
+
+        REQUIRE(meta.serialize != nullptr);
+        meta.serialize(&view, bytes);
+        CHECK(bytes.size() == sizeof(uint32_t) + view.size());
+        CHECK(meta.deserialize == nullptr);
+    }
 }
 
 TEST_CASE("InputMetadata execution and pointer categories") {
@@ -136,6 +152,87 @@ TEST_CASE("InputMetadata execution and pointer categories") {
         CHECK_FALSE(meta.podPreferred);
         CHECK(meta.serialize == nullptr);
         CHECK(meta.deserialize == nullptr);
+    }
+
+    SUBCASE("capturing lambda routes through std::function execution path") {
+        int  captures = 0;
+        auto lambda   = [captures]() mutable -> int {
+            ++captures;
+            return captures;
+        };
+        using LambdaT = decltype(lambda);
+        InputMetadata meta(InputMetadataT<LambdaT>{});
+        CHECK(meta.dataCategory == DataCategory::Execution);
+        CHECK(meta.functionCategory == FunctionCategory::StdFunction);
+        CHECK(meta.serialize == nullptr);
+        CHECK(meta.deserialize == nullptr);
+    }
+
+    SUBCASE("trivially copyable POD types are preferred and non-serializable pointers are not") {
+        struct Trivial {
+            int   a{1};
+            float b{2.f};
+            auto operator==(Trivial const&) const -> bool = default;
+        };
+
+        InputMetadata podMeta(InputMetadataT<Trivial>{});
+        CHECK(podMeta.podPreferred);
+        CHECK(podMeta.serialize != nullptr);
+        CHECK(podMeta.deserialize != nullptr);
+
+        using FnPtr = void (*)();
+        InputMetadata fnMeta(InputMetadataT<FnPtr>{});
+        CHECK(fnMeta.functionCategory == FunctionCategory::FunctionPointer);
+        CHECK(fnMeta.serialize == nullptr);
+        CHECK(fnMeta.deserialize == nullptr);
+    }
+}
+
+TEST_CASE("InputMetadata treats raw and shared pointers as non-serializable") {
+    int value = 3;
+    InputMetadata rawMeta(InputMetadataT<int*>{});
+    CHECK(rawMeta.dataCategory == DataCategory::None);
+    CHECK_FALSE(rawMeta.podPreferred);
+    CHECK(rawMeta.serialize == nullptr);
+    CHECK(rawMeta.deserialize == nullptr);
+
+    auto shared = std::make_shared<int>(5);
+    InputMetadata sharedMeta(InputMetadataT<std::shared_ptr<int>>{});
+    CHECK(sharedMeta.dataCategory == DataCategory::None);
+    CHECK_FALSE(sharedMeta.podPreferred);
+    CHECK(sharedMeta.serialize == nullptr);
+    CHECK(sharedMeta.deserialize == nullptr);
+}
+
+TEST_CASE("InputMetadata Alpaca-compatible containers serialize/deserialize") {
+    SUBCASE("std::array<int,3> round-trips and stays POD-preferred") {
+        std::array<int, 3> value{1, 2, 3};
+        std::array<int, 3> out{0, 0, 0};
+        InputMetadata       meta(InputMetadataT<decltype(value)>{});
+        SlidingBuffer       bytes;
+
+        REQUIRE(meta.serialize != nullptr);
+        REQUIRE(meta.deserialize != nullptr);
+        CHECK(meta.podPreferred);
+
+        meta.serialize(&value, bytes);
+        meta.deserialize(&out, bytes);
+        CHECK(out == value);
+    }
+
+    SUBCASE("std::pair<int,int> round-trips via Alpaca") {
+        std::pair<int, int> value{7, 9};
+        std::pair<int, int> out{};
+        InputMetadata       meta(InputMetadataT<decltype(value)>{});
+        SlidingBuffer       bytes;
+
+        REQUIRE(meta.serialize != nullptr);
+        REQUIRE(meta.deserialize != nullptr);
+        CHECK_FALSE(meta.podPreferred); // std::pair is not trivially copyable here
+
+        meta.serialize(&value, bytes);
+        meta.deserialize(&out, bytes);
+        CHECK(out == value);
     }
 }
 

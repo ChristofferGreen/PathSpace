@@ -1,9 +1,13 @@
+#define private public
 #include "core/WaitMap.hpp"
+#undef private
 
 #include "third_party/doctest.h"
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <random>
 #include <thread>
 
@@ -388,4 +392,65 @@ TEST_SUITE("core.waitmap") {
         waiter.join();
         CHECK(wasNotified);
     }
+
+    TEST_CASE("WaitMap glob waiter matches root child notification") {
+        WaitMap waitMap;
+        std::atomic<bool> notified{false};
+        std::atomic<bool> registered{false};
+        std::condition_variable cv;
+        std::mutex cvMutex;
+
+        std::thread waiter([&]() {
+            auto guard = waitMap.wait("/*");
+            {
+                std::lock_guard<std::mutex> lock(cvMutex);
+                registered = true;
+            }
+            cv.notify_one();
+            if (guard.wait_until(std::chrono::system_clock::now() + 200ms) == std::cv_status::no_timeout) {
+                notified = true;
+            }
+        });
+
+        {
+            std::unique_lock<std::mutex> lock(cvMutex);
+            cv.wait_for(lock, 200ms, [&] { return registered.load(); });
+        }
+
+        for (int i = 0; i < 6 && !notified.load(); ++i) {
+            waitMap.notify("/child");
+            std::this_thread::sleep_for(10ms);
+        }
+
+        waiter.join();
+        CHECK(notified);
+    }
+
+    TEST_CASE("notify uses watchdog when registry mutex is contended") {
+        WaitMap waitMap;
+        std::atomic<bool> started{false};
+        std::atomic<bool> done{false};
+
+        // Hold the registry lock long enough to force try_lock_for to time out.
+        waitMap.registryMutex.lock();
+        std::thread notifier([&]() {
+            started = true;
+            auto before = std::chrono::steady_clock::now();
+            waitMap.notify("/contended");
+            auto elapsed = std::chrono::steady_clock::now() - before;
+            // We expect to have waited at least the watchdog window.
+            CHECK(elapsed >= std::chrono::milliseconds(100));
+            done = true;
+        });
+
+        // Ensure notifier is trying to acquire the lock.
+        while (!started.load()) {
+            std::this_thread::yield();
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        waitMap.registryMutex.unlock();
+        notifier.join();
+        CHECK(done);
+    }
+
 }

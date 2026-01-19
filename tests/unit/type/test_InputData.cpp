@@ -60,6 +60,19 @@ TEST_CASE("std::function inputs keep object address without POD fast path") {
     CHECK(data.metadata.createPodPayload == nullptr);
 }
 
+TEST_CASE("InputData tracks executor and replaceExistingPayload flag") {
+    int         value = 9;
+    InputData   data{value};
+    SP::Executor* execPtr = reinterpret_cast<SP::Executor*>(0x1234);
+
+    CHECK_FALSE(data.replaceExistingPayload);
+    data.replaceExistingPayload = true;
+    data.executor               = execPtr;
+
+    CHECK(data.replaceExistingPayload);
+    CHECK(data.executor == execPtr);
+}
+
 TEST_CASE("String literal inputs avoid POD factory and preserve pointer") {
     static char const literal[] = "hello";
     InputData          data{literal};

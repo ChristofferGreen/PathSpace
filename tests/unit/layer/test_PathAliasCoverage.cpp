@@ -177,4 +177,22 @@ TEST_CASE("PathAlias visit remaps target prefix to alias root") {
     CHECK(std::find(paths.begin(), paths.end(), "/child") != paths.end());
     CHECK(std::find(paths.begin(), paths.end(), "/nested/grand") != paths.end());
 }
+
+TEST_CASE("PathAlias rejects glob paths for insert and read") {
+    auto upstream = std::make_shared<PathSpace>();
+    PathAlias alias{upstream, "/root"};
+
+    auto insertResult = alias.in(Iterator{"/*"}, InputData{99});
+    CHECK_FALSE(insertResult.errors.empty());
+    CHECK(insertResult.errors.front().code == Error::Code::InvalidPath);
+
+    int value = 0;
+    auto readErr = alias.out(Iterator{"/*"}, InputMetadataT<int>{}, Out{}, &value);
+    CHECK(readErr.has_value());
+    CHECK(readErr->code == Error::Code::InvalidPath);
+
+    auto children = upstream->read<Children>("/root");
+    REQUIRE(children.has_value());
+    CHECK(children->names.empty()); // glob insert didn't create new nodes
+}
 }

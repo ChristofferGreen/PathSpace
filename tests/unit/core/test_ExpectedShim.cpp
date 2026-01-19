@@ -32,4 +32,17 @@ TEST_CASE("bad_expected_access<void> shim returns message") {
     CHECK_FALSE(message.empty());
     CHECK(message.find("expected") != std::string::npos);
 }
+
+TEST_CASE("expected<void> throws and surfaces shimmed what()") {
+    std::expected<void, int> value = std::unexpected(7);
+    try {
+        value.value(); // force throw bad_expected_access<void>
+        CHECK_FALSE(true); // should not reach
+    } catch (std::bad_expected_access<void>& ex) {
+        auto msg = std::string{ex.what()};
+        CHECK_FALSE(msg.empty());
+        // Even though error() is not available for void, ensure message is stable.
+        CHECK(msg.find("expected") != std::string::npos);
+    }
+}
 }
