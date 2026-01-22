@@ -68,6 +68,8 @@ public:
     auto packInsert(std::span<const std::string> paths,
                     InputMetadata const& inputMetadata,
                     std::span<void const* const> values) -> InsertReturn;
+    auto packInsertSpans(std::span<const std::string> paths,
+                         std::span<SpanInsertSpec const> specs) -> InsertReturn;
 
 private:
     auto inFinalComponent(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;

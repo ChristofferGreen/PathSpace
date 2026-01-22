@@ -71,9 +71,17 @@ struct PodPayloadBase {
         void*        ptr   = nullptr;
         std::size_t  index = 0;
     };
+    struct ReservationSpan {
+        void*        ptr   = nullptr;
+        std::size_t  index = 0;
+        std::size_t  count = 0;
+    };
     virtual std::optional<Reservation> reserveOne()                      = 0;
     virtual void                       publishOne(std::size_t index)     = 0;
     virtual void                       rollbackOne(std::size_t index)    = 0;
+    virtual std::optional<ReservationSpan> reserveSpan(std::size_t count) = 0;
+    virtual void                         publishSpan(std::size_t index, std::size_t count) = 0;
+    virtual void                         rollbackSpan(std::size_t index, std::size_t count) = 0;
     virtual std::optional<std::size_t> packSpanStart() const noexcept    = 0;
     virtual void                       markPackSpanStart(std::size_t startIndex) noexcept                     = 0;
 };
@@ -363,6 +371,23 @@ public:
         }
     }
 
+    std::optional<ReservationSpan> reserveSpan(std::size_t count) override {
+        if (frozen_.load(std::memory_order_acquire)) {
+            return std::nullopt;
+        }
+        for (;;) {
+            auto buf  = std::atomic_load_explicit(&buffer_, std::memory_order_acquire);
+            auto tail = tail_.load(std::memory_order_acquire);
+            if (tail + count <= buf->capacity) {
+                if (tail_.compare_exchange_weak(tail, tail + count, std::memory_order_acq_rel)) {
+                    return ReservationSpan{static_cast<void*>(buf->data.get() + tail), tail, count};
+                }
+                continue;
+            }
+            ensureCapacity(tail + count);
+        }
+    }
+
     void publishOne(std::size_t index) override {
         auto desired = index + 1;
         auto current = publishedTail_.load(std::memory_order_acquire);
@@ -372,8 +397,23 @@ public:
         }
     }
 
+    void publishSpan(std::size_t index, std::size_t count) override {
+        if (count == 0) return;
+        auto desired = index + count;
+        auto current = publishedTail_.load(std::memory_order_acquire);
+        while (current < desired
+               && !publishedTail_.compare_exchange_weak(current, desired, std::memory_order_release, std::memory_order_relaxed)) {
+            // current updated by compare_exchange_weak; loop until we advance or observe newer publish
+        }
+    }
+
     void rollbackOne(std::size_t index) override {
         auto expected = index + 1;
+        tail_.compare_exchange_strong(expected, index, std::memory_order_acq_rel);
+    }
+
+    void rollbackSpan(std::size_t index, std::size_t count) override {
+        auto expected = index + count;
         tail_.compare_exchange_strong(expected, index, std::memory_order_acq_rel);
     }
 

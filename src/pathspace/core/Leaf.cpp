@@ -1424,4 +1424,105 @@ auto Leaf::packInsert(std::span<const std::string> paths,
     return ret;
 }
 
+auto Leaf::packInsertSpans(std::span<const std::string> paths,
+                           std::span<SpanInsertSpec const> specs) -> InsertReturn {
+    std::scoped_lock packLock(this->packInsertMutex);
+    this->packInsertSeen.store(true, std::memory_order_release);
+    InsertReturn ret;
+
+    if (paths.size() != specs.size()) {
+        ret.errors.emplace_back(Error{Error::Code::InvalidType, "Span pack insert arity mismatch"});
+        return ret;
+    }
+    if (specs.empty()) {
+        return ret;
+    }
+
+    for (auto const& spec : specs) {
+        if (!spec.metadata.podPreferred
+            || spec.metadata.dataCategory == DataCategory::UniquePtr
+            || spec.metadata.dataCategory == DataCategory::Execution) {
+            ret.errors.emplace_back(Error{Error::Code::NotSupported, "Span pack insert requires POD fast path"});
+            return ret;
+        }
+    }
+
+    std::vector<Node*> nodes;
+    nodes.reserve(paths.size());
+    for (auto const& pathStr : paths) {
+        auto nodeExpected = createConcreteNode(this->root, pathStr);
+        if (!nodeExpected) {
+            ret.errors.emplace_back(nodeExpected.error());
+            return ret;
+        }
+        nodes.push_back(nodeExpected.value());
+    }
+
+    std::optional<std::size_t> expectedCount;
+    for (auto const& spec : specs) {
+        if (!expectedCount) {
+            expectedCount = spec.span.count;
+        } else if (*expectedCount != spec.span.count) {
+            ret.errors.emplace_back(Error{Error::Code::InvalidType, "Span lengths mismatch"});
+            return ret;
+        }
+    }
+
+    std::vector<std::shared_ptr<PodPayloadBase>> payloads;
+    payloads.reserve(nodes.size());
+
+    std::optional<std::size_t> expectedHead;
+    std::optional<std::size_t> expectedTail;
+
+    for (std::size_t i = 0; i < nodes.size(); ++i) {
+        InputData inputData{specs[i].span.data, specs[i].metadata};
+        auto payload = ensurePodPayload(*nodes[i], inputData);
+        if (!payload) {
+            ret.errors.emplace_back(Error{Error::Code::InvalidType, "POD fast path unavailable for span insert"});
+            return ret;
+        }
+        auto head = payload->headIndex();
+        auto tail = payload->publishedTail();
+        if (!expectedHead) {
+            expectedHead = head;
+            expectedTail = tail;
+        } else if (*expectedHead != head || *expectedTail != tail) {
+            ret.errors.emplace_back(Error{Error::Code::InvalidType, "Existing span lengths mismatch"});
+            return ret;
+        }
+        payloads.push_back(std::move(payload));
+    }
+
+    std::vector<PodPayloadBase::ReservationSpan> reservations;
+    reservations.reserve(payloads.size());
+
+    for (std::size_t i = 0; i < payloads.size(); ++i) {
+        auto reservation = payloads[i]->reserveSpan(*expectedCount);
+        if (!reservation) {
+            ret.errors.emplace_back(Error{Error::Code::NotSupported, "Span pack insert reservation failed"});
+            for (std::size_t j = 0; j < reservations.size(); ++j) {
+                payloads[j]->rollbackSpan(reservations[j].index, reservations[j].count);
+            }
+            return ret;
+        }
+        payloads[i]->markPackSpanStart(reservation->index);
+        reservations.push_back(*reservation);
+    }
+
+    for (std::size_t i = 0; i < reservations.size(); ++i) {
+        if (*expectedCount == 0) {
+            continue;
+        }
+        auto bytes = specs[i].elementSize * (*expectedCount);
+        std::memcpy(reservations[i].ptr, specs[i].span.data, bytes);
+    }
+
+    for (std::size_t i = 0; i < reservations.size(); ++i) {
+        payloads[i]->publishSpan(reservations[i].index, reservations[i].count);
+    }
+
+    ret.nbrValuesInserted += static_cast<uint32_t>((*expectedCount) * specs.size());
+    return ret;
+}
+
 } // namespace SP

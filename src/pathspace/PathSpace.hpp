@@ -114,6 +114,8 @@ protected:
     auto packInsert(std::span<const std::string> paths,
                     InputMetadata const& metadata,
                     std::span<void const* const> values) -> InsertReturn override;
+    auto packInsertSpans(std::span<const std::string> paths,
+                         std::span<SpanInsertSpec const> specs) -> InsertReturn override;
     auto getRootNode() -> Node* override;
     auto listChildrenCanonical(std::string_view canonicalPath) const -> std::vector<std::string> override;
     // Expose typed future peek to PathSpaceBase::readFuture

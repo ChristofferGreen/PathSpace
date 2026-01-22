@@ -814,6 +814,24 @@ auto PathSpace::packInsert(std::span<const std::string> paths,
     return ret;
 }
 
+auto PathSpace::packInsertSpans(std::span<const std::string> paths,
+                                std::span<SpanInsertSpec const> specs) -> InsertReturn {
+    auto ret = this->leaf.packInsertSpans(paths, specs);
+    if (!this->context) {
+        return ret;
+    }
+    if (ret.nbrValuesInserted > 0 || ret.nbrTasksInserted > 0 || ret.nbrSpacesInserted > 0) {
+        for (auto const& path : paths) {
+            if (!this->prefix.empty()) {
+                this->context->notify(this->prefix + path);
+            } else {
+                this->context->notify(path);
+            }
+        }
+    }
+    return ret;
+}
+
 auto PathSpace::getRootNode() -> Node* {
     return &this->leaf.rootNode();
 }

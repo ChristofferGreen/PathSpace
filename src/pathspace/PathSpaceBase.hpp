@@ -3,6 +3,7 @@
 #include "core/Error.hpp"
 #include "core/In.hpp"
 #include "core/InsertReturn.hpp"
+#include "core/PodPayload.hpp"
 #include "core/NotificationSink.hpp"
 #include "core/Out.hpp"
 #include "core/PathSpaceContext.hpp"
@@ -116,6 +117,12 @@ struct RawSpan {
 
 using RawConstSpan = RawSpan<void const*>;
 using RawMutSpan   = RawSpan<void*>;
+
+struct SpanInsertSpec {
+    InputMetadata metadata;
+    RawConstSpan  span;
+    std::size_t   elementSize = 0;
+};
 
 struct SpanPackResult {
     std::optional<Error> error;
@@ -293,6 +300,12 @@ using SpanPackSignature = std::conditional_t<std::is_pointer_v<Fn> || std::is_me
                                              Fn,
                                              decltype(&Fn::operator())>;
 
+template <typename T>
+inline constexpr bool IsSpanType = SpanArgTraits<std::remove_cvref_t<T>>::isSpan;
+
+template <typename... Ts>
+inline constexpr bool AllSpanTypes = (IsSpanType<Ts> && ...);
+
 template <typename Fn, typename = void>
 struct SpanPackTraits {
     static constexpr bool isSpanPack    = false;
@@ -437,6 +450,56 @@ public:
         return this->packInsert(std::span<const std::string>(paths.data(), paths.size()),
                                 metadata,
                                 std::span<void const* const>(valuePtrs.data(), valuePtrs.size()));
+    }
+
+    // Span-pack append: compile-time field names, runtime base path, heterogeneous span types allowed.
+    template <FixedString... names, StringConvertible S, typename... SpanTs>
+        requires(sizeof...(names) > 1 && sizeof...(names) == sizeof...(SpanTs) && Detail::AllSpanTypes<SpanTs...>)
+    auto insert(S const& basePath, SpanTs&&... spans) -> InsertReturn {
+        sp_log("PathSpace::insert<span_pack>", "Function Called");
+        constexpr std::size_t Arity = sizeof...(names);
+        Iterator baseIter{basePath};
+        if (auto error = baseIter.validate(ValidationLevel::Basic)) {
+            return InsertReturn{.errors = {*error}};
+        }
+
+        std::array<std::string, Arity> paths{};
+        std::array<SpanInsertSpec, Arity> specs{};
+
+        auto fill = [&](auto&& span, auto index, auto const& nameView) {
+            using RawSpanT = std::remove_cvref_t<decltype(span)>;
+            using Value    = typename Detail::SpanArgTraits<RawSpanT>::Value;
+            auto fullPath  = joinPathComponent(baseIter.toStringView(), nameView);
+            Iterator check{fullPath};
+            if (auto err = check.validate(ValidationLevel::Basic)) {
+                return std::optional<Error>{*err};
+            }
+
+            InputMetadata metadata{InputMetadataT<Value>{}};
+            if (metadata.createPodPayload == nullptr) {
+                metadata.createPodPayload = &PodPayload<Value>::CreateShared;
+            }
+
+            paths[index]       = std::move(fullPath);
+            specs[index].metadata    = metadata;
+            specs[index].span.data   = static_cast<void const*>(span.data());
+            specs[index].span.count  = span.size();
+            specs[index].elementSize = sizeof(Value);
+            return std::optional<Error>{};
+        };
+
+        std::optional<Error> firstErr;
+        std::size_t idx = 0;
+        auto process = [&](auto&& span, auto const& nameLit) {
+            if (firstErr) return;
+            firstErr = fill(std::forward<decltype(span)>(span), idx, std::string_view(nameLit));
+            ++idx;
+        };
+        (process(std::forward<SpanTs>(spans), names), ...);
+        if (firstErr) return InsertReturn{.errors = {*firstErr}};
+
+        return this->packInsertSpans(std::span<const std::string>(paths.data(), paths.size()),
+                                     std::span<SpanInsertSpec const>(specs.data(), specs.size()));
     }
 
     // Read typed values (copy). Paths must be concrete (non-glob).
@@ -863,6 +926,13 @@ private:
         (void)metadata;
         (void)values;
         return InsertReturn{.errors = {Error{Error::Code::NotSupported, "Pack insert not supported"}}};
+    }
+
+    virtual auto packInsertSpans(std::span<const std::string> paths,
+                                 std::span<SpanInsertSpec const> specs) -> InsertReturn {
+        (void)paths;
+        (void)specs;
+        return InsertReturn{.errors = {Error{Error::Code::NotSupported, "Span pack insert not supported"}}};
     }
 };
 

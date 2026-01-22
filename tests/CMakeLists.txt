@@ -88,7 +88,8 @@ if(PATHSPACE_ENABLE_LOG_DEBUG)
   target_compile_definitions(PathSpaceTests PRIVATE SP_LOG_DEBUG)
 endif()
 
-target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+set(PATHSPACE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/..")
+target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_SOURCE_DIR="${PATHSPACE_ROOT_DIR}")
 # Treat CI/test builds as coverage-friendly to reduce timing flake sensitivity.
 target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_COVERAGE_BUILD=1)
 
@@ -110,9 +111,9 @@ set_source_files_properties(${_PATHSPACE_LOGGER_SOURCES}
 # implementation here so the tests link against a debug-enabled build.
 if(NOT PATHSPACE_ENABLE_LOG_DEBUG)
   target_sources(PathSpaceTests PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/pathspace/log/TaggedLogger.cpp
+    ${PATHSPACE_ROOT_DIR}/src/pathspace/log/TaggedLogger.cpp
   )
-  set_source_files_properties(${CMAKE_SOURCE_DIR}/src/pathspace/log/TaggedLogger.cpp
+  set_source_files_properties(${PATHSPACE_ROOT_DIR}/src/pathspace/log/TaggedLogger.cpp
     PROPERTIES COMPILE_DEFINITIONS "SP_LOG_DEBUG"
   )
 endif()

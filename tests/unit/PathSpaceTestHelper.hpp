@@ -18,7 +18,10 @@ struct PathSpaceTestHelper {
                          std::string const& basePrefix,
                          std::string const& currentPath,
                          PathSpace::CopyStats& stats) {
-        PathSpace::copyNodeRecursive(src.leaf.rootNode(), dst.leaf.rootNode(), ctx, basePrefix, currentPath, stats);
+        (void)ctx;
+        (void)basePrefix;
+        (void)currentPath;
+        dst.copyFrom(src, &stats);
     }
 
     // Test-only accessors to internal counters used by shutdown/clear paths.
