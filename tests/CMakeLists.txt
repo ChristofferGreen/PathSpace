@@ -4,11 +4,13 @@ project(PathSpaceTests VERSION 1.0)
 
 set(PATHSPACE_CORE_TEST_SOURCES
   unit/path/test_Iterator.cpp
+  unit/path/test_IteratorRange.cpp
   unit/path/test_IteratorValidation.cpp
   unit/path/test_GlobPath.cpp
   unit/path/test_ConcretePath.cpp
   unit/path/test_PathCoverage.cpp
   unit/path/test_PathUtils.cpp
+  unit/path/test_TransparentString.cpp
   unit/core/test_WaitMap.cpp
   unit/core/test_InsertReturn.cpp
   unit/type/test_InputData.cpp
@@ -16,6 +18,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/type/test_InputMetadata.cpp
   unit/type/test_Serialization.cpp
   unit/type/test_TypeMetadataRegistry.cpp
+  unit/type/test_TypeMetadataRegistryPrivates.cpp
   unit/type/test_SlidingBuffer.cpp
   unit/core/test_NodeDataSnapshot.cpp
   unit/core/test_NodeDataNested.cpp
@@ -47,7 +50,9 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/history/test_UndoHistoryUtils.cpp
   unit/history/test_UndoSavefileCodec.cpp
   unit/history/test_UndoableSpace.cpp
+  unit/history/test_UndoableSpaceCoverage.cpp
   unit/pathspace/test_PathSpaceJsonExporter.cpp
+  unit/pathspace/test_PathSpaceJsonConverters.cpp
   unit/pathspace/test_PathSpaceHeader.cpp
   unit/test_BoundedPathSpace.cpp
   unit/core/test_Error.cpp

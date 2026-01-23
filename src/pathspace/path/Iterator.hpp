@@ -72,6 +72,9 @@ public:
     [[nodiscard]] auto next() const noexcept -> Iterator;
 
 private:
+    // Testing hook to reach the iterator-range constructor without widening the public API.
+    friend struct IteratorTestAccess;
+
     Iterator(IteratorType first, IteratorType last) noexcept;
 
     auto               skipSlashes(IteratorType& it) noexcept -> void;

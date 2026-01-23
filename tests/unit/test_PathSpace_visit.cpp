@@ -358,6 +358,95 @@ TEST_CASE("ValueHandle read reports missing payload when node has no value") {
     CHECK(sawRoot);
 }
 
+TEST_CASE("ValueHandle read handles empty POD queues via snapshot fallback") {
+    PathSpace space;
+    REQUIRE(space.insert("/pod", 1).errors.empty());
+
+    // Drain the queue so the POD payload exists but holds no elements.
+    auto first = space.take<int>("/pod");
+    REQUIRE(first.has_value());
+    auto second = space.take<int>("/pod");
+    CHECK_FALSE(second.has_value());
+
+    bool visitedPod = false;
+    auto visitResult = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path != "/pod") {
+                return VisitControl::Continue;
+            }
+            visitedPod = true;
+            auto empty = handle.read<int>();
+            CHECK_FALSE(empty);
+            CHECK(empty.error().code == Error::Code::NoObjectFound);
+            return VisitControl::Stop;
+        });
+    REQUIRE(visitResult);
+    CHECK(visitedPod);
+}
+
+TEST_CASE("ValueHandle queueDepth handles data, pod, and empty handles") {
+    PathSpace space;
+    REQUIRE(space.insert("/pod", 5).errors.empty());
+    REQUIRE(space.insert("/data", std::string{"value"}).errors.empty());
+
+    std::size_t podDepth  = 0;
+    std::size_t dataDepth = 0;
+    auto visitResult = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/pod") {
+                podDepth = handle.queueDepth();
+            } else if (entry.path == "/data") {
+                dataDepth = handle.queueDepth();
+            }
+            return VisitControl::Continue;
+        });
+    REQUIRE(visitResult);
+
+    CHECK(podDepth == 1);
+    CHECK(dataDepth == 1);
+
+    ValueHandle empty{};
+    CHECK(empty.queueDepth() == 0);
+}
+
+TEST_CASE("ValueHandle readInto surfaces permission and missing-node errors") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/value", 9).errors.empty());
+
+    VisitOptions opts;
+    opts.includeValues = false;
+    int dest = 0;
+    auto visitResult = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/root/value") {
+                auto err = handle.read<int>();
+                REQUIRE_FALSE(err);
+                CHECK(err.error().code == Error::Code::NotSupported);
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        },
+        opts);
+    REQUIRE(visitResult);
+
+    // Moved-from handles keep includeValues=true but lose backing node.
+    std::optional<Expected<int>> movedErr;
+    auto capture = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/root/value") {
+                ValueHandle moved = std::move(handle);
+                movedErr = handle.read<int>(); // moved-from handle
+                (void)moved;
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        });
+    REQUIRE(capture);
+    REQUIRE(movedErr.has_value());
+    CHECK_FALSE(*movedErr);
+    CHECK(movedErr->error().code == Error::Code::NotSupported);
+}
+
 TEST_CASE("PathSpace visit caps nested traversal at maxDepth") {
     PathSpace space;
     auto nested = std::make_unique<PathSpace>();
@@ -448,6 +537,25 @@ TEST_CASE("PathSpace visit honors SkipChildren and includeValues=false") {
     CHECK(std::find(visited.begin(), visited.end(), "/root") != visited.end());
     CHECK(std::find(visited.begin(), visited.end(), "/root/child") != visited.end());
     CHECK(std::find(visited.begin(), visited.end(), "/root/child/grand") == visited.end());
+}
+
+TEST_CASE("PathSpace visit treats empty root as canonical slash") {
+    PathSpace space;
+    REQUIRE(space.insert("/only", 1).errors.empty());
+
+    VisitOptions opts;
+    opts.root = ""; // triggers empty-root canonicalization path
+
+    std::vector<std::string> visited;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            visited.push_back(entry.path);
+            return VisitControl::Continue;
+        },
+        opts);
+    REQUIRE(result);
+    CHECK(std::find(visited.begin(), visited.end(), "/") != visited.end());
+    CHECK(std::find(visited.begin(), visited.end(), "/only") != visited.end());
 }
 
 TEST_CASE("PathSpace visit rejects missing indexed nested space") {

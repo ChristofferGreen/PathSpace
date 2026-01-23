@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstring>
+#include <limits>
 #include <numeric> // for std::iota
 #include <span>
 #include <string>
@@ -99,7 +100,7 @@ TEST_CASE("SlidingBuffer") {
 
             // Test const iterators
             const auto& constBuffer = buffer;
-            index = 0;
+            index                   = 0;
             for (const auto& value : constBuffer) {
                 CHECK(value == testData[index++]);
             }
@@ -156,21 +157,52 @@ TEST_CASE("SlidingBuffer") {
             buffer.append(large.data(), large.size());
 
             buffer.advance(100); // Should trigger compaction
-        CHECK(buffer.virtualFront() == 0);
-        CHECK(buffer.rawSize() < 128);
-    }
+            CHECK(buffer.virtualFront() == 0);
+            CHECK(buffer.rawSize() < 128);
+        }
 
-    SUBCASE("resize behavior") {
+        SUBCASE("resize behavior") {
             std::vector<uint8_t> testData = {1, 2, 3, 4, 5};
             buffer.append(testData.data(), testData.size());
             buffer.advance(2);
             buffer.resize(2); // Should compact and resize
 
-        CHECK(buffer.virtualFront() == 0);
-        CHECK(buffer.size() == 2);
-        CHECK(buffer[0] == 3);
-        CHECK(buffer[1] == 4);
-    }
+            CHECK(buffer.virtualFront() == 0);
+            CHECK(buffer.size() == 2);
+            CHECK(buffer[0] == 3);
+            CHECK(buffer[1] == 4);
+        }
+
+        SUBCASE("advance beyond size is a no-op with warning path covered") {
+            std::vector<uint8_t> testData = {9, 8, 7};
+            buffer.append(testData.data(), testData.size());
+            auto beforeFront = buffer.virtualFront();
+            auto beforeSize  = buffer.size();
+            buffer.advance(beforeSize + 5); // exceeds size, should early-return
+            CHECK(buffer.virtualFront() == beforeFront);
+            CHECK(buffer.size() == beforeSize);
+        }
+
+        SUBCASE("capacity and clear-on-full-consume paths are exercised") {
+            // Initial capacity is reserved in constructor.
+            CHECK(buffer.capacity() >= SP::SlidingBuffer::INITIAL_CAPACITY);
+
+            std::vector<uint8_t> payload(128);
+            std::iota(payload.begin(), payload.end(), 0);
+            buffer.append(payload.data(), payload.size());
+
+            // Consume exactly the available bytes to trigger compact()'s clear branch.
+            buffer.advance(payload.size());
+            CHECK(buffer.empty());
+            CHECK(buffer.rawSize() == 0);
+            CHECK(buffer.virtualFront() == 0);
+        }
+
+        SUBCASE("resize guards against overflow growth") {
+            // Force calculateGrowth to take the overflow branch; reserve will throw.
+            auto huge = std::numeric_limits<size_t>::max() / 2 + 1;
+            CHECK_THROWS_AS(buffer.resize(huge), std::length_error);
+        }
 
     SUBCASE("data and virtualFront stay consistent across multiple compactions") {
         SP::SlidingBuffer buffer;

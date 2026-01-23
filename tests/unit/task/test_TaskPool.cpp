@@ -150,6 +150,36 @@ TEST_CASE("TaskPool Misc") {
         CHECK_FALSE(taskExecuted);
     }
 
+    SUBCASE("addTask handles already-started task without enqueue") {
+        TaskPool pool(1);
+        auto     task = Task::Create([](Task const&, bool) {});
+        REQUIRE(task->tryStart()); // move to Starting state
+
+        auto err = pool.addTask(std::weak_ptr<Task>(task));
+        CHECK_FALSE(err.has_value());
+    }
+
+    SUBCASE("addTask rejects expired weak_ptr") {
+        TaskPool           pool(1);
+        std::weak_ptr<Task> weakTask;
+        {
+            auto task = Task::Create([](Task const&, bool) {});
+            weakTask  = task;
+        } // task destroyed here
+
+        auto err = pool.addTask(std::move(weakTask));
+        CHECK(err.has_value());
+    }
+
+    SUBCASE("addTask refuses submissions after shutdown") {
+        TaskPool pool(1);
+        pool.shutdown();
+
+        auto task = Task::Create([](Task const&, bool) {});
+        auto err  = pool.addTask(std::weak_ptr<Task>(task));
+        CHECK(err.has_value());
+    }
+
     SUBCASE("Simplified task pool stress test") {
         auto getOptimalTaskCount = []() {
             const size_t minTasks     = 100;
@@ -774,6 +804,12 @@ TEST_CASE("TaskPool Misc") {
             CHECK(totalTime < maxSequentialTime);
         }
     }
+}
+
+TEST_CASE("TaskPool Instance singleton is stable") {
+    auto& first  = TaskPool::Instance();
+    auto& second = TaskPool::Instance();
+    CHECK(&first == &second);
 }
 
 TEST_SUITE_END();

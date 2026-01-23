@@ -1,4 +1,6 @@
+#define private public
 #include "core/PathSpaceContext.hpp"
+#undef private
 #include "task/TaskPool.hpp"
 
 #include "third_party/doctest.h"
@@ -23,12 +25,52 @@ struct RecordingSink : NotificationSink {
 } // namespace
 
 TEST_SUITE("core.pathspacecontext") {
+TEST_CASE("guards reentrant sink notifications and exposes executor accessors") {
+    struct DummyExecutor : Executor {
+        auto submit(std::weak_ptr<Task>&&) -> std::optional<Error> override { return std::nullopt; }
+        void shutdown() override {}
+        auto size() const -> size_t override { return 1; }
+    };
+
+    PathSpaceContext ctx;
+    DummyExecutor exec;
+    ctx.setExecutor(&exec);
+    CHECK(ctx.executor() == &exec);
+
+    struct ReentrantSink : NotificationSink {
+        explicit ReentrantSink(PathSpaceContext& c) : ctx(c) {}
+        void notify(std::string const& notificationPath) override {
+            calls.push_back(notificationPath);
+            ctx.notify(notificationPath + "/again"); // should be ignored due to notifyingSink guard
+        }
+        PathSpaceContext&       ctx;
+        std::vector<std::string> calls;
+    };
+
+    auto sink = std::make_shared<ReentrantSink>(ctx);
+    ctx.setSink(sink);
+
+    ctx.notify("/root");
+    REQUIRE(sink->calls.size() == 1);
+    CHECK(sink->calls.front() == "/root");
+}
+
 TEST_CASE("hasWaiters lazily initializes wait registry") {
     PathSpaceContext ctx;
 
     CHECK_FALSE(ctx.hasWaiters());
     // Second call should reuse the already-initialized registry without crashing.
     CHECK_FALSE(ctx.hasWaiters());
+}
+
+TEST_CASE("ensureWait rebuilds registry when cleared") {
+    PathSpaceContext ctx;
+    ctx.waitRegistry.reset(); // simulate late initialization path
+
+    auto guard  = ctx.wait("/reinit");
+    auto status = guard.wait_until(std::chrono::system_clock::now() + std::chrono::milliseconds(2));
+    CHECK(status == std::cv_status::timeout);
+    CHECK(ctx.hasWaiters());
 }
 
 TEST_CASE("sink lifecycle forwards notifications and can be invalidated") {

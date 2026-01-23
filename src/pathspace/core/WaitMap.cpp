@@ -67,8 +67,8 @@ void WaitMap::debug_log(char const* event,
                  notified);
 }
 
-WaitMap::Guard::Guard(WaitMap& waitMap, std::string_view path)
-    : waitMap(waitMap), path(path) {}
+WaitMap::Guard::Guard(WaitMap& waitMap, std::string_view path, std::uint64_t initialVersion)
+    : waitMap(waitMap), path(path), awaitedVersion(initialVersion), versionInitialized(true) {}
 
 auto WaitMap::Guard::ensure_entry() -> WaiterEntry* {
     if (!entry) {
@@ -79,6 +79,11 @@ auto WaitMap::Guard::ensure_entry() -> WaiterEntry* {
 
 auto WaitMap::Guard::wait_until(std::chrono::time_point<std::chrono::system_clock> timeout) -> std::cv_status {
     auto* entryPtr = ensure_entry();
+    if (!versionInitialized) {
+        awaitedVersion     = entryPtr->notifyVersion.load(std::memory_order_acquire);
+        versionInitialized = true;
+    }
+    auto expectedVersion = awaitedVersion;
     auto const lockWaitStart = std::chrono::steady_clock::now();
     if (!waitLock.owns_lock()) {
         waitLock = std::unique_lock<std::mutex>(entryPtr->mutex);
@@ -93,7 +98,14 @@ auto WaitMap::Guard::wait_until(std::chrono::time_point<std::chrono::system_cloc
     }
 
     auto const waitStart = std::chrono::steady_clock::now();
-    auto const status = entryPtr->cv.wait_until(waitLock, timeout);
+    auto       status    = std::cv_status::no_timeout;
+    while (entryPtr->notifyVersion.load(std::memory_order_acquire) == expectedVersion) {
+        status = entryPtr->cv.wait_until(waitLock, timeout);
+        if (status == std::cv_status::timeout) {
+            break;
+        }
+    }
+    awaitedVersion = entryPtr->notifyVersion.load(std::memory_order_acquire);
     auto const waitMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - waitStart);
 
@@ -108,7 +120,11 @@ auto WaitMap::wait(std::string_view path) -> Guard {
     if (WaitMap::debug_enabled()) {
         WaitMap::debug_log("wait", path, std::chrono::milliseconds{0}, std::chrono::milliseconds{0}, 0);
     }
-    return Guard(*this, path);
+    // Pre-register the waiter entry so notify/notifyAll cannot miss this waiter
+    // if they run before the thread calls Guard::wait_until.
+    auto& entry = this->getEntry(path);
+    auto const initialVersion = entry.notifyVersion.load(std::memory_order_acquire);
+    return Guard(*this, path, initialVersion);
 }
 
 // Helper: traverse trie to the node for a concrete path; create nodes as needed.
@@ -252,9 +268,11 @@ auto WaitMap::notify(std::string_view path) -> void {
     }
 
     for (auto* entry : toNotify) {
+        entry->notifyVersion.fetch_add(1, std::memory_order_release);
         entry->cv.notify_all();
     }
     for (auto* entry : toNotifyGlob) {
+        entry->notifyVersion.fetch_add(1, std::memory_order_release);
         entry->cv.notify_all();
     }
 }
@@ -288,6 +306,7 @@ auto WaitMap::notifyAll() -> void {
     } // release mutex
 
     for (auto* entry : toNotify) {
+        entry->notifyVersion.fetch_add(1, std::memory_order_release);
         entry->cv.notify_all();
     }
 }
@@ -317,6 +336,7 @@ auto WaitMap::clear() -> void {
     } // release registry lock before notifying
 
     for (auto* entry : toNotify) {
+        entry->notifyVersion.fetch_add(1, std::memory_order_release);
         entry->cv.notify_all();
     }
 

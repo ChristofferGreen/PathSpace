@@ -213,6 +213,44 @@ TEST_CASE("journal history control commands perform undo and redo") {
     CHECK(*restored == std::string{"alpha"});
 }
 
+TEST_CASE("history command step payloads honor signed and unsigned integers") {
+    SUBCASE("uint64 step count applies multiple undos") {
+        auto space = makeUndoableSpace();
+        REQUIRE(space);
+
+        HistoryOptions opts;
+        opts.useMutationJournal = true;
+        REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+        REQUIRE(space->insert("/doc/a", std::string{"alpha"}).errors.empty());
+        REQUIRE(space->insert("/doc/b", std::string{"beta"}).errors.empty());
+
+        auto undoTwo = space->insert("/doc/_history/undo", static_cast<std::uint64_t>(2));
+        CHECK(undoTwo.errors.empty());
+        CHECK_FALSE(space->read<std::string>("/doc/a").has_value());
+        CHECK_FALSE(space->read<std::string>("/doc/b").has_value());
+    }
+
+    SUBCASE("negative int64 payload defaults to a single step") {
+        auto space = makeUndoableSpace();
+        REQUIRE(space);
+
+        HistoryOptions opts;
+        opts.useMutationJournal = true;
+        REQUIRE(space->enableHistory(ConcretePathStringView{"/neg"}, opts).has_value());
+
+        REQUIRE(space->insert("/neg/value", std::string{"gamma"}).errors.empty());
+        auto undoOne = space->insert("/neg/_history/undo", static_cast<std::int64_t>(-5));
+        CHECK(undoOne.errors.empty());
+        CHECK_FALSE(space->read<std::string>("/neg/value").has_value());
+
+        REQUIRE(space->redo(ConcretePathStringView{"/neg"}).has_value());
+        auto restored = space->read<std::string>("/neg/value");
+        REQUIRE(restored.has_value());
+        CHECK(*restored == std::string{"gamma"});
+    }
+}
+
 TEST_CASE("history tag command annotates last operation and journal steps") {
     auto space = makeUndoableSpace();
     REQUIRE(space);
@@ -974,6 +1012,71 @@ TEST_CASE("shared undo stack keys are rejected across roots") {
     CHECK(second.error().code == Error::Code::InvalidPermissions);
     REQUIRE(second.error().message.has_value());
     CHECK(second.error().message->find("shared undo stacks") != std::string::npos);
+}
+
+TEST_CASE("history stats are unavailable before enabling history") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    auto stats = space->getHistoryStats(ConcretePathStringView{"/missing"});
+    CHECK_FALSE(stats.has_value());
+    CHECK(stats.error().code == Error::Code::NotFound);
+}
+
+TEST_CASE("history tag command rejects non-string payloads") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto badTag = space->insert("/doc/_history/set_tag", 123);
+    REQUIRE_FALSE(badTag.errors.empty());
+    auto const& err = badTag.errors.front();
+    CHECK(err.code == Error::Code::InvalidType);
+}
+
+TEST_CASE("unsupported payload details surface through recent log paths") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    auto nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/value", 1).nbrValuesInserted == 1);
+
+    auto result = space->insert("/doc/nested", std::move(nested));
+    CHECK(result.nbrSpacesInserted == 1);
+    REQUIRE_FALSE(result.errors.empty());
+
+    auto recentPath = space->read<std::string>("/doc/_history/unsupported/recent/0/path");
+    CHECK_FALSE(recentPath.has_value());
+    CHECK(recentPath.error().code == Error::Code::NoObjectFound);
+
+    auto recentReason = space->read<std::string>("/doc/_history/unsupported/recent/0/reason");
+    CHECK_FALSE(recentReason.has_value());
+    CHECK(recentReason.error().code == Error::Code::NoObjectFound);
+}
+
+TEST_CASE("undo is blocked while a transaction is active") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+    REQUIRE(space->insert("/doc/value", 7).errors.empty());
+
+    auto txExpected = space->beginTransaction(ConcretePathStringView{"/doc"});
+    REQUIRE(txExpected.has_value());
+    auto tx = std::move(txExpected.value());
+
+    auto undoResult = space->undo(ConcretePathStringView{"/doc"});
+    CHECK_FALSE(undoResult.has_value());
+    REQUIRE(undoResult.error().code == Error::Code::InvalidPermissions);
+
+    REQUIRE(tx.commit().has_value());
 }
 
 TEST_SUITE_END();

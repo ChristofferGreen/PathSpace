@@ -78,6 +78,22 @@ TEST_CASE("Path Iterator and Utilities") {
             CHECK(iter.startToCurrent() == "alpha");
             CHECK(iter.currentToEnd() == "beta/gamma");
         }
+
+        SUBCASE("operator-> and postfix increment preserve iteration state") {
+            Iterator iter("/range/path");
+
+            CHECK(iter->front() == 'r');
+            CHECK(iter->size() == std::string_view("range").size());
+
+            auto first = iter++;
+            CHECK(std::string(*first) == "range");
+            CHECK(*iter == "path");
+            CHECK_FALSE(iter.isAtEnd());
+
+            auto second = iter++;
+            CHECK(std::string(*second) == "path");
+            CHECK(iter.isAtEnd());
+        }
     }
 
     SUBCASE("Path Iterator State Tracking") {
@@ -247,6 +263,49 @@ TEST_CASE("Path Iterator and Utilities") {
             CHECK(*iter == "test");
             ++iter;
             CHECK(*iter == "path");
+        }
+
+        SUBCASE("Copy constructor preserves iteration state") {
+            Iterator iter("/copy/state");
+            ++iter; // now at "state"
+
+            Iterator copied = iter;
+            CHECK(std::string(*copied) == "state");
+            CHECK_FALSE(copied.isAtStart());
+            CHECK_FALSE(copied.isAtEnd());
+            CHECK(copied.startToCurrent() == "copy");
+            CHECK(copied.currentToEnd() == "state");
+
+            // Advance original to ensure copies are independent.
+            ++iter;
+            CHECK(iter.isAtEnd());
+            CHECK_FALSE(copied.isAtEnd());
+        }
+
+        SUBCASE("Copy assignment rebinds storage and offsets") {
+            Iterator source("/assign/target");
+            Iterator target("/placeholder");
+            target = source;   // copy-assignment should rebind internal views
+
+            CHECK(std::string(*target) == "assign");
+            CHECK(target.startToCurrent().empty());
+            CHECK(target.currentToEnd() == "assign/target");
+            CHECK_FALSE(target.isAtEnd());
+        }
+
+        SUBCASE("Pass-by-value copy constructor preserves iteration state") {
+            Iterator iter("/copied/segment");
+            ++iter; // advance to second component so offsets are non-zero
+
+            auto checkCopy = [](Iterator copy) {
+                CHECK(std::string(*copy) == "segment");
+                CHECK_FALSE(copy.isAtStart());
+                CHECK_FALSE(copy.isAtEnd());
+                CHECK(copy.startToCurrent() == "copied");
+                CHECK(copy.currentToEnd() == "segment");
+            };
+
+            checkCopy(iter); // binds by value to exercise the copy ctor
         }
     }
 

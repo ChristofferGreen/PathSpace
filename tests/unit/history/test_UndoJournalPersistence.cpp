@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <unistd.h>
 #include <string>
 #include <vector>
@@ -34,6 +35,16 @@ auto tempPath(std::string_view suffix) -> std::filesystem::path {
     auto dir = std::filesystem::temp_directory_path() / name;
     std::filesystem::create_directories(dir);
     return dir / suffix;
+}
+
+auto writeHeader(std::filesystem::path const& path, std::uint32_t magic, std::uint16_t version) -> void {
+    std::FILE* file = std::fopen(path.string().c_str(), "wb");
+    REQUIRE(file != nullptr);
+    auto guard = std::unique_ptr<std::FILE, decltype(&std::fclose)>{file, &std::fclose};
+    std::uint32_t reserved = 0;
+    REQUIRE(std::fwrite(&magic, sizeof(magic), 1, file) == 1);
+    REQUIRE(std::fwrite(&version, sizeof(version), 1, file) == 1);
+    REQUIRE(std::fwrite(&reserved, sizeof(reserved), 1, file) == 1);
 }
 
 } // namespace
@@ -109,5 +120,80 @@ TEST_SUITE("history.journal.persistence") {
         });
         CHECK_FALSE(replay.has_value());
         CHECK(replay.error().code == SP::Error::Code::MalformedInput);
+    }
+
+    TEST_CASE("open fails when target path is an existing directory") {
+        auto path = tempPath("journal_dir");
+        std::filesystem::create_directories(path);
+
+        JournalFileWriter writer(path);
+        bool threw = false;
+        try {
+            auto res = writer.open(false);
+            (void)res;
+        } catch (std::filesystem::filesystem_error const&) {
+            threw = true;
+        }
+        CHECK(threw);
+    }
+
+    TEST_CASE("open rejects corrupt journal headers") {
+        auto path = tempPath("corrupt.log");
+
+        SUBCASE("bad magic") {
+            writeHeader(path, JournalFileMagic + 1, JournalFileVersion);
+        }
+
+        SUBCASE("bad version") {
+            writeHeader(path, JournalFileMagic, static_cast<std::uint16_t>(JournalFileVersion + 1));
+        }
+
+        JournalFileWriter writer(path);
+        auto result = writer.open(false);
+        CHECK_FALSE(result.has_value());
+        CHECK(result.error().code == SP::Error::Code::MalformedInput);
+    }
+
+    TEST_CASE("replay surfaces missing file and truncated headers") {
+        auto missingPath = tempPath("missing.log");
+        auto missing = replayJournal(missingPath, [&](JournalEntry&&) -> Expected<void> {
+            return {};
+        });
+        CHECK_FALSE(missing.has_value());
+        CHECK(missing.error().code == SP::Error::Code::NotFound);
+
+        auto truncatedPath = tempPath("truncated.log");
+        {
+            std::FILE* file = std::fopen(truncatedPath.string().c_str(), "wb");
+            REQUIRE(file != nullptr);
+            std::uint32_t magic = JournalFileMagic;
+            REQUIRE(std::fwrite(&magic, sizeof(magic), 1, file) == 1);
+            std::fclose(file);
+        }
+
+        auto truncated = replayJournal(truncatedPath, [&](JournalEntry&&) -> Expected<void> {
+            return {};
+        });
+        CHECK_FALSE(truncated.has_value());
+        CHECK(truncated.error().code == SP::Error::Code::MalformedInput);
+    }
+
+    TEST_CASE("compact journal fsync path produces a validated log") {
+        auto path = tempPath("journal_fsync.log");
+
+        std::vector<JournalEntry> entries;
+        entries.push_back(makeEntry(5));
+        entries.push_back(makeEntry(6));
+
+        auto compact = compactJournal(path, entries, true);
+        REQUIRE(compact.has_value());
+
+        std::vector<std::uint64_t> sequences;
+        auto replay = replayJournal(path, [&](JournalEntry&& entry) -> Expected<void> {
+            sequences.push_back(entry.sequence);
+            return {};
+        });
+        REQUIRE(replay.has_value());
+        CHECK(sequences == std::vector<std::uint64_t>{5, 6});
     }
 }

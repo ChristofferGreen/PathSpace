@@ -37,6 +37,10 @@ struct SharedNameA {
 struct SharedNameB {
     int y{0};
 };
+
+struct MissingPayloadType {
+    int value{0};
+};
 } // namespace
 
 TEST_SUITE("type.typemetadata.registry") {
@@ -114,6 +118,21 @@ TEST_CASE("registerType rejects duplicate type names across different types") {
     CHECK(view->metadata.typeInfo == &typeid(SharedNameA));
     auto typeLookup = registry.findByType(typeid(SharedNameB));
     CHECK_FALSE(typeLookup.has_value());
+}
+
+TEST_CASE("registered take propagates underlying errors") {
+    auto& registry = TypeMetadataRegistry::instance();
+    if (!registry.findByName("missing_payload_type")) {
+        REQUIRE(registry.registerType<MissingPayloadType>("missing_payload_type"));
+    }
+
+    auto view = registry.findByName("missing_payload_type");
+    REQUIRE(view.has_value());
+
+    PathSpace          space;
+    MissingPayloadType out{};
+    auto               takeResult = view->operations.take(space, "/missing", Out{}, &out);
+    CHECK_FALSE(takeResult.has_value());
 }
 
 TEST_CASE("findByType returns nullopt for unregistered types") {

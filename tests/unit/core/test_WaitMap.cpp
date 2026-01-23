@@ -181,4 +181,16 @@ TEST_CASE("notifyAll wakes all registered waiters") {
         CHECK(state->woke.load(std::memory_order_acquire));
     }
 }
+
+TEST_CASE("wait_until without predicate exercises debug logging path") {
+    testing::waitMapDebugOverride().store(true, std::memory_order_relaxed);
+
+    WaitMap waitMap;
+    auto guard  = waitMap.wait("/debug/log");
+    auto status = guard.wait_until(std::chrono::system_clock::now() + 5ms);
+
+    CHECK(status == std::cv_status::timeout);
+
+    testing::waitMapDebugOverride().store(false, std::memory_order_relaxed);
+}
 }

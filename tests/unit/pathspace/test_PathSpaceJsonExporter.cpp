@@ -80,6 +80,24 @@ TEST_CASE("PathSpace JSON exporter serializes primitive values (minimal)") {
     CHECK(nameNode.at("values")[0].at("value") == "Ada");
 }
 
+TEST_CASE("PathSpace JSON exporter flattens children capsule nodes") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/children/alpha", 1).nbrValuesInserted == 1);
+    REQUIRE(space.insert("/root/children/beta", 2).nbrValuesInserted == 1);
+
+    PathSpaceJsonOptions options;
+    options.visit.root = "/root";
+
+    auto doc      = dump(space, options);
+    auto rootNode = findNode(doc, "/root", "/root");
+
+    REQUIRE(rootNode.contains("children"));
+    auto const& children = rootNode.at("children");
+    CHECK(children.contains("alpha"));
+    CHECK(children.contains("beta"));
+    CHECK_FALSE(children.contains("children"));
+}
+
 TEST_CASE("PathSpace JSON exporter exposes structure and diagnostics in debug mode") {
     PathSpace space;
     REQUIRE(space.insert("/alpha/int", 1).nbrValuesInserted == 1);
@@ -239,6 +257,59 @@ TEST_CASE("PathSpace JSON exporter reports unlimited depth") {
     CHECK_FALSE(node.at("depth_truncated").get<bool>());
 }
 
+struct CustomType {
+    int value;
+};
+
+TEST_CASE("PathSpace JSON exporter emits opaque placeholder for missing converter") {
+    PathSpace space;
+    REQUIRE(space.insert("/opaque/value", CustomType{7}).errors.empty());
+
+    PathSpaceJsonOptions options;
+    options.mode       = PathSpaceJsonOptions::Mode::Debug;
+    options.visit.root = "/opaque";
+
+    auto doc   = dump(space, options);
+    auto node  = findNode(doc, "/opaque", "/opaque/value");
+    REQUIRE(node.at("values").size() == 1);
+    auto entry = node.at("values")[0];
+    CHECK(entry.at("placeholder") == "opaque");
+    CHECK(entry.at("reason") == "converter-missing");
+}
+
+TEST_CASE("PathSpace JSON exporter rejects entries outside export root") {
+    PathSpace space;
+    REQUIRE(space.insert("/other/value", 1).errors.empty());
+
+    PathSpaceJsonOptions options;
+    options.visit.root = "/root"; // no matching entries in the space
+
+    auto result = space.toJSON(options);
+    CHECK_FALSE(result);
+    auto code = result.error().code;
+    CHECK((code == Error::Code::InvalidPath || code == Error::Code::NoSuchPath));
+}
+
+TEST_CASE("PathSpace JSON exporter flattens values when flatPaths are enabled") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/value", 123).errors.empty());
+    REQUIRE(space.insert("/root/list/item", std::string{"x"}).errors.empty());
+
+    PathSpaceJsonOptions options;
+    options.mode              = PathSpaceJsonOptions::Mode::Debug;
+    options.visit.root        = "/root";
+    options.flatPaths         = true;
+    options.flatSimpleValues  = true;
+
+    auto flat = space.toJSON(options);
+    REQUIRE(flat);
+    auto json = Json::parse(*flat);
+    REQUIRE(json.contains("/root/value"));
+    CHECK(json.at("/root/value") == 123);
+    REQUIRE(json.contains("/root/list/item"));
+    CHECK(json.at("/root/list/item").is_string());
+}
+
 TEST_CASE("PathSpace JSON exporter honors friendly converter aliases") {
     struct FriendlyStruct {
         int a = 0;
@@ -396,6 +467,27 @@ TEST_CASE("Flat path export flattens multi-value queues") {
     REQUIRE(values.size() == 2);
     CHECK(values[0] == 1);
     CHECK(values[1] == 2);
+}
+
+TEST_CASE("JSON namespace alias forwards to PathSpaceJsonExporter::Export") {
+    PathSpace space;
+    REQUIRE(space.insert("/alias/value", 123).errors.empty());
+
+    PathSpaceJsonOptions opts;
+    opts.visit.root = "/alias";
+
+    auto viaNamespace = JSON::Export(space, opts);
+    REQUIRE(viaNamespace);
+
+    auto viaClass = PathSpaceJsonExporter::Export(space, opts);
+    REQUIRE(viaClass);
+
+    CHECK(*viaNamespace == *viaClass);
+
+    auto doc      = Json::parse(*viaNamespace);
+    auto valueNode = findNode(doc, "/alias", "/alias/value");
+    REQUIRE(valueNode.at("values").size() == 1);
+    CHECK(valueNode.at("values")[0].at("value") == 123);
 }
 
 TEST_CASE("PathSpace JSON exporter emits opaque placeholder for PathSpace unique_ptr payloads") {

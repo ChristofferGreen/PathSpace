@@ -1,8 +1,9 @@
 #pragma once
 #include "path/TransparentString.hpp"
 
-#include <chrono>
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <condition_variable>
 #include <mutex>
 #include <string>
@@ -15,7 +16,7 @@ namespace SP {
 struct WaitMap {
     struct WaiterEntry;
     struct Guard {
-        Guard(WaitMap& waitMap, std::string_view path);
+        Guard(WaitMap& waitMap, std::string_view path, std::uint64_t initialVersion);
 
         // When a Guard is destroyed, decrement active waiter count if this Guard performed a wait.
         ~Guard() {
@@ -70,6 +71,8 @@ struct WaitMap {
         std::unique_lock<std::mutex> waitLock;
         // Tracks whether this Guard has incremented the active waiter count.
         bool                         counted = false;
+        std::uint64_t                awaitedVersion{0};
+        bool                         versionInitialized{false};
 
 
     };
@@ -90,6 +93,7 @@ public:
     struct WaiterEntry {
         std::condition_variable cv;
         std::mutex              mutex;
+        std::atomic<std::uint64_t> notifyVersion{0};
     };
     // Trie-based waiter storage for concrete paths.
     // Each node holds a CV for waiters on that exact node name.

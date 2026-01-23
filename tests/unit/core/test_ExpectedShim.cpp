@@ -3,6 +3,10 @@
 #include <expected>
 #include <string>
 
+namespace SP::testing {
+const char* callExpectedShimWhat();
+}
+
 using namespace std;
 
 TEST_SUITE("core.expected_shim") {
@@ -44,5 +48,14 @@ TEST_CASE("expected<void> throws and surfaces shimmed what()") {
         // Even though error() is not available for void, ensure message is stable.
         CHECK(msg.find("expected") != std::string::npos);
     }
+}
+
+TEST_CASE("shim helper exposes weak what() override") {
+    // callExpectedShimWhat() is compiled only when PATHSPACE_NEEDS_EXPECTED_SHIM
+    // is defined (coverage builds). Ensure it returns a non-empty message so the
+    // weak symbol stays linked and covered.
+    auto message = std::string{SP::testing::callExpectedShimWhat()};
+    CHECK_FALSE(message.empty());
+    CHECK(message.find("expected") != std::string::npos);
 }
 }

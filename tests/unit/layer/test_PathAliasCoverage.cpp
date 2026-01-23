@@ -5,6 +5,7 @@
 #include "type/InputMetadata.hpp"
 #include "type/InputData.hpp"
 #include "third_party/doctest.h"
+#include <array>
 #include <span>
 #include <vector>
 #include "core/PathSpaceContext.hpp"
@@ -194,5 +195,78 @@ TEST_CASE("PathAlias rejects glob paths for insert and read") {
     auto children = upstream->read<Children>("/root");
     REQUIRE(children.has_value());
     CHECK(children->names.empty()); // glob insert didn't create new nodes
+}
+
+TEST_CASE("PathAlias rejects glob paths introduced by mapped prefixes") {
+    auto upstream = std::make_shared<PathSpace>();
+    PathAlias alias{upstream, "/mapped/*"};
+
+    auto insertResult = alias.in(Iterator{"/value"}, InputData{1});
+    CHECK_FALSE(insertResult.errors.empty());
+    CHECK(insertResult.errors.front().code == Error::Code::InvalidPath);
+
+    int outValue = 0;
+    auto outErr = alias.out(Iterator{"/value"}, InputMetadataT<int>{}, Out{}, &outValue);
+    CHECK(outErr.has_value());
+    CHECK(outErr->code == Error::Code::InvalidPath);
+}
+
+TEST_CASE("PathAlias span packs reject glob paths before and after mapping") {
+    auto upstream = std::make_shared<PathSpace>();
+    std::array<std::string, 1> globInput{"/raw/*"};
+    std::array<std::string, 1> normalInput{"/plain"};
+
+    PathAlias rawGlobAlias{upstream, "/prefix"};
+    bool constCalled = false;
+    auto constErr = rawGlobAlias.spanPackConst(
+        std::span<const std::string>(globInput),
+        InputMetadata{},
+        Out{},
+        [&](std::span<RawConstSpan const>) {
+            constCalled = true;
+            return std::optional<Error>{};
+        });
+    CHECK_FALSE(constErr);
+    CHECK_FALSE(constCalled);
+    CHECK(constErr.error().code == Error::Code::InvalidPath);
+
+    PathAlias mappedGlobAlias{upstream, "/prefix/*"};
+    bool mutCalled = false;
+    auto mutErr = mappedGlobAlias.spanPackMut(
+        std::span<const std::string>(normalInput),
+        InputMetadata{},
+        Out{},
+        [&](std::span<RawMutSpan const>) {
+            mutCalled = true;
+            return SpanPackResult{};
+        });
+    CHECK_FALSE(mutErr);
+    CHECK_FALSE(mutCalled);
+    CHECK(mutErr.error().code == Error::Code::InvalidPath);
+}
+
+TEST_CASE("PathAlias packInsert rejects glob inputs pre and post mapping") {
+    auto upstream = std::make_shared<PathSpace>();
+    int  value    = 7;
+    void const* values[]{&value};
+
+    PathAlias rawGlobAlias{upstream, "/root"};
+    std::array<std::string, 1> rawGlob{"/child/*"};
+    auto rawResult = rawGlobAlias.packInsert(std::span<const std::string>(rawGlob), InputMetadataT<int>{}, std::span<void const* const>(values, 1));
+    CHECK_FALSE(rawResult.errors.empty());
+    CHECK(rawResult.errors.front().code == Error::Code::InvalidPath);
+
+    PathAlias mappedGlobAlias{upstream, "/root/*"};
+    std::array<std::string, 1> cleanPath{"/child"};
+    auto mappedResult = mappedGlobAlias.packInsert(std::span<const std::string>(cleanPath), InputMetadataT<int>{}, std::span<void const* const>(values, 1));
+    CHECK_FALSE(mappedResult.errors.empty());
+    CHECK(mappedResult.errors.front().code == Error::Code::InvalidPath);
+}
+
+TEST_CASE("PathAlias notify is a no-op without an upstream") {
+    PathAlias alias{std::shared_ptr<PathSpaceBase>{}, "/target"};
+    // Should not throw or crash when upstream is missing.
+    alias.notify("/any");
+    alias.shutdown(); // cover the no-op shutdown path
 }
 }

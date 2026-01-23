@@ -41,4 +41,17 @@ TEST_CASE("submit(shared_ptr) forwards through weak_ptr overload") {
     exec.shutdown();
     CHECK(exec.shutdownCalled);
 }
+
+TEST_CASE("base-class submit(shared_ptr) dispatches to weak overload") {
+    RecordingExecutor exec;
+    auto task = Task::Create([](Task&, bool) {});
+
+    auto err = static_cast<Executor&>(exec).submit(task);
+    CHECK_FALSE(err.has_value());
+    CHECK(exec.weakCalls == 1);
+
+    auto locked = exec.captured.lock();
+    REQUIRE(locked);
+    CHECK(locked == task);
+}
 }

@@ -40,4 +40,32 @@ TEST_CASE("TaskStateAtomic markFailed before completion") {
     CHECK(state.toString() == "Failed");
     CHECK(state.isTerminal());
 }
+
+TEST_CASE("TaskStateAtomic copy and assignment snapshot current state") {
+    TaskStateAtomic original;
+    CHECK(original.tryStart());
+    CHECK(original.transitionToRunning());
+
+    TaskStateAtomic copied{original};
+    CHECK(copied.isRunning());
+
+    TaskStateAtomic assigned;
+    assigned = original;
+    CHECK(assigned.isRunning());
+}
+
+TEST_CASE("TaskStateAtomic toString falls back to Unknown for invalid states") {
+    TaskStateAtomic state;
+    // Force an invalid enumeration value to reach the default branch.
+    auto* raw = reinterpret_cast<std::atomic<TaskState>*>(&state);
+    raw->store(static_cast<TaskState>(42), std::memory_order_relaxed);
+    CHECK(state.toString() == "Unknown");
+}
+
+TEST_CASE("TaskStateAtomic toString reports Running when active") {
+    TaskStateAtomic state;
+    REQUIRE(state.tryStart());
+    REQUIRE(state.transitionToRunning());
+    CHECK(state.toString() == "Running");
+}
 }

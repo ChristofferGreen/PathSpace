@@ -48,6 +48,15 @@ TEST_CASE("string_view equality delegates to path comparison") {
     CHECK_FALSE(view == std::string_view{"/alpha/beta/gamma"});
 }
 
+TEST_CASE("glob equality compares glob-to-glob paths") {
+    GlobPathString globA{"/tree/**"};
+    GlobPathString globB{"/tree/**"};
+    GlobPathString globMismatch{"/tree/*/leaf"};
+
+    CHECK(globA == globB);
+    CHECK_FALSE(globA == globMismatch);
+}
+
 TEST_CASE("three-way comparison mirrors underlying path ordering") {
     GlobPathString a{"/a"};
     GlobPathString b{"/b"};
