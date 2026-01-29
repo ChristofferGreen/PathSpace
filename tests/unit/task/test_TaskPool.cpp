@@ -4,6 +4,9 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <set>
@@ -57,6 +60,43 @@ TEST_CASE("TaskPool Misc") {
         }
 
         CHECK(counter == NUM_TASKS);
+    }
+
+    SUBCASE("Trace output writes file") {
+        TaskPool         pool(1);
+        std::atomic<bool> done{false};
+
+        auto task = Task::Create([&done](Task const&, bool) { done = true; });
+
+        auto tempDir = std::filesystem::temp_directory_path();
+        auto tracePath =
+            tempDir / ("taskpool_trace_" + std::to_string(static_cast<long long>(
+                                                      std::chrono::steady_clock::now().time_since_epoch().count())) +
+                       ".json");
+
+        pool.enableTrace(tracePath.string());
+        pool.addTask(task);
+
+        while (!done) {
+            std::this_thread::yield();
+        }
+
+        auto flushError = pool.flushTrace();
+        CHECK_FALSE(flushError.has_value());
+
+        std::error_code error;
+        CHECK(std::filesystem::exists(tracePath, error));
+        CHECK_FALSE(error);
+
+        auto fileSize = std::filesystem::file_size(tracePath, error);
+        CHECK_FALSE(error);
+        CHECK(fileSize > 0);
+
+        std::ifstream in(tracePath);
+        std::string   contents((std::istreambuf_iterator<char>(in)), {});
+        CHECK(contents.find("\"traceEvents\"") != std::string::npos);
+
+        std::filesystem::remove(tracePath, error);
     }
 
     SUBCASE("Shutdown behavior") {

@@ -2,7 +2,116 @@
 #include "core/NotificationSink.hpp"
 #include "log/TaggedLogger.hpp"
 
+#include <algorithm>
+#include <chrono>
+#include <fstream>
+#include <string_view>
+
+#if defined(__APPLE__)
+#include <pthread.h>
+#endif
+
+#if defined(_WIN32)
+#include <windows.h>
+#elif defined(__linux__)
+#include <sys/syscall.h>
+#else
+#include <unistd.h>
+#endif
+
 namespace SP {
+namespace {
+auto now_micros() -> int64_t {
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
+auto execution_category_label(ExecutionCategory category) -> std::string_view {
+    switch (category) {
+        case ExecutionCategory::Immediate:
+            return "Immediate";
+        case ExecutionCategory::Lazy:
+            return "Lazy";
+        case ExecutionCategory::Unknown:
+            return "Unknown";
+    }
+    return "Unknown";
+}
+
+auto process_id() -> uint64_t {
+#if defined(_WIN32)
+    return static_cast<uint64_t>(GetCurrentProcessId());
+#else
+    return static_cast<uint64_t>(getpid());
+#endif
+}
+
+auto current_thread_id() -> uint64_t {
+#if defined(_WIN32)
+    return static_cast<uint64_t>(GetCurrentThreadId());
+#elif defined(__APPLE__)
+    uint64_t tid = 0;
+    if (pthread_threadid_np(nullptr, &tid) == 0 && tid != 0) {
+        return tid;
+    }
+    return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pthread_self()));
+#elif defined(__linux__)
+    return static_cast<uint64_t>(syscall(SYS_gettid));
+#else
+    return static_cast<uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+#endif
+}
+
+auto json_escape(std::string_view input) -> std::string {
+    std::string escaped;
+    escaped.reserve(input.size());
+    for (char ch : input) {
+        switch (ch) {
+            case '\\':
+                escaped += "\\\\";
+                break;
+            case '"':
+                escaped += "\\\"";
+                break;
+            case '\n':
+                escaped += "\\n";
+                break;
+            case '\r':
+                escaped += "\\r";
+                break;
+            case '\t':
+                escaped += "\\t";
+                break;
+            default: {
+                unsigned char uch = static_cast<unsigned char>(ch);
+                if (uch < 0x20) {
+                    constexpr char HexDigits[] = "0123456789abcdef";
+                    escaped += "\\u00";
+                    escaped.push_back(HexDigits[(uch >> 4) & 0xF]);
+                    escaped.push_back(HexDigits[uch & 0xF]);
+                } else {
+                    escaped.push_back(ch);
+                }
+            } break;
+        }
+    }
+    return escaped;
+}
+
+auto format_task_label(std::string_view prefix, std::string const& path) -> std::string {
+    if (path.empty()) {
+        return std::string(prefix);
+    }
+    std::string label;
+    label.reserve(prefix.size() + 1 + path.size());
+    label.append(prefix);
+    label.push_back(' ');
+    label.append(path);
+    return label;
+}
+
+} // namespace
 
 TaskPool& TaskPool::Instance() {
     // Leak-on-exit singleton to avoid destructor-order and atexit races in heavy looped runs
@@ -16,10 +125,14 @@ TaskPool::TaskPool(size_t threadCount) {
     sp_log("TaskPool::TaskPool constructing", "TaskPool");
     if (threadCount == 0) threadCount = 1;
     activeWorkers = 0;
+    {
+        std::lock_guard<std::mutex> lock(workerMetaMutex);
+        workerThreadIds.resize(threadCount, 0);
+    }
     for (size_t i = 0; i < threadCount; ++i) {
         try {
             sp_log("TaskPool::TaskPool spawning worker", "TaskPool");
-            workers.emplace_back(&TaskPool::workerFunction, this);
+            workers.emplace_back([this, i]() { workerFunction(i); });
             ++activeWorkers;
         } catch (...) {
             sp_log("TaskPool::TaskPool failed to spawn worker", "TaskPool");
@@ -36,10 +149,13 @@ TaskPool::~TaskPool() {
 
 auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> std::optional<Error> {
     sp_log("TaskPool::addTask called", "TaskPool");
+    std::shared_ptr<Task> lockedTask;
+    std::string taskPath;
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (!shuttingDown) {
             if (auto locked = task.lock()) {
+                lockedTask = locked;
                 // If the task has already started, treat as success and do not re-enqueue.
                 if (locked->hasStarted()) {
                     sp_log("TaskPool::addTask: task already started; treating as success (no enqueue)", "TaskPool");
@@ -57,6 +173,7 @@ auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> std::optional<Error> {
                 sp_log("TaskPool::addTask enqueuing task", "TaskPool");
                 tasks.push(std::move(task));
                 taskCV.notify_one();
+                taskPath = locked->notificationPath;
             } else {
                 sp_log("TaskPool::addTask task expired before enqueue", "TaskPool");
                 return Error{Error::Code::UnknownError, "Task expired before enqueue"};
@@ -66,6 +183,9 @@ auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> std::optional<Error> {
             return Error{Error::Code::UnknownError, "Executor shutting down"};
         }
     }
+    if (lockedTask && traceEnabled.load(std::memory_order_acquire)) {
+        recordTraceQueueStart(lockedTask.get(), taskPath);
+    }
     return std::nullopt;
 }
 
@@ -73,6 +193,167 @@ auto TaskPool::submit(std::weak_ptr<Task>&& task) -> std::optional<Error> {
     sp_log("TaskPool::submit called", "TaskPool");
     // Executor interface: forward to existing addTask logic
     return this->addTask(std::move(task));
+}
+
+auto TaskPool::enableTrace(std::string const& path) -> void {
+    auto nowMicros = now_micros();
+    {
+        std::lock_guard<std::mutex> lock(traceMutex);
+        tracePath = path;
+        if (!traceEnabled.load(std::memory_order_relaxed)) {
+            traceStartMicros.store(nowMicros, std::memory_order_relaxed);
+            traceEvents.clear();
+            traceQueueStarts.clear();
+        }
+    }
+    traceEnabled.store(true, std::memory_order_release);
+    std::vector<uint64_t> threadIds;
+    {
+        std::lock_guard<std::mutex> lock(workerMetaMutex);
+        threadIds = workerThreadIds;
+    }
+    for (size_t i = 0; i < threadIds.size(); ++i) {
+        if (threadIds[i] == 0) continue;
+        recordTraceThreadName(threadIds[i], "TaskPool worker " + std::to_string(i));
+    }
+}
+
+auto TaskPool::enableTraceNdjson(std::string const& path) -> void {
+    auto nowMicros = now_micros();
+    {
+        std::lock_guard<std::mutex> lock(traceMutex);
+        traceNdjsonPath = path;
+        if (!traceEnabled.load(std::memory_order_relaxed)) {
+            traceStartMicros.store(nowMicros, std::memory_order_relaxed);
+            traceEvents.clear();
+            traceQueueStarts.clear();
+        }
+    }
+    traceEnabled.store(true, std::memory_order_release);
+    std::vector<uint64_t> threadIds;
+    {
+        std::lock_guard<std::mutex> lock(workerMetaMutex);
+        threadIds = workerThreadIds;
+    }
+    for (size_t i = 0; i < threadIds.size(); ++i) {
+        if (threadIds[i] == 0) continue;
+        recordTraceThreadName(threadIds[i], "TaskPool worker " + std::to_string(i));
+    }
+}
+
+auto TaskPool::flushTrace() -> std::optional<Error> {
+    std::vector<TaskTraceEvent> eventsCopy;
+    std::string tracePathCopy;
+    std::string traceNdjsonPathCopy;
+    {
+        std::lock_guard<std::mutex> lock(traceMutex);
+        tracePathCopy = tracePath;
+        traceNdjsonPathCopy = traceNdjsonPath;
+        eventsCopy = traceEvents;
+    }
+
+    if (tracePathCopy.empty() && traceNdjsonPathCopy.empty()) {
+        return std::nullopt;
+    }
+
+    if (!tracePathCopy.empty()) {
+        auto writeTraceJson = [&](std::string const& path) -> std::optional<Error> {
+            std::ofstream out(path, std::ios::out | std::ios::trunc);
+            if (!out.is_open()) {
+                return Error{Error::Code::UnknownError, "Failed to open trace output: " + path};
+            }
+            auto pid = process_id();
+            out << "{\"traceEvents\":[";
+            for (size_t i = 0; i < eventsCopy.size(); ++i) {
+                auto const& e = eventsCopy[i];
+                if (i != 0) out << ",";
+                out << "{\"name\":\"" << json_escape(e.name) << "\"";
+                out << ",\"cat\":\"taskpool\"";
+                out << ",\"ph\":\"" << e.phase << "\"";
+                out << ",\"pid\":" << pid;
+                if (e.threadId != 0 || e.phase != 'M') {
+                    out << ",\"tid\":" << e.threadId;
+                }
+                if (e.phase == 'X') {
+                    out << ",\"ts\":" << e.startUs;
+                    out << ",\"dur\":" << e.durUs;
+                    out << ",\"args\":{";
+                    if (!e.path.empty()) {
+                        out << "\"path\":\"" << json_escape(e.path) << "\"";
+                    }
+                    if (!e.category.empty()) {
+                        if (!e.path.empty()) out << ",";
+                        out << "\"category\":\"" << json_escape(e.category) << "\"";
+                    }
+                    if (e.hasQueueWait) {
+                        if (!e.path.empty() || !e.category.empty()) out << ",";
+                        out << "\"queue_wait_us\":" << e.queueWaitUs;
+                    }
+                    out << "}";
+                } else if (e.phase == 'M') {
+                    out << ",\"args\":{\"name\":\"" << json_escape(e.threadName) << "\"}";
+                } else if (e.phase == 'b' || e.phase == 'e') {
+                    out << ",\"ts\":" << e.startUs;
+                    out << ",\"id\":" << e.asyncId;
+                    out << ",\"args\":{";
+                    if (!e.path.empty()) {
+                        out << "\"path\":\"" << json_escape(e.path) << "\"";
+                    }
+                    if (!e.category.empty()) {
+                        if (!e.path.empty()) out << ",";
+                        out << "\"category\":\"" << json_escape(e.category) << "\"";
+                    }
+                    out << "}";
+                }
+                out << "}";
+            }
+            out << "],\"displayTimeUnit\":\"ms\"}";
+            return std::nullopt;
+        };
+        if (auto error = writeTraceJson(tracePathCopy)) {
+            sp_log("TaskPool::flushTrace failed: " + error->message(), "TaskPool");
+            return error;
+        }
+    }
+    if (!traceNdjsonPathCopy.empty()) {
+        auto writeTraceNdjson = [&](std::string const& path) -> std::optional<Error> {
+            std::ofstream out(path, std::ios::out | std::ios::trunc);
+            if (!out.is_open()) {
+                return Error{Error::Code::UnknownError, "Failed to open trace NDJSON output: " + path};
+            }
+            for (auto const& e : eventsCopy) {
+                out << "{\"name\":\"" << json_escape(e.name) << "\"";
+                out << ",\"phase\":\"" << e.phase << "\"";
+                if (e.phase == 'X') {
+                    out << ",\"start_us\":" << e.startUs;
+                    out << ",\"dur_us\":" << e.durUs;
+                } else if (e.phase == 'b' || e.phase == 'e') {
+                    out << ",\"ts_us\":" << e.startUs;
+                    out << ",\"id\":" << e.asyncId;
+                }
+                out << ",\"thread\":" << e.threadId;
+                if (!e.path.empty()) {
+                    out << ",\"path\":\"" << json_escape(e.path) << "\"";
+                }
+                if (!e.category.empty()) {
+                    out << ",\"category\":\"" << json_escape(e.category) << "\"";
+                }
+                if (e.hasQueueWait) {
+                    out << ",\"queue_wait_us\":" << e.queueWaitUs;
+                }
+                if (e.phase == 'M' && !e.threadName.empty()) {
+                    out << ",\"thread_name\":\"" << json_escape(e.threadName) << "\"";
+                }
+                out << "}\n";
+            }
+            return std::nullopt;
+        };
+        if (auto error = writeTraceNdjson(traceNdjsonPathCopy)) {
+            sp_log("TaskPool::flushTrace failed: " + error->message(), "TaskPool");
+            return error;
+        }
+    }
+    return std::nullopt;
 }
 
 auto TaskPool::shutdown() -> void {
@@ -116,8 +397,19 @@ auto TaskPool::size() const -> size_t {
     return this->workers.size();
 }
 
-auto TaskPool::workerFunction() -> void {
+auto TaskPool::workerFunction(size_t workerIndex) -> void {
     sp_log("TaskPool::workerFunction start", "TaskPool");
+    thread_local uint64_t threadId = current_thread_id();
+    {
+        std::lock_guard<std::mutex> lock(workerMetaMutex);
+        if (workerIndex >= workerThreadIds.size()) {
+            workerThreadIds.resize(workerIndex + 1, 0);
+        }
+        workerThreadIds[workerIndex] = threadId;
+    }
+    if (traceEnabled.load(std::memory_order_acquire)) {
+        recordTraceThreadName(threadId, "TaskPool worker " + std::to_string(workerIndex));
+    }
     while (true) {
         std::string                         notificationPath;
         std::weak_ptr<NotificationSink>     notifier;
@@ -144,6 +436,26 @@ auto TaskPool::workerFunction() -> void {
             notifier         = strongTask->notifier;
 
             ++activeTasks;
+            auto traceStart = int64_t{0};
+            std::optional<uint64_t> queueWaitUs;
+            auto queueStart = takeTraceQueueStart(strongTask.get());
+            if (traceEnabled.load(std::memory_order_acquire)) {
+                traceStart = now_micros();
+            }
+            if (queueStart) {
+                auto traceStartBaseline = traceStartMicros.load(std::memory_order_relaxed);
+                auto waitEndUs = static_cast<uint64_t>(
+                    std::max<int64_t>(0, traceStart - traceStartBaseline));
+                recordTraceAsync(format_task_label("Wait", notificationPath),
+                                 notificationPath,
+                                 "queue",
+                                 waitEndUs,
+                                 'e',
+                                 queueStart->second);
+                if (traceStart > 0) {
+                    queueWaitUs = static_cast<uint64_t>(std::max<int64_t>(0, traceStart - queueStart->first));
+                }
+            }
             try {
                 sp_log("Transitioning to running", "TaskPool");
                 strongTask->transitionToRunning();
@@ -154,6 +466,19 @@ auto TaskPool::workerFunction() -> void {
             } catch (...) {
                 strongTask->markFailed();
                 sp_log("Exception in running Task", "Error", "Exception");
+            }
+            if (traceStart != 0 && traceEnabled.load(std::memory_order_acquire)) {
+                auto traceEnd = now_micros();
+                auto startUs = static_cast<uint64_t>(
+                    std::max<int64_t>(0, traceStart - traceStartMicros.load(std::memory_order_relaxed)));
+                auto durUs = static_cast<uint64_t>(std::max<int64_t>(0, traceEnd - traceStart));
+                recordTraceSpan(format_task_label("Task", notificationPath),
+                                notificationPath,
+                                std::string(execution_category_label(strongTask->executionCategory)),
+                                startUs,
+                                durUs,
+                                threadId,
+                                queueWaitUs);
             }
             --activeTasks;
         } else {
@@ -176,6 +501,84 @@ auto TaskPool::workerFunction() -> void {
     // Signal this worker is exiting
     sp_log("TaskPool::workerFunction exit", "TaskPool");
     --activeWorkers;
+}
+
+auto TaskPool::recordTraceSpan(std::string const& name,
+                               std::string const& path,
+                               std::string const& category,
+                               uint64_t startUs,
+                               uint64_t durUs,
+                               uint64_t threadId,
+                               std::optional<uint64_t> queueWaitUs) -> void {
+    std::lock_guard<std::mutex> lock(traceMutex);
+    if (!traceEnabled.load(std::memory_order_relaxed)) {
+        return;
+    }
+    TaskTraceEvent event{.name = name,
+                         .path = path,
+                         .category = category,
+                         .startUs = startUs,
+                         .durUs = durUs,
+                         .threadId = threadId,
+                         .phase = 'X'};
+    if (queueWaitUs) {
+        event.queueWaitUs = *queueWaitUs;
+        event.hasQueueWait = true;
+    }
+    traceEvents.push_back(std::move(event));
+}
+
+auto TaskPool::recordTraceAsync(std::string const& name,
+                                std::string const& path,
+                                std::string const& category,
+                                uint64_t tsUs,
+                                char phase,
+                                uint64_t asyncId) -> void {
+    std::lock_guard<std::mutex> lock(traceMutex);
+    if (!traceEnabled.load(std::memory_order_relaxed)) {
+        return;
+    }
+    traceEvents.push_back(TaskTraceEvent{.name = name,
+                                         .path = path,
+                                         .category = category,
+                                         .startUs = tsUs,
+                                         .threadId = 0,
+                                         .asyncId = asyncId,
+                                         .phase = phase});
+}
+
+auto TaskPool::recordTraceThreadName(uint64_t threadId, std::string const& name) -> void {
+    std::lock_guard<std::mutex> lock(traceMutex);
+    if (!traceEnabled.load(std::memory_order_relaxed)) {
+        return;
+    }
+    traceEvents.push_back(TaskTraceEvent{.name = "thread_name",
+                                         .threadName = name,
+                                         .threadId = threadId,
+                                         .phase = 'M'});
+}
+
+auto TaskPool::recordTraceQueueStart(Task* task, std::string const& path) -> void {
+    if (!task) return;
+    auto nowMicros = now_micros();
+    auto traceStart = traceStartMicros.load(std::memory_order_relaxed);
+    auto tsUs = static_cast<uint64_t>(std::max<int64_t>(0, nowMicros - traceStart));
+    auto asyncId = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(task));
+    {
+        std::lock_guard<std::mutex> lock(traceMutex);
+        traceQueueStarts[task] = {nowMicros, asyncId};
+    }
+    recordTraceAsync(format_task_label("Wait", path), path, "queue", tsUs, 'b', asyncId);
+}
+
+auto TaskPool::takeTraceQueueStart(Task* task) -> std::optional<std::pair<int64_t, uint64_t>> {
+    if (!task) return std::nullopt;
+    std::lock_guard<std::mutex> lock(traceMutex);
+    auto it = traceQueueStarts.find(task);
+    if (it == traceQueueStarts.end()) return std::nullopt;
+    auto value = it->second;
+    traceQueueStarts.erase(it);
+    return value;
 }
 
 } // namespace SP
