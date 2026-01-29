@@ -134,6 +134,12 @@ public:
         return legacy_;
     }
 
+    auto setLabel(std::string label) -> void {
+        if (legacy_) {
+            legacy_->setLabel(std::move(label));
+        }
+    }
+
 private:
     TaskT()
         : promise_()

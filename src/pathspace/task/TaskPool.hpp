@@ -11,6 +11,7 @@
 #include <string>
 #include <thread>
 #include <optional>
+#include <unordered_set>
 #include <vector>
 #include <unordered_map>
 
@@ -34,6 +35,35 @@ public:
     auto enableTrace(std::string const& path) -> void;
     auto enableTraceNdjson(std::string const& path) -> void;
     auto flushTrace() -> std::optional<Error>;
+    auto traceThreadName(std::string const& name) -> void;
+
+    struct TraceScope {
+        TraceScope() = default;
+        TraceScope(TaskPool* pool,
+                   std::string name,
+                   std::string category,
+                   std::string path,
+                   int64_t startMicros,
+                   uint64_t threadId);
+        TraceScope(TraceScope&& other) noexcept;
+        auto operator=(TraceScope&& other) noexcept -> TraceScope&;
+        ~TraceScope();
+
+        TraceScope(TraceScope const&) = delete;
+        auto operator=(TraceScope const&) -> TraceScope& = delete;
+
+    private:
+        TaskPool*   pool = nullptr;
+        std::string name;
+        std::string category;
+        std::string path;
+        int64_t     startMicros = 0;
+        uint64_t    threadId = 0;
+    };
+
+    auto traceScope(std::string name,
+                    std::string category = {},
+                    std::string path = {}) -> TraceScope;
 
 private:
     auto workerFunction(size_t workerIndex) -> void;
@@ -51,7 +81,7 @@ private:
                           char phase,
                           uint64_t asyncId) -> void;
     auto recordTraceThreadName(uint64_t threadId, std::string const& name) -> void;
-    auto recordTraceQueueStart(Task* task, std::string const& path) -> void;
+    auto recordTraceQueueStart(Task* task, std::string const& label, std::string const& path) -> void;
     auto takeTraceQueueStart(Task* task) -> std::optional<std::pair<int64_t, uint64_t>>;
 
     std::vector<std::thread>        workers;
@@ -79,6 +109,7 @@ private:
     std::mutex              traceMutex;
     std::vector<TaskTraceEvent> traceEvents;
     std::unordered_map<Task*, std::pair<int64_t, uint64_t>> traceQueueStarts;
+    std::unordered_set<uint64_t> traceNamedThreads;
     std::mutex              workerMetaMutex;
     std::vector<uint64_t>   workerThreadIds;
     std::string             tracePath;

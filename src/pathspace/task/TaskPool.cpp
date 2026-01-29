@@ -111,6 +111,16 @@ auto format_task_label(std::string_view prefix, std::string const& path) -> std:
     return label;
 }
 
+auto task_display_label(Task const& task, std::string const& fallbackPath) -> std::string {
+    if (!task.label.empty()) {
+        return task.label;
+    }
+    if (!fallbackPath.empty()) {
+        return fallbackPath;
+    }
+    return "Task";
+}
+
 } // namespace
 
 TaskPool& TaskPool::Instance() {
@@ -151,6 +161,7 @@ auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> std::optional<Error> {
     sp_log("TaskPool::addTask called", "TaskPool");
     std::shared_ptr<Task> lockedTask;
     std::string taskPath;
+    std::string taskLabel;
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (!shuttingDown) {
@@ -174,6 +185,7 @@ auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> std::optional<Error> {
                 tasks.push(std::move(task));
                 taskCV.notify_one();
                 taskPath = locked->notificationPath;
+                taskLabel = locked->label;
             } else {
                 sp_log("TaskPool::addTask task expired before enqueue", "TaskPool");
                 return Error{Error::Code::UnknownError, "Task expired before enqueue"};
@@ -184,7 +196,7 @@ auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> std::optional<Error> {
         }
     }
     if (lockedTask && traceEnabled.load(std::memory_order_acquire)) {
-        recordTraceQueueStart(lockedTask.get(), taskPath);
+        recordTraceQueueStart(lockedTask.get(), taskLabel, taskPath);
     }
     return std::nullopt;
 }
@@ -239,6 +251,71 @@ auto TaskPool::enableTraceNdjson(std::string const& path) -> void {
         if (threadIds[i] == 0) continue;
         recordTraceThreadName(threadIds[i], "TaskPool worker " + std::to_string(i));
     }
+}
+
+TaskPool::TraceScope::TraceScope(TaskPool* pool,
+                                 std::string name,
+                                 std::string category,
+                                 std::string path,
+                                 int64_t startMicros,
+                                 uint64_t threadId)
+    : pool(pool),
+      name(std::move(name)),
+      category(std::move(category)),
+      path(std::move(path)),
+      startMicros(startMicros),
+      threadId(threadId) {}
+
+TaskPool::TraceScope::TraceScope(TraceScope&& other) noexcept {
+    *this = std::move(other);
+}
+
+auto TaskPool::TraceScope::operator=(TraceScope&& other) noexcept -> TraceScope& {
+    if (this == &other) {
+        return *this;
+    }
+    pool = other.pool;
+    name = std::move(other.name);
+    category = std::move(other.category);
+    path = std::move(other.path);
+    startMicros = other.startMicros;
+    threadId = other.threadId;
+    other.pool = nullptr;
+    return *this;
+}
+
+TaskPool::TraceScope::~TraceScope() {
+    if (!pool) return;
+    if (!pool->traceEnabled.load(std::memory_order_acquire)) return;
+    auto endMicros = now_micros();
+    auto startUs = static_cast<uint64_t>(
+        std::max<int64_t>(0, startMicros - pool->traceStartMicros.load(std::memory_order_relaxed)));
+    auto durUs = static_cast<uint64_t>(std::max<int64_t>(0, endMicros - startMicros));
+    pool->recordTraceSpan(name, path, category, startUs, durUs, threadId, std::nullopt);
+}
+
+auto TaskPool::traceScope(std::string name,
+                          std::string category,
+                          std::string path) -> TraceScope {
+    if (!traceEnabled.load(std::memory_order_acquire)) {
+        return {};
+    }
+    auto startMicros = now_micros();
+    auto threadId = current_thread_id();
+    return TraceScope(this,
+                      std::move(name),
+                      std::move(category),
+                      std::move(path),
+                      startMicros,
+                      threadId);
+}
+
+auto TaskPool::traceThreadName(std::string const& name) -> void {
+    if (!traceEnabled.load(std::memory_order_acquire)) {
+        return;
+    }
+    auto threadId = current_thread_id();
+    recordTraceThreadName(threadId, name);
 }
 
 auto TaskPool::flushTrace() -> std::optional<Error> {
@@ -439,6 +516,7 @@ auto TaskPool::workerFunction(size_t workerIndex) -> void {
             auto traceStart = int64_t{0};
             std::optional<uint64_t> queueWaitUs;
             auto queueStart = takeTraceQueueStart(strongTask.get());
+            std::string displayLabel = task_display_label(*strongTask, notificationPath);
             if (traceEnabled.load(std::memory_order_acquire)) {
                 traceStart = now_micros();
             }
@@ -446,7 +524,7 @@ auto TaskPool::workerFunction(size_t workerIndex) -> void {
                 auto traceStartBaseline = traceStartMicros.load(std::memory_order_relaxed);
                 auto waitEndUs = static_cast<uint64_t>(
                     std::max<int64_t>(0, traceStart - traceStartBaseline));
-                recordTraceAsync(format_task_label("Wait", notificationPath),
+                recordTraceAsync(format_task_label("Wait", displayLabel),
                                  notificationPath,
                                  "queue",
                                  waitEndUs,
@@ -472,9 +550,9 @@ auto TaskPool::workerFunction(size_t workerIndex) -> void {
                 auto startUs = static_cast<uint64_t>(
                     std::max<int64_t>(0, traceStart - traceStartMicros.load(std::memory_order_relaxed)));
                 auto durUs = static_cast<uint64_t>(std::max<int64_t>(0, traceEnd - traceStart));
-                recordTraceSpan(format_task_label("Task", notificationPath),
+                recordTraceSpan(displayLabel,
                                 notificationPath,
-                                std::string(execution_category_label(strongTask->executionCategory)),
+                                std::string{},
                                 startUs,
                                 durUs,
                                 threadId,
@@ -552,13 +630,19 @@ auto TaskPool::recordTraceThreadName(uint64_t threadId, std::string const& name)
     if (!traceEnabled.load(std::memory_order_relaxed)) {
         return;
     }
+    if (traceNamedThreads.find(threadId) != traceNamedThreads.end()) {
+        return;
+    }
+    traceNamedThreads.insert(threadId);
     traceEvents.push_back(TaskTraceEvent{.name = "thread_name",
                                          .threadName = name,
                                          .threadId = threadId,
                                          .phase = 'M'});
 }
 
-auto TaskPool::recordTraceQueueStart(Task* task, std::string const& path) -> void {
+auto TaskPool::recordTraceQueueStart(Task* task,
+                                     std::string const& label,
+                                     std::string const& path) -> void {
     if (!task) return;
     auto nowMicros = now_micros();
     auto traceStart = traceStartMicros.load(std::memory_order_relaxed);
@@ -568,7 +652,8 @@ auto TaskPool::recordTraceQueueStart(Task* task, std::string const& path) -> voi
         std::lock_guard<std::mutex> lock(traceMutex);
         traceQueueStarts[task] = {nowMicros, asyncId};
     }
-    recordTraceAsync(format_task_label("Wait", path), path, "queue", tsUs, 'b', asyncId);
+    std::string displayLabel = label.empty() ? path : label;
+    recordTraceAsync(format_task_label("Wait", displayLabel), path, "queue", tsUs, 'b', asyncId);
 }
 
 auto TaskPool::takeTraceQueueStart(Task* task) -> std::optional<std::pair<int64_t, uint64_t>> {

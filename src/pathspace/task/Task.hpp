@@ -10,6 +10,7 @@
 #include <cassert>
 #include <functional>
 #include <memory>
+#include <string>
 #include <thread>
 
 namespace SP {
@@ -99,6 +100,14 @@ struct Task {
         this->executor = exec;
     }
 
+    auto setLabel(std::string label) -> void {
+        this->label = std::move(label);
+    }
+
+    auto getLabel() const -> std::string const& {
+        return this->label;
+    }
+
 private:
     friend class TaskPool;
     friend struct NodeData; // Allow NodeData to access Task internals for scheduling
@@ -118,6 +127,7 @@ private:
     std::weak_ptr<NotificationSink>                           notifier;          // Weak reference to notification sink for lifetime-safe notifications
     std::string                                               notificationPath;
     Executor*                                                 executor = nullptr; // Optional preferred executor for (re)submission
+    std::string                                               label;
 };
 
 } // namespace SP

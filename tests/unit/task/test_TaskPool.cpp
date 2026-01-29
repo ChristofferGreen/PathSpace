@@ -67,6 +67,7 @@ TEST_CASE("TaskPool Misc") {
         std::atomic<bool> done{false};
 
         auto task = Task::Create([&done](Task const&, bool) { done = true; });
+        task->setLabel("Command Build");
 
         auto tempDir = std::filesystem::temp_directory_path();
         auto tracePath =
@@ -75,6 +76,8 @@ TEST_CASE("TaskPool Misc") {
                        ".json");
 
         pool.enableTrace(tracePath.string());
+        pool.traceThreadName("TestMain");
+        auto scope = pool.traceScope("Frame 1", "frame");
         pool.addTask(task);
 
         while (!done) {
@@ -95,6 +98,8 @@ TEST_CASE("TaskPool Misc") {
         std::ifstream in(tracePath);
         std::string   contents((std::istreambuf_iterator<char>(in)), {});
         CHECK(contents.find("\"traceEvents\"") != std::string::npos);
+        CHECK(contents.find("Command Build") != std::string::npos);
+        CHECK(contents.find("Frame 1") != std::string::npos);
 
         std::filesystem::remove(tracePath, error);
     }
