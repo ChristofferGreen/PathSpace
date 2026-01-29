@@ -50,6 +50,7 @@ TEST_CASE("expected<void> throws and surfaces shimmed what()") {
     }
 }
 
+#ifdef PATHSPACE_NEEDS_EXPECTED_SHIM
 TEST_CASE("shim helper exposes weak what() override") {
     // callExpectedShimWhat() is compiled only when PATHSPACE_NEEDS_EXPECTED_SHIM
     // is defined (coverage builds). Ensure it returns a non-empty message so the
@@ -58,4 +59,5 @@ TEST_CASE("shim helper exposes weak what() override") {
     CHECK_FALSE(message.empty());
     CHECK(message.find("expected") != std::string::npos);
 }
+#endif
 }
