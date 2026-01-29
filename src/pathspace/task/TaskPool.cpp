@@ -112,8 +112,8 @@ auto format_task_label(std::string_view prefix, std::string const& path) -> std:
 }
 
 auto task_display_label(Task const& task, std::string const& fallbackPath) -> std::string {
-    if (!task.label.empty()) {
-        return task.label;
+    if (!task.getLabel().empty()) {
+        return task.getLabel();
     }
     if (!fallbackPath.empty()) {
         return fallbackPath;
