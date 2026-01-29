@@ -77,11 +77,13 @@ TEST_CASE("TaskPool Misc") {
 
         pool.enableTrace(tracePath.string());
         pool.traceThreadName("TestMain");
-        auto scope = pool.traceScope("Frame 1", "frame");
-        pool.addTask(task);
+        {
+            auto scope = pool.traceScope("Frame 1", "frame");
+            pool.addTask(task);
 
-        while (!done) {
-            std::this_thread::yield();
+            while (!done) {
+                std::this_thread::yield();
+            }
         }
 
         auto flushError = pool.flushTrace();
