@@ -30,7 +30,7 @@ enum class Op {
 };
 
 struct ThreadTotals {
-    uint64_t frameId = 0;
+    uint64_t groupId = 0;
     uint64_t readUs = 0;
     uint64_t insertUs = 0;
     uint64_t takeUs = 0;
@@ -38,7 +38,7 @@ struct ThreadTotals {
 
 inline std::mutex gMutex;
 inline std::unordered_map<uint64_t, ThreadTotals> gTotals;
-inline std::atomic<uint64_t> gFrameId{0};
+inline std::atomic<uint64_t> gGroupId{0};
 inline thread_local int gDepth = 0;
 
 inline auto current_thread_id() -> uint64_t {
@@ -62,8 +62,8 @@ struct ScopedOp {
         auto &pool = TaskPool::Instance();
         startUs = pool.traceNowUs();
         if (startUs == 0) return;
-        frameId = gFrameId.load(std::memory_order_acquire);
-        if (frameId == 0) {
+        groupId = gGroupId.load(std::memory_order_acquire);
+        if (groupId == 0) {
             startUs = 0;
             return;
         }
@@ -87,9 +87,9 @@ struct ScopedOp {
         uint64_t durUs = endUs - startUs;
         std::lock_guard<std::mutex> lock(gMutex);
         auto &stats = gTotals[threadId];
-        if (stats.frameId != frameId) {
+        if (stats.groupId != groupId) {
             stats = {};
-            stats.frameId = frameId;
+            stats.groupId = groupId;
         }
         switch (op) {
             case Op::Read:
@@ -107,31 +107,31 @@ struct ScopedOp {
 private:
     Op op;
     uint64_t startUs = 0;
-    uint64_t frameId = 0;
+    uint64_t groupId = 0;
     uint64_t threadId = 0;
     int* depthPtr = nullptr;
 };
 
-inline void BeginFrame(uint64_t frameId) {
-    gFrameId.store(frameId, std::memory_order_release);
+inline void BeginGroup(uint64_t groupId) {
+    gGroupId.store(groupId, std::memory_order_release);
 }
 
-inline void EndFrame(TaskPool& pool, uint64_t frameId, uint64_t frameStartUs, uint64_t frameEndUs) {
-    gFrameId.store(0, std::memory_order_release);
-    if (frameStartUs == 0 || frameEndUs <= frameStartUs) return;
+inline void EndGroup(TaskPool& pool, uint64_t groupId, uint64_t groupStartUs, uint64_t groupEndUs) {
+    gGroupId.store(0, std::memory_order_release);
+    if (groupStartUs == 0 || groupEndUs <= groupStartUs) return;
 
     std::vector<std::pair<uint64_t, ThreadTotals>> snapshot;
     {
         std::lock_guard<std::mutex> lock(gMutex);
         for (auto &entry : gTotals) {
-            if (entry.second.frameId != frameId) continue;
+            if (entry.second.groupId != groupId) continue;
             snapshot.emplace_back(entry.first, entry.second);
             entry.second = {};
         }
     }
 
     if (snapshot.empty()) return;
-    uint64_t frameDur = frameEndUs - frameStartUs;
+    uint64_t frameDur = groupEndUs - groupStartUs;
     for (auto const& [threadId, stats] : snapshot) {
         uint64_t total = stats.readUs + stats.insertUs + stats.takeUs;
         if (total == 0) continue;
@@ -148,7 +148,7 @@ inline void EndFrame(TaskPool& pool, uint64_t frameId, uint64_t frameStartUs, ui
 
         uint64_t totalScaled = scaled(total);
         if (totalScaled == 0) continue;
-        uint64_t cursor = frameStartUs;
+        uint64_t cursor = groupStartUs;
         uint64_t remaining = totalScaled;
         pool.traceSpan("PathSpace", "pathspace", {}, cursor, totalScaled, threadId);
         auto emit_child = [&](char const* name, char const* category, uint64_t valueUs) {
