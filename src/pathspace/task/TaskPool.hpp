@@ -36,6 +36,14 @@ public:
     auto enableTraceNdjson(std::string const& path) -> void;
     auto flushTrace() -> std::optional<Error>;
     auto traceThreadName(std::string const& name) -> void;
+    auto traceCounter(std::string name, double value) -> void;
+    auto traceSpan(std::string name,
+                   std::string category,
+                   std::string path,
+                   uint64_t startUs,
+                   uint64_t durUs,
+                   std::optional<uint64_t> threadId = std::nullopt) -> void;
+    auto traceNowUs() const -> uint64_t;
 
     struct TraceScope {
         TraceScope() = default;
@@ -103,6 +111,8 @@ private:
         uint64_t    asyncId = 0;
         uint64_t    queueWaitUs = 0;
         bool        hasQueueWait = false;
+        double      counterValue = 0.0;
+        bool        hasCounter = false;
         char        phase = 'X';
     };
 

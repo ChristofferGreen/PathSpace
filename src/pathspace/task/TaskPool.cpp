@@ -318,6 +318,51 @@ auto TaskPool::traceThreadName(std::string const& name) -> void {
     recordTraceThreadName(threadId, name);
 }
 
+auto TaskPool::traceCounter(std::string name, double value) -> void {
+    if (!traceEnabled.load(std::memory_order_acquire)) {
+        return;
+    }
+    auto ts = now_micros();
+    auto startUs = static_cast<uint64_t>(
+        std::max<int64_t>(0, ts - traceStartMicros.load(std::memory_order_relaxed)));
+    auto threadId = current_thread_id();
+    {
+        std::lock_guard<std::mutex> lock(traceMutex);
+        if (!traceEnabled.load(std::memory_order_relaxed)) {
+            return;
+        }
+        traceEvents.push_back(TaskTraceEvent{.name = std::move(name),
+                                             .startUs = startUs,
+                                             .threadId = threadId,
+                                             .counterValue = value,
+                                             .hasCounter = true,
+                                             .phase = 'C'});
+    }
+}
+
+auto TaskPool::traceSpan(std::string name,
+                         std::string category,
+                         std::string path,
+                         uint64_t startUs,
+                         uint64_t durUs,
+                         std::optional<uint64_t> threadId) -> void {
+    if (!traceEnabled.load(std::memory_order_acquire)) {
+        return;
+    }
+    uint64_t tid = threadId.value_or(current_thread_id());
+    recordTraceSpan(name, path, category, startUs, durUs, tid, std::nullopt);
+}
+
+auto TaskPool::traceNowUs() const -> uint64_t {
+    if (!traceEnabled.load(std::memory_order_acquire)) {
+        return 0;
+    }
+    auto ts = now_micros();
+    auto base = traceStartMicros.load(std::memory_order_relaxed);
+    if (ts < base) return 0;
+    return static_cast<uint64_t>(ts - base);
+}
+
 auto TaskPool::flushTrace() -> std::optional<Error> {
     std::vector<TaskTraceEvent> eventsCopy;
     std::string tracePathCopy;
@@ -369,6 +414,9 @@ auto TaskPool::flushTrace() -> std::optional<Error> {
                     out << "}";
                 } else if (e.phase == 'M') {
                     out << ",\"args\":{\"name\":\"" << json_escape(e.threadName) << "\"}";
+                } else if (e.phase == 'C') {
+                    out << ",\"ts\":" << e.startUs;
+                    out << ",\"args\":{\"value\":" << e.counterValue << "}";
                 } else if (e.phase == 'b' || e.phase == 'e') {
                     out << ",\"ts\":" << e.startUs;
                     out << ",\"id\":" << e.asyncId;
@@ -404,6 +452,9 @@ auto TaskPool::flushTrace() -> std::optional<Error> {
                 if (e.phase == 'X') {
                     out << ",\"start_us\":" << e.startUs;
                     out << ",\"dur_us\":" << e.durUs;
+                } else if (e.phase == 'C') {
+                    out << ",\"ts_us\":" << e.startUs;
+                    out << ",\"value\":" << e.counterValue;
                 } else if (e.phase == 'b' || e.phase == 'e') {
                     out << ",\"ts_us\":" << e.startUs;
                     out << ",\"id\":" << e.asyncId;
