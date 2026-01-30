@@ -15,6 +15,8 @@
 #include "task/Executor.hpp"
 #include "task/IFutureAny.hpp"
 #include "task/Task.hpp"
+#include "task/TaskPool.hpp"
+#include "trace/PathSpaceTrace.hpp"
 #include "task/TaskT.hpp"
 #include "type/InputData.hpp"
 #include "type/InputMetadata.hpp"
@@ -376,6 +378,7 @@ public:
     template <typename DataType, StringConvertible S>
     auto insert(S const& pathIn, DataType&& data, In const& options = {}) -> InsertReturn {
         sp_log("PathSpace::insert", "Function Called");
+        PathSpaceTrace::ScopedOp trace{PathSpaceTrace::Op::Insert};
         Iterator const path{pathIn};
         using RawData = std::remove_reference_t<DataType>;
         ValidationLevel effectiveValidation = options.validationLevel;
@@ -426,6 +429,7 @@ public:
         requires(sizeof...(names) > 1 && sizeof...(names) == sizeof...(DataTypes))
     auto insert(DataTypes&&... data) -> InsertReturn {
         sp_log("PathSpace::insert<pack>", "Function Called");
+        PathSpaceTrace::ScopedOp trace{PathSpaceTrace::Op::Insert};
         static_assert(sizeof...(names) == sizeof...(DataTypes));
         using First = std::remove_cvref_t<std::tuple_element_t<0, std::tuple<DataTypes...>>>;
         static_assert((std::is_same_v<First, std::remove_cvref_t<DataTypes>> && ...),
@@ -457,6 +461,7 @@ public:
         requires(sizeof...(names) > 1 && sizeof...(names) == sizeof...(SpanTs) && Detail::AllSpanTypes<SpanTs...>)
     auto insert(S const& basePath, SpanTs&&... spans) -> InsertReturn {
         sp_log("PathSpace::insert<span_pack>", "Function Called");
+        PathSpaceTrace::ScopedOp trace{PathSpaceTrace::Op::Insert};
         constexpr std::size_t Arity = sizeof...(names);
         Iterator baseIter{basePath};
         if (auto error = baseIter.validate(ValidationLevel::Basic)) {
@@ -508,6 +513,7 @@ public:
         requires(!std::is_same_v<std::remove_cvref_t<DataType>, FutureAny>)
     auto read(S const& pathIn, Out const& options = {}) const -> Expected<DataType> {
         sp_log("PathSpace::read", "Function Called");
+        PathSpaceTrace::ScopedOp trace{PathSpaceTrace::Op::Read};
         Iterator const path{pathIn};
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
@@ -555,6 +561,7 @@ public:
         requires Detail::IsSpanCallback<Fn>
     auto read(S const& pathIn, Fn&& fn, Out const& options = {}) const -> Expected<void> {
         sp_log("PathSpace::read<span>", "Function Called");
+        PathSpaceTrace::ScopedOp trace{PathSpaceTrace::Op::Read};
         Iterator const path{pathIn};
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
@@ -585,6 +592,7 @@ public:
     template <FixedString... names, StringConvertible S, typename Fn>
         requires(sizeof...(names) > 0)
     auto read(S const& basePath, Fn&& fn, Out const& options = {}) const -> Expected<void> {
+        PathSpaceTrace::ScopedOp trace{PathSpaceTrace::Op::Read};
         using Traits = Detail::SpanPackTraits<Fn>;
         static_assert(Traits::isSpanPack, "Callback must accept spans");
         static_assert(Traits::isConstPack, "Callback spans must be const for read");
@@ -602,6 +610,7 @@ public:
     template <StringConvertible S>
     auto read(S const& pathIn, Out const& options = {}) const -> Expected<FutureAny> {
         sp_log("PathSpace::read<FutureAny>", "Function Called");
+        PathSpaceTrace::ScopedOp trace{PathSpaceTrace::Op::Read};
         Iterator const path{pathIn};
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
@@ -625,6 +634,7 @@ public:
     template <typename DataType, StringConvertible S>
     auto take(S const& pathIn, Out const& options = {}) -> Expected<DataType> {
         sp_log("PathSpace::extract", "Function Called");
+        PathSpaceTrace::ScopedOp trace{PathSpaceTrace::Op::Take};
         Iterator const path{pathIn};
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
@@ -649,6 +659,7 @@ public:
         requires Detail::IsMutableSpanCallback<Fn>
     auto take(S const& pathIn, Fn&& fn, Out const& options = {}) -> Expected<void> {
         sp_log("PathSpace::take<span>", "Function Called");
+        PathSpaceTrace::ScopedOp trace{PathSpaceTrace::Op::Take};
         Iterator const path{pathIn};
         if (auto error = path.validate(options.validationLevel))
             return std::unexpected(*error);
@@ -679,6 +690,7 @@ public:
     template <FixedString... names, StringConvertible S, typename Fn>
         requires(sizeof...(names) > 0)
     auto take(S const& basePath, Fn&& fn, Out const& options = {}) -> Expected<void> {
+        PathSpaceTrace::ScopedOp trace{PathSpaceTrace::Op::Take};
         using Traits = Detail::SpanPackTraits<Fn>;
         static_assert(Traits::isSpanPack, "Callback must accept spans");
         static_assert(Traits::isMutablePack, "Callback spans must be mutable for take");
