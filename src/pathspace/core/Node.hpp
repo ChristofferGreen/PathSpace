@@ -6,9 +6,11 @@
 
 #include <memory>
 #include <mutex>
+#include <new>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include <parallel_hashmap/phmap.h>
 
@@ -61,6 +63,48 @@ struct Node final {
     Node()  = default;
     ~Node() = default;
 
+    static void* operator new(std::size_t size) {
+        if (size != sizeof(Node)) {
+            return ::operator new(size);
+        }
+        auto& pool = nodePool();
+        {
+            std::lock_guard<std::mutex> guard(pool.mutex);
+            if (!pool.freeList.empty()) {
+                void* ptr = pool.freeList.back();
+                pool.freeList.pop_back();
+                return ptr;
+            }
+        }
+        return ::operator new(size);
+    }
+
+    static void operator delete(void* ptr) noexcept {
+        if (!ptr) {
+            return;
+        }
+        auto& pool = nodePool();
+        {
+            std::lock_guard<std::mutex> guard(pool.mutex);
+            pool.freeList.push_back(ptr);
+        }
+    }
+
+    static void operator delete(void* ptr, std::size_t size) noexcept {
+        if (!ptr) {
+            return;
+        }
+        if (size != sizeof(Node)) {
+            ::operator delete(ptr);
+            return;
+        }
+        auto& pool = nodePool();
+        {
+            std::lock_guard<std::mutex> guard(pool.mutex);
+            pool.freeList.push_back(ptr);
+        }
+    }
+
     // Structural queries
     bool hasChildren() const noexcept { return !children.empty(); }
     bool hasData() const noexcept { return static_cast<bool>(data) || static_cast<bool>(podPayload); }
@@ -107,6 +151,17 @@ struct Node final {
     void clearRecursive() noexcept {
         clearLocal();
         children.clear();
+    }
+
+private:
+    struct NodePool {
+        std::mutex        mutex;
+        std::vector<void*> freeList;
+    };
+
+    static auto nodePool() -> NodePool& {
+        static NodePool pool{};
+        return pool;
     }
 };
 

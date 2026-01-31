@@ -32,3 +32,16 @@ Tracking optimization experiments and benchmark outcomes. Only changes that show
   - Nested chain: build 89.53 ms, read 5.74 ms, total 95.26 ms
   - Nested fanout: build 57.37 ms, read 3.07 ms, total 60.44 ms
 - Result: Consistent small win across all scenarios in this run. Keep.
+
+### 2026-01-31 — Node allocation pool (global free list)
+- Change: Add a simple global free list for `Node` allocations via `operator new/delete`.
+- Release benchmark comparison (best-of-3 means):
+  - Baseline:
+    - Wide tree: build 266.17 ms, read 15.63 ms, total 281.80 ms
+    - Nested chain: build 55.19 ms, read 3.52 ms, total 58.71 ms
+    - Nested fanout: build 34.95 ms, read 2.07 ms, total 37.03 ms
+  - After change:
+    - Wide tree: build 249.60 ms, read 14.03 ms, total 263.67 ms
+    - Nested chain: build 52.65 ms, read 3.31 ms, total 55.96 ms
+    - Nested fanout: build 33.27 ms, read 1.94 ms, total 35.23 ms
+- Result: Clear win across build/read/total in Release. Keep.
