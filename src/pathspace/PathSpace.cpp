@@ -12,11 +12,13 @@
 #include <cstddef>
 #include <optional>
 #include <mutex>
+#include <condition_variable>
 #include <span>
 #include <string>
 #include <string_view>
 #include <thread>
 #include <chrono>
+#include <unordered_map>
 #include <vector>
 
 namespace SP {
@@ -38,6 +40,61 @@ static bool subtree_has_payload(Node const& node) {
     });
     return has;
 }
+
+namespace {
+auto normalizeSnapshotPath(std::string_view path) -> std::string {
+    ConcretePathString raw{std::string(path)};
+    if (auto canonical = raw.canonicalized()) {
+        return canonical->getPath();
+    }
+    return std::string(path);
+}
+
+auto hasGlobChars(std::string_view path) -> bool {
+    return path.find_first_of("*?[") != std::string_view::npos;
+}
+
+auto isPathPrefix(std::string_view prefix, std::string_view path) -> bool {
+    if (prefix == "/") {
+        return true;
+    }
+    if (path.size() < prefix.size()) {
+        return false;
+    }
+    if (path.compare(0, prefix.size(), prefix) != 0) {
+        return false;
+    }
+    if (path.size() == prefix.size()) {
+        return true;
+    }
+    return path[prefix.size()] == '/';
+}
+
+} // namespace
+
+struct PathSpace::SnapshotState {
+    bool enabled = false;
+    bool dirty = false;
+    bool rebuildInProgress = false;
+    std::chrono::milliseconds debounce{200};
+    std::chrono::steady_clock::time_point lastMutation{};
+    std::chrono::steady_clock::time_point lastBuild{};
+    std::size_t maxDirtyRoots = 128;
+    std::unordered_map<std::string, std::vector<std::byte>> values;
+    std::vector<std::string> dirtyRoots;
+    std::size_t hitCount = 0;
+    std::size_t missCount = 0;
+    std::size_t rebuildCount = 0;
+    std::size_t rebuildFailCount = 0;
+    std::chrono::milliseconds lastRebuildMs{0};
+    std::size_t bytes = 0;
+    PathSpace* owner = nullptr;
+    bool workerRunning = false;
+    bool stopWorker = false;
+    std::condition_variable cv;
+    std::thread worker;
+    std::mutex mutex;
+};
 
 auto gatherOrderedChildren(Node const& node) -> std::vector<std::string> {
     std::vector<std::string> names;
@@ -349,6 +406,144 @@ auto PathSpace::clone(CopyStats* stats) const -> PathSpace {
     copy.copyFrom(*this, stats);
     return copy;
 }
+
+auto PathSpace::setSnapshotOptions(SnapshotOptions options) -> void {
+    if (!this->snapshotState) {
+        this->snapshotState = std::make_shared<SnapshotState>();
+    }
+    auto now = std::chrono::steady_clock::now();
+    {
+        std::lock_guard<std::mutex> guard(this->snapshotState->mutex);
+        this->snapshotState->enabled = options.enabled;
+        this->snapshotState->debounce = options.rebuildDebounce;
+        this->snapshotState->maxDirtyRoots = std::max<std::size_t>(1, options.maxDirtyRoots);
+        this->snapshotState->dirtyRoots.clear();
+        this->snapshotState->values.clear();
+        this->snapshotState->dirty = options.enabled;
+        this->snapshotState->rebuildInProgress = false;
+        this->snapshotState->lastMutation = now - this->snapshotState->debounce;
+        this->snapshotState->lastBuild = std::chrono::steady_clock::time_point{};
+        this->snapshotState->hitCount = 0;
+        this->snapshotState->missCount = 0;
+        this->snapshotState->rebuildCount = 0;
+        this->snapshotState->rebuildFailCount = 0;
+        this->snapshotState->lastRebuildMs = std::chrono::milliseconds{0};
+        this->snapshotState->bytes = 0;
+        this->snapshotState->owner = this;
+        this->snapshotState->stopWorker = false;
+        this->snapshotState->cv.notify_all();
+    }
+    if (options.enabled) {
+        this->startSnapshotWorker();
+    } else {
+        this->stopSnapshotWorker();
+    }
+}
+
+auto PathSpace::snapshotEnabled() const noexcept -> bool {
+    auto state = this->snapshotState;
+    if (!state) {
+        return false;
+    }
+    std::lock_guard<std::mutex> guard(state->mutex);
+    return state->enabled;
+}
+
+auto PathSpace::snapshotMetrics() const -> SnapshotMetrics {
+    SnapshotMetrics metrics{};
+    auto state = this->snapshotState;
+    if (!state) {
+        return metrics;
+    }
+    std::lock_guard<std::mutex> guard(state->mutex);
+    metrics.hits = state->hitCount;
+    metrics.misses = state->missCount;
+    metrics.rebuilds = state->rebuildCount;
+    metrics.rebuildFailures = state->rebuildFailCount;
+    metrics.lastRebuildMs = state->lastRebuildMs;
+    metrics.bytes = state->bytes;
+    return metrics;
+}
+
+auto PathSpace::rebuildSnapshotNow() -> void {
+    auto state = this->snapshotState;
+    if (!state) {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> guard(state->mutex);
+        if (!state->enabled || state->rebuildInProgress) {
+            return;
+        }
+        state->rebuildInProgress = true;
+    }
+    this->rebuildSnapshot(state);
+}
+
+auto PathSpace::startSnapshotWorker() -> void {
+    auto state = this->snapshotState;
+    if (!state) {
+        return;
+    }
+    std::lock_guard<std::mutex> guard(state->mutex);
+    if (state->workerRunning) {
+        return;
+    }
+    state->stopWorker = false;
+    state->workerRunning = true;
+    state->worker = std::thread([state]() {
+        std::unique_lock<std::mutex> lock(state->mutex);
+        while (true) {
+            state->cv.wait(lock, [&]() {
+                return state->stopWorker || (state->enabled && state->dirty);
+            });
+            if (state->stopWorker) {
+                break;
+            }
+            if (!state->enabled || !state->dirty) {
+                continue;
+            }
+            auto nextWake = state->lastMutation + state->debounce;
+            if (state->cv.wait_until(lock, nextWake, [&]() { return state->stopWorker; })) {
+                if (state->stopWorker) {
+                    break;
+                }
+            }
+            if (!state->enabled || !state->dirty || state->rebuildInProgress) {
+                continue;
+            }
+            state->rebuildInProgress = true;
+            auto owner = state->owner;
+            lock.unlock();
+            if (owner) {
+                owner->rebuildSnapshot(state);
+            }
+            lock.lock();
+        }
+        state->workerRunning = false;
+    });
+}
+
+auto PathSpace::stopSnapshotWorker() -> void {
+    auto state = this->snapshotState;
+    if (!state) {
+        return;
+    }
+    std::thread toJoin;
+    {
+        std::lock_guard<std::mutex> guard(state->mutex);
+        if (!state->workerRunning) {
+            return;
+        }
+        state->stopWorker = true;
+        state->cv.notify_all();
+        toJoin = std::move(state->worker);
+    }
+    if (toJoin.joinable()) {
+        toJoin.join();
+    }
+}
+
 void PathSpace::adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix) {
     sp_log("PathSpace::adoptContextAndPrefix", "Function Called");
     auto previousPrefix = this->prefix;
@@ -406,6 +601,7 @@ void PathSpace::setOwnedPool(TaskPool* p) {
 
 PathSpace::~PathSpace() {
     sp_log("PathSpace::~PathSpace", "Function Called");
+    this->stopSnapshotWorker();
     if (this->context) {
         this->shutdown();
     }
@@ -423,8 +619,189 @@ PathSpace::~PathSpace() {
     }
 }
 
+auto PathSpace::markSnapshotDirty(Iterator const& path) -> void {
+    auto state = this->snapshotState;
+    if (!state) {
+        return;
+    }
+    auto pathView = path.toStringView();
+    if (hasGlobChars(pathView)) {
+        std::lock_guard<std::mutex> guard(state->mutex);
+        if (!state->enabled) {
+            return;
+        }
+        state->dirty = true;
+        state->lastMutation = std::chrono::steady_clock::now();
+        state->dirtyRoots.clear();
+        state->dirtyRoots.emplace_back("/");
+        state->cv.notify_all();
+        return;
+    }
+
+    auto normalized = normalizeSnapshotPath(pathView);
+    std::lock_guard<std::mutex> guard(state->mutex);
+    if (!state->enabled) {
+        return;
+    }
+    state->dirty = true;
+    state->lastMutation = std::chrono::steady_clock::now();
+    if (state->dirtyRoots.size() >= state->maxDirtyRoots) {
+        state->dirtyRoots.clear();
+        state->dirtyRoots.emplace_back("/");
+        state->cv.notify_all();
+        return;
+    }
+    for (auto const& root : state->dirtyRoots) {
+        if (isPathPrefix(root, normalized)) {
+            return;
+        }
+    }
+    state->dirtyRoots.erase(std::remove_if(state->dirtyRoots.begin(),
+                                           state->dirtyRoots.end(),
+                                           [&](std::string const& root) {
+                                               return isPathPrefix(normalized, root);
+                                           }),
+                            state->dirtyRoots.end());
+    state->dirtyRoots.push_back(std::move(normalized));
+    state->cv.notify_all();
+}
+
+auto PathSpace::rebuildSnapshot(std::shared_ptr<SnapshotState> const& state) -> void {
+    if (!state) {
+        return;
+    }
+    auto start = std::chrono::steady_clock::now();
+    std::unordered_map<std::string, std::vector<std::byte>> nextValues;
+    VisitOptions options{};
+    options.root = "/";
+    options.maxDepth = VisitOptions::UnlimitedDepth;
+    options.maxChildren = VisitOptions::UnlimitedChildren;
+    options.includeNestedSpaces = true;
+    options.includeValues = true;
+
+    auto visitResult = this->visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (!entry.hasValue) {
+                return VisitControl::Continue;
+            }
+            auto bytes = VisitDetail::Access::SerializeNodeData(handle);
+            if (!bytes) {
+                return VisitControl::Continue;
+            }
+            nextValues.emplace(entry.path, std::move(*bytes));
+            return VisitControl::Continue;
+        },
+        options);
+
+    std::lock_guard<std::mutex> guard(state->mutex);
+    if (!state->enabled) {
+        state->rebuildInProgress = false;
+        return;
+    }
+    if (!visitResult.has_value()) {
+        state->rebuildFailCount += 1;
+        state->rebuildInProgress = false;
+        return;
+    }
+    std::size_t bytes = 0;
+    for (auto const& [key, value] : nextValues) {
+        (void)key;
+        bytes += value.size();
+    }
+    state->values = std::move(nextValues);
+    state->dirtyRoots.clear();
+    state->dirty = false;
+    state->lastBuild = std::chrono::steady_clock::now();
+    state->lastRebuildMs = std::chrono::duration_cast<std::chrono::milliseconds>(state->lastBuild - start);
+    state->rebuildCount += 1;
+    state->bytes = bytes;
+    state->rebuildInProgress = false;
+}
+
+auto PathSpace::trySnapshotRead(Iterator const& path,
+                                InputMetadata const& inputMetadata,
+                                Out const& options,
+                                void* obj) -> bool {
+    auto state = this->snapshotState;
+    if (!state) {
+        return false;
+    }
+    if (options.doPop || options.doBlock) {
+        return false;
+    }
+    if (inputMetadata.dataCategory == DataCategory::Execution) {
+        return false;
+    }
+    auto pathView = path.toStringView();
+    if (hasGlobChars(pathView)) {
+        return false;
+    }
+
+    auto now = std::chrono::steady_clock::now();
+    bool shouldRebuild = false;
+    {
+        std::lock_guard<std::mutex> guard(state->mutex);
+        if (!state->enabled) {
+            return false;
+        }
+        if (!state->workerRunning && state->dirty && !state->rebuildInProgress
+            && now - state->lastMutation >= state->debounce) {
+            state->rebuildInProgress = true;
+            shouldRebuild = true;
+        }
+    }
+
+    if (shouldRebuild) {
+        this->rebuildSnapshot(state);
+    }
+
+    std::vector<std::byte> snapshotBytes;
+    {
+        std::lock_guard<std::mutex> guard(state->mutex);
+        if (!state->enabled) {
+            return false;
+        }
+        auto normalized = normalizeSnapshotPath(pathView);
+        for (auto const& root : state->dirtyRoots) {
+            if (isPathPrefix(root, normalized)) {
+                state->missCount += 1;
+                return false;
+            }
+        }
+        auto it = state->values.find(normalized);
+        if (it == state->values.end()) {
+            state->missCount += 1;
+            return false;
+        }
+        snapshotBytes = it->second;
+        state->hitCount += 1;
+    }
+
+    auto snapshot = NodeData::deserializeSnapshot(
+        std::span<const std::byte>{snapshotBytes.data(), snapshotBytes.size()});
+    if (!snapshot) {
+        return false;
+    }
+    if (auto error = snapshot->deserialize(obj, inputMetadata)) {
+        return false;
+    }
+    return true;
+}
+
 auto PathSpace::clear() -> void {
     sp_log("PathSpace::clear", "Function Called");
+    if (this->snapshotState) {
+        auto now = std::chrono::steady_clock::now();
+        std::lock_guard<std::mutex> guard(this->snapshotState->mutex);
+        if (this->snapshotState->enabled) {
+            this->snapshotState->values.clear();
+            this->snapshotState->dirtyRoots.clear();
+            this->snapshotState->dirtyRoots.emplace_back("/");
+            this->snapshotState->dirty = true;
+            this->snapshotState->lastMutation = now;
+            this->snapshotState->cv.notify_all();
+        }
+    }
     this->clearingInProgress.store(true, std::memory_order_release);
 
     if (this->context) {
@@ -452,6 +829,18 @@ auto PathSpace::shutdown() -> void {
     sp_log("PathSpace::shutdown Starting shutdown", "PathSpaceShutdown");
     if (!this->context) {
         return;
+    }
+    if (this->snapshotState) {
+        auto now = std::chrono::steady_clock::now();
+        std::lock_guard<std::mutex> guard(this->snapshotState->mutex);
+        if (this->snapshotState->enabled) {
+            this->snapshotState->values.clear();
+            this->snapshotState->dirtyRoots.clear();
+            this->snapshotState->dirtyRoots.emplace_back("/");
+            this->snapshotState->dirty = true;
+            this->snapshotState->lastMutation = now;
+            this->snapshotState->cv.notify_all();
+        }
     }
     this->clearingInProgress.store(true, std::memory_order_release);
     this->context->invalidateSink();
@@ -515,6 +904,9 @@ auto PathSpace::in(Iterator const& path, InputData const& data) -> InsertReturn 
             ret.nbrValuesInserted = 0;
         }
     }
+    if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksInserted > 0 || ret.nbrValuesSuppressed > 0) {
+        this->markSnapshotDirty(path);
+    }
     return ret;
 }
 
@@ -539,6 +931,15 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
     }
     guard.engaged = true;
     this->activeOutCount.fetch_add(1, std::memory_order_acq_rel);
+    auto markPopMutation = [&]() {
+        if (options.doPop) {
+            this->markSnapshotDirty(path);
+        }
+    };
+
+    if (this->trySnapshotRead(path, inputMetadata, options, obj)) {
+        return std::nullopt;
+    }
 
     auto retargetNestedIfNeeded = [&]() {
         if (!(options.doPop && inputMetadata.dataCategory == DataCategory::UniquePtr && contextPtr)) {
@@ -571,6 +972,7 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
         auto err = this->leaf.out(path, inputMetadata, obj, options.doPop);
         if (!err.has_value()) {
             retargetNestedIfNeeded();
+            markPopMutation();
         }
         return err;
     }
@@ -581,6 +983,7 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
         error = this->leaf.out(path, inputMetadata, obj, options.doPop);
         if (!error.has_value()) {
             retargetNestedIfNeeded();
+            markPopMutation();
             // Successful read or pop; notify other waiters to re-check state
             if (!prefixCopy.empty())
                 contextPtr->notify(prefixCopy + std::string(path.toStringView()));
@@ -638,6 +1041,8 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
                 sp_log("out(success pre-wait) notify: " + std::string(notePath), "PathSpace");
                 contextPtr->notify(notePath);
             }
+            retargetNestedIfNeeded();
+            markPopMutation();
             return std::nullopt;
         }
     }
@@ -662,6 +1067,7 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
             auto quick = this->leaf.out(path, inputMetadata, obj, options.doPop);
             if (!quick.has_value()) {
                 retargetNestedIfNeeded();
+                markPopMutation();
                 // Successful read or pop; notify other waiters to re-check state
                 if (!prefixCopy.empty()) {
                     std::string notePath = prefixCopy;
@@ -709,6 +1115,7 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
         if (!retry.has_value()) {
             retargetNestedIfNeeded();
             waitSlice = std::chrono::milliseconds(1);
+            markPopMutation();
             // Successful read or pop; notify other waiters to re-check state
                 if (!prefixCopy.empty()) {
                     std::string notePath = prefixCopy;
