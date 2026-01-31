@@ -218,11 +218,11 @@ auto parse_indexed_component(std::string_view component) -> IndexedComponent {
     return {component.substr(0, *lb), idx, false};
 }
 
-auto append_index_suffix(std::string const& base, std::size_t index) -> std::string {
+auto append_index_suffix(std::string_view base, std::size_t index) -> std::string {
     if (index == 0) {
-        return base;
+        return std::string{base};
     }
-    std::string result = base;
+    std::string result{base};
     result.push_back('[');
     result.append(std::to_string(index));
     result.push_back(']');

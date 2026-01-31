@@ -21,6 +21,6 @@ struct IndexedComponent {
 };
 
 auto parse_indexed_component(std::string_view component) -> IndexedComponent;
-auto append_index_suffix(std::string const& base, std::size_t index) -> std::string;
+auto append_index_suffix(std::string_view base, std::size_t index) -> std::string;
 
 } // namespace SP

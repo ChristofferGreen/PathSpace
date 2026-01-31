@@ -503,7 +503,6 @@ auto Leaf::inAtNode(Node& node,
         return;
     }
     auto const baseNameView = parsed.base;
-    std::string baseName{baseNameView};
 
     if (iter.isAtFinalComponent()) {
         bool const nameIsGlob = parsed.index.has_value() ? false : is_glob(name);
@@ -574,7 +573,7 @@ auto Leaf::inAtNode(Node& node,
             if (child.data) {
                 auto nestedIndex = child.data->nestedCount() > 0 ? child.data->nestedCount() - 1 : 0;
                 if (auto* nestedPtr = child.data->nestedAt(nestedIndex)) {
-                    auto mountPath = buildResolvedPath(resolvedPath, baseName);
+                    auto mountPath = buildResolvedPath(resolvedPath, baseNameView);
                     ret.retargets.push_back(
                         InsertReturn::RetargetRequest{nestedPtr, append_index_suffix(mountPath, nestedIndex)});
                 }
@@ -656,7 +655,7 @@ auto Leaf::inAtNode(Node& node,
     }
 
     // Existing children may hold data; still recurse to allow mixed payload/child nodes (trellis stats etc.)
-    if (Node* existing = node.getChild(baseName); existing) {
+    if (Node* existing = node.getChild(baseNameView); existing) {
         std::shared_ptr<PathSpaceBase> nestedRaw;
         {
             std::lock_guard<std::mutex> lg(existing->payloadMutex);
@@ -668,7 +667,7 @@ auto Leaf::inAtNode(Node& node,
             relative.append(nextIterRaw.currentToEnd());
             Iterator nestedIter{relative};
             InsertReturn nestedRet = nestedRaw->in(nestedIter, inputData);
-            auto mountBase = append_index_suffix(buildResolvedPath(resolvedPath, baseName),
+            auto mountBase = append_index_suffix(buildResolvedPath(resolvedPath, baseNameView),
                                                  parsed.index.value_or(0));
             rebaseRetargets(nestedRet, mountBase);
             mergeInsertReturn(ret, nestedRet);
@@ -676,15 +675,15 @@ auto Leaf::inAtNode(Node& node,
             ret.errors.emplace_back(Error{Error::Code::NoSuchPath, "Nested PathSpace index not found"});
             return;
         } else {
-            auto nextResolved = buildResolvedPath(resolvedPath, baseName);
+            auto nextResolved = buildResolvedPath(resolvedPath, baseNameView);
             inAtNode(*existing, nextIterRaw, inputData, ret, nextResolved);
         }
     } else {
-        Node& created      = node.getOrCreateChild(baseName);
-        auto  nextResolved = buildResolvedPath(resolvedPath, baseName);
+        Node& created      = node.getOrCreateChild(baseNameView);
+        auto  nextResolved = buildResolvedPath(resolvedPath, baseNameView);
         inAtNode(created, nextIterRaw, inputData, ret, nextResolved);
         if (!ret.errors.empty() && !created.hasData() && !created.hasChildren()) {
-            node.eraseChild(baseName);
+            node.eraseChild(baseNameView);
         }
     }
 }
@@ -702,14 +701,13 @@ auto Leaf::outAtNode(Node& node,
         return Error{Error::Code::InvalidPath, "Malformed indexed path component"};
     }
     auto baseNameView = parsed.base;
-    std::string baseName{baseNameView};
 
     if (iter.isAtFinalComponent()) {
         if (inputMetadata.spanReader || inputMetadata.spanMutator) {
             if (parsed.index.has_value() || is_glob(name)) {
                 return Error{Error::Code::InvalidPath, "Span reads require concrete non-indexed paths"};
             }
-            Node* child = node.getChild(baseName);
+            Node* child = node.getChild(baseNameView);
             if (!child) {
                 sp_log("Leaf::outAtNode(span) no such child: " + std::string(name), "Leaf");
                 return Error{Error::Code::NoSuchPath, "Path not found"};
@@ -793,7 +791,7 @@ auto Leaf::outAtNode(Node& node,
             return Error{Error::Code::NoSuchPath, "Path not found"};
         }
 
-        Node* child = node.getChild(baseName);
+        Node* child = node.getChild(baseNameView);
         if (!child) {
             sp_log("Leaf::outAtNode(final) no such child: " + std::string(name), "Leaf");
             return Error{Error::Code::NoSuchPath, "Path not found"};
@@ -881,7 +879,7 @@ auto Leaf::outAtNode(Node& node,
         return Error{Error::Code::NoSuchPath, "Path not found"};
     }
 
-    Node* child = node.getChild(baseName);
+    Node* child = node.getChild(baseNameView);
     if (!child)
         return Error{Error::Code::NoSuchPath, "Path not found"};
 
