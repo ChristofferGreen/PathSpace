@@ -23,7 +23,7 @@ This guide collects the conventions and scripts used when pairing with the PathS
 - `tests/`, `Testing/` — unit/functional tests managed by CTest.
 - `docs/` — architecture notes, renderer plan, path semantics; start with `docs/AI_Architecture.md`.
 - `scripts/` — automation (`create_pr.sh`, `compile.sh`, tooling helpers).
-- `examples/` — small usage demonstrations.
+- `bench/` — benchmark apps (PathSpace hierarchy perf harness).
 
 ## Code Guidelines
 - **Language/style:** C++20/23 with trailing return types, `auto` for type locality, `std::optional/expected` for error flows, `std::span` for buffers. Prefer RAII and value semantics; avoid raw `new` outside factories.
@@ -90,5 +90,6 @@ This guide collects the conventions and scripts used when pairing with the PathS
 - Rebuild quickly: `cmake --build build -j`.
 - Collect logs: `./scripts/run_log.sh`.
 - Count lines (sanity check for scope): `./scripts/lines_of_code.sh`.
+- Run hierarchy benchmark: `./build/bench/PathSpaceBench --runs 10 --warmup 1 --scale 1.0`.
 
 Stay in sync with `docs/AI_Architecture.md` and the related plan documents when touching architecture, path semantics, or rendering logic. Update both the code and documentation in the same branch whenever behaviour changes.

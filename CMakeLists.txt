@@ -96,6 +96,7 @@ endif()
 enable_testing()
 add_subdirectory(src/pathspace)
 add_subdirectory(tests)
+add_subdirectory(bench)
 
 # Documentation (Doxygen)
 option(ENABLE_DOXYGEN "Enable generating Doxygen API documentation (target: docs)" OFF)
