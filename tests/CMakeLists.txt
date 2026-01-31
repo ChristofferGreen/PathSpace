@@ -10,9 +10,11 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/path/test_ConcretePath.cpp
   unit/path/test_PathCoverage.cpp
   unit/path/test_PathUtils.cpp
+  unit/path/test_ConcreteNameCoverage.cpp
   unit/path/test_TransparentString.cpp
   unit/core/test_WaitMap.cpp
   unit/core/test_InsertReturn.cpp
+  unit/core/test_InCoverage.cpp
   unit/type/test_InputData.cpp
   unit/type/test_InputDataCoverage.cpp
   unit/type/test_InputMetadata.cpp
