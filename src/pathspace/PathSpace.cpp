@@ -1319,150 +1319,164 @@ auto PathSpace::listChildrenCanonical(std::string_view canonicalPath) const -> s
 
 void PathSpace::copyFrom(PathSpace const& other, CopyStats* stats) {
     CopyStats local{};
-    this->leaf.clear();
-    Node& dstRoot       = this->leaf.rootNode();
-    Node const& srcRoot = other.leaf.rootNode();
+    struct SpaceFrame {
+        PathSpace const* srcSpace;
+        PathSpace*       dstSpace;
+    };
     struct Frame {
         Node const* src;
         Node* dst;
         std::string path;
     };
 
-    std::vector<Frame> stack;
-    stack.push_back(Frame{&srcRoot, &dstRoot, "/"});
+    std::vector<SpaceFrame> spaceStack;
+    spaceStack.push_back(SpaceFrame{&other, this});
 
-    while (!stack.empty()) {
-        Frame frame = std::move(stack.back());
-        stack.pop_back();
+    while (!spaceStack.empty()) {
+        SpaceFrame spaceFrame = spaceStack.back();
+        spaceStack.pop_back();
+        PathSpace const* srcSpace = spaceFrame.srcSpace;
+        PathSpace* dstSpace = spaceFrame.dstSpace;
 
-        Node const& src = *frame.src;
-        Node&       dst = *frame.dst;
-        std::string const& currentPath = frame.path;
+        dstSpace->leaf.clear();
+        Node& dstRoot       = dstSpace->leaf.rootNode();
+        Node const& srcRoot = srcSpace->leaf.rootNode();
 
-        local.nodesVisited += 1;
+        std::vector<Frame> stack;
+        stack.push_back(Frame{&srcRoot, &dstRoot, "/"});
 
-        std::vector<std::shared_ptr<PathSpaceBase>> nestedSpaces;
-        bool                                        snapshotRestored = false;
-        {
-            std::lock_guard<std::mutex> guard(src.payloadMutex);
-            if (src.data) {
-                auto snapshot = src.data->serializeSnapshot();
-                if (snapshot) {
-                    auto restored = NodeData::deserializeSnapshot(*snapshot);
-                    if (restored) {
-                        dst.data = std::make_unique<NodeData>(std::move(*restored));
-                        local.payloadsCopied += 1;
-                        local.valuesCopied += dst.data->valueCount();
-                        snapshotRestored = true;
+        while (!stack.empty()) {
+            Frame frame = std::move(stack.back());
+            stack.pop_back();
+
+            Node const& src = *frame.src;
+            Node&       dst = *frame.dst;
+            std::string const& currentPath = frame.path;
+
+            local.nodesVisited += 1;
+
+            std::vector<std::shared_ptr<PathSpaceBase>> nestedSpaces;
+            bool                                        snapshotRestored = false;
+            {
+                std::lock_guard<std::mutex> guard(src.payloadMutex);
+                if (src.data) {
+                    auto snapshot = src.data->serializeSnapshot();
+                    if (snapshot) {
+                        auto restored = NodeData::deserializeSnapshot(*snapshot);
+                        if (restored) {
+                            dst.data = std::make_unique<NodeData>(std::move(*restored));
+                            local.payloadsCopied += 1;
+                            local.valuesCopied += dst.data->valueCount();
+                            snapshotRestored = true;
+                        } else {
+                            local.payloadsSkipped += 1;
+                        }
                     } else {
                         local.payloadsSkipped += 1;
                     }
-                } else {
-                    local.payloadsSkipped += 1;
-                }
 
-                auto nestedCount = src.data->nestedCount();
-                nestedSpaces.reserve(nestedCount);
-                for (std::size_t i = 0; i < nestedCount; ++i) {
-                    nestedSpaces.push_back(src.data->borrowNestedShared(i));
-                }
-            } else if (src.podPayload) {
-                auto payload = src.podPayload;
-                auto const& meta = payload->podMetadata();
-                auto elemSize    = payload->elementSize();
-                NodeData tmp;
-                bool ok = true;
-                auto spanErr = payload->withSpanRaw([&](void const* data, std::size_t count) {
-                    auto* base = static_cast<std::byte const*>(data);
-                    for (std::size_t i = 0; i < count; ++i) {
-                        InputData in{base + i * elemSize, meta};
-                        if (auto e = tmp.serialize(in)) {
-                            ok = false;
-                            return;
-                        }
+                    auto nestedCount = src.data->nestedCount();
+                    nestedSpaces.reserve(nestedCount);
+                    for (std::size_t i = 0; i < nestedCount; ++i) {
+                        nestedSpaces.push_back(src.data->borrowNestedShared(i));
                     }
-                });
-                if (spanErr.has_value() || !ok) {
-                    local.payloadsSkipped += 1;
-                } else {
-                    dst.data = std::make_unique<NodeData>(std::move(tmp));
-                    local.payloadsCopied += 1;
-                    local.valuesCopied += dst.data->valueCount();
-                    snapshotRestored = true;
+                } else if (src.podPayload) {
+                    auto payload = src.podPayload;
+                    auto const& meta = payload->podMetadata();
+                    auto elemSize    = payload->elementSize();
+                    NodeData tmp;
+                    bool ok = true;
+                    auto spanErr = payload->withSpanRaw([&](void const* data, std::size_t count) {
+                        auto* base = static_cast<std::byte const*>(data);
+                        for (std::size_t i = 0; i < count; ++i) {
+                            InputData in{base + i * elemSize, meta};
+                            if (auto e = tmp.serialize(in)) {
+                                ok = false;
+                                return;
+                            }
+                        }
+                    });
+                    if (spanErr.has_value() || !ok) {
+                        local.payloadsSkipped += 1;
+                    } else {
+                        dst.data = std::make_unique<NodeData>(std::move(tmp));
+                        local.payloadsCopied += 1;
+                        local.valuesCopied += dst.data->valueCount();
+                        snapshotRestored = true;
+                    }
                 }
             }
-        }
 
-        if (!snapshotRestored && !nestedSpaces.empty() && !dst.data) {
-            dst.data = std::make_unique<NodeData>();
-        }
-
-        for (std::size_t idx = 0; idx < nestedSpaces.size(); ++idx) {
-            auto const& nestedShared = nestedSpaces[idx];
-            if (!nestedShared) {
-                local.nestedSpacesSkipped += 1;
-                continue;
+            if (!snapshotRestored && !nestedSpaces.empty() && !dst.data) {
+                dst.data = std::make_unique<NodeData>();
             }
-            if (auto nestedPathSpace = dynamic_cast<PathSpace const*>(nestedShared.get())) {
-                CopyStats nestedStats{};
-                auto      nestedCopy = nestedPathSpace->clone(&nestedStats);
-                accumulate(local, nestedStats);
-                auto indexedPath = append_index_suffix(currentPath, idx);
-                auto mountPrefix = makeMountPrefix(this->prefix, indexedPath);
-                auto nestedPtr = std::make_unique<PathSpace>(std::move(nestedCopy));
-                nestedPtr->adoptContextAndPrefix(this->context, mountPrefix);
-                if (!dst.data) {
-                    dst.data = std::make_unique<NodeData>();
-                }
-                auto expectedSlots = countCategory(dst.data->typeSummary(), DataCategory::UniquePtr);
-                auto attached      = dst.data->nestedCount();
-                auto attachNested = [&](std::unique_ptr<PathSpace> space) -> std::optional<Error> {
-                    std::unique_ptr<PathSpaceBase> basePtr = std::move(space);
-                    if (snapshotRestored) {
-                        if (idx < attached && dst.data->nestedAt(idx) == nullptr) {
-                            auto placed = dst.data->emplaceNestedAt(idx, basePtr);
-                            if (placed.has_value()) {
-                                return placed;
-                            }
-                            // moved into slot on success
-                            return std::nullopt;
-                        } else if (expectedSlots > attached) {
-                            auto placed = dst.data->emplaceNestedAt(attached, basePtr);
-                            if (placed.has_value()) {
-                                return placed;
-                            }
-                            return std::nullopt;
-                        }
-                    }
-                    InputData nestedInput{std::move(basePtr)};
-                    return dst.data->serialize(nestedInput);
-                };
 
-                if (auto err = attachNested(std::move(nestedPtr)); err.has_value()) {
+            for (std::size_t idx = 0; idx < nestedSpaces.size(); ++idx) {
+                auto const& nestedShared = nestedSpaces[idx];
+                if (!nestedShared) {
                     local.nestedSpacesSkipped += 1;
-                } else {
-                    local.nestedSpacesCopied += 1;
+                    continue;
                 }
-            } else {
-                local.nestedSpacesSkipped += 1;
-            }
-        }
+                if (auto nestedPathSpace = dynamic_cast<PathSpace const*>(nestedShared.get())) {
+                    auto indexedPath = append_index_suffix(currentPath, idx);
+                    auto mountPrefix = makeMountPrefix(dstSpace->prefix, indexedPath);
+                    auto* pool = nestedPathSpace->pool ? nestedPathSpace->pool : &TaskPool::Instance();
+                    auto nestedPtr = std::make_unique<PathSpace>(pool);
+                    nestedPtr->adoptContextAndPrefix(dstSpace->context, mountPrefix);
+                    PathSpace* nestedRaw = nestedPtr.get();
+                    if (!dst.data) {
+                        dst.data = std::make_unique<NodeData>();
+                    }
+                    auto expectedSlots = countCategory(dst.data->typeSummary(), DataCategory::UniquePtr);
+                    auto attached      = dst.data->nestedCount();
+                    auto attachNested = [&](std::unique_ptr<PathSpace> space) -> std::optional<Error> {
+                        std::unique_ptr<PathSpaceBase> basePtr = std::move(space);
+                        if (snapshotRestored) {
+                            if (idx < attached && dst.data->nestedAt(idx) == nullptr) {
+                                auto placed = dst.data->emplaceNestedAt(idx, basePtr);
+                                if (placed.has_value()) {
+                                    return placed;
+                                }
+                                return std::nullopt;
+                            } else if (expectedSlots > attached) {
+                                auto placed = dst.data->emplaceNestedAt(attached, basePtr);
+                                if (placed.has_value()) {
+                                    return placed;
+                                }
+                                return std::nullopt;
+                            }
+                        }
+                        InputData nestedInput{std::move(basePtr)};
+                        return dst.data->serialize(nestedInput);
+                    };
 
-        std::vector<std::pair<std::string, Node const*>> childEntries;
-        src.children.for_each([&](auto const& kv) {
-            childEntries.emplace_back(kv.first, kv.second.get());
-            dst.getOrCreateChild(kv.first);
-        });
-
-        for (auto const& entry : childEntries) {
-            auto const& name     = entry.first;
-            auto const* srcChild = entry.second;
-            Node*       dstChild = dst.getChild(name);
-            if (!dstChild || !srcChild) {
-                continue;
+                    if (auto err = attachNested(std::move(nestedPtr)); err.has_value()) {
+                        local.nestedSpacesSkipped += 1;
+                    } else {
+                        local.nestedSpacesCopied += 1;
+                        spaceStack.push_back(SpaceFrame{nestedPathSpace, nestedRaw});
+                    }
+                } else {
+                    local.nestedSpacesSkipped += 1;
+                }
             }
-            auto childPath = appendComponent(currentPath, name);
-            stack.push_back(Frame{srcChild, dstChild, std::move(childPath)});
+
+            std::vector<std::pair<std::string, Node const*>> childEntries;
+            src.children.for_each([&](auto const& kv) {
+                childEntries.emplace_back(kv.first, kv.second.get());
+                dst.getOrCreateChild(kv.first);
+            });
+
+            for (auto const& entry : childEntries) {
+                auto const& name     = entry.first;
+                auto const* srcChild = entry.second;
+                Node*       dstChild = dst.getChild(name);
+                if (!dstChild || !srcChild) {
+                    continue;
+                }
+                auto childPath = appendComponent(currentPath, name);
+                stack.push_back(Frame{srcChild, dstChild, std::move(childPath)});
+            }
         }
     }
 
