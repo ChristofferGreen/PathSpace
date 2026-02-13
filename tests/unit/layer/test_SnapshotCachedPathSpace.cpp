@@ -150,6 +150,43 @@ TEST_CASE("Snapshot cache starts dirty before first rebuild") {
     CHECK(after.hits == before.hits);
 }
 
+TEST_CASE("Snapshot cache re-enable starts dirty before rebuild") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/value", 6).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    auto initial = cached.read<int>("/value");
+    REQUIRE(initial.has_value());
+    CHECK(initial.value() == 6);
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = false,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+
+    auto before = cached.snapshotMetrics();
+    auto readValue = cached.read<int>("/value");
+    REQUIRE(readValue.has_value());
+    CHECK(readValue.value() == 6);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.misses >= before.misses + 1);
+    CHECK(after.hits == before.hits);
+}
+
 TEST_CASE("Snapshot cache hits after rebuild clears initial dirty") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
@@ -194,6 +231,17 @@ TEST_CASE("Snapshot cache rebuild failures do not increment hits") {
 
     auto after = cached.snapshotMetrics();
     CHECK(after.hits == before.hits);
+}
+
+TEST_CASE("Snapshot cache rebuild is ignored before configuration") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    cached.rebuildSnapshotNow();
+    auto metrics = cached.snapshotMetrics();
+    CHECK(metrics.rebuilds == 0);
+    CHECK(metrics.rebuildFailures == 0);
+    CHECK(metrics.bytes == 0);
 }
 
 TEST_CASE("Snapshot cache marks pop mutations dirty") {
@@ -841,6 +889,31 @@ TEST_CASE("Snapshot cache metrics reset on reconfigure") {
     CHECK(after.hits == 0);
     CHECK(after.misses == 0);
     CHECK(after.rebuilds == 0);
+}
+
+TEST_CASE("Snapshot cache lastRebuildMs resets on reconfigure") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/value", 2).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    auto before = cached.snapshotMetrics();
+    CHECK(before.lastRebuildMs.count() >= 0);
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.lastRebuildMs.count() == 0);
 }
 
 TEST_CASE("Snapshot cache marks root dirty on glob inserts") {
@@ -1571,6 +1644,97 @@ TEST_CASE("Snapshot cache span pack insert non-pod metadata does not mark dirty"
     auto after = cached.snapshotMetrics();
     CHECK(after.hits == before.hits + 1);
     CHECK(after.misses == before.misses);
+}
+
+TEST_CASE("Snapshot cache span pack insert marks dirty on success") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/stable", 41).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    int one = 7;
+    int two = 9;
+    InputData dataOne{one};
+    InputData dataTwo{two};
+    SpanInsertSpec specA{
+        .metadata = dataOne.metadata,
+        .span = RawConstSpan{&one, 1},
+        .elementSize = sizeof(int),
+    };
+    SpanInsertSpec specB{
+        .metadata = dataTwo.metadata,
+        .span = RawConstSpan{&two, 1},
+        .elementSize = sizeof(int),
+    };
+    std::array<std::string, 2> paths{{"/one", "/two"}};
+    std::array<SpanInsertSpec, 2> specs{{specA, specB}};
+    auto packRet = cached.packInsertSpans(std::span<const std::string>(paths.data(), paths.size()),
+                                          std::span<SpanInsertSpec const>(specs.data(), specs.size()));
+    CHECK(packRet.errors.empty());
+
+    auto before = cached.snapshotMetrics();
+    auto readOne = cached.read<int>("/one");
+    REQUIRE(readOne.has_value());
+    CHECK(readOne.value() == 7);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.misses >= before.misses + 1);
+    CHECK(after.hits == before.hits);
+}
+
+TEST_CASE("Snapshot cache span pack insert rebuild clears dirty roots") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/stable", 43).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    int one = 2;
+    int two = 4;
+    InputData dataOne{one};
+    InputData dataTwo{two};
+    SpanInsertSpec specA{
+        .metadata = dataOne.metadata,
+        .span = RawConstSpan{&one, 1},
+        .elementSize = sizeof(int),
+    };
+    SpanInsertSpec specB{
+        .metadata = dataTwo.metadata,
+        .span = RawConstSpan{&two, 1},
+        .elementSize = sizeof(int),
+    };
+    std::array<std::string, 2> paths{{"/one", "/two"}};
+    std::array<SpanInsertSpec, 2> specs{{specA, specB}};
+    auto packRet = cached.packInsertSpans(std::span<const std::string>(paths.data(), paths.size()),
+                                          std::span<SpanInsertSpec const>(specs.data(), specs.size()));
+    CHECK(packRet.errors.empty());
+
+    auto dirtyMetrics = cached.snapshotMetrics();
+    auto dirtyRead = cached.read<int>("/one");
+    REQUIRE(dirtyRead.has_value());
+    CHECK(dirtyRead.value() == 2);
+    auto afterDirty = cached.snapshotMetrics();
+    CHECK(afterDirty.misses >= dirtyMetrics.misses + 1);
+
+    cached.rebuildSnapshotNow();
+    auto beforeHit = cached.snapshotMetrics();
+    auto hitRead = cached.read<int>("/one");
+    REQUIRE(hitRead.has_value());
+    CHECK(hitRead.value() == 2);
+    auto afterHit = cached.snapshotMetrics();
+    CHECK(afterHit.hits >= beforeHit.hits + 1);
+    CHECK(afterHit.misses == beforeHit.misses);
 }
 
 TEST_CASE("Snapshot cache span pack insert existing length mismatch preserves data") {
