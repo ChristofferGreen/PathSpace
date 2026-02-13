@@ -794,6 +794,38 @@ TEST_CASE("Snapshot cache metrics default to zero before configuration") {
     CHECK(metrics.lastRebuildMs.count() == 0);
 }
 
+TEST_CASE("Snapshot cache rebuild after re-enable starts fresh") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/value", 4).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+    auto first = cached.snapshotMetrics();
+    CHECK(first.rebuilds >= 1);
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = false,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    auto disabled = cached.snapshotMetrics();
+    CHECK(disabled.rebuilds == 0);
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+    auto second = cached.snapshotMetrics();
+    CHECK(second.rebuilds == 1);
+}
+
 TEST_CASE("Snapshot cache rebuild count increments on consecutive rebuilds") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
