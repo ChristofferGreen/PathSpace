@@ -145,6 +145,39 @@ TEST_CASE("Snapshot cache isolates dirty roots from clean paths") {
     CHECK(after.hits >= before.hits + 1);
 }
 
+TEST_CASE("Snapshot cache widens dirty roots to ancestor on mutation") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/a/b", 1).nbrValuesInserted == 1);
+    CHECK(cached.insert("/a/c", 2).nbrValuesInserted == 1);
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    CHECK(cached.insert("/a/b", 3, ReplaceExisting{}).nbrValuesInserted == 1);
+
+    auto before = cached.snapshotMetrics();
+    auto readCleanSibling = cached.read<int>("/a/c");
+    REQUIRE(readCleanSibling.has_value());
+    CHECK(readCleanSibling.value() == 2);
+
+    auto mid = cached.snapshotMetrics();
+    CHECK(mid.hits >= before.hits + 1);
+
+    CHECK(cached.insert("/a", 5).nbrValuesInserted == 1);
+    auto readAfterAncestor = cached.read<int>("/a/c");
+    REQUIRE(readAfterAncestor.has_value());
+    CHECK(readAfterAncestor.value() == 2);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.misses >= mid.misses + 1);
+}
+
 TEST_CASE("Snapshot cache promotes to root dirty when maxDirtyRoots exceeded") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
@@ -731,6 +764,38 @@ TEST_CASE("Snapshot cache span pack reads bypass snapshot metrics") {
 
     auto after = cached.snapshotMetrics();
     CHECK(after.hits == before.hits);
+    CHECK(after.misses == before.misses);
+}
+
+TEST_CASE("Snapshot cache span pack mutation failure does not mark dirty") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/stable", 1).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    std::array<std::string, 1> paths{{"/missing"}};
+    auto spanMut = cached.spanPackMut(
+        std::span<const std::string>(paths.data(), paths.size()),
+        InputMetadata{InputMetadataT<int>{}},
+        Out{},
+        [](std::span<RawMutSpan const>) {
+            return SpanPackResult{.error = std::nullopt, .shouldPop = false};
+        });
+    CHECK_FALSE(spanMut.has_value());
+
+    auto before = cached.snapshotMetrics();
+    auto readStable = cached.read<int>("/stable");
+    REQUIRE(readStable.has_value());
+    CHECK(readStable.value() == 1);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.hits == before.hits + 1);
     CHECK(after.misses == before.misses);
 }
 
