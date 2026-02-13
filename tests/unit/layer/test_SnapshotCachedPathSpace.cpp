@@ -254,6 +254,70 @@ TEST_CASE("Snapshot cache dirty root does not match partial component") {
     CHECK(after.misses >= afterRooted.misses + 1);
 }
 
+TEST_CASE("Snapshot cache dirty root does not block other branch") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/root/child", 1).nbrValuesInserted == 1);
+    CHECK(cached.insert("/root/other", 5).nbrValuesInserted == 1);
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    CHECK(cached.insert("/root/child", 2, ReplaceExisting{}).nbrValuesInserted == 1);
+
+    auto before = cached.snapshotMetrics();
+    auto otherRead = cached.read<int>("/root/other");
+    REQUIRE(otherRead.has_value());
+    CHECK(otherRead.value() == 5);
+
+    auto mid = cached.snapshotMetrics();
+    CHECK(mid.hits >= before.hits + 1);
+
+    auto childRead = cached.read<int>("/root/child");
+    REQUIRE(childRead.has_value());
+    CHECK(childRead.value() == 2);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.misses >= mid.misses + 1);
+}
+
+TEST_CASE("Snapshot cache dirty root does not match sibling prefix") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/root/child", 1).nbrValuesInserted == 1);
+    CHECK(cached.insert("/root/childish", 9).nbrValuesInserted == 1);
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    CHECK(cached.insert("/root/child", 2, ReplaceExisting{}).nbrValuesInserted == 1);
+
+    auto before = cached.snapshotMetrics();
+    auto childRead = cached.read<int>("/root/child");
+    REQUIRE(childRead.has_value());
+    CHECK(childRead.value() == 2);
+
+    auto mid = cached.snapshotMetrics();
+    CHECK(mid.misses >= before.misses + 1);
+
+    auto siblingRead = cached.read<int>("/root/childish");
+    REQUIRE(siblingRead.has_value());
+    CHECK(siblingRead.value() == 9);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.hits >= mid.hits + 1);
+}
+
 TEST_CASE("Snapshot cache widens dirty roots to ancestor on mutation") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
@@ -390,6 +454,37 @@ TEST_CASE("Snapshot cache promotes to root dirty when maxDirtyRoots exceeded") {
 
     auto after = cached.snapshotMetrics();
     CHECK(after.misses >= before.misses + 1);
+}
+
+TEST_CASE("Snapshot cache root dirty forces misses for multiple reads") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/a", 1).nbrValuesInserted == 1);
+    CHECK(cached.insert("/b", 2).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 1,
+    });
+    cached.rebuildSnapshotNow();
+
+    CHECK(cached.insert("/a", 3, ReplaceExisting{}).nbrValuesInserted == 1);
+    CHECK(cached.insert("/b", 4, ReplaceExisting{}).nbrValuesInserted == 1);
+
+    auto before = cached.snapshotMetrics();
+    auto readA = cached.read<int>("/a");
+    REQUIRE(readA.has_value());
+    CHECK(readA.value() == 3);
+    auto mid = cached.snapshotMetrics();
+    auto readB = cached.read<int>("/b");
+    REQUIRE(readB.has_value());
+    CHECK(readB.value() == 4);
+    auto after = cached.snapshotMetrics();
+
+    CHECK(mid.misses >= before.misses + 1);
+    CHECK(after.misses >= mid.misses + 1);
+    CHECK(after.hits == before.hits);
 }
 
 TEST_CASE("Snapshot cache rebuild refreshes values after mutations") {
