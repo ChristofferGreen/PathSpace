@@ -735,6 +735,34 @@ TEST_CASE("Snapshot cache spanPackConst forwards and bypasses metrics") {
     CHECK(after.misses == before.misses);
 }
 
+TEST_CASE("Snapshot cache spanPackConst missing path does not touch metrics") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/stable", 14).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    std::array<std::string, 1> paths{{"/missing"}};
+    auto before = cached.snapshotMetrics();
+    auto spanRes = cached.spanPackConst(
+        std::span<const std::string>(paths.data(), paths.size()),
+        InputMetadata{InputMetadataT<int>{}},
+        Out{},
+        [](std::span<const RawConstSpan>) {
+            return std::optional<Error>{};
+        });
+    CHECK_FALSE(spanRes.has_value());
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.hits == before.hits);
+    CHECK(after.misses == before.misses);
+}
+
 TEST_CASE("Snapshot cache spanPackMut marks dirty on success") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
@@ -772,6 +800,38 @@ TEST_CASE("Snapshot cache spanPackMut marks dirty on success") {
 
     auto after = cached.snapshotMetrics();
     CHECK(after.misses >= before.misses + 1);
+}
+
+TEST_CASE("Snapshot cache spanPackMut callback error does not mark dirty") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/one", 1).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    std::array<std::string, 1> paths{{"/one"}};
+    auto spanRes = cached.spanPackMut(
+        std::span<const std::string>(paths.data(), paths.size()),
+        InputMetadata{InputMetadataT<int>{}},
+        Out{},
+        [](std::span<const RawMutSpan>) {
+            return SpanPackResult{.error = Error{Error::Code::InvalidPermissions, "forced error"}, .shouldPop = false};
+        });
+    CHECK_FALSE(spanRes.has_value());
+
+    auto before = cached.snapshotMetrics();
+    auto readOne = cached.read<int>("/one");
+    REQUIRE(readOne.has_value());
+    CHECK(readOne.value() == 1);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.hits == before.hits + 1);
+    CHECK(after.misses == before.misses);
 }
 
 TEST_CASE("Snapshot cache missing FutureAny read bypasses metrics") {
