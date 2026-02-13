@@ -1,6 +1,7 @@
 #include "third_party/doctest.h"
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/layer/SnapshotCachedPathSpace.hpp>
+#include <pathspace/type/InputData.hpp>
 #include <algorithm>
 #include <array>
 
@@ -980,6 +981,83 @@ TEST_CASE("Snapshot cache span pack insert arity mismatch does not mark dirty") 
     auto after = cached.snapshotMetrics();
     CHECK(after.hits == before.hits + 1);
     CHECK(after.misses == before.misses);
+}
+
+TEST_CASE("Snapshot cache span pack insert non-pod metadata does not mark dirty") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/stable", 25).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    std::string value = "value";
+    SpanInsertSpec spec{
+        .metadata = InputMetadata{InputMetadataT<std::string>{}},
+        .span = RawConstSpan{&value, 1},
+        .elementSize = sizeof(std::string),
+    };
+    std::array<std::string, 1> paths{{"/one"}};
+    std::array<SpanInsertSpec, 1> specs{{spec}};
+    auto packRet = cached.packInsertSpans(std::span<const std::string>(paths.data(), paths.size()),
+                                          std::span<SpanInsertSpec const>(specs.data(), specs.size()));
+    CHECK_FALSE(packRet.errors.empty());
+
+    auto before = cached.snapshotMetrics();
+    auto readStable = cached.read<int>("/stable");
+    REQUIRE(readStable.has_value());
+    CHECK(readStable.value() == 25);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.hits == before.hits + 1);
+    CHECK(after.misses == before.misses);
+}
+
+TEST_CASE("Snapshot cache span pack insert existing length mismatch preserves data") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/stable", 23).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+
+    int a = 1;
+    int b = 2;
+    InputData dataA{a};
+    InputData dataB{b};
+    SpanInsertSpec specA{
+        .metadata = dataA.metadata,
+        .span = RawConstSpan{&a, 1},
+        .elementSize = sizeof(int),
+    };
+    SpanInsertSpec specB{
+        .metadata = dataB.metadata,
+        .span = RawConstSpan{&b, 1},
+        .elementSize = sizeof(int),
+    };
+    std::array<std::string, 2> paths{{"/one", "/two"}};
+    std::array<SpanInsertSpec, 2> specs{{specA, specB}};
+    auto seedRet = cached.packInsertSpans(std::span<const std::string>(paths.data(), paths.size()),
+                                          std::span<SpanInsertSpec const>(specs.data(), specs.size()));
+    CHECK(seedRet.errors.empty());
+
+    CHECK(cached.insert("/one", 7).nbrValuesInserted == 1);
+    cached.rebuildSnapshotNow();
+
+    auto packRet = cached.packInsertSpans(std::span<const std::string>(paths.data(), paths.size()),
+                                          std::span<SpanInsertSpec const>(specs.data(), specs.size()));
+    CHECK_FALSE(packRet.errors.empty());
+
+    auto readStable = cached.read<int>("/stable");
+    REQUIRE(readStable.has_value());
+    CHECK(readStable.value() == 23);
 }
 
 TEST_CASE("Snapshot cache toggles enabled state") {
