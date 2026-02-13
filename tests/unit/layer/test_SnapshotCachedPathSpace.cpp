@@ -83,6 +83,34 @@ TEST_CASE("Snapshot cache marks pop mutations dirty") {
     CHECK(next.value() == 2);
 }
 
+TEST_CASE("Snapshot cache clamps maxDirtyRoots to 1") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/stable", 1).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 0,
+    });
+    cached.rebuildSnapshotNow();
+
+    auto before = cached.snapshotMetrics();
+    CHECK(cached.insert("/a", 2).nbrValuesInserted == 1);
+    auto hitRead = cached.read<int>("/stable");
+    REQUIRE(hitRead.has_value());
+    CHECK(hitRead.value() == 1);
+    auto mid = cached.snapshotMetrics();
+    CHECK(mid.hits >= before.hits + 1);
+
+    CHECK(cached.insert("/b", 3).nbrValuesInserted == 1);
+    auto missRead = cached.read<int>("/stable");
+    REQUIRE(missRead.has_value());
+    CHECK(missRead.value() == 1);
+    auto after = cached.snapshotMetrics();
+    CHECK(after.misses >= mid.misses + 1);
+}
+
 TEST_CASE("Snapshot cache isolates dirty roots from clean paths") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
