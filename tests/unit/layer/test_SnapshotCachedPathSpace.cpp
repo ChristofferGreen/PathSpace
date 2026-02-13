@@ -1000,4 +1000,28 @@ TEST_CASE("Snapshot cache synchronous rebuild disabled does not rebuild on read"
     CHECK(after.rebuilds == before.rebuilds);
 }
 
+TEST_CASE("Snapshot cache synchronous rebuild triggers when enabled") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/value", 1).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 0ms,
+        .maxDirtyRoots = 8,
+        .allowSynchronousRebuild = true,
+    });
+    cached.rebuildSnapshotNow();
+
+    CHECK(cached.insert("/value", 2, ReplaceExisting{}).nbrValuesInserted == 1);
+
+    auto before = cached.snapshotMetrics();
+    auto readValue = cached.read<int>("/value");
+    REQUIRE(readValue.has_value());
+    CHECK(readValue.value() == 2);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.rebuilds >= before.rebuilds);
+}
+
 TEST_SUITE_END();
