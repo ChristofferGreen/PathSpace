@@ -62,6 +62,51 @@ TEST_CASE("Snapshot cache avoids stale reads after mutation") {
     CHECK(after.value() == 2);
 }
 
+TEST_CASE("Snapshot cache snapshots nested spaces") {
+    auto backing = std::make_shared<PathSpace>();
+    auto nested = std::make_unique<PathSpace>();
+
+    CHECK(backing->insert("/nested", std::move(nested)).nbrSpacesInserted == 1);
+    CHECK(backing->insert("/nested/value", 42).nbrValuesInserted == 1);
+
+    SnapshotCachedPathSpace cached{backing};
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    auto before = cached.snapshotMetrics();
+    auto value = cached.read<int>("/nested/value");
+    REQUIRE(value.has_value());
+    CHECK(value.value() == 42);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.hits == before.hits + 1);
+}
+
+TEST_CASE("Snapshot cache invalid path read returns error without metrics") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    auto before = cached.snapshotMetrics();
+    auto invalid = cached.read<int>("relative/path");
+    CHECK_FALSE(invalid.has_value());
+    CHECK(invalid.error().code == Error::Code::InvalidPath);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.hits == before.hits);
+    CHECK(after.misses == before.misses);
+}
+
 TEST_CASE("Snapshot cache marks pop mutations dirty") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
