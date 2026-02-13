@@ -457,6 +457,35 @@ TEST_CASE("Snapshot cache marks dirty for pack insert") {
     CHECK(after.hits >= before.hits + 1);
 }
 
+TEST_CASE("Snapshot cache pack insert empty input does not mark dirty") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/stable", 60).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    std::array<std::string, 0> paths{};
+    std::array<void const*, 0> values{};
+    auto packRet = cached.packInsert(std::span<const std::string>(paths.data(), paths.size()),
+                                     InputMetadata{InputMetadataT<int>{}},
+                                     std::span<void const* const>(values.data(), values.size()));
+    CHECK(packRet.errors.empty());
+
+    auto before = cached.snapshotMetrics();
+    auto readStable = cached.read<int>("/stable");
+    REQUIRE(readStable.has_value());
+    CHECK(readStable.value() == 60);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.hits == before.hits + 1);
+    CHECK(after.misses == before.misses);
+}
+
 TEST_CASE("Snapshot cache pack insert invalid path does not mark dirty") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
@@ -873,6 +902,34 @@ TEST_CASE("Snapshot cache marks dirty for span pack insert") {
     auto after = cached.snapshotMetrics();
     CHECK(after.misses >= before.misses);
     CHECK(after.hits >= before.hits);
+}
+
+TEST_CASE("Snapshot cache span pack insert empty input does not mark dirty") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/stable", 28).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    std::array<std::string, 0> paths{};
+    std::array<SpanInsertSpec, 0> specs{};
+    auto packRet = cached.packInsertSpans(std::span<const std::string>(paths.data(), paths.size()),
+                                          std::span<SpanInsertSpec const>(specs.data(), specs.size()));
+    CHECK(packRet.errors.empty());
+
+    auto before = cached.snapshotMetrics();
+    auto readStable = cached.read<int>("/stable");
+    REQUIRE(readStable.has_value());
+    CHECK(readStable.value() == 28);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.hits == before.hits + 1);
+    CHECK(after.misses == before.misses);
 }
 
 TEST_CASE("Snapshot cache span pack insert invalid path does not mark dirty") {
