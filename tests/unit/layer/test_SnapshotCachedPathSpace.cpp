@@ -1,6 +1,7 @@
 #include "third_party/doctest.h"
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/layer/SnapshotCachedPathSpace.hpp>
+#include <algorithm>
 #include <array>
 
 using namespace SP;
@@ -176,6 +177,37 @@ TEST_CASE("Snapshot cache widens dirty roots to ancestor on mutation") {
 
     auto after = cached.snapshotMetrics();
     CHECK(after.misses >= mid.misses + 1);
+}
+
+TEST_CASE("Snapshot cache read<Children> forwards backing children") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/alpha", 1).nbrValuesInserted == 1);
+    CHECK(cached.insert("/root/child", 2).nbrValuesInserted == 1);
+
+    auto rootChildren = cached.read<Children>("/");
+    REQUIRE(rootChildren.has_value());
+    auto rootKids = rootChildren->names;
+    std::sort(rootKids.begin(), rootKids.end());
+    CHECK(rootKids == std::vector<std::string>{"alpha", "root"});
+
+    auto nestedChildren = cached.read<Children>("/root");
+    REQUIRE(nestedChildren.has_value());
+    auto nestedKids = nestedChildren->names;
+    std::sort(nestedKids.begin(), nestedKids.end());
+    CHECK(nestedKids == std::vector<std::string>{"child"});
+}
+
+TEST_CASE("Snapshot cache read<Children> returns empty for missing path") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/root/only", 1).nbrValuesInserted == 1);
+
+    auto children = cached.read<Children>("/missing");
+    REQUIRE(children.has_value());
+    CHECK(children->names.empty());
 }
 
 TEST_CASE("Snapshot cache promotes to root dirty when maxDirtyRoots exceeded") {
@@ -804,6 +836,10 @@ TEST_CASE("Snapshot cache reports errors when backing is missing") {
 
     auto insertRet = cached.insert("/value", 1);
     CHECK_FALSE(insertRet.errors.empty());
+
+    auto childrenRead = cached.read<Children>("/any");
+    REQUIRE(childrenRead.has_value());
+    CHECK(childrenRead->names.empty());
 
     int outValue = 0;
     auto outErr = cached.out(Iterator{"/value"}, InputMetadataT<int>{}, Out{}, &outValue);
