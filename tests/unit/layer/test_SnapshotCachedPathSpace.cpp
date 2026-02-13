@@ -444,6 +444,31 @@ TEST_CASE("Snapshot cache blocking reads bypass metrics") {
     CHECK(after.misses == before.misses);
 }
 
+TEST_CASE("Snapshot cache does not mark dirty on failed insert") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/stable", 101).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    auto badInsert = cached.insert("invalid", 5, In{.validationLevel = ValidationLevel::Full});
+    CHECK_FALSE(badInsert.errors.empty());
+
+    auto before = cached.snapshotMetrics();
+    auto readStable = cached.read<int>("/stable");
+    REQUIRE(readStable.has_value());
+    CHECK(readStable.value() == 101);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.hits == before.hits + 1);
+    CHECK(after.misses == before.misses);
+}
+
 TEST_CASE("Snapshot cache marks dirty for span pack insert") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
