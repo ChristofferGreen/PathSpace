@@ -210,6 +210,52 @@ TEST_CASE("Snapshot cache read<Children> returns empty for missing path") {
     CHECK(children->names.empty());
 }
 
+TEST_CASE("Snapshot cache read<Children> bypasses snapshot metrics") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/root/first", 1).nbrValuesInserted == 1);
+    CHECK(cached.insert("/root/second", 2).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    auto before = cached.snapshotMetrics();
+    auto children = cached.read<Children>("/root");
+    REQUIRE(children.has_value());
+    auto names = children->names;
+    std::sort(names.begin(), names.end());
+    CHECK(names == std::vector<std::string>{"first", "second"});
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.hits == before.hits);
+    CHECK(after.misses == before.misses);
+}
+
+TEST_CASE("Snapshot cache read<Children> reflects mutations while dirty") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/root/first", 1).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    CHECK(cached.insert("/root/second", 2).nbrValuesInserted == 1);
+
+    auto children = cached.read<Children>("/root");
+    REQUIRE(children.has_value());
+    auto names = children->names;
+    std::sort(names.begin(), names.end());
+    CHECK(names == std::vector<std::string>{"first", "second"});
+}
+
 TEST_CASE("Snapshot cache promotes to root dirty when maxDirtyRoots exceeded") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
