@@ -534,6 +534,28 @@ TEST_CASE("Snapshot cache ignores execution reads") {
     CHECK(after.misses == before.misses);
 }
 
+TEST_CASE("Snapshot cache missing FutureAny read bypasses metrics") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/value", 3).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    auto before = cached.snapshotMetrics();
+    auto missing = cached.read("/missing");
+    CHECK_FALSE(missing.has_value());
+    CHECK(missing.error().code == Error::Code::NoObjectFound);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.hits == before.hits);
+    CHECK(after.misses == before.misses);
+}
+
 TEST_CASE("Snapshot cache pop reads bypass metrics") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
