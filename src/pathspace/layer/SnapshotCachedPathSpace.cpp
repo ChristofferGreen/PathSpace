@@ -7,10 +7,38 @@
 #include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace SP {
 
 namespace {
+struct StringViewHash {
+    using is_transparent = void;
+    auto operator()(std::string_view value) const noexcept -> std::size_t {
+        return std::hash<std::string_view>{}(value);
+    }
+};
+
+struct StringViewEq {
+    using is_transparent = void;
+    auto operator()(std::string_view lhs, std::string_view rhs) const noexcept -> bool {
+        return lhs == rhs;
+    }
+};
+
+using SnapshotValuePtr = std::shared_ptr<const std::vector<std::byte>>;
+using SnapshotValueMap = std::unordered_map<std::string, SnapshotValuePtr, StringViewHash, StringViewEq>;
+using DirtyRootSet = std::unordered_set<std::string, StringViewHash, StringViewEq>;
+
+struct SnapshotView {
+    SnapshotValueMap values;
+    std::size_t bytes = 0;
+};
+
+struct DirtyRoots {
+    DirtyRootSet roots;
+};
+
 auto normalizeSnapshotPath(std::string_view path) -> std::string {
     ConcretePathString raw{std::string(path)};
     if (auto canonical = raw.canonicalized()) {
@@ -38,26 +66,54 @@ auto isPathPrefix(std::string_view prefix, std::string_view path) -> bool {
     }
     return path[prefix.size()] == '/';
 }
+
+auto dirtyRootsContainPrefix(DirtyRootSet const& roots, std::string_view path) -> bool {
+    if (roots.empty()) {
+        return false;
+    }
+    if (roots.find("/") != roots.end()) {
+        return true;
+    }
+    if (path.empty()) {
+        return false;
+    }
+    if (path.front() != '/') {
+        return roots.find(path) != roots.end();
+    }
+    std::size_t pos = 1;
+    while (pos < path.size()) {
+        auto next = path.find('/', pos);
+        if (next == std::string_view::npos) {
+            return roots.find(path) != roots.end();
+        }
+        auto prefix = std::string_view(path.data(), next);
+        if (roots.find(prefix) != roots.end()) {
+            return true;
+        }
+        pos = next + 1;
+    }
+    return roots.find(path) != roots.end();
+}
 } // namespace
 
 struct SnapshotCachedPathSpace::SnapshotState {
-    bool enabled = false;
+    std::atomic<bool> enabled{false};
+    std::atomic<bool> allowSynchronousRebuild{false};
+    std::shared_ptr<const SnapshotView> snapshotView;
+    std::shared_ptr<const DirtyRoots> dirtyRootsView;
+    std::atomic<std::size_t> hitCount{0};
+    std::atomic<std::size_t> missCount{0};
+    std::atomic<std::size_t> rebuildCount{0};
+    std::atomic<std::size_t> rebuildFailCount{0};
+    std::atomic<std::size_t> bytes{0};
+    std::atomic<std::int64_t> lastRebuildMs{0};
+    std::atomic<std::size_t> mutationCounter{0};
     bool dirty = false;
     bool rebuildInProgress = false;
-    bool allowSynchronousRebuild = false;
     std::chrono::milliseconds debounce{200};
     std::chrono::steady_clock::time_point lastMutation{};
     std::chrono::steady_clock::time_point lastBuild{};
     std::size_t maxDirtyRoots = 128;
-    std::unordered_map<std::string, std::vector<std::byte>> values;
-    std::vector<std::string> dirtyRoots;
-    std::size_t hitCount = 0;
-    std::size_t missCount = 0;
-    std::size_t rebuildCount = 0;
-    std::size_t rebuildFailCount = 0;
-    std::chrono::milliseconds lastRebuildMs{0};
-    std::size_t bytes = 0;
-    std::atomic<std::size_t> mutationCounter{0};
     bool workerRunning = false;
     bool stopWorker = false;
     std::condition_variable cv;
@@ -77,28 +133,32 @@ auto SnapshotCachedPathSpace::setSnapshotOptions(SnapshotOptions options) -> voi
         this->snapshotState = std::make_shared<SnapshotState>();
     }
     auto now = std::chrono::steady_clock::now();
+    auto snapshotView = std::make_shared<SnapshotView>();
+    auto dirtyRoots = std::make_shared<DirtyRoots>();
+    if (options.enabled) {
+        dirtyRoots->roots.emplace("/");
+    }
+    std::shared_ptr<const SnapshotView> publishedView = snapshotView;
+    std::shared_ptr<const DirtyRoots> publishedRoots = dirtyRoots;
     {
         std::lock_guard<std::mutex> guard(this->snapshotState->mutex);
-        this->snapshotState->enabled = options.enabled;
+        this->snapshotState->enabled.store(options.enabled, std::memory_order_release);
         this->snapshotState->debounce = options.rebuildDebounce;
         this->snapshotState->maxDirtyRoots = std::max<std::size_t>(1, options.maxDirtyRoots);
-        this->snapshotState->allowSynchronousRebuild = options.allowSynchronousRebuild;
-        this->snapshotState->dirtyRoots.clear();
-        this->snapshotState->values.clear();
-        if (options.enabled) {
-            this->snapshotState->dirtyRoots.emplace_back("/");
-        }
+        this->snapshotState->allowSynchronousRebuild.store(options.allowSynchronousRebuild, std::memory_order_release);
         this->snapshotState->dirty = options.enabled;
         this->snapshotState->rebuildInProgress = false;
         this->snapshotState->lastMutation = now - this->snapshotState->debounce;
         this->snapshotState->lastBuild = std::chrono::steady_clock::time_point{};
-        this->snapshotState->hitCount = 0;
-        this->snapshotState->missCount = 0;
-        this->snapshotState->rebuildCount = 0;
-        this->snapshotState->rebuildFailCount = 0;
-        this->snapshotState->lastRebuildMs = std::chrono::milliseconds{0};
-        this->snapshotState->bytes = 0;
+        this->snapshotState->hitCount.store(0, std::memory_order_release);
+        this->snapshotState->missCount.store(0, std::memory_order_release);
+        this->snapshotState->rebuildCount.store(0, std::memory_order_release);
+        this->snapshotState->rebuildFailCount.store(0, std::memory_order_release);
+        this->snapshotState->lastRebuildMs.store(0, std::memory_order_release);
+        this->snapshotState->bytes.store(0, std::memory_order_release);
         this->snapshotState->stopWorker = false;
+        std::atomic_store_explicit(&this->snapshotState->snapshotView, publishedView, std::memory_order_release);
+        std::atomic_store_explicit(&this->snapshotState->dirtyRootsView, publishedRoots, std::memory_order_release);
         this->snapshotState->cv.notify_all();
     }
     if (options.enabled) {
@@ -113,8 +173,7 @@ auto SnapshotCachedPathSpace::snapshotEnabled() const noexcept -> bool {
     if (!state) {
         return false;
     }
-    std::lock_guard<std::mutex> guard(state->mutex);
-    return state->enabled;
+    return state->enabled.load(std::memory_order_acquire);
 }
 
 auto SnapshotCachedPathSpace::snapshotMetrics() const -> SnapshotMetrics {
@@ -123,13 +182,12 @@ auto SnapshotCachedPathSpace::snapshotMetrics() const -> SnapshotMetrics {
     if (!state) {
         return metrics;
     }
-    std::lock_guard<std::mutex> guard(state->mutex);
-    metrics.hits = state->hitCount;
-    metrics.misses = state->missCount;
-    metrics.rebuilds = state->rebuildCount;
-    metrics.rebuildFailures = state->rebuildFailCount;
-    metrics.lastRebuildMs = state->lastRebuildMs;
-    metrics.bytes = state->bytes;
+    metrics.hits = state->hitCount.load(std::memory_order_acquire);
+    metrics.misses = state->missCount.load(std::memory_order_acquire);
+    metrics.rebuilds = state->rebuildCount.load(std::memory_order_acquire);
+    metrics.rebuildFailures = state->rebuildFailCount.load(std::memory_order_acquire);
+    metrics.lastRebuildMs = std::chrono::milliseconds{state->lastRebuildMs.load(std::memory_order_acquire)};
+    metrics.bytes = state->bytes.load(std::memory_order_acquire);
     return metrics;
 }
 
@@ -140,7 +198,7 @@ auto SnapshotCachedPathSpace::rebuildSnapshotNow() -> void {
     }
     {
         std::lock_guard<std::mutex> guard(state->mutex);
-        if (!state->enabled || state->rebuildInProgress) {
+        if (!state->enabled.load(std::memory_order_acquire) || state->rebuildInProgress) {
             return;
         }
         state->rebuildInProgress = true;
@@ -163,12 +221,12 @@ auto SnapshotCachedPathSpace::startSnapshotWorker() -> void {
         std::unique_lock<std::mutex> lock(state->mutex);
         while (true) {
             state->cv.wait(lock, [&]() {
-                return state->stopWorker || (state->enabled && state->dirty);
+                return state->stopWorker || (state->enabled.load(std::memory_order_acquire) && state->dirty);
             });
             if (state->stopWorker) {
                 break;
             }
-            if (!state->enabled || !state->dirty) {
+            if (!state->enabled.load(std::memory_order_acquire) || !state->dirty) {
                 continue;
             }
             auto nextWake = state->lastMutation + state->debounce;
@@ -182,11 +240,11 @@ auto SnapshotCachedPathSpace::startSnapshotWorker() -> void {
                 if (state->stopWorker) {
                     break;
                 }
-                if (!state->enabled || !state->dirty) {
+                if (!state->enabled.load(std::memory_order_acquire) || !state->dirty) {
                     continue;
                 }
             }
-            if (!state->enabled || !state->dirty) {
+            if (!state->enabled.load(std::memory_order_acquire) || !state->dirty) {
                 continue;
             }
             state->rebuildInProgress = true;
@@ -236,38 +294,50 @@ auto SnapshotCachedPathSpace::markSnapshotDirty(std::string_view pathView) -> vo
     auto hasGlob = hasGlobChars(pathView);
     auto now = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> guard(state->mutex);
-    if (!state->enabled) {
+    if (!state->enabled.load(std::memory_order_acquire)) {
         return;
     }
     state->dirty = true;
     state->lastMutation = now;
     state->mutationCounter.fetch_add(1, std::memory_order_acq_rel);
+    auto currentRoots = std::atomic_load_explicit(&state->dirtyRootsView, std::memory_order_acquire);
     if (hasGlob) {
-        state->dirtyRoots.clear();
-        state->dirtyRoots.emplace_back("/");
+        auto nextRoots = std::make_shared<DirtyRoots>();
+        nextRoots->roots.emplace("/");
+        std::shared_ptr<const DirtyRoots> published = nextRoots;
+        std::atomic_store_explicit(&state->dirtyRootsView, std::move(published), std::memory_order_release);
         state->cv.notify_all();
         return;
     }
 
     auto normalized = normalizeSnapshotPath(pathView);
-    if (state->dirtyRoots.size() >= state->maxDirtyRoots) {
-        state->dirtyRoots.clear();
-        state->dirtyRoots.emplace_back("/");
+    if (currentRoots && dirtyRootsContainPrefix(currentRoots->roots, normalized)) {
         state->cv.notify_all();
         return;
     }
-    for (auto const& root : state->dirtyRoots) {
-        if (isPathPrefix(root, normalized)) {
-            return;
+    auto currentSize = currentRoots ? currentRoots->roots.size() : 0;
+    if (currentSize >= state->maxDirtyRoots) {
+        auto nextRoots = std::make_shared<DirtyRoots>();
+        nextRoots->roots.emplace("/");
+        std::shared_ptr<const DirtyRoots> published = nextRoots;
+        std::atomic_store_explicit(&state->dirtyRootsView, std::move(published), std::memory_order_release);
+        state->cv.notify_all();
+        return;
+    }
+    auto nextRoots = std::make_shared<DirtyRoots>();
+    if (currentRoots) {
+        nextRoots->roots = currentRoots->roots;
+    }
+    for (auto it = nextRoots->roots.begin(); it != nextRoots->roots.end();) {
+        if (isPathPrefix(normalized, *it)) {
+            it = nextRoots->roots.erase(it);
+        } else {
+            ++it;
         }
     }
-    state->dirtyRoots.erase(std::remove_if(state->dirtyRoots.begin(),
-                                           state->dirtyRoots.end(),
-                                           [&](std::string const& root) {
-                                               return isPathPrefix(normalized, root);
-                                           }),
-                            state->dirtyRoots.end());
-    state->dirtyRoots.push_back(std::move(normalized));
+    nextRoots->roots.emplace(std::move(normalized));
+    std::shared_ptr<const DirtyRoots> published = nextRoots;
+    std::atomic_store_explicit(&state->dirtyRootsView, std::move(published), std::memory_order_release);
     state->cv.notify_all();
 }
 
@@ -279,7 +349,7 @@ auto SnapshotCachedPathSpace::rebuildSnapshot(std::shared_ptr<SnapshotState> con
     if (!state || !this->backing) {
         if (state) {
             std::lock_guard<std::mutex> guard(state->mutex);
-            state->rebuildFailCount += 1;
+            state->rebuildFailCount.fetch_add(1, std::memory_order_acq_rel);
             state->rebuildInProgress = false;
             state->cv.notify_all();
         }
@@ -287,7 +357,8 @@ auto SnapshotCachedPathSpace::rebuildSnapshot(std::shared_ptr<SnapshotState> con
     }
     auto start = std::chrono::steady_clock::now();
     auto startMutation = state->mutationCounter.load(std::memory_order_acquire);
-    std::unordered_map<std::string, std::vector<std::byte>> nextValues;
+    SnapshotValueMap nextValues;
+    std::size_t nextBytes = 0;
     VisitOptions options{};
     options.root = "/";
     options.maxDepth = VisitOptions::UnlimitedDepth;
@@ -304,40 +375,44 @@ auto SnapshotCachedPathSpace::rebuildSnapshot(std::shared_ptr<SnapshotState> con
             if (!bytes) {
                 return VisitControl::Continue;
             }
-            nextValues.emplace(entry.path, std::move(*bytes));
+            nextBytes += bytes->size();
+            nextValues.emplace(entry.path, std::make_shared<const std::vector<std::byte>>(std::move(*bytes)));
             return VisitControl::Continue;
         },
         options);
 
     std::lock_guard<std::mutex> guard(state->mutex);
     auto endMutation = state->mutationCounter.load(std::memory_order_acquire);
-    if (!state->enabled) {
+    if (!state->enabled.load(std::memory_order_acquire)) {
         state->rebuildInProgress = false;
         state->cv.notify_all();
         return;
     }
     if (!visitResult.has_value()) {
-        state->rebuildFailCount += 1;
+        state->rebuildFailCount.fetch_add(1, std::memory_order_acq_rel);
         state->rebuildInProgress = false;
         state->cv.notify_all();
         return;
     }
-    std::size_t bytes = 0;
-    for (auto const& [key, value] : nextValues) {
-        (void)key;
-        bytes += value.size();
-    }
-    state->values = std::move(nextValues);
+    auto nextView = std::make_shared<SnapshotView>();
+    nextView->values = std::move(nextValues);
+    nextView->bytes = nextBytes;
+    std::shared_ptr<const SnapshotView> publishedView = nextView;
+    std::atomic_store_explicit(&state->snapshotView, std::move(publishedView), std::memory_order_release);
     if (endMutation == startMutation) {
-        state->dirtyRoots.clear();
+        auto clearedRoots = std::make_shared<DirtyRoots>();
+        std::shared_ptr<const DirtyRoots> publishedRoots = clearedRoots;
+        std::atomic_store_explicit(&state->dirtyRootsView, std::move(publishedRoots), std::memory_order_release);
         state->dirty = false;
     } else {
         state->dirty = true;
     }
     state->lastBuild = std::chrono::steady_clock::now();
-    state->lastRebuildMs = std::chrono::duration_cast<std::chrono::milliseconds>(state->lastBuild - start);
-    state->rebuildCount += 1;
-    state->bytes = bytes;
+    state->lastRebuildMs.store(
+        std::chrono::duration_cast<std::chrono::milliseconds>(state->lastBuild - start).count(),
+        std::memory_order_release);
+    state->rebuildCount.fetch_add(1, std::memory_order_acq_rel);
+    state->bytes.store(nextBytes, std::memory_order_release);
     state->rebuildInProgress = false;
     state->cv.notify_all();
 }
@@ -361,14 +436,15 @@ auto SnapshotCachedPathSpace::trySnapshotRead(Iterator const& path,
         return false;
     }
 
+    if (!state->enabled.load(std::memory_order_acquire)) {
+        return false;
+    }
+
     auto now = std::chrono::steady_clock::now();
     bool shouldRebuild = false;
-    {
+    if (state->allowSynchronousRebuild.load(std::memory_order_acquire)) {
         std::lock_guard<std::mutex> guard(state->mutex);
-        if (!state->enabled) {
-            return false;
-        }
-        if (state->allowSynchronousRebuild && !state->workerRunning && state->dirty && !state->rebuildInProgress
+        if (state->enabled.load(std::memory_order_acquire) && !state->workerRunning && state->dirty && !state->rebuildInProgress
             && now - state->lastMutation >= state->debounce) {
             state->rebuildInProgress = true;
             shouldRebuild = true;
@@ -379,30 +455,33 @@ auto SnapshotCachedPathSpace::trySnapshotRead(Iterator const& path,
         this->rebuildSnapshot(state);
     }
 
-    std::vector<std::byte> snapshotBytes;
-    {
-        std::lock_guard<std::mutex> guard(state->mutex);
-        if (!state->enabled) {
-            return false;
-        }
-        auto normalized = normalizeSnapshotPath(pathView);
-        for (auto const& root : state->dirtyRoots) {
-            if (isPathPrefix(root, normalized)) {
-                state->missCount += 1;
-                return false;
-            }
-        }
-        auto it = state->values.find(normalized);
-        if (it == state->values.end()) {
-            state->missCount += 1;
-            return false;
-        }
-        snapshotBytes = it->second;
-        state->hitCount += 1;
+    if (!state->enabled.load(std::memory_order_acquire)) {
+        return false;
     }
 
+    auto normalized = normalizeSnapshotPath(pathView);
+    auto dirtyRoots = std::atomic_load_explicit(&state->dirtyRootsView, std::memory_order_acquire);
+    if (dirtyRoots && dirtyRootsContainPrefix(dirtyRoots->roots, normalized)) {
+        state->missCount.fetch_add(1, std::memory_order_acq_rel);
+        return false;
+    }
+    auto view = std::atomic_load_explicit(&state->snapshotView, std::memory_order_acquire);
+    if (!view) {
+        return false;
+    }
+    auto it = view->values.find(normalized);
+    if (it == view->values.end()) {
+        state->missCount.fetch_add(1, std::memory_order_acq_rel);
+        return false;
+    }
+    auto snapshotBytes = it->second;
+    if (!snapshotBytes) {
+        return false;
+    }
+    state->hitCount.fetch_add(1, std::memory_order_acq_rel);
+
     auto snapshot = NodeData::deserializeSnapshot(
-        std::span<const std::byte>{snapshotBytes.data(), snapshotBytes.size()});
+        std::span<const std::byte>{snapshotBytes->data(), snapshotBytes->size()});
     if (!snapshot) {
         return false;
     }

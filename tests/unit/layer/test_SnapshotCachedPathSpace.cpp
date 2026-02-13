@@ -192,6 +192,36 @@ TEST_CASE("Snapshot cache isolates dirty roots from clean paths") {
     CHECK(after.hits >= before.hits + 1);
 }
 
+TEST_CASE("Snapshot cache dirty root covers child path") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/root/child", 1).nbrValuesInserted == 1);
+    CHECK(cached.insert("/other", 2).nbrValuesInserted == 1);
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    CHECK(cached.insert("/root", 5).nbrValuesInserted == 1);
+
+    auto before = cached.snapshotMetrics();
+    auto childRead = cached.read<int>("/root/child");
+    REQUIRE(childRead.has_value());
+    CHECK(childRead.value() == 1);
+
+    auto otherRead = cached.read<int>("/other");
+    REQUIRE(otherRead.has_value());
+    CHECK(otherRead.value() == 2);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.misses >= before.misses + 1);
+    CHECK(after.hits >= before.hits + 1);
+}
+
 TEST_CASE("Snapshot cache widens dirty roots to ancestor on mutation") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
