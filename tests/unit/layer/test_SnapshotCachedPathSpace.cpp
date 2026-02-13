@@ -10,6 +10,27 @@ using namespace std::chrono_literals;
 
 TEST_SUITE_BEGIN("pathspace.snapshot_cache");
 
+TEST_CASE("Snapshot cache snapshotEnabled follows configuration") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK_FALSE(cached.snapshotEnabled());
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    CHECK(cached.snapshotEnabled());
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = false,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    CHECK_FALSE(cached.snapshotEnabled());
+}
+
 TEST_CASE("Snapshot cache hits and dirty fallback") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
@@ -106,6 +127,73 @@ TEST_CASE("Snapshot cache invalid path read returns error without metrics") {
     auto after = cached.snapshotMetrics();
     CHECK(after.hits == before.hits);
     CHECK(after.misses == before.misses);
+}
+
+TEST_CASE("Snapshot cache starts dirty before first rebuild") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/value", 10).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+
+    auto before = cached.snapshotMetrics();
+    auto readValue = cached.read<int>("/value");
+    REQUIRE(readValue.has_value());
+    CHECK(readValue.value() == 10);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.misses >= before.misses + 1);
+    CHECK(after.hits == before.hits);
+}
+
+TEST_CASE("Snapshot cache hits after rebuild clears initial dirty") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/value", 12).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    auto before = cached.snapshotMetrics();
+    auto readValue = cached.read<int>("/value");
+    REQUIRE(readValue.has_value());
+    CHECK(readValue.value() == 12);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.hits >= before.hits + 1);
+    CHECK(after.misses == before.misses);
+}
+
+TEST_CASE("Snapshot cache rebuild failures do not increment hits") {
+    struct FailingVisitSpace final : PathSpace {
+        auto visit(PathVisitor const&, VisitOptions const&) -> Expected<void> override {
+            return std::unexpected(Error{Error::Code::InvalidPermissions, "forced visit failure"});
+        }
+    };
+
+    auto backing = std::make_shared<FailingVisitSpace>();
+    SnapshotCachedPathSpace cached{backing};
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+
+    cached.rebuildSnapshotNow();
+    auto before = cached.snapshotMetrics();
+    auto miss = cached.read<int>("/missing");
+    CHECK_FALSE(miss.has_value());
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.hits == before.hits);
 }
 
 TEST_CASE("Snapshot cache marks pop mutations dirty") {
