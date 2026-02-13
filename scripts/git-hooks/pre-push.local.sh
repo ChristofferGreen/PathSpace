@@ -321,10 +321,6 @@ if [[ ${#SANITIZER_RUNS[@]} -gt 0 ]]; then
   done
 fi
 
-warn "Skipping font atlas artifact guard (UI/atlas artifacts removed)."
-
-warn "Skipping history savefile CLI roundtrip (harness removed)."
-
 # Example app build/smoke test removed (minimal_button_example not required).
 
 ok "Local pre-push checks passed"
