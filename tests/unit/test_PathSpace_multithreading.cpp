@@ -115,10 +115,10 @@ TEST_CASE("PathSpace Multithreading - Core Suite") {
 
         // Thread-safe path generation
         auto getPath = [&shared_paths](int threadId, int opId, std::mt19937& rng) -> std::string {
-            std::uniform_int_distribution<> dist(0, shared_paths.size() - 1);
-            // Use shared paths 50% of the time
+            (void)rng;
+            // Use shared paths 50% of the time with deterministic rotation to avoid flakes.
             if (opId % 2 == 0) {
-                return shared_paths[dist(rng)];
+                return shared_paths[static_cast<std::size_t>(opId) % shared_paths.size()];
             }
             return std::format("/seq/{}/{}", threadId, opId);
         };

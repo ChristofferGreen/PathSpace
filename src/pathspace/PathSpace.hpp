@@ -65,26 +65,6 @@ public:
         std::size_t nestedSpacesSkipped  = 0;
     };
 
-    struct SnapshotOptions {
-        bool enabled = false;
-        std::chrono::milliseconds rebuildDebounce{200};
-        std::size_t maxDirtyRoots = 128;
-    };
-
-    struct SnapshotMetrics {
-        std::size_t hits = 0;
-        std::size_t misses = 0;
-        std::size_t rebuilds = 0;
-        std::size_t rebuildFailures = 0;
-        std::chrono::milliseconds lastRebuildMs{0};
-        std::size_t bytes = 0;
-    };
-
-    auto setSnapshotOptions(SnapshotOptions options) -> void;
-    [[nodiscard]] auto snapshotEnabled() const noexcept -> bool;
-    [[nodiscard]] auto snapshotMetrics() const -> SnapshotMetrics;
-    auto rebuildSnapshotNow() -> void;
-
     /**
      * @brief Create a deep structural copy of this PathSpace.
      * @param stats Optional pointer populated with copy outcomes.
@@ -154,7 +134,6 @@ protected:
     Leaf        leaf;
 
 private:
-    struct SnapshotState;
     void copyFrom(PathSpace const& other, CopyStats* stats);
     static void copyNodeRecursive(Node const& src,
                                   Node& dst,
@@ -163,20 +142,11 @@ private:
                                   std::string const& currentPath,
                                   CopyStats& stats);
     void retargetNestedMounts(Node const* node, std::string const& basePath);
-    auto markSnapshotDirty(Iterator const& path) -> void;
-    auto trySnapshotRead(Iterator const& path,
-                         InputMetadata const& inputMetadata,
-                         Out const& options,
-                         void* obj) -> bool;
-    auto rebuildSnapshot(std::shared_ptr<SnapshotState> const& state) -> void;
-    auto startSnapshotWorker() -> void;
-    auto stopSnapshotWorker() -> void;
 
     friend struct PathSpaceTestHelper; // unit tests
 
     std::atomic<std::size_t> activeOutCount{0};
     std::atomic<bool>        clearingInProgress{false};
-    mutable std::shared_ptr<SnapshotState> snapshotState;
 };
 
 } // namespace SP

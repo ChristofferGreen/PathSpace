@@ -66,6 +66,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/layer/test_PathSpaceTrellisCore.cpp
   unit/layer/test_PathSpaceTrellisBlocking.cpp
   unit/layer/test_PathAliasCoverage.cpp
+  unit/layer/test_SnapshotCachedPathSpace.cpp
   unit/path/test_PathViewCoverage.cpp
   unit/path/test_validation.cpp
   unit/task/test_FutureCoverage.cpp

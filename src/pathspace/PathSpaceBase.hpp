@@ -899,6 +899,7 @@ private:
     friend class PathSpace;
     friend class Leaf;
     friend class PathAlias;
+    friend class SnapshotCachedPathSpace;
     friend class PathSpaceTrellis;
     friend class History::UndoableSpace;
     friend class BoundedPathSpace;

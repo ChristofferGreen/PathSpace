@@ -94,6 +94,7 @@ add_library(PathSpace
     PathSpace.cpp
     layer/PathSpaceTrellis.cpp
     layer/PathView.cpp
+    layer/SnapshotCachedPathSpace.cpp
 )
 
 if(PATHSPACE_NEEDS_EXPECTED_SHIM)
@@ -137,6 +138,7 @@ target_link_libraries(PathSpace
 set(_pathspace_public_headers
     PathSpace.hpp
     layer/PathSpaceTrellis.hpp
+    layer/SnapshotCachedPathSpace.hpp
 )
 if(PATHSPACE_ENABLE_EXTRA)
     list(APPEND _pathspace_public_headers

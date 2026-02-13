@@ -394,6 +394,12 @@ The internal spaces inside a path are implemented witha  Leaf class, it's possib
 behaviour of parts of the path structure of a PathSpace instance. This can be used to have different behaviour for different sub spaces within a PathSpace. By default PathSpace
 will create a Leaf of the same type as the parent when creating new ones (which happens during insert of data).
 
+## Snapshot Cache Layer (February 2026)
+- Read-optimized snapshot caching lives in a layer: `SnapshotCachedPathSpace`.
+- The legacy snapshot cache embedded in `PathSpace` has been removed; wrap a space with the layer instead.
+- Freshness contract: reads may be stale during active mutations, but after a mutation completes (through the layer) the cache must not return stale data.
+- Rebuilds are worker-driven by default; synchronous rebuilds are opt-in via `allowSynchronousRebuild`.
+
 ## Path Globbing
 Paths given to insert can be a glob expression, if the expression matches the names of subspaces then the data will be inserted to all the matching subspaces.
 ```cpp

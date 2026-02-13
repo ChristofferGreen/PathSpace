@@ -10,6 +10,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <chrono>
+#include <future>
 #include <nlohmann/json.hpp>
 #include <thread>
 #include <vector>
@@ -101,6 +102,83 @@ struct SlowNestedSpace : PathSpace {
         std::this_thread::sleep_for(std::chrono::milliseconds{50});
         return PathSpace::in(path, data);
     }
+};
+
+struct CoordinatedNestedSpace : PathSpace {
+    struct State {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool inStarted = false;
+        bool allowContinue = false;
+    };
+
+    explicit CoordinatedNestedSpace(std::shared_ptr<State> state) : state(std::move(state)) {}
+
+    auto in(Iterator const& path, InputData const& data) -> InsertReturn override {
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            state->inStarted = true;
+            state->cv.notify_all();
+        }
+        std::unique_lock<std::mutex> lock(state->mutex);
+        state->cv.wait(lock, [&]() { return state->allowContinue; });
+        return PathSpace::in(path, data);
+    }
+
+private:
+    std::shared_ptr<State> state;
+};
+
+struct CoordinatedVisitSpace : PathSpace {
+    struct State {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool visitEntered = false;
+        bool allowFinish = false;
+    };
+
+    explicit CoordinatedVisitSpace(std::shared_ptr<State> state) : state(std::move(state)) {}
+
+    auto visit(PathVisitor const& visitor, VisitOptions const& options) -> Expected<void> override {
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            state->visitEntered = true;
+            state->cv.notify_all();
+        }
+        std::unique_lock<std::mutex> lock(state->mutex);
+        state->cv.wait(lock, [&]() { return state->allowFinish; });
+        return PathSpace::visit(visitor, options);
+    }
+
+private:
+    std::shared_ptr<State> state;
+};
+
+struct CoordinatedListSpace : PathSpace {
+    struct State {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool listingStarted = false;
+        bool allowFinish = false;
+        bool listingDone = false;
+    };
+
+    explicit CoordinatedListSpace(std::shared_ptr<State> state) : state(std::move(state)) {}
+
+    auto listChildrenCanonical(std::string_view) const -> std::vector<std::string> override {
+        {
+            std::lock_guard<std::mutex> lock(state->mutex);
+            state->listingStarted = true;
+            state->cv.notify_all();
+        }
+        std::unique_lock<std::mutex> lock(state->mutex);
+        state->cv.wait(lock, [&]() { return state->allowFinish; });
+        state->listingDone = true;
+        return {"child"};
+    }
+
+private:
+    std::shared_ptr<State> state;
 };
 } // namespace
 
@@ -630,89 +708,104 @@ TEST_CASE("PathSpace Nesting/listChildren returns empty for missing nested index
 }
 
 TEST_CASE("PathSpace Nesting/listChildren holds nested alive during concurrent take") {
-    std::atomic<bool> listingDone{false};
-    std::atomic<bool> borrowed{false};
     {
         PathSpace root;
-        auto slow = std::make_unique<SlowSpace>(nullptr, &listingDone, &borrowed);
+        auto listState = std::make_shared<CoordinatedListSpace::State>();
+        auto slow = std::make_unique<CoordinatedListSpace>(listState);
         REQUIRE(root.insert("/mount/slow", std::move(slow)).nbrSpacesInserted == 1);
 
+        std::atomic<bool> listerHasValue{false};
+        std::atomic<bool> listerOk{false};
+        std::atomic<bool> takeOk{false};
+        std::atomic<bool> takeNotNull{false};
         std::thread lister([&]() {
             auto children = root.read<Children>("/mount/slow");
-            REQUIRE(children.has_value());
-            CHECK(std::find(children->names.begin(), children->names.end(), "child") != children->names.end());
+            listerHasValue.store(children.has_value());
+            if (children.has_value()) {
+                listerOk.store(std::find(children->names.begin(), children->names.end(), "child") != children->names.end());
+            }
         });
 
-        for (int i = 0; i < 10 && !borrowed.load(); ++i) {
-            std::this_thread::sleep_for(5ms);
+        {
+            std::unique_lock<std::mutex> lock(listState->mutex);
+            REQUIRE(listState->cv.wait_for(lock, 200ms, [&]() { return listState->listingStarted; }));
         }
-        CHECK(borrowed.load()); // ensure listChildren obtained borrow before take
-        auto start = std::chrono::steady_clock::now();
-        auto taken = root.take<std::unique_ptr<PathSpace>>("/mount/slow", Block{});
-        REQUIRE(taken.has_value());
-        REQUIRE(taken.value() != nullptr);
-        auto owned = std::move(taken.value());
-        owned.reset(); // destroy nested space after borrow holders release
 
+        std::promise<void> takeDone;
+        auto takeFuture = takeDone.get_future();
+        std::thread taker([&]() {
+            auto taken = root.take<std::unique_ptr<PathSpace>>("/mount/slow", Block{});
+            takeOk.store(taken.has_value());
+            if (taken.has_value()) {
+                takeNotNull.store(taken.value() != nullptr);
+            }
+            auto owned = taken.has_value() ? std::move(taken.value()) : nullptr;
+            owned.reset(); // destroy nested space after borrow holders release
+            takeDone.set_value();
+        });
+
+        CHECK(takeFuture.wait_for(20ms) == std::future_status::timeout);
+        {
+            std::lock_guard<std::mutex> lock(listState->mutex);
+            listState->allowFinish = true;
+        }
+        listState->cv.notify_all();
+
+        taker.join();
         lister.join();
-        CHECK(listingDone.load()); // ensure listChildren finished
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - start);
-        CHECK(elapsed.count() >= 40); // take should have waited for listChildren borrow to release
+        CHECK(listerHasValue.load());
+        CHECK(listerOk.load());
+        CHECK(takeOk.load());
+        CHECK(takeNotNull.load());
+        CHECK(listState->listingDone);
     }
 }
 
 TEST_CASE("PathSpace Nesting/visit holds nested alive during concurrent take") {
-    std::atomic<bool> visitStarted{false};
-    std::atomic<bool> visitFinished{false};
-
-    struct SlowVisitSpace : PathSpace {
-        using PathSpace::PathSpace;
-        SlowVisitSpace(std::atomic<bool>* started, std::atomic<bool>* finished)
-            : started(started), finished(finished) {}
-        auto visit(PathVisitor const& visitor, VisitOptions const& options) -> Expected<void> override {
-            if (started) {
-                started->store(true);
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds{50});
-            auto res = PathSpace::visit(visitor, options);
-            if (finished) {
-                finished->store(true);
-            }
-            return res;
-        }
-        std::atomic<bool>* started;
-        std::atomic<bool>* finished;
-    };
-
     PathSpace root;
-    auto      slow = std::make_unique<SlowVisitSpace>(&visitStarted, &visitFinished);
+    auto visitState = std::make_shared<CoordinatedVisitSpace::State>();
+    auto slow       = std::make_unique<CoordinatedVisitSpace>(visitState);
     REQUIRE(root.insert("/mount/slow", std::move(slow)).nbrSpacesInserted == 1);
 
+    std::atomic<bool> visitorOk{false};
+    std::atomic<bool> takeOk{false};
     std::thread visitor([&]() {
         VisitOptions opts;
         opts.root                = "/";
         opts.includeNestedSpaces = true;
         auto result = root.visit(
             [&](PathEntry const&, ValueHandle&) { return VisitControl::Continue; }, opts);
-        CHECK(result.has_value());
+        visitorOk.store(result.has_value());
     });
 
-    for (int i = 0; i < 10 && !visitStarted.load(); ++i) {
-        std::this_thread::sleep_for(5ms);
+    {
+        std::unique_lock<std::mutex> lock(visitState->mutex);
+        REQUIRE(visitState->cv.wait_for(lock, 200ms, [&]() { return visitState->visitEntered; }));
     }
 
-    auto start = std::chrono::steady_clock::now();
-    auto taken = root.take<std::unique_ptr<PathSpace>>("/mount/slow", Block{});
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - start);
-    REQUIRE(taken.has_value());
-    auto owned = std::move(*taken);
-    owned.reset();
+    std::promise<void> takeDone;
+    auto takeFuture = takeDone.get_future();
+    std::thread taker([&]() {
+        auto taken = root.take<std::unique_ptr<PathSpace>>("/mount/slow", Block{});
+        takeOk.store(taken.has_value());
+        if (taken.has_value()) {
+            auto owned = std::move(*taken);
+            owned.reset();
+        }
+        takeDone.set_value();
+    });
 
+    CHECK(takeFuture.wait_for(20ms) == std::future_status::timeout);
+    {
+        std::lock_guard<std::mutex> lock(visitState->mutex);
+        visitState->allowFinish = true;
+    }
+    visitState->cv.notify_all();
+
+    taker.join();
     visitor.join();
-    CHECK(visitFinished.load());
-    CHECK(elapsed.count() >= 40);
+    CHECK(visitorOk.load());
+    CHECK(takeOk.load());
 }
 
 TEST_CASE("PathSpace Nesting/blocking read waits for indexed nested space arrival") {
@@ -1138,27 +1231,45 @@ TEST_CASE("PathSpace Nesting/Nested Space Path Validation") {
 TEST_CASE("PathSpace Nesting/take blocks while nested operation in-flight") {
              using namespace std::chrono_literals;
              PathSpace root;
-             auto nested = std::make_unique<SlowNestedSpace>();
+             auto state  = std::make_shared<CoordinatedNestedSpace::State>();
+             auto nested = std::make_unique<CoordinatedNestedSpace>(state);
              REQUIRE(root.insert("/ns", std::move(nested)).nbrSpacesInserted == 1);
 
              std::atomic<bool> insertDone{false};
+             std::atomic<bool> insertOk{false};
+             std::atomic<bool> takeOk{false};
 
              std::thread inserter([&]() {
                  auto ret = root.insert("/ns/value", 7);
-                 REQUIRE(ret.errors.empty());
+                 insertOk.store(ret.errors.empty());
                  insertDone.store(true);
              });
 
-             std::this_thread::sleep_for(5ms);
-             auto start = std::chrono::steady_clock::now();
-             auto taken = root.take<std::unique_ptr<PathSpace>>("/ns", Block{200ms});
-             auto end   = std::chrono::steady_clock::now();
+             {
+                 std::unique_lock<std::mutex> lock(state->mutex);
+                 REQUIRE(state->cv.wait_for(lock, 200ms, [&]() { return state->inStarted; }));
+             }
 
+             std::promise<void> takeDone;
+             auto takeFuture = takeDone.get_future();
+             std::thread taker([&]() {
+                 auto taken = root.take<std::unique_ptr<PathSpace>>("/ns", Block{200ms});
+                 takeOk.store(taken.has_value());
+                 takeDone.set_value();
+             });
+
+             CHECK(takeFuture.wait_for(20ms) == std::future_status::timeout);
+             {
+                 std::lock_guard<std::mutex> lock(state->mutex);
+                 state->allowContinue = true;
+             }
+             state->cv.notify_all();
+
+             taker.join();
              inserter.join();
-             REQUIRE(taken.has_value());
              CHECK(insertDone.load());
-             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-             CHECK(elapsed.count() >= 30);
+             CHECK(insertOk.load());
+             CHECK(takeOk.load());
 }
 
 TEST_SUITE_END();
