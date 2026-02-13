@@ -222,6 +222,38 @@ TEST_CASE("Snapshot cache dirty root covers child path") {
     CHECK(after.hits >= before.hits + 1);
 }
 
+TEST_CASE("Snapshot cache dirty root does not match partial component") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/root/value", 1).nbrValuesInserted == 1);
+    CHECK(cached.insert("/rooted/value", 2).nbrValuesInserted == 1);
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+
+    CHECK(cached.insert("/root", 5).nbrValuesInserted == 1);
+
+    auto before = cached.snapshotMetrics();
+    auto rootedRead = cached.read<int>("/rooted/value");
+    REQUIRE(rootedRead.has_value());
+    CHECK(rootedRead.value() == 2);
+
+    auto afterRooted = cached.snapshotMetrics();
+    CHECK(afterRooted.hits >= before.hits + 1);
+
+    auto rootRead = cached.read<int>("/root/value");
+    REQUIRE(rootRead.has_value());
+    CHECK(rootRead.value() == 1);
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.misses >= afterRooted.misses + 1);
+}
+
 TEST_CASE("Snapshot cache widens dirty roots to ancestor on mutation") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
