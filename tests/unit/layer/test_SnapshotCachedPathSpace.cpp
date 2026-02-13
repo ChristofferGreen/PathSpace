@@ -187,6 +187,24 @@ TEST_CASE("Snapshot cache re-enable starts dirty before rebuild") {
     CHECK(after.hits == before.hits);
 }
 
+TEST_CASE("Snapshot cache disabled missing read leaves metrics zero") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = false,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+
+    auto missing = cached.read<int>("/missing");
+    CHECK_FALSE(missing.has_value());
+
+    auto metrics = cached.snapshotMetrics();
+    CHECK(metrics.hits == 0);
+    CHECK(metrics.misses == 0);
+}
+
 TEST_CASE("Snapshot cache hits after rebuild clears initial dirty") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
@@ -622,6 +640,62 @@ TEST_CASE("Snapshot cache root dirty forces misses for multiple reads") {
     CHECK(mid.misses >= before.misses + 1);
     CHECK(after.misses >= mid.misses + 1);
     CHECK(after.hits == before.hits);
+}
+
+TEST_CASE("Snapshot cache root dirty clears after rebuild") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/a", 1).nbrValuesInserted == 1);
+    CHECK(cached.insert("/b", 2).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 1,
+    });
+    cached.rebuildSnapshotNow();
+
+    CHECK(cached.insert("/a", 3, ReplaceExisting{}).nbrValuesInserted == 1);
+    CHECK(cached.insert("/b", 4, ReplaceExisting{}).nbrValuesInserted == 1);
+
+    auto before = cached.snapshotMetrics();
+    auto readA = cached.read<int>("/a");
+    REQUIRE(readA.has_value());
+    CHECK(readA.value() == 3);
+    auto dirtyMetrics = cached.snapshotMetrics();
+    CHECK(dirtyMetrics.misses >= before.misses + 1);
+
+    cached.rebuildSnapshotNow();
+    auto beforeHit = cached.snapshotMetrics();
+    auto hitA = cached.read<int>("/a");
+    REQUIRE(hitA.has_value());
+    CHECK(hitA.value() == 3);
+    auto afterHit = cached.snapshotMetrics();
+    CHECK(afterHit.hits >= beforeHit.hits + 1);
+    CHECK(afterHit.misses == beforeHit.misses);
+}
+
+TEST_CASE("Snapshot cache root dirty misses on missing path") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/a", 1).nbrValuesInserted == 1);
+    CHECK(cached.insert("/b", 2).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 1,
+    });
+    cached.rebuildSnapshotNow();
+
+    CHECK(cached.insert("/a", 3, ReplaceExisting{}).nbrValuesInserted == 1);
+    CHECK(cached.insert("/b", 4, ReplaceExisting{}).nbrValuesInserted == 1);
+
+    auto before = cached.snapshotMetrics();
+    auto missing = cached.read<int>("/missing");
+    CHECK_FALSE(missing.has_value());
+    auto after = cached.snapshotMetrics();
+    CHECK(after.misses >= before.misses + 1);
 }
 
 TEST_CASE("Snapshot cache dirty roots reset after rebuild") {
