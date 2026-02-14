@@ -77,6 +77,11 @@ TEST_CASE("Type InputMetadata Fundamental") {
         REQUIRE_EQ(sss, s2);
         REQUIRE_EQ(bytes.size(), 0);
     }
+    SUBCASE("Fundamental deserialize throws on short buffer") {
+        SlidingBuffer bytes;
+        int           out = 0;
+        CHECK_THROWS_AS(ValueSerializationHelper<int>::Deserialize(&out, bytes), std::runtime_error);
+    }
     SUBCASE("Function Pointer") {
         using TestFuncPtr      = void (*)(int);
         TestFuncPtr   testFunc = [](int x) {};
