@@ -1,5 +1,7 @@
+#define private public
 #include "history/UndoJournalEntry.hpp"
 #include "history/UndoJournalState.hpp"
+#undef private
 
 #include "third_party/doctest.h"
 
@@ -65,6 +67,9 @@ TEST_SUITE("history.journal.state") {
         REQUIRE(redone.has_value());
         CHECK(redone->get().sequence == 2);
         CHECK_FALSE(state.canRedo());
+
+        auto peekRedo = state.peekRedo();
+        CHECK_FALSE(peekRedo.has_value());
 
         auto stats = state.stats();
         CHECK(stats.undoBytes + stats.redoBytes == stats.totalBytes);
@@ -166,6 +171,32 @@ TEST_SUITE("history.journal.state") {
         auto undoAfterTrim = state.undo();
         REQUIRE(undoAfterTrim.has_value());
         CHECK(undoAfterTrim->get().sequence == 5);
+    }
+
+    TEST_CASE("peekRedo returns entry when redo is available") {
+        JournalState state;
+        state.append(makeEntry(1, "a"));
+        state.append(makeEntry(2, "b"));
+
+        auto undone = state.undo();
+        REQUIRE(undone.has_value());
+        CHECK(state.canRedo());
+
+        auto redoPeek = state.peekRedo();
+        REQUIRE(redoPeek.has_value());
+        CHECK(redoPeek->get().sequence == 2);
+    }
+
+    TEST_CASE("retention clamps cursorIndex when it exceeds entries") {
+        JournalState state;
+        state.append(makeEntry(1, "a"));
+        state.append(makeEntry(2, "b"));
+
+        // Force an out-of-range cursor to exercise the safety clamp.
+        state.cursorIndex = state.entries.size() + 5;
+        state.setRetentionPolicy(state.policy());
+
+        CHECK(state.cursorIndex == state.entries.size());
     }
 
     TEST_CASE("serialization round-trips journal entries") {
