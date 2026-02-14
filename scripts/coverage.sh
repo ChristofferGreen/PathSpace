@@ -42,10 +42,10 @@ if [ -n "${GCOVR_FLAGS:-}" ]; then
   read -r -a gcovr_flags <<< "${GCOVR_FLAGS}"
 fi
 
-# Text summary to stdout
-python3 -m gcovr "${filter_args[@]}" "${gcovr_flags[@]}" || exit 1
+# Text summary to stdout (restrict search to the build tree to avoid stale gcda files)
+python3 -m gcovr "${filter_args[@]}" "${gcovr_flags[@]}" "${BUILD}" || exit 1
 
 # JSON artifact for tooling
-python3 -m gcovr "${filter_args[@]}" --json -o "${BUILD}/gcovr.json" "${gcovr_flags[@]}"
+python3 -m gcovr "${filter_args[@]}" --json -o "${BUILD}/gcovr.json" "${gcovr_flags[@]}" "${BUILD}"
 
 echo "Coverage JSON written to ${BUILD}/gcovr.json"

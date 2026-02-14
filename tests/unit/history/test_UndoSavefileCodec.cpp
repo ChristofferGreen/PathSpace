@@ -78,6 +78,32 @@ void appendStringPayload(std::vector<std::byte>& buffer, std::string const& valu
     buffer.insert(buffer.end(), bytes, bytes + value.size());
 }
 
+std::size_t entryCountOffset(std::vector<std::byte> const& buffer) {
+    std::size_t offset = 0;
+    auto readU32 = [&](std::size_t at) {
+        REQUIRE(at + sizeof(std::uint32_t) <= buffer.size());
+        std::uint32_t value{};
+        std::memcpy(&value, buffer.data() + at, sizeof(value));
+        return value;
+    };
+
+    offset += sizeof(std::uint32_t); // magic
+    offset += sizeof(std::uint32_t); // version
+
+    auto rootLen = readU32(offset);
+    offset += sizeof(std::uint32_t);
+    REQUIRE(offset + rootLen <= buffer.size());
+    offset += rootLen;
+
+    offset += sizeof(std::uint64_t) * 4; // options: maxEntries, maxBytes, maxDisk, keepLatest
+    offset += sizeof(std::uint8_t);      // manualGcFlag
+    offset += sizeof(std::uint64_t);     // nextSequence
+    offset += sizeof(std::uint64_t);     // undoCount
+
+    REQUIRE(offset + sizeof(std::uint64_t) <= buffer.size());
+    return offset;
+}
+
 } // namespace
 
 TEST_SUITE_BEGIN("history.undo.savefile");
@@ -179,6 +205,21 @@ TEST_CASE("decode detects truncated savefile payloads") {
     auto decoded = Savefile::decode(std::span<const std::byte>(*encoded));
     CHECK_FALSE(decoded);
     CHECK(decoded.error().code == Error::Code::MalformedInput);
+}
+
+TEST_CASE("decode rejects entry count exceeding platform limits") {
+    auto document = makeMinimalDocument();
+    auto encoded  = Savefile::encode(document);
+    REQUIRE(encoded);
+
+    auto offset = entryCountOffset(*encoded);
+    overwriteScalar<std::uint64_t>(*encoded,
+                                   offset,
+                                   std::numeric_limits<std::uint64_t>::max());
+
+    auto decoded = Savefile::decode(std::span<const std::byte>(*encoded));
+    CHECK_FALSE(decoded);
+    CHECK(decoded.error().code == Error::Code::UnknownError);
 }
 
 TEST_CASE("decode rejects unsupported version values") {

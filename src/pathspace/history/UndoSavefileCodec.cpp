@@ -167,8 +167,14 @@ auto decode(std::span<const std::byte> data) -> Expected<Document> {
     if (!entryCount)
         return std::unexpected(entryCount.error());
 
-    if (*entryCount > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
+    auto const maxEntryCountLimit = static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max());
+    if (*entryCount >= maxEntryCountLimit) {
         return std::unexpected(makeError("Undo savefile entry count exceeds platform limits"));
+    }
+
+    auto const maxEntriesByBytes = buffer.size() / sizeof(std::uint32_t);
+    if (*entryCount > maxEntriesByBytes) {
+        return std::unexpected(Error{Error::Code::MalformedInput, "Savefile truncated"});
     }
 
     document.entries.reserve(static_cast<std::size_t>(*entryCount));

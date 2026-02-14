@@ -35,6 +35,15 @@ auto makeSizedEntry(int seq, std::size_t payloadBytes) -> JournalEntry {
 } // namespace
 
 TEST_SUITE("history.journal.state") {
+    TEST_CASE("peek and undo/redo return nullopt when empty") {
+        JournalState state;
+
+        CHECK_FALSE(state.peekUndo().has_value());
+        CHECK_FALSE(state.peekRedo().has_value());
+        CHECK_FALSE(state.undo().has_value());
+        CHECK_FALSE(state.redo().has_value());
+    }
+
     TEST_CASE("append tracks undo and redo cursors") {
         JournalState state;
         auto e1 = makeEntry(1, "a");
