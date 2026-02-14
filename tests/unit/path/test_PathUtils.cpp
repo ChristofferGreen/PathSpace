@@ -122,6 +122,8 @@ TEST_CASE("match_names rejects malformed character classes") {
 TEST_CASE("match_names covers wildcards, ranges, and escapes") {
     CHECK(match_names("fo*", "foobar"));
     CHECK(match_names("*a", "ba"));
+    CHECK(match_names("ab*cd", "abcd"));
+    CHECK(match_names("ab*cd", "abZZcd"));
     CHECK(match_names("ba?r", "baar"));
     CHECK_FALSE(match_names("ba?r", "bar")); // missing char for '?'
     CHECK(match_names("h[ae]llo", "hello"));
@@ -163,6 +165,7 @@ TEST_CASE("match_names handles empty and dangling escape patterns") {
 TEST_CASE("match_names handles negated class with no match") {
     CHECK_FALSE(match_names("[!a]", "a"));
     CHECK(match_names("[!a]", "b"));
+    CHECK_FALSE(match_names("[!a]", ""));
 }
 
 TEST_CASE("match_paths handles mismatched lengths and escaped components") {
