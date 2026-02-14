@@ -25,6 +25,16 @@ TEST_CASE("PathSpace Insert") {
         CHECK(ret.errors[0].code == Error::Code::InvalidType);
     }
 
+    SUBCASE("UniquePtr inserts force full validation even in Basic mode") {
+        auto nested = std::make_unique<PathSpace>();
+        auto ret = pspace.insert("/bad/../path",
+                                 std::move(nested),
+                                 In{.validationLevel = ValidationLevel::Basic});
+        CHECK(ret.nbrSpacesInserted == 0);
+        REQUIRE(ret.errors.size() == 1);
+        CHECK(ret.errors[0].code == Error::Code::InvalidPath);
+    }
+
     SUBCASE("Indexed component requires nested payloads and validates path") {
         auto valueRet = pspace.insert("/node[1]", 5);
         CHECK(valueRet.nbrValuesInserted == 0);
