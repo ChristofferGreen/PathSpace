@@ -65,8 +65,10 @@ TEST_CASE("Path Iterator and Utilities") {
             const std::string path = "/test/path/here";
             Iterator          iter(path);
             CHECK(iter.toStringView() == path);
+            CHECK(iter.toString() == path);
             ++iter;
             CHECK(iter.toStringView() == path);
+            CHECK(iter.toString() == path);
         }
 
         SUBCASE("End slice views") {
