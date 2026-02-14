@@ -96,6 +96,7 @@ TEST_CASE("is_glob treats numeric indices as concrete") {
 TEST_CASE("is_glob handles escapes and malformed brackets") {
     CHECK_FALSE(is_glob("/root/escaped\\[7\\]"));
     CHECK_FALSE(is_glob("/root/escaped\\?/ok"));
+    CHECK_FALSE(is_glob("/root/escaped\\*/ok"));
     CHECK_FALSE(is_glob("/root/escaped\\]/ok"));
     CHECK(is_glob("/root/unmatched]"));
     CHECK(is_glob("/root/unclosed["));
