@@ -57,6 +57,11 @@ TEST_CASE("Node child management and payload helpers") {
     node.clearLocal();
     CHECK_FALSE(node.hasData());
 
+    node.podPayload = PodPayload<int>::CreateShared();
+    CHECK(node.hasData());
+    node.clearLocal();
+    CHECK_FALSE(node.hasData());
+
     node.getOrCreateChild("beta");
     node.data = std::make_unique<NodeData>();
     CHECK(node.hasChildren());
