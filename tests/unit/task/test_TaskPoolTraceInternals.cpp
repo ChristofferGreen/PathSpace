@@ -416,6 +416,38 @@ TEST_CASE("flushTrace writes NDJSON queue wait and thread names") {
     CHECK(sawQueueWait);
 }
 
+TEST_CASE("flushTrace writes JSON and NDJSON when both paths are set") {
+    TaskPool pool(1);
+    auto jsonPath = make_temp_path("trace.json");
+    auto ndjsonPath = make_temp_path("trace.ndjson");
+    pool.enableTrace(jsonPath.string());
+    pool.enableTraceNdjson(ndjsonPath.string());
+
+    pool.traceThreadName("BothOutputs");
+    pool.traceCounter("Counter", 1.0);
+
+    auto err = pool.flushTrace();
+    CHECK_FALSE(err.has_value());
+
+    std::error_code ec;
+    CHECK(std::filesystem::exists(jsonPath, ec));
+    CHECK(std::filesystem::exists(ndjsonPath, ec));
+
+    auto jsonContents = read_file(jsonPath);
+    auto jsonDoc = Json::parse(jsonContents);
+    bool sawCounter = false;
+    for (auto const& event : jsonDoc.at("traceEvents")) {
+        if (event.contains("name") && event.at("name") == "Counter") {
+            sawCounter = true;
+            break;
+        }
+    }
+    CHECK(sawCounter);
+
+    auto ndjsonContents = read_file(ndjsonPath);
+    CHECK(ndjsonContents.find("\"name\":\"Counter\"") != std::string::npos);
+}
+
 TEST_CASE("flushTrace reports errors when trace path is invalid") {
     TaskPool pool(1);
     auto badDir = make_temp_path("trace_dir");
