@@ -98,6 +98,34 @@ TEST_CASE("PathSpace JSON exporter flattens children capsule nodes") {
     CHECK_FALSE(children.contains("children"));
 }
 
+TEST_CASE("PathSpace JSON exporter collapses duplicate children capsules in entries") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/children/children/alpha", 1).nbrValuesInserted == 1);
+
+    PathSpaceJsonOptions options;
+    options.visit.root = "/root";
+
+    auto doc      = dump(space, options);
+    auto rootNode = findNode(doc, "/root", "/root");
+
+    REQUIRE(rootNode.contains("children"));
+    auto const& children = rootNode.at("children");
+    CHECK(children.contains("alpha"));
+    CHECK_FALSE(children.contains("children"));
+}
+
+TEST_CASE("PathSpace JSON exporter rejects duplicated children capsules in root") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/children/children/alpha", 1).nbrValuesInserted == 1);
+
+    PathSpaceJsonOptions options;
+    options.visit.root = "/root/children/children";
+
+    auto result = space.toJSON(options);
+    CHECK_FALSE(result);
+    CHECK(result.error().code == Error::Code::InvalidPath);
+}
+
 TEST_CASE("PathSpace JSON exporter exposes structure and diagnostics in debug mode") {
     PathSpace space;
     REQUIRE(space.insert("/alpha/int", 1).nbrValuesInserted == 1);
