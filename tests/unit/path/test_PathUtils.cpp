@@ -131,6 +131,7 @@ TEST_CASE("match_names covers wildcards, ranges, and escapes") {
     CHECK_FALSE(match_names("a[0-9]b", "acb"));
     CHECK(match_names("star\\*", "star*"));
     CHECK_FALSE(match_names("star\\*", "starX"));
+    CHECK(match_names("a\\?b", "a?b"));
     CHECK(match_names("path\\\\name", "path\\name"));
     CHECK(match_names("close\\]", "close]"));
 }
