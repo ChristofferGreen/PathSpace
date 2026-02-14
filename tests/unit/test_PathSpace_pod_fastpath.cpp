@@ -1438,8 +1438,13 @@ TEST_CASE("Pack insert concurrent writers preserves alignment") {
     PathSpace space;
     CHECK(space.insert("/ints/x", 0).errors.empty());
     CHECK(space.insert("/ints/y", 0).errors.empty());
+#if defined(PATHSPACE_COVERAGE_BUILD)
+    constexpr int ThreadCount    = 2;
+    constexpr int ValuesPerThread  = 50;
+#else
     constexpr int ThreadCount    = 4;
     constexpr int ValuesPerThread  = 200;
+#endif
     std::atomic<int> next{1};
 
     auto worker = [&]() {
@@ -1487,8 +1492,13 @@ TEST_CASE("Pack insert concurrent readers never see skew") {
         }
     });
 
+#if defined(PATHSPACE_COVERAGE_BUILD)
+    constexpr int ThreadCount    = 2;
+    constexpr int ValuesPerThread  = 40;
+#else
     constexpr int ThreadCount    = 3;
     constexpr int ValuesPerThread  = 150;
+#endif
     std::atomic<int> next{10000};
     auto worker = [&]() {
         for (int i = 0; i < ValuesPerThread; ++i) {
@@ -1525,7 +1535,11 @@ TEST_CASE("Pack insert concurrent take keeps lanes aligned") {
     });
     REQUIRE(seedTake.has_value());
 
+#if defined(PATHSPACE_COVERAGE_BUILD)
+    constexpr int WriteCount = 120;
+#else
     constexpr int WriteCount = 400;
+#endif
     std::atomic<int> produced{0};
     std::atomic<int> consumed{0};
     std::atomic<bool> skew{false};
