@@ -113,6 +113,18 @@ TEST_CASE("HistoryOptions defaults are populated") {
     CHECK_FALSE(opts.sharedStackKey.has_value());
 }
 
+TEST_CASE("enableHistory blocks nested roots without allowNestedUndo") {
+    auto space = makeUndoableSpace();
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/root"}, opts).has_value());
+
+    auto nested = space->enableHistory(ConcretePathStringView{"/root/child"}, opts);
+    CHECK_FALSE(nested.has_value());
+    CHECK(nested.error().code == Error::Code::InvalidPermissions);
+}
+
 TEST_CASE("exportHistorySavefile reports missing history root") {
     auto space = makeUndoableSpace();
     auto path  = tempFile("export_missing.bin");
