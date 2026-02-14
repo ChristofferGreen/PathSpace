@@ -36,10 +36,7 @@ auto stripPrefix(std::string const& absolute, std::string const& prefix) -> std:
     if (prefix.empty() || prefix == "/") {
         return absolute;
     }
-    if (absolute == prefix) {
-        return std::string{"/"};
-    }
-    if (absolute.size() > prefix.size() && absolute.rfind(prefix, 0) == 0) {
+    if (absolute.rfind(prefix, 0) == 0) {
         auto remainder = absolute.substr(prefix.size());
         if (remainder.empty()) {
             return std::string{"/"};

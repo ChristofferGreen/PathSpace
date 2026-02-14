@@ -106,6 +106,15 @@ TEST_CASE("predicate wait increments active waiter count on first wait") {
     CHECK(ok);
 }
 
+TEST_CASE("Guard move constructor preserves wait entry and counts") {
+    WaitMap waitMap;
+    auto original = waitMap.wait("/move");
+    WaitMap::Guard moved(std::move(original));
+
+    auto status = moved.wait_until(std::chrono::system_clock::now() + 10ms);
+    CHECK(status == std::cv_status::timeout);
+}
+
 TEST_CASE("notify wakes both concrete and glob waiters") {
     WaitMap waitMap;
 
