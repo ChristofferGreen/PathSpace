@@ -164,6 +164,8 @@ TEST_CASE("match_paths handles root and empty paths") {
     CHECK(match_paths("/alpha/", "/alpha"));
     CHECK(match_paths("/alpha/", "/alpha/"));
     CHECK_FALSE(match_paths("/alpha/", "/alpha/beta"));
+    CHECK(match_paths("alpha/beta", "alpha/beta"));
+    CHECK(match_paths("alpha/beta", "/alpha/beta"));
 }
 
 TEST_SUITE_END();
