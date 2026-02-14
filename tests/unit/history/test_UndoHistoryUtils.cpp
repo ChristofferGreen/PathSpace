@@ -125,6 +125,13 @@ TEST_CASE("file helpers handle missing paths gracefully") {
     CHECK(UndoUtils::fileSizeOrZero(missingFile) == 0);
 }
 
+TEST_CASE("fileSizeOrZero returns zero for directories") {
+    TempDir tmp("pathspace_undo_utils_dirsize");
+    auto const dir = tmp.path / "dir";
+    std::filesystem::create_directories(dir);
+    CHECK(UndoUtils::fileSizeOrZero(dir) == 0);
+}
+
 TEST_CASE("fsync helpers propagate success and failure") {
     auto invalid = UndoUtils::fsyncFileDescriptor(-1);
     CHECK_FALSE(invalid.has_value());
