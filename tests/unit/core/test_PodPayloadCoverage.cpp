@@ -306,6 +306,48 @@ TEST_CASE("PodPayload reserve/rollback leaves tail unchanged and popCount guards
     CHECK(payload.size() == 0);
 }
 
+TEST_CASE("PodPayload reserveSpan publishSpan and rollbackSpan") {
+    PodPayload<int> payload;
+
+    auto span = payload.reserveSpan(3);
+    REQUIRE(span.has_value());
+    CHECK(span->count == 3);
+    auto* data = static_cast<int*>(span->ptr);
+    data[0] = 10;
+    data[1] = 20;
+    data[2] = 30;
+
+    // Reserve does not publish; size should remain zero.
+    CHECK(payload.size() == 0);
+
+    payload.publishSpan(span->index, span->count);
+    CHECK(payload.size() == 3);
+
+    int out = 0;
+    CHECK_FALSE(payload.read(&out));
+    CHECK(out == 10);
+
+    CHECK_FALSE(payload.popCount(1));
+    CHECK_FALSE(payload.read(&out));
+    CHECK(out == 20);
+
+    // Roll back a reserved span without publishing; size stays aligned to published tail.
+    auto span2 = payload.reserveSpan(2);
+    REQUIRE(span2.has_value());
+    payload.rollbackSpan(span2->index, span2->count);
+    CHECK(payload.size() == 2);
+
+    // publishSpan with zero count is a no-op.
+    payload.publishSpan(span2->index, 0);
+    CHECK(payload.size() == 2);
+}
+
+TEST_CASE("PodPayload reserveSpan returns nullopt when frozen") {
+    PodPayload<int> payload;
+    CHECK(payload.freezeForUpgrade());
+    CHECK_FALSE(payload.reserveSpan(1).has_value());
+}
+
 TEST_CASE("PodPayload freezeForUpgrade blocks further writes and reservations") {
     PodPayload<int> payload;
     CHECK(payload.push(42));
