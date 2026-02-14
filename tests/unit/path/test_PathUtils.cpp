@@ -102,6 +102,12 @@ TEST_CASE("is_glob handles escapes and malformed brackets") {
     CHECK_FALSE(is_glob("/root/indexed[4]/child"));
 }
 
+TEST_CASE("is_concrete mirrors glob detection") {
+    CHECK(is_concrete("/root/child"));
+    CHECK_FALSE(is_concrete("/root/*"));
+    CHECK(is_concrete("/root/escaped\\*"));
+}
+
 TEST_CASE("match_names rejects malformed character classes") {
     CHECK_FALSE(match_names("[abc", "a"));
     CHECK_FALSE(match_names("test[!", "testa"));
@@ -119,6 +125,8 @@ TEST_CASE("match_names covers wildcards, ranges, and escapes") {
     CHECK_FALSE(match_names("a[0-9]b", "acb"));
     CHECK(match_names("star\\*", "star*"));
     CHECK_FALSE(match_names("star\\*", "starX"));
+    CHECK(match_names("path\\\\name", "path\\name"));
+    CHECK(match_names("close\\]", "close]"));
 }
 
 TEST_CASE("match_names handles star backtracking misses and literal hyphens") {
