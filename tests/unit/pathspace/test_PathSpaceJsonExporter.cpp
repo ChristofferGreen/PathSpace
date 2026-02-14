@@ -942,6 +942,22 @@ TEST_CASE("PathSpace JSON exporter metadata is opt-in") {
     CHECK(meta.at("flags").at("include_metadata").get<bool>());
 }
 
+TEST_CASE("PathSpace JSON exporter records nested and value flags in metadata") {
+    PathSpace space;
+    REQUIRE(space.insert("/flags/value", 1).nbrValuesInserted == 1);
+
+    PathSpaceJsonOptions options;
+    options.includeMetadata         = true;
+    options.visit.root              = "/flags";
+    options.visit.includeNestedSpaces = true;
+    options.visit.includeValues     = false;
+
+    auto doc = dump(space, options);
+    auto flags = doc.at("_meta").at("flags");
+    CHECK(flags.at("include_nested_spaces").get<bool>());
+    CHECK_FALSE(flags.at("include_values").get<bool>());
+}
+
 TEST_CASE("Minimal mode clears diagnostics even when requested") {
     PathSpace space;
     REQUIRE(space.insert("/alpha/value", 12).errors.empty());
