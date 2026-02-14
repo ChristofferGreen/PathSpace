@@ -215,6 +215,21 @@ TEST_CASE("traceSpan honors explicit thread id") {
     CHECK(it->phase == 'X');
 }
 
+TEST_CASE("traceSpan uses current thread when no thread id is provided") {
+    TaskPool pool(1);
+    pool.enableTrace("trace_unused.json");
+
+    pool.traceSpan("DefaultThreadSpan", "default", "/path", 1, 2);
+
+    std::lock_guard<std::mutex> lock(pool.traceMutex);
+    auto it = std::find_if(pool.traceEvents.begin(), pool.traceEvents.end(),
+                           [](TaskPool::TaskTraceEvent const& e) { return e.name == "DefaultThreadSpan"; });
+    REQUIRE(it != pool.traceEvents.end());
+    CHECK(it->threadId != 0);
+    CHECK(it->category == "default");
+    CHECK(it->path == "/path");
+}
+
 TEST_CASE("traceScope returns inactive scope when tracing is disabled") {
     TaskPool pool(1);
 
