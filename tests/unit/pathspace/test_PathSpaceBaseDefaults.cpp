@@ -3,8 +3,10 @@
 #include <pathspace/PathSpaceBase.hpp>
 
 #include <array>
+#include <memory>
 #include <span>
 #include <string>
+#include "core/PathSpaceContext.hpp"
 
 using namespace SP;
 
@@ -27,6 +29,34 @@ private:
     }
     auto shutdown() -> void override {}
     auto notify(std::string const&) -> void override {}
+};
+
+class SinkProbe final : public PathSpaceBase {
+public:
+    using PathSpaceBase::adoptContextAndPrefix;
+    using PathSpaceBase::getNotificationSink;
+
+    int         notifyCount = 0;
+    std::string lastNotification;
+
+private:
+    auto in(Iterator const&, InputData const&) -> InsertReturn override { return {}; }
+    auto out(Iterator const&, InputMetadata const&, Out const&, void*) -> std::optional<Error> override {
+        return std::nullopt;
+    }
+    auto shutdown() -> void override {}
+    auto notify(std::string const& notificationPath) -> void override {
+        ++notifyCount;
+        lastNotification = notificationPath;
+    }
+};
+
+struct RecordingSink final : NotificationSink {
+    void notify(const std::string& notificationPath) override {
+        lastNotification = notificationPath;
+    }
+
+    std::string lastNotification;
 };
 
 } // namespace
@@ -60,6 +90,56 @@ TEST_CASE("ValueHandle defaults are empty and report missing node") {
     auto snapshot = handle.snapshot();
     CHECK_FALSE(snapshot.has_value());
     CHECK(snapshot.error().code == Error::Code::UnknownError);
+}
+
+TEST_CASE("PathSpaceBase creates default notification sink without context") {
+    SinkProbe probe;
+
+    auto weak = probe.getNotificationSink();
+    auto sink = weak.lock();
+    REQUIRE(sink);
+
+    sink->notify("/ping");
+    CHECK(probe.notifyCount == 1);
+    CHECK(probe.lastNotification == "/ping");
+
+    auto weakAgain = probe.getNotificationSink();
+    CHECK(weakAgain.lock() == sink);
+}
+
+TEST_CASE("PathSpaceBase installs default sink into shared context when needed") {
+    SinkProbe probe;
+
+    auto ctx = std::make_shared<PathSpaceContext>();
+    probe.adoptContextAndPrefix(ctx, "/root");
+
+    auto weak = probe.getNotificationSink();
+    auto sink = weak.lock();
+    REQUIRE(sink);
+
+    sink->notify("/ctx");
+    CHECK(probe.notifyCount == 1);
+    CHECK(probe.lastNotification == "/ctx");
+
+    auto weakAgain = probe.getNotificationSink();
+    CHECK(weakAgain.lock() == sink);
+}
+
+TEST_CASE("PathSpaceBase reuses existing context sink") {
+    SinkProbe probe;
+    auto ctx = std::make_shared<PathSpaceContext>();
+    auto recorder = std::make_shared<RecordingSink>();
+    ctx->setSink(recorder);
+    probe.adoptContextAndPrefix(ctx, "/root");
+
+    auto weak = probe.getNotificationSink();
+    auto sink = weak.lock();
+    REQUIRE(sink);
+    CHECK(sink.get() == recorder.get());
+
+    sink->notify("/direct");
+    CHECK(recorder->lastNotification == "/direct");
+    CHECK(probe.notifyCount == 0);
 }
 
 TEST_CASE("PathSpaceBase visit rejects empty visitors") {
