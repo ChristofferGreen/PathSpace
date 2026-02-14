@@ -29,4 +29,41 @@ TEST_CASE("getOrCreateChild registers and returns child") {
     Node const& constNode = node;
     CHECK(constNode.getChild("alpha") == &child);
 }
+
+TEST_CASE("Node child management and payload helpers") {
+    Node node;
+    CHECK(node.isLeaf());
+    CHECK_FALSE(node.hasChildren());
+    CHECK_FALSE(node.hasData());
+    CHECK(node.getChild("missing") == nullptr);
+
+    auto& child = node.getOrCreateChild("alpha");
+    CHECK(&child != nullptr);
+    CHECK(node.hasChildren());
+    CHECK_FALSE(node.isLeaf());
+    CHECK(node.getChild("alpha") == &child);
+
+    std::vector<std::string> names;
+    node.forEachChild([&](std::string_view name, Node&) { names.emplace_back(name); });
+    REQUIRE(names.size() == 1);
+    CHECK(names.front() == "alpha");
+
+    CHECK(node.eraseChild("missing") == false);
+    CHECK(node.eraseChild("alpha"));
+    CHECK_FALSE(node.hasChildren());
+
+    node.data = std::make_unique<NodeData>();
+    CHECK(node.hasData());
+    node.clearLocal();
+    CHECK_FALSE(node.hasData());
+
+    node.getOrCreateChild("beta");
+    node.data = std::make_unique<NodeData>();
+    CHECK(node.hasChildren());
+    CHECK(node.hasData());
+    node.clearRecursive();
+    CHECK_FALSE(node.hasChildren());
+    CHECK_FALSE(node.hasData());
+    CHECK(node.isLeaf());
+}
 }
