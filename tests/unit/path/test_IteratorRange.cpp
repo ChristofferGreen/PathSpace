@@ -67,4 +67,11 @@ TEST_CASE("range constructor produces end iterator when only separators remain")
     CHECK(iter.currentComponent().empty());
 }
 
+TEST_CASE("range constructor handles empty input") {
+    auto iter = IteratorTestAccess::fromRange(std::string{});
+    CHECK(iter.isAtEnd());
+    CHECK(iter.currentComponent().empty());
+    CHECK(iter.toStringView().empty());
+}
+
 TEST_SUITE_END();
