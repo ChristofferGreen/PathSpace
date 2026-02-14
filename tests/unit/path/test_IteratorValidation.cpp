@@ -95,4 +95,18 @@ TEST_CASE("Iterator constructed from iterator range canonicalizes slashes and eq
     Iterator unequalB{"/b"};
     CHECK_FALSE(unequalA == unequalB);
 }
+
+TEST_CASE("Iterator move assignment preserves component offsets") {
+    Iterator source{"/alpha/beta"};
+    Iterator target{"/other"};
+
+    target = std::move(source);
+
+    CHECK(target.currentComponent() == "alpha");
+    ++target;
+    CHECK(target.currentComponent() == "beta");
+    CHECK(target.isAtFinalComponent());
+    ++target;
+    CHECK(target.isAtEnd());
+}
 }
