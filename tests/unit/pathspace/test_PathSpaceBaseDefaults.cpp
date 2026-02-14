@@ -46,6 +46,26 @@ TEST_CASE("PathSpaceBase defaults return empty children and no futures") {
     CHECK(constStub.exposeRootConst() == nullptr);
 }
 
+TEST_CASE("PathSpaceBase visit rejects empty visitors") {
+    BaseStub stub;
+
+    VisitOptions options;
+    auto result = stub.visit(PathVisitor{}, options);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::InvalidType);
+}
+
+TEST_CASE("PathSpaceBase visit reports NotSupported when no root node exists") {
+    BaseStub stub;
+
+    VisitOptions options;
+    auto result = stub.visit([](PathEntry const&, ValueHandle&) {
+        return VisitControl::Continue;
+    }, options);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::NotSupported);
+}
+
 TEST_CASE("PathSpaceBase read rejects invalid concrete child paths") {
     BaseStub stub;
 
