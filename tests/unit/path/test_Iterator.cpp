@@ -140,6 +140,21 @@ TEST_CASE("Path Iterator and Utilities") {
         }
     }
 
+    SUBCASE("Iterator equality compares path and offset") {
+        Iterator a("/alpha/beta");
+        Iterator b("/alpha/beta");
+        CHECK(a == b);
+
+        ++b;
+        CHECK_FALSE(a == b);
+
+        Iterator c("/alpha/beta");
+        ++c;
+        Iterator d("/delta/beta");
+        ++d;
+        CHECK_FALSE(c == d);
+    }
+
     SUBCASE("Path Utilities") {
         SUBCASE("match_names Basic") {
             CHECK(match_names("test", "test"));
