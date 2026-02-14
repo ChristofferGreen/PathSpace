@@ -135,3 +135,12 @@ TEST_CASE("converter registration overwrites existing entries") {
     auto typeName = detail::DescribeRegisteredType(std::type_index(typeid(Widget)));
     CHECK(typeName == std::string("Second"));
 }
+
+TEST_CASE("PathSpaceJsonValueReader pop forwards to popImpl") {
+    SimpleReader<Widget> reader{Widget{33}};
+    Widget out{0};
+
+    auto err = reader.pop(out);
+    CHECK_FALSE(err.has_value());
+    CHECK(out.value == 33);
+}
