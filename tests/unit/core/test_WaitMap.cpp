@@ -1,4 +1,6 @@
+#define private public
 #include "core/WaitMap.hpp"
+#undef private
 
 #include "third_party/doctest.h"
 
@@ -12,6 +14,44 @@ using namespace SP;
 using namespace std::chrono_literals;
 
 TEST_SUITE("core.waitmap") {
+TEST_CASE("Guard initializes version and counts lazily") {
+    WaitMap waitMap;
+    WaitMap::Guard guard(waitMap, "/lazy", 0, false);
+
+    CHECK_FALSE(guard.counted);
+    CHECK(guard.versionInitialized);
+
+    guard.versionInitialized = false;
+    auto status = guard.wait_until(std::chrono::system_clock::now() + 5ms);
+    CHECK(status == std::cv_status::timeout);
+    CHECK(guard.versionInitialized);
+    CHECK(guard.counted);
+}
+
+TEST_CASE("notify waits for registry lock when busy") {
+    WaitMap waitMap;
+    auto    guard = waitMap.wait("/busy");
+
+    std::atomic<bool> started{false};
+    std::atomic<bool> finished{false};
+    std::unique_lock<std::timed_mutex> hold(waitMap.registryMutex);
+
+    std::thread notifier([&] {
+        started.store(true, std::memory_order_release);
+        waitMap.notify("/busy");
+        finished.store(true, std::memory_order_release);
+    });
+
+    while (!started.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+    std::this_thread::sleep_for(150ms);
+    hold.unlock();
+
+    notifier.join();
+    CHECK(finished.load(std::memory_order_acquire));
+}
+
 TEST_CASE("debug_log no-ops when disabled") {
     testing::waitMapDebugOverride().store(false, std::memory_order_relaxed);
     WaitMap::debug_log("noop", "/debug/noop", std::chrono::milliseconds{0}, std::chrono::milliseconds{0}, 0);
