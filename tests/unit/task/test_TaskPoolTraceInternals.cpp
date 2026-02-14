@@ -248,6 +248,25 @@ TEST_CASE("traceSpan uses current thread when no thread id is provided") {
     CHECK(it->path == "/path");
 }
 
+TEST_CASE("recordTraceSpan captures queue wait metadata") {
+    TaskPool pool(1);
+    pool.enableTrace("trace_unused.json");
+
+    pool.recordTraceSpan("QueueSpan", "/queue", "queue", 10, 5, 321, 7);
+
+    std::lock_guard<std::mutex> lock(pool.traceMutex);
+    auto it = std::find_if(pool.traceEvents.begin(), pool.traceEvents.end(),
+                           [](TaskPool::TaskTraceEvent const& e) { return e.name == "QueueSpan"; });
+    REQUIRE(it != pool.traceEvents.end());
+    CHECK(it->threadId == 321);
+    CHECK(it->startUs == 10);
+    CHECK(it->durUs == 5);
+    CHECK(it->path == "/queue");
+    CHECK(it->category == "queue");
+    CHECK(it->hasQueueWait);
+    CHECK(it->queueWaitUs == 7);
+}
+
 TEST_CASE("recordTraceAsync captures async metadata") {
     TaskPool pool(1);
     pool.enableTrace("trace_unused.json");
