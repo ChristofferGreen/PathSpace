@@ -88,6 +88,16 @@ TEST_CASE("predicate wait_until returns true when predicate already satisfied") 
     CHECK(result);
 }
 
+TEST_CASE("wait and notify are no-ops when no waiters exist") {
+    SP::WatchRegistry registry;
+
+    CHECK_FALSE(registry.hasWaiters());
+    registry.notify("/missing");
+    registry.notifyAll();
+    registry.clear();
+    CHECK_FALSE(registry.hasWaiters());
+}
+
 TEST_CASE("notify treats trailing slashes as the same path") {
     SP::WatchRegistry registry;
     std::atomic<bool> ready{false};
