@@ -5,11 +5,14 @@
 #include "PathSpace.hpp"
 #include "core/NodeData.hpp"
 #include "history/UndoHistoryUtils.hpp"
+#include "history/UndoJournalPersistence.hpp"
 #include "third_party/doctest.h"
 #include "type/InputData.hpp"
 #include "type/InputMetadataT.hpp"
 
+#include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -231,6 +234,89 @@ TEST_CASE("UndoableSpace readHistoryStatsValue reports missing last operation") 
                                            &opType);
     REQUIRE(err.has_value());
     CHECK(err->code == Error::Code::NoObjectFound);
+}
+
+TEST_CASE("UndoableSpace persistence setup validates tokens") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    UndoJournalRootState state;
+    state.persistenceEnabled = true;
+    state.rootPath = "/doc";
+
+    state.options.persistenceNamespace = "bad/ns";
+    auto badNamespace = space.ensureJournalPersistenceSetup(state);
+    CHECK_FALSE(badNamespace.has_value());
+    CHECK(badNamespace.error().code == Error::Code::InvalidPermissions);
+
+    state.options.persistenceNamespace = "";
+    state.encodedRoot = "bad/ns";
+    auto badRoot = space.ensureJournalPersistenceSetup(state);
+    CHECK_FALSE(badRoot.has_value());
+    CHECK(badRoot.error().code == Error::Code::InvalidPermissions);
+}
+
+TEST_CASE("UndoableSpace loadJournalPersistence resets on missing file") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    UndoJournalRootState state;
+    state.persistenceEnabled = true;
+    state.rootPath = "/doc";
+    state.components = {"doc"};
+    auto suffix = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    state.journalPath = std::filesystem::temp_directory_path()
+                        / ("missing_journal_" + suffix + ".log");
+    state.liveBytes = 123;
+    state.telemetry.trimmedEntries = 7;
+    state.telemetry.trimmedBytes = 8;
+    state.telemetry.trimOperations = 2;
+
+    auto result = space.loadJournalPersistence(state);
+    CHECK(result.has_value());
+    CHECK(state.liveBytes == 0);
+    CHECK(state.nextSequence == 0);
+    CHECK(state.telemetry.trimmedEntries == 0);
+    CHECK(state.telemetry.trimmedBytes == 0);
+    CHECK(state.telemetry.trimOperations == 0);
+    CHECK(state.telemetry.diskEntries == 0);
+}
+
+TEST_CASE("UndoableSpace loadJournalPersistence replays valid entries") {
+    using namespace SP::History::UndoJournal;
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    UndoJournalRootState state;
+    state.persistenceEnabled = true;
+    state.rootPath = "/doc";
+    state.components = {"doc"};
+
+    auto suffix = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    auto dir = std::filesystem::temp_directory_path() / ("journal_bad_root_" + suffix);
+    std::filesystem::create_directories(dir);
+    state.journalPath = dir / "journal.log";
+
+    JournalEntry entry;
+    entry.path = "/doc/value";
+
+    {
+        JournalFileWriter writer(state.journalPath);
+        REQUIRE(writer.open(false).has_value());
+        REQUIRE(writer.append(entry).has_value());
+        REQUIRE(writer.flush().has_value());
+    }
+
+    auto result = space.loadJournalPersistence(state);
+    CHECK(result.has_value());
+    CHECK(state.journal.size() == 1);
+    CHECK(state.journal.entryAt(0).path == "/doc/value");
+}
+
+TEST_CASE("UndoableSpace updateJournalDiskTelemetry zeros when disabled") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    UndoJournalRootState state;
+    state.persistenceEnabled = false;
+    state.telemetry.diskBytes = 5;
+    state.telemetry.diskEntries = 4;
+
+    space.updateJournalDiskTelemetry(state);
+    CHECK(state.telemetry.diskBytes == 0);
+    CHECK(state.telemetry.diskEntries == 0);
 }
 
 TEST_SUITE_END();
