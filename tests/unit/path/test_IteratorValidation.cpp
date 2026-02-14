@@ -50,6 +50,12 @@ TEST_CASE("Iterator basic validation surfaces expected errors") {
 
     Iterator invalidNone{"/bad//path"};
     CHECK_FALSE(invalidNone.validate(ValidationLevel::None).has_value());
+
+    Iterator root{"/"};
+    CHECK_FALSE(root.validate(ValidationLevel::Basic).has_value());
+    auto rootFull = root.validate(ValidationLevel::Full);
+    REQUIRE(rootFull.has_value());
+    CHECK(rootFull->message == std::optional<std::string>{"Empty path"});
 }
 
 TEST_CASE("Iterator iteration utilities expose start and end slices") {
