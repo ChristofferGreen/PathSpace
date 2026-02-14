@@ -120,6 +120,14 @@ TEST_CASE("Task::Create rejects non-callable inputs") {
     CHECK(taskWithSpace == nullptr);
 }
 
+TEST_CASE("Task::Create without PathSpaceBase keeps space null") {
+    auto task = Task::Create([](Task&, bool) {});
+    REQUIRE(task);
+    CHECK(task->space == nullptr);
+    CHECK(task->notificationPath.empty());
+    CHECK(static_cast<bool>(task->function));
+}
+
 TEST_CASE("Task::resultCopy waits until completion") {
     auto task = std::make_shared<Task>();
     task->resultCopyFn = [](std::any const& from, void* const to) {
