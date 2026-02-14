@@ -64,6 +64,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/history/test_UndoSavefileCodec.cpp
   unit/history/test_UndoableSpace.cpp
   unit/history/test_UndoableSpaceCoverage.cpp
+  unit/history/test_UndoableSpaceHistoryCoverage.cpp
   unit/pathspace/test_PathSpaceJsonExporter.cpp
   unit/pathspace/test_PathSpaceJsonConverters.cpp
   unit/pathspace/test_PathSpaceHeader.cpp
