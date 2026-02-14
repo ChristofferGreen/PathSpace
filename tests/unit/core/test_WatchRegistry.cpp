@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <thread>
+#include <atomic>
 
 using namespace std::chrono_literals;
 
@@ -39,6 +40,52 @@ TEST_CASE("clear resets registered waiters") {
 
     registry.clear();
     CHECK_FALSE(registry.hasWaiters());
+}
+
+TEST_CASE("notifyAll wakes root and nested waiters") {
+    SP::WatchRegistry registry;
+    std::atomic<bool> go{false};
+    std::atomic<bool> rootReady{false};
+    std::atomic<bool> nestedReady{false};
+    std::atomic<bool> rootWoke{false};
+    std::atomic<bool> nestedWoke{false};
+
+    auto waiter = [&](std::string path, std::atomic<bool>& ready, std::atomic<bool>& woke) {
+        auto guard = registry.wait(path);
+        ready.store(true, std::memory_order_release);
+        auto deadline = std::chrono::system_clock::now() + 200ms;
+        auto signaled = guard.wait_until(deadline, [&] { return go.load(std::memory_order_acquire); });
+        woke.store(signaled, std::memory_order_release);
+    };
+
+    std::thread rootThread(waiter, "/", std::ref(rootReady), std::ref(rootWoke));
+    std::thread nestedThread(waiter, "/a/b", std::ref(nestedReady), std::ref(nestedWoke));
+
+    while (!rootReady.load(std::memory_order_acquire)
+           || !nestedReady.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+
+    go.store(true, std::memory_order_release);
+    registry.notifyAll();
+
+    rootThread.join();
+    nestedThread.join();
+
+    CHECK(rootWoke.load(std::memory_order_acquire));
+    CHECK(nestedWoke.load(std::memory_order_acquire));
+    CHECK_FALSE(registry.hasWaiters());
+}
+
+TEST_CASE("predicate wait_until returns true when predicate already satisfied") {
+    SP::WatchRegistry registry;
+    auto guard = registry.wait("/predicate");
+    bool ready = true;
+
+    auto result = guard.wait_until(std::chrono::system_clock::now() + 1ms,
+                                   [&] { return ready; });
+
+    CHECK(result);
 }
 
 TEST_SUITE_END();
