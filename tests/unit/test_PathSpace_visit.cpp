@@ -22,6 +22,16 @@ auto collectPaths(PathSpace& space, VisitOptions options = {}) -> std::vector<st
     return paths;
 }
 
+class BrokenVisitSpace final : public PathSpaceBase {
+public:
+    auto in(Iterator const&, InputData const&) -> InsertReturn override { return {}; }
+    auto out(Iterator const&, InputMetadata const&, Out const&, void*) -> std::optional<Error> override {
+        return Error{Error::Code::NotSupported, "BrokenVisitSpace does not support out"};
+    }
+    auto shutdown() -> void override {}
+    auto notify(std::string const&) -> void override {}
+};
+
 } // namespace
 
 TEST_SUITE_BEGIN("pathspace.visit");
@@ -49,6 +59,33 @@ TEST_CASE("PathSpace visit traverses nodes and reads values") {
     CHECK(std::find(visited.begin(), visited.end(), "/alpha") != visited.end());
     CHECK(std::find(visited.begin(), visited.end(), "/alpha/beta") != visited.end());
     CHECK(std::find(visited.begin(), visited.end(), "/gamma") != visited.end());
+}
+
+TEST_CASE("ValueHandle reports empty snapshot and queue depth for empty nodes") {
+    PathSpace space;
+
+    VisitOptions options;
+    options.includeValues = true;
+
+    bool sawRoot = false;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/") {
+                sawRoot = true;
+                CHECK(handle.queueDepth() == 0);
+                auto snapshot = handle.snapshot();
+                REQUIRE(snapshot);
+                CHECK(snapshot->queueDepth == 0);
+                CHECK(snapshot->types.empty());
+                CHECK_FALSE(snapshot->hasExecutionPayload);
+                CHECK_FALSE(snapshot->hasSerializedPayload);
+                CHECK(snapshot->rawBufferBytes == 0);
+            }
+            return VisitControl::Continue;
+        },
+        options);
+    CHECK(result);
+    CHECK(sawRoot);
 }
 
 TEST_CASE("ValueHandle can read POD fast-path payloads during visit") {
@@ -81,6 +118,29 @@ TEST_CASE("ValueHandle can read POD fast-path payloads during visit") {
     CHECK(*second == 20);
 }
 
+TEST_CASE("ValueHandle reports type mismatch for POD payload reads") {
+    PathSpace space;
+    REQUIRE(space.insert("/pod", 10).errors.empty());
+
+    VisitOptions options;
+    options.includeValues = true;
+
+    bool sawPod = false;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/pod") {
+                sawPod = true;
+                auto bad = handle.read<float>();
+                CHECK_FALSE(bad.has_value());
+                CHECK(bad.error().code == Error::Code::TypeMismatch);
+            }
+            return VisitControl::Continue;
+        },
+        options);
+    CHECK(result);
+    CHECK(sawPod);
+}
+
 TEST_CASE("PathSpace visit respects root and depth options") {
     PathSpace space;
     REQUIRE(space.insert("/alpha/beta/value", 2).nbrValuesInserted == 1);
@@ -96,6 +156,24 @@ TEST_CASE("PathSpace visit respects root and depth options") {
     options.maxDepth = 0;
     paths             = collectPaths(space, options);
     CHECK(paths == std::vector<std::string>{"/alpha"});
+}
+
+TEST_CASE("PathSpace visit surfaces nested visit errors") {
+    PathSpace space;
+
+    auto broken = std::unique_ptr<PathSpaceBase>(std::make_unique<BrokenVisitSpace>().release());
+    REQUIRE(space.insert("/mount", std::move(broken)).nbrSpacesInserted == 1);
+
+    VisitOptions options;
+    options.includeNestedSpaces = true;
+
+    auto result = space.visit(
+        [&](PathEntry const&, ValueHandle&) {
+            return VisitControl::Continue;
+        },
+        options);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::NotSupported);
 }
 
 TEST_CASE("PathSpace visit enforces child limit and disables values when requested") {

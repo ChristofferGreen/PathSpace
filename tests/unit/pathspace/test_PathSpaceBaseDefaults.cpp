@@ -46,6 +46,22 @@ TEST_CASE("PathSpaceBase defaults return empty children and no futures") {
     CHECK(constStub.exposeRootConst() == nullptr);
 }
 
+TEST_CASE("ValueHandle defaults are empty and report missing node") {
+    ValueHandle handle{};
+    CHECK_FALSE(handle.valid());
+    CHECK_FALSE(handle.hasValues());
+    CHECK(handle.queueDepth() == 0);
+
+    auto copy = handle;
+    CHECK_FALSE(copy.valid());
+    auto moved = std::move(copy);
+    CHECK_FALSE(moved.valid());
+
+    auto snapshot = handle.snapshot();
+    CHECK_FALSE(snapshot.has_value());
+    CHECK(snapshot.error().code == Error::Code::UnknownError);
+}
+
 TEST_CASE("PathSpaceBase visit rejects empty visitors") {
     BaseStub stub;
 

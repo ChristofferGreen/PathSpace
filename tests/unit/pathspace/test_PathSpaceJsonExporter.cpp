@@ -59,6 +59,25 @@ auto findNode(Json const& doc, std::string const& rootPath, std::string const& p
     return node;
 }
 
+class IntValueReader final : public detail::PathSpaceJsonValueReader {
+public:
+    explicit IntValueReader(int valueIn) : value(valueIn) {}
+
+    int calls = 0;
+
+private:
+    auto popImpl(void* destination, InputMetadata const& metadata) -> std::optional<Error> override {
+        ++calls;
+        if (metadata.typeInfo != &typeid(int)) {
+            return Error{Error::Code::TypeMismatch, "Expected int metadata"};
+        }
+        *static_cast<int*>(destination) = value;
+        return std::nullopt;
+    }
+
+    int value = 0;
+};
+
 class BrokenVisitSpace final : public PathSpaceBase {
 public:
     auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void> override {
@@ -113,6 +132,17 @@ TEST_CASE("PathSpace JSON exporter serializes primitive values (minimal)") {
 
     REQUIRE(nameNode.at("values").size() == 1);
     CHECK(nameNode.at("values")[0].at("value") == "Ada");
+}
+
+TEST_CASE("PathSpaceJsonValueReader pop forwards metadata and values") {
+    IntValueReader reader{12};
+
+    int out = 0;
+    auto popFn = &detail::PathSpaceJsonValueReader::pop<int>;
+    auto err = (reader.*popFn)(out);
+    CHECK_FALSE(err.has_value());
+    CHECK(out == 12);
+    CHECK(reader.calls == 1);
 }
 
 TEST_CASE("JSON::Export forwards to PathSpaceJsonExporter") {
