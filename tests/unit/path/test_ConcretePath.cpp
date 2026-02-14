@@ -99,6 +99,15 @@ TEST_CASE("components extracts concrete names") {
     CHECK((*missingComponents)[1] == "panel");
 }
 
+TEST_CASE("components trims trailing slashes") {
+    ConcretePathStringView trailing{"/widgets/panel/"};
+    auto components = trailing.components();
+    REQUIRE(components.has_value());
+    REQUIRE(components->size() == 2);
+    CHECK((*components)[0] == "widgets");
+    CHECK((*components)[1] == "panel");
+}
+
 TEST_CASE("canonicalized allows indexed components and empty paths") {
     ConcretePathStringView empty{""};
     auto emptyNormalized = empty.canonicalized();
