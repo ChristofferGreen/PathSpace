@@ -128,6 +128,23 @@ TEST_CASE("trace helpers are no-ops when tracing is disabled") {
     CHECK(pool.traceEvents.empty());
 }
 
+TEST_CASE("traceCounter records counter events when tracing is enabled") {
+    TaskPool pool(1);
+    pool.enableTrace("trace_unused.json");
+
+    pool.traceCounter("CounterA", 3.5);
+
+    std::lock_guard<std::mutex> lock(pool.traceMutex);
+    auto it = std::find_if(pool.traceEvents.begin(), pool.traceEvents.end(),
+                           [](TaskPool::TaskTraceEvent const& e) {
+                               return e.phase == 'C' && e.name == "CounterA";
+                           });
+    REQUIRE(it != pool.traceEvents.end());
+    CHECK(it->hasCounter);
+    CHECK(it->counterValue == doctest::Approx(3.5));
+    CHECK(it->threadId != 0);
+}
+
 TEST_CASE("traceNowUs returns zero when tracing is disabled") {
     TaskPool pool(1);
     CHECK(pool.traceNowUs() == 0);
