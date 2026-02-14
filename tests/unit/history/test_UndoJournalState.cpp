@@ -34,6 +34,19 @@ auto makeSizedEntry(int seq, std::size_t payloadBytes) -> JournalEntry {
     return entry;
 }
 
+auto entryBytes(JournalEntry const& entry) -> std::size_t {
+    std::size_t bytes = sizeof(OperationKind)
+                        + sizeof(entry.timestampMs)
+                        + sizeof(entry.monotonicNs)
+                        + sizeof(entry.sequence)
+                        + sizeof(entry.barrier);
+    bytes += entry.path.size();
+    bytes += sizeof(std::uint32_t) + entry.tag.size();
+    bytes += entry.value.bytes.size();
+    bytes += entry.inverseValue.bytes.size();
+    return bytes;
+}
+
 } // namespace
 
 TEST_SUITE("history.journal.state") {
@@ -234,5 +247,42 @@ TEST_SUITE("history.journal.state") {
         auto redo = restored.redo();
         REQUIRE(redo.has_value());
         CHECK(redo->get().sequence == 3);
+    }
+
+    TEST_CASE("stats total bytes include tags and inverse payloads") {
+        JournalState state;
+        JournalEntry entry = makeEntry(1, "tagged");
+        entry.tag = "meta";
+        entry.value.present = true;
+        entry.value.bytes = {std::byte{0x01}, std::byte{0x02}, std::byte{0x03}};
+        entry.inverseValue.present = true;
+        entry.inverseValue.bytes = {std::byte{0x0A}};
+
+        state.append(entry);
+
+        auto stats = state.stats();
+        CHECK(stats.totalBytes == entryBytes(entry));
+        CHECK(stats.undoBytes == stats.totalBytes);
+        CHECK(stats.redoBytes == 0);
+    }
+
+    TEST_CASE("append after undo drops redo bytes from totals") {
+        JournalState state;
+        auto first = makeSizedEntry(1, 4);
+        auto second = makeSizedEntry(2, 12);
+
+        state.append(first);
+        state.append(second);
+        auto undone = state.undo();
+        REQUIRE(undone.has_value());
+
+        auto third = makeSizedEntry(3, 8);
+        state.append(third);
+
+        auto stats = state.stats();
+        CHECK(state.size() == 2);
+        CHECK(stats.totalBytes == entryBytes(first) + entryBytes(third));
+        CHECK(stats.undoCount == 2);
+        CHECK(stats.redoCount == 0);
     }
 }
