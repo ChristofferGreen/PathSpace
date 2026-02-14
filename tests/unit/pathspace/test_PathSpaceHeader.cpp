@@ -66,4 +66,17 @@ TEST_CASE("PathEntry defaults are well-defined") {
     CHECK(entry.approxChildCount == 0);
     CHECK(entry.frontCategory == DataCategory::None);
 }
+
+TEST_CASE("PathSpaceJsonOptions defaults mirror expected visit configuration") {
+    PathSpaceJsonOptions options{};
+
+    CHECK(options.visit.root == "/");
+    CHECK(options.visit.maxDepth == VisitOptions::UnlimitedDepth);
+    CHECK(options.visit.maxChildren == VisitOptions::UnlimitedChildren);
+    CHECK_FALSE(options.visit.includeNestedSpaces);
+    CHECK(options.visit.includeValues);
+
+    CHECK(options.mode == PathSpaceJsonOptions::Mode::Minimal);
+    CHECK(options.dumpIndent == 2);
+}
 }
