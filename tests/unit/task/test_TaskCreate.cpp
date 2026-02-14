@@ -157,6 +157,22 @@ TEST_CASE("Task::resultCopy waits until completion") {
     CHECK(out == 7);
 }
 
+TEST_CASE("Task state helpers expose failed transitions") {
+    auto task = Task::Create([](Task&, bool) {});
+    REQUIRE(task);
+    CHECK(task->category() == ExecutionCategory::Unknown);
+    CHECK_FALSE(task->hasStarted());
+    CHECK_FALSE(task->isCompleted());
+
+    CHECK(task->tryStart());
+    CHECK(task->hasStarted());
+    CHECK(task->transitionToRunning());
+
+    task->markFailed();
+    CHECK_FALSE(task->isCompleted());
+    CHECK(task->state.isFailed());
+}
+
 TEST_CASE("Executor shared_ptr submit forwards to weak overload") {
     RecordingExecutor exec;
     auto task = Task::Create([](Task&, bool) {});
