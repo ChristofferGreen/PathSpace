@@ -98,6 +98,16 @@ TEST_CASE("GlobName handles escaped mismatch and star skips") {
     CHECK_FALSE(skipSuper);
 }
 
+TEST_CASE("GlobName rejects trailing escape and empty classes") {
+    auto [escapeMatch, escapeSuper] = GlobName{"foo\\"}.match(std::string_view{"foo"});
+    CHECK_FALSE(escapeMatch);
+    CHECK_FALSE(escapeSuper);
+
+    auto [emptyClassMatch, emptyClassSuper] = GlobName{"[]"} .match(std::string_view{"a"});
+    CHECK_FALSE(emptyClassMatch);
+    CHECK_FALSE(emptyClassSuper);
+}
+
 TEST_CASE("GlobName matches ConcreteName inputs") {
     ConcreteName name{"test"};
     auto [match, super] = GlobName{"t?st"}.match(name);
