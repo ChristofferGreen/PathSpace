@@ -4,8 +4,10 @@
 #include "path/GlobPathIterator.hpp"
 #include "path/ConcreteName.hpp"
 #include "path/GlobName.hpp"
+#define protected public
 #include "layer/PathView.hpp"
 #include "PathSpace.hpp"
+#undef protected
 #include "type/TypeMetadataRegistry.hpp"
 #include "core/PathSpaceContext.hpp"
 
@@ -206,6 +208,14 @@ TEST_CASE("PathView handles missing backing space") {
     auto outErr = view.out(Iterator{"/any"}, InputMetadataT<int>{}, Out{}, &outVal);
     CHECK(outErr.has_value());
 
+    auto visitResult = view.visit(
+        [](PathEntry const&, ValueHandle&) { return VisitControl::Continue; },
+        {});
+    CHECK_FALSE(visitResult.has_value());
+    CHECK(visitResult.error().code == Error::Code::InvalidPermissions);
+
+    CHECK(view.getRootNode() == nullptr);
+
     // Should be safe no-ops when space is absent.
     view.notify("/any");
     view.shutdown();
@@ -352,6 +362,8 @@ TEST_CASE("PathView shutdown forwards when backing is present") {
 
     view.shutdown();
     CHECK(backing->shutdowns == 1);
+
+    CHECK(view.getRootNode() == backing->getRootNode());
 }
 
 TEST_CASE("GlobPath supermatch and length mismatches") {

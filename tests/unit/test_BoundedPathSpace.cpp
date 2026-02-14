@@ -1,7 +1,10 @@
 #include "third_party/doctest.h"
 
+#define protected public
 #include <pathspace/layer/BoundedPathSpace.hpp>
 #include <pathspace/PathSpace.hpp>
+#undef protected
+
 #include <pathspace/core/Node.hpp>
 #include <pathspace/core/PathSpaceContext.hpp>
 
@@ -52,6 +55,7 @@ struct RecordingPathSpace : PathSpace {
     std::shared_ptr<PathSpaceContext>        adoptedContext;
     std::mutex                               mutex_;
 };
+
 } // namespace
 
 TEST_SUITE_BEGIN("pathspace.bounded");
@@ -171,6 +175,30 @@ TEST_CASE("BoundedPathSpace replaceExistingPayload resets counts and maxItems fl
         CHECK(popped->payload == 5);
         CHECK_FALSE(backing->take<TestEvent>("/queue").has_value());
     }
+}
+
+TEST_CASE("BoundedPathSpace forwards visit and exposes backing root node") {
+    auto backing = std::make_shared<PathSpace>();
+    BoundedPathSpace bounded{backing, 2};
+
+    backing->insert("/alpha", 7);
+
+    int visited = 0;
+    VisitOptions opts;
+    opts.includeValues = true;
+    auto visitResult = bounded.visit(
+        [&](PathEntry const&, ValueHandle&) {
+            ++visited;
+            return VisitControl::Continue;
+        },
+        opts);
+    REQUIRE(visitResult.has_value());
+    CHECK(visited >= 1);
+
+    CHECK(bounded.getRootNode() == backing->getRootNode());
+
+    BoundedPathSpace missing{nullptr, 1};
+    CHECK(missing.getRootNode() == nullptr);
 }
 
 TEST_CASE("BoundedPathSpace surfaces backing errors and forwards control helpers") {

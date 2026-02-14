@@ -126,6 +126,27 @@ TEST_CASE("ConcretePath equality reports invalid paths as unequal") {
     CHECK_FALSE(invalid == valid);
 }
 
+TEST_CASE("ConcretePath rejects malformed indexed components") {
+    ConcretePathStringView badSuffix{"/node[3]x/child"};
+    auto suffixResult = badSuffix.canonicalized();
+    REQUIRE_FALSE(suffixResult.has_value());
+    CHECK(suffixResult.error().code == Error::Code::InvalidPathSubcomponent);
+    CHECK(suffixResult.error().message == std::optional<std::string>{"Glob syntax is not allowed in concrete paths"});
+
+    ConcretePathStringView emptyIndex{"/node[]/child"};
+    auto emptyResult = emptyIndex.canonicalized();
+    REQUIRE_FALSE(emptyResult.has_value());
+    CHECK(emptyResult.error().code == Error::Code::InvalidPathSubcomponent);
+    CHECK(emptyResult.error().message == std::optional<std::string>{"Glob syntax is not allowed in concrete paths"});
+}
+
+TEST_CASE("ConcretePath equality returns false when component counts differ") {
+    ConcretePathStringView longer{"/alpha/beta"};
+    ConcretePathStringView shorter{"/alpha"};
+
+    CHECK_FALSE(longer == shorter);
+}
+
 TEST_CASE("isPrefixOf reports invalid lhs") {
     ConcretePathStringView invalid{"/bad/./path"};
     auto result = invalid.isPrefixOf(ConcretePathStringView{"/bad/path"});

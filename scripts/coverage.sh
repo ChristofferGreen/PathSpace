@@ -36,10 +36,16 @@ filter_args=(
   --exclude "${ROOT}/third_party"
 )
 
+gcovr_flags=()
+if [ -n "${GCOVR_FLAGS:-}" ]; then
+  # Split extra gcovr flags on whitespace when provided.
+  read -r -a gcovr_flags <<< "${GCOVR_FLAGS}"
+fi
+
 # Text summary to stdout
-python3 -m gcovr "${filter_args[@]}" "${GCOVR_FLAGS:-}" || exit 1
+python3 -m gcovr "${filter_args[@]}" "${gcovr_flags[@]}" || exit 1
 
 # JSON artifact for tooling
-python3 -m gcovr "${filter_args[@]}" --json -o "${BUILD}/gcovr.json" "${GCOVR_FLAGS:-}"
+python3 -m gcovr "${filter_args[@]}" --json -o "${BUILD}/gcovr.json" "${gcovr_flags[@]}"
 
 echo "Coverage JSON written to ${BUILD}/gcovr.json"

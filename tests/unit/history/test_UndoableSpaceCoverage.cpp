@@ -67,6 +67,19 @@ auto makeDocumentWithEntries(std::string const& root,
 
 TEST_SUITE_BEGIN("history.undoable.coverage");
 
+TEST_CASE("unsupported history records default fields") {
+    HistoryTelemetry::UnsupportedRecord telemetry{};
+    CHECK(telemetry.path.empty());
+    CHECK(telemetry.reason.empty());
+    CHECK(telemetry.occurrences == 0);
+
+    HistoryUnsupportedRecord stats{};
+    CHECK(stats.path.empty());
+    CHECK(stats.reason.empty());
+    CHECK(stats.occurrences == 0);
+    CHECK(stats.lastTimestampMs == 0);
+}
+
 TEST_CASE("exportHistorySavefile reports missing history root") {
     auto space = makeUndoableSpace();
     auto path  = tempFile("export_missing.bin");

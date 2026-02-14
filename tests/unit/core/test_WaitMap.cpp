@@ -91,6 +91,21 @@ TEST_CASE("clear waits for scoped guard destruction") {
     CHECK_FALSE(waitMap.hasWaiters());
 }
 
+TEST_CASE("predicate wait increments active waiter count on first wait") {
+    WaitMap waitMap;
+
+    WaitMap::Guard guard(waitMap, "/predicate", 0, false);
+    bool predicateCalled = false;
+    auto deadline = std::chrono::system_clock::now() + 50ms;
+    auto ok = guard.wait_until(deadline, [&] {
+        predicateCalled = true;
+        return true;
+    });
+
+    CHECK(predicateCalled);
+    CHECK(ok);
+}
+
 TEST_CASE("notify wakes both concrete and glob waiters") {
     WaitMap waitMap;
 
