@@ -285,4 +285,28 @@ TEST_SUITE("history.journal.state") {
         CHECK(stats.undoCount == 2);
         CHECK(stats.redoCount == 0);
     }
+
+    TEST_CASE("clear resets entries, cursor, and trim counters") {
+        JournalState::RetentionPolicy policy;
+        policy.maxEntries = 1;
+        JournalState state(policy);
+
+        state.append(makeEntry(1, "a"));
+        state.append(makeEntry(2, "b")); // triggers trim
+
+        REQUIRE(state.size() == 1);
+        CHECK(state.stats().trimmedEntries == 1);
+        CHECK(state.stats().undoCount == 1);
+
+        state.clear();
+
+        CHECK(state.size() == 0);
+        CHECK_FALSE(state.canUndo());
+        CHECK_FALSE(state.canRedo());
+
+        auto stats = state.stats();
+        CHECK(stats.trimmedEntries == 0);
+        CHECK(stats.trimmedBytes == 0);
+        CHECK(stats.totalBytes == 0);
+    }
 }
