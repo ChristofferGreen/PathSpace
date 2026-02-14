@@ -183,6 +183,17 @@ TEST_CASE("predicate wait increments active waiter count on first wait") {
     CHECK(ok);
 }
 
+TEST_CASE("predicate wait_until returns false on timeout") {
+    WaitMap waitMap;
+    WaitMap::Guard guard(waitMap, "/predicate/timeout", 0, false);
+
+    bool ready = false;
+    auto deadline = std::chrono::system_clock::now() + 5ms;
+    auto ok = guard.wait_until(deadline, [&] { return ready; });
+
+    CHECK_FALSE(ok);
+}
+
 TEST_CASE("Guard move constructor preserves wait entry and counts") {
     WaitMap waitMap;
     auto original = waitMap.wait("/move");
