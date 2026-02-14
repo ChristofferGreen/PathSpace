@@ -70,6 +70,26 @@ TEST_CASE("queue wait events include fallback labels and queue wait duration") {
     CHECK(span->hasQueueWait);
 }
 
+TEST_CASE("queue wait events prefer task labels over paths") {
+    TaskPool pool(1);
+    pool.enableTrace("trace_unused.json");
+
+    auto task = Task::Create([](Task const&, bool) {});
+    task->notificationPath = "/queue/path";
+    task->setLabel("LabelledTask");
+
+    pool.recordTraceQueueStart(task.get(), task->label, task->notificationPath);
+
+    std::lock_guard<std::mutex> lock(pool.traceMutex);
+    auto it = std::find_if(pool.traceEvents.begin(), pool.traceEvents.end(),
+                           [](TaskPool::TaskTraceEvent const& e) {
+                               return e.phase == 'b' && e.name == "Wait LabelledTask";
+                           });
+    REQUIRE(it != pool.traceEvents.end());
+    CHECK(it->path == "/queue/path");
+    CHECK(it->category == "queue");
+}
+
 TEST_CASE("traceThreadName avoids duplicate records for the same thread") {
     TaskPool pool(1);
     pool.enableTrace("trace_unused.json");
