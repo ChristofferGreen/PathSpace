@@ -280,6 +280,24 @@ TEST_CASE("PathSpace JSON exporter drops empty housekeeping nodes") {
     CHECK(children.contains("keep"));
 }
 
+TEST_CASE("PathSpace JSON exporter preserves non-empty housekeeping nodes") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/log/value", 1).errors.empty());
+
+    PathSpaceJsonOptions options;
+    options.visit.root = "/root";
+
+    auto doc      = dump(space, options);
+    auto rootNode = findNode(doc, "/root", "/root");
+    REQUIRE(rootNode.contains("children"));
+    auto const& children = rootNode.at("children");
+    CHECK(children.contains("log"));
+
+    auto logNode = findNode(doc, "/root", "/root/log");
+    CHECK(logNode.contains("children"));
+    CHECK(logNode.at("children").contains("value"));
+}
+
 TEST_CASE("PathSpace JSON exporter rejects invalid entry components") {
     PathSpace space;
     auto* root = PathSpaceTestHelper::root(space);
