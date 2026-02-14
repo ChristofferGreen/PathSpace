@@ -103,4 +103,18 @@ TEST_CASE("GlobPathIterator treats empty or slash-only paths as end") {
     auto end  = GlobPathIterator<std::string_view>{glob.end(), glob.end()};
     CHECK(iter == end);
 }
+
+TEST_CASE("GlobPathIterator handles relative paths without leading slashes") {
+    std::string glob = "alpha/beta";
+    auto iter = GlobPathIterator<std::string>{glob.begin(), glob.end()};
+    auto end  = GlobPathIterator<std::string>{glob.end(), glob.end()};
+
+    REQUIRE(iter != end);
+    CHECK((*iter).getName() == "alpha");
+    ++iter;
+    REQUIRE(iter != end);
+    CHECK((*iter).getName() == "beta");
+    ++iter;
+    CHECK(iter == end);
+}
 }
