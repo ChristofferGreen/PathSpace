@@ -96,13 +96,15 @@ public:
             return value;
         };
 
-        // Create an untyped Task that only executes the wrapped callable; no notifications.
-        self->legacy_ = Task::Create(std::move(wrapped));
+        // Create an untyped Task using the standard task creation path, but with no notifier.
+        self->legacy_ = Task::Create(std::weak_ptr<NotificationSink>{},
+                                     std::string_view{},
+                                     std::move(wrapped),
+                                     category);
         if (exec) {
             self->legacy_->setExecutor(exec);
         }
-        // Note: ExecutionCategory is recorded in the untyped Task created via Task::Create(notifier, ...).
-        // For the minimal factory we rely on explicit scheduling by the caller.
+        // For the minimal factory we still rely on explicit scheduling by the caller.
 
         return self;
     }

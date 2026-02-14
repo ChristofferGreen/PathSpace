@@ -80,6 +80,24 @@ TEST_CASE("TaskT notifies sink on completion") {
     }
 }
 
+TEST_CASE("TaskT Create without notifier executes and resolves future") {
+    TaskPool pool(1);
+
+    auto task = TaskT<int>::Create([] { return 11; }, ExecutionCategory::Immediate, &pool);
+    REQUIRE(task);
+    REQUIRE(task->legacy_task());
+    CHECK(task->legacy_task()->notificationPath.empty());
+    CHECK(task->legacy_task()->notifier.expired());
+
+    auto err = task->schedule(&pool);
+    CHECK_FALSE(err.has_value());
+
+    auto fut = task->future();
+    int out = 0;
+    CHECK(fut.get(out));
+    CHECK(out == 11);
+}
+
 TEST_CASE("TaskT schedule returns error when executor is missing") {
     auto sink = std::make_shared<RecordingSink>();
     auto task = TaskT<int>::Create(sink, "/taskt/error", [] { return 1; }, ExecutionCategory::Immediate, nullptr);
