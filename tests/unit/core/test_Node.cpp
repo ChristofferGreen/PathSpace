@@ -71,4 +71,15 @@ TEST_CASE("Node child management and payload helpers") {
     CHECK_FALSE(node.hasData());
     CHECK(node.isLeaf());
 }
+
+TEST_CASE("Node child lookups respect empty names and non-matching keys") {
+    Node node;
+    auto& child = node.getOrCreateChild("alpha");
+    (void)child;
+
+    CHECK(node.getChild("") == nullptr);
+    CHECK_FALSE(node.eraseChild(""));
+    CHECK(node.getChild("beta") == nullptr);
+    CHECK_FALSE(node.eraseChild("beta"));
+}
 }
