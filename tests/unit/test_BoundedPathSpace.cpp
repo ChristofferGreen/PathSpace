@@ -112,6 +112,25 @@ TEST_CASE("BoundedPathSpace allows insert after pop via take") {
     CHECK(val->payload == 2);
 }
 
+TEST_CASE("BoundedPathSpace read without pop preserves count") {
+    auto backing = std::make_shared<PathSpace>();
+    BoundedPathSpace bounded{backing, 1};
+
+    bounded.in(Iterator{"/queue"}, InputData{TestEvent{1}});
+
+    TestEvent peek{};
+    auto err = bounded.out(Iterator{"/queue"}, InputMetadataT<TestEvent>{}, Out{.doPop = false}, &peek);
+    CHECK_FALSE(err.has_value());
+    CHECK(peek.payload == 1);
+
+    bounded.in(Iterator{"/queue"}, InputData{TestEvent{2}}); // should evict 1
+
+    auto first = backing->take<TestEvent>("/queue");
+    REQUIRE(first.has_value());
+    CHECK(first->payload == 2);
+    CHECK_FALSE(backing->take<TestEvent>("/queue").has_value());
+}
+
 TEST_CASE("BoundedPathSpace rejects on type mismatch and preserves existing data") {
     auto backing = std::make_shared<PathSpace>();
     BoundedPathSpace bounded{backing, 1};
