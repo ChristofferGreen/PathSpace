@@ -126,6 +126,50 @@ TEST_CASE("notify wakes both concrete and glob waiters") {
     CHECK(globWoke.load(std::memory_order_acquire));
 }
 
+TEST_CASE("glob notify wakes matching concrete waiters and logs when enabled") {
+    testing::waitMapDebugOverride().store(true, std::memory_order_relaxed);
+
+    WaitMap waitMap;
+    std::atomic<int> started{0};
+    std::atomic<int> waiting{0};
+    std::atomic<bool> aWoke{false};
+    std::atomic<bool> bWoke{false};
+
+    std::thread a([&] {
+        auto guard = waitMap.wait("/root/a");
+        started.fetch_add(1, std::memory_order_acq_rel);
+        waiting.fetch_add(1, std::memory_order_acq_rel);
+        auto status = guard.wait_until(std::chrono::system_clock::now() + 1000ms);
+        aWoke.store(status == std::cv_status::no_timeout, std::memory_order_release);
+    });
+
+    std::thread b([&] {
+        auto guard = waitMap.wait("/root/b");
+        started.fetch_add(1, std::memory_order_acq_rel);
+        waiting.fetch_add(1, std::memory_order_acq_rel);
+        auto status = guard.wait_until(std::chrono::system_clock::now() + 1000ms);
+        bWoke.store(status == std::cv_status::no_timeout, std::memory_order_release);
+    });
+
+    while (started.load(std::memory_order_acquire) < 2) {
+        std::this_thread::yield();
+    }
+    while (waiting.load(std::memory_order_acquire) < 2) {
+        std::this_thread::yield();
+    }
+
+    std::this_thread::sleep_for(10ms);
+    waitMap.notify("/root/*");
+
+    a.join();
+    b.join();
+
+    CHECK(aWoke.load(std::memory_order_acquire));
+    CHECK(bWoke.load(std::memory_order_acquire));
+
+    testing::waitMapDebugOverride().store(false, std::memory_order_relaxed);
+}
+
 TEST_CASE("notifyAll wakes all registered waiters") {
     WaitMap waitMap;
 

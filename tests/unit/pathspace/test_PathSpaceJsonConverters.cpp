@@ -110,3 +110,28 @@ TEST_CASE("unregistered types return nullopt and fall back to typeid name") {
     auto typeName = detail::DescribeRegisteredType(std::type_index(typeid(Unregistered)));
     CHECK(typeName == std::string(typeid(Unregistered).name()));
 }
+
+TEST_CASE("converter registration overwrites existing entries") {
+    SimpleReader<Widget> reader{Widget{42}};
+    PathSpaceJsonRegisterConverterAs<Widget>("First", [](Widget const& w) {
+        nlohmann::json j;
+        j["value"] = w.value;
+        j["tag"] = "first";
+        return j;
+    });
+
+    PathSpaceJsonRegisterConverterAs<Widget>("Second", [](Widget const& w) {
+        nlohmann::json j;
+        j["value"] = w.value + 1;
+        j["tag"] = "second";
+        return j;
+    });
+
+    auto converted = detail::ConvertWithRegisteredConverter(std::type_index(typeid(Widget)), reader);
+    REQUIRE(converted.has_value());
+    CHECK(converted->at("value") == 43);
+    CHECK(converted->at("tag") == "second");
+
+    auto typeName = detail::DescribeRegisteredType(std::type_index(typeid(Widget)));
+    CHECK(typeName == std::string("Second"));
+}

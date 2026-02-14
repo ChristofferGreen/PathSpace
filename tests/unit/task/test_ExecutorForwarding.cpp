@@ -54,4 +54,22 @@ TEST_CASE("base-class submit(shared_ptr) dispatches to weak overload") {
     REQUIRE(locked);
     CHECK(locked == task);
 }
+
+TEST_CASE("Executor destructor runs via base pointer") {
+    struct DerivedExecutor : RecordingExecutor {
+        bool* destroyed = nullptr;
+        ~DerivedExecutor() override {
+            if (destroyed) {
+                *destroyed = true;
+            }
+        }
+    };
+
+    bool destroyed = false;
+    std::unique_ptr<Executor> exec = std::make_unique<DerivedExecutor>();
+    static_cast<DerivedExecutor*>(exec.get())->destroyed = &destroyed;
+    exec.reset();
+
+    CHECK(destroyed);
+}
 }

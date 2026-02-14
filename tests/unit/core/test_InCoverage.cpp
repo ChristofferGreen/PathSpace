@@ -53,4 +53,10 @@ TEST_CASE("modifiers set the advertised execution and validation semantics") {
     CHECK(basicValidation.validationLevel == ValidationLevel::Basic);
 }
 
+TEST_CASE("ExecutionCategory enum ordering is stable") {
+    CHECK(static_cast<int>(ExecutionCategory::Unknown) == 0);
+    CHECK(static_cast<int>(ExecutionCategory::Immediate) == 1);
+    CHECK(static_cast<int>(ExecutionCategory::Lazy) == 2);
+}
+
 }

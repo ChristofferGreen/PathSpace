@@ -106,6 +106,153 @@ TEST_CASE("TaskPool Misc") {
         std::filesystem::remove(tracePath, error);
     }
 
+    SUBCASE("Trace output escapes special characters") {
+        TaskPool         pool(1);
+        std::atomic<bool> done{false};
+
+        auto task = Task::Create(std::weak_ptr<NotificationSink>{},
+                                 "/weird/\"path\\line\n",
+                                 [&done] {
+                                     done = true;
+                                     return 1;
+                                 },
+                                 ExecutionCategory::Immediate);
+        task->setLabel("Quote\"Slash\\New\nLine\tTab\rCarriage\x01");
+
+        auto tempDir = std::filesystem::temp_directory_path();
+        auto tracePath =
+            tempDir / ("taskpool_trace_" + std::to_string(static_cast<long long>(
+                                                      std::chrono::steady_clock::now().time_since_epoch().count())) +
+                       "_escape.json");
+
+        pool.enableTrace(tracePath.string());
+        pool.addTask(task);
+
+        while (!done) {
+            std::this_thread::yield();
+        }
+
+        auto flushError = pool.flushTrace();
+        CHECK_FALSE(flushError.has_value());
+
+        std::ifstream in(tracePath);
+        std::string   contents((std::istreambuf_iterator<char>(in)), {});
+        CHECK(contents.find("Quote\\\"Slash\\\\New\\nLine\\tTab\\rCarriage\\u0001") != std::string::npos);
+
+        std::error_code error;
+        std::filesystem::remove(tracePath, error);
+    }
+
+    SUBCASE("Trace output reports error when file cannot be opened") {
+        TaskPool pool(1);
+
+        auto tempDir = std::filesystem::temp_directory_path();
+        auto missingDir =
+            tempDir / ("missing_trace_dir_" + std::to_string(static_cast<long long>(
+                                                  std::chrono::steady_clock::now().time_since_epoch().count())));
+        auto tracePath = missingDir / "trace.json";
+
+        pool.enableTrace(tracePath.string());
+        auto flushError = pool.flushTrace();
+        REQUIRE(flushError.has_value());
+        CHECK(flushError->code == Error::Code::UnknownError);
+    }
+
+    SUBCASE("Trace NDJSON reports error when file cannot be opened") {
+        TaskPool pool(1);
+
+        auto tempDir = std::filesystem::temp_directory_path();
+        auto missingDir =
+            tempDir / ("missing_trace_dir_ndjson_" + std::to_string(static_cast<long long>(
+                                                     std::chrono::steady_clock::now().time_since_epoch().count())));
+        auto tracePath = missingDir / "trace.ndjson";
+
+        pool.enableTraceNdjson(tracePath.string());
+        auto flushError = pool.flushTrace();
+        REQUIRE(flushError.has_value());
+        CHECK(flushError->code == Error::Code::UnknownError);
+    }
+
+    SUBCASE("traceNowUs returns zero before trace is enabled") {
+        TaskPool pool(1);
+
+        CHECK(pool.traceNowUs() == 0);
+
+        auto flushError = pool.flushTrace();
+        CHECK_FALSE(flushError.has_value());
+    }
+
+    SUBCASE("Trace NDJSON output writes counter and span") {
+        TaskPool pool(1);
+
+        auto tempDir = std::filesystem::temp_directory_path();
+        auto tracePath =
+            tempDir / ("taskpool_trace_" + std::to_string(static_cast<long long>(
+                                                      std::chrono::steady_clock::now().time_since_epoch().count())) +
+                       ".ndjson");
+
+        pool.enableTraceNdjson(tracePath.string());
+        pool.traceThreadName("NDJSONThread");
+        pool.traceCounter("TickCount", 42.0);
+
+        auto startUs = pool.traceNowUs();
+        pool.traceSpan("SpanA", "pathspace.read", "/trace/span", startUs, 10);
+
+        auto flushError = pool.flushTrace();
+        CHECK_FALSE(flushError.has_value());
+
+        std::error_code error;
+        CHECK(std::filesystem::exists(tracePath, error));
+        CHECK_FALSE(error);
+
+        auto fileSize = std::filesystem::file_size(tracePath, error);
+        CHECK_FALSE(error);
+        CHECK(fileSize > 0);
+
+        std::ifstream in(tracePath);
+        std::string   contents((std::istreambuf_iterator<char>(in)), {});
+        CHECK(contents.find("\"TickCount\"") != std::string::npos);
+        CHECK(contents.find("\"phase\":\"C\"") != std::string::npos);
+        CHECK(contents.find("\"SpanA\"") != std::string::npos);
+        CHECK(contents.find("\"phase\":\"X\"") != std::string::npos);
+        CHECK(contents.find("\"thread_name\":\"NDJSONThread\"") != std::string::npos);
+
+        std::filesystem::remove(tracePath, error);
+    }
+
+    SUBCASE("addTask reports shutdown and expired-task failures") {
+        TaskPool pool(1);
+
+        std::weak_ptr<Task> expired;
+        {
+            auto task = Task::Create([](Task const&, bool) {});
+            expired = task;
+        }
+
+        auto expiredErr = pool.addTask(std::move(expired));
+        REQUIRE(expiredErr.has_value());
+        CHECK(expiredErr->code == Error::Code::UnknownError);
+
+        pool.shutdown();
+
+        auto task = Task::Create([](Task const&, bool) {});
+        auto shutdownErr = pool.addTask(task);
+        REQUIRE(shutdownErr.has_value());
+        CHECK(shutdownErr->code == Error::Code::UnknownError);
+    }
+
+    SUBCASE("addTask skips tasks that have already started") {
+        TaskPool pool(1);
+        std::atomic<int> counter{0};
+
+        auto task = Task::Create([&counter](Task const&, bool) { ++counter; });
+        REQUIRE(task->tryStart());
+
+        auto err = pool.addTask(task);
+        CHECK_FALSE(err.has_value());
+        CHECK(counter.load() == 0);
+    }
+
     SUBCASE("Shutdown behavior") {
         SUBCASE("Clean shutdown with no tasks") {
             TaskPool pool(2);

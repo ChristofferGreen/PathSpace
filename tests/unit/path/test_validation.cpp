@@ -20,9 +20,28 @@ TEST_CASE("validate_path_impl reports detailed errors") {
     CHECK(validate_path_impl("/[]").code == ValidationError::Code::EmptyBracket);
     CHECK(validate_path_impl("/[z-a]").code == ValidationError::Code::InvalidCharRange);
     CHECK(validate_path_impl("/[a-]").code == ValidationError::Code::InvalidCharRange);
+    CHECK(validate_path_impl("/[!-]").code == ValidationError::Code::InvalidCharRange);
+    CHECK(validate_path_impl("/[-a]").code == ValidationError::Code::InvalidCharRange);
+    CHECK(validate_path_impl("/]").code == ValidationError::Code::UnmatchedClosingBracket);
 
     // Valid path
     CHECK(validate_path_impl("/ok/path").code == ValidationError::Code::None);
+
+    // Paths that exercise escape handling and dot-before-slash logic.
+    CHECK(validate_path_impl("/ab./c").code == ValidationError::Code::None);
+    CHECK(validate_path_impl("/escaped/\\*/ok").code == ValidationError::Code::None);
+    CHECK(validate_path_impl("/escaped/\\x/ok").code == ValidationError::Code::None);
+    CHECK(validate_path_impl("/escaped/\\[/ok").code == ValidationError::Code::None);
+    CHECK(validate_path_impl("/escaped/\\\\/ok").code == ValidationError::Code::None);
+    CHECK(validate_path_impl("/[a-]/ok").code == ValidationError::Code::InvalidCharRange);
+    CHECK(validate_path_impl("/.").code == ValidationError::Code::RelativePath);
+    CHECK(validate_path_impl("/..").code == ValidationError::Code::RelativePath);
+
+    CHECK(validate_path_impl("/!").code == ValidationError::Code::None);
+    CHECK(validate_path_impl("/").code == ValidationError::Code::EmptyPath);
+
+    // Valid character range inside brackets should pass.
+    CHECK(validate_path_impl("/range/[a-z]/ok").code == ValidationError::Code::None);
 }
 
 TEST_CASE("get_error_message returns helpful strings") {
@@ -41,5 +60,15 @@ TEST_CASE("get_error_message returns helpful strings") {
     CHECK(get_error_message(ValidationError::Code::InvalidRangeSpec) != nullptr);
     CHECK(get_error_message(ValidationError::Code::InvalidCharRange) != nullptr);
     CHECK(get_error_message(ValidationError::Code::NoContent) != nullptr);
+
+    auto unknown = get_error_message(static_cast<ValidationError::Code>(999));
+    CHECK(unknown != nullptr);
+}
+
+TEST_CASE("get_error_message returns stable strings for known codes") {
+    CHECK(std::string(get_error_message(ValidationError::Code::EmptyPath)) == "Empty path");
+    CHECK(std::string(get_error_message(ValidationError::Code::MustStartWithSlash)) == "Path must start with '/'");
+    CHECK(std::string(get_error_message(ValidationError::Code::EndsWithSlash)) == "Path ends with slash");
+    CHECK(std::string(get_error_message(ValidationError::Code::EmptyPathComponent)) == "Empty path component");
 }
 }

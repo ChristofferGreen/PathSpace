@@ -54,6 +54,26 @@ TEST_CASE("Future handles expired task gracefully") {
     invalid.wait(); // Should be a no-op for expired tasks.
 }
 
+TEST_CASE("Future wait_until with system_clock handles past deadlines") {
+    auto task = std::make_shared<Task>();
+    task->function = [](Task& t, bool const) { t.result = 4; };
+    task->resultCopyFn = [](std::any const& from, void* const to) {
+        *static_cast<int*>(to) = std::any_cast<int>(from);
+    };
+
+    REQUIRE(task->tryStart());
+    REQUIRE(task->transitionToRunning());
+    task->result = 4;
+    task->markCompleted();
+
+    Future fut = Future::FromShared(task);
+    auto pastDeadline = std::chrono::system_clock::now() - std::chrono::milliseconds(1);
+    CHECK(fut.wait_until(pastDeadline));
+
+    Future invalid;
+    CHECK_FALSE(invalid.wait_until(pastDeadline));
+}
+
 TEST_CASE("Future wait_until_steady times out when task is not completed") {
     auto task = std::make_shared<Task>();
     task->function = [](Task& t, bool const) { t.result = 7; };
@@ -71,6 +91,40 @@ TEST_CASE("Future wait_until_steady times out when task is not completed") {
     CHECK_FALSE(fut.wait_until_steady(deadline));
 
     // Finish the task afterward to avoid leaving it in Running for other tests.
+    task->markCompleted();
+}
+
+TEST_CASE("Future wait_for returns true when task already completed") {
+    auto task = std::make_shared<Task>();
+    task->resultCopyFn = [](std::any const& from, void* const to) {
+        *static_cast<int*>(to) = std::any_cast<int>(from);
+    };
+
+    REQUIRE(task->tryStart());
+    REQUIRE(task->transitionToRunning());
+    task->result = 5;
+    task->markCompleted();
+
+    Future fut = Future::FromShared(task);
+    CHECK(fut.wait_for(std::chrono::milliseconds(1)));
+
+    int out = 0;
+    CHECK(fut.copy_result_to(&out));
+    CHECK(out == 5);
+}
+
+TEST_CASE("Future wait_for returns false on timeout") {
+    auto task = std::make_shared<Task>();
+    task->resultCopyFn = [](std::any const& from, void* const to) {
+        *static_cast<int*>(to) = std::any_cast<int>(from);
+    };
+
+    REQUIRE(task->tryStart());
+    REQUIRE(task->transitionToRunning());
+
+    Future fut = Future::FromShared(task);
+    CHECK_FALSE(fut.wait_for(std::chrono::milliseconds(1)));
+
     task->markCompleted();
 }
 
@@ -132,5 +186,20 @@ TEST_CASE("Future copy_result_to returns false once task expires") {
 
     int out = 0;
     CHECK_FALSE(fut.copy_result_to(&out));
+}
+
+TEST_CASE("Future exposes weak_task handle state") {
+    auto task = std::make_shared<Task>();
+    Future fut = Future::FromShared(task);
+
+    auto weak = fut.weak_task();
+    CHECK_FALSE(weak.expired());
+    CHECK(weak.lock().get() == task.get());
+
+    task.reset();
+    CHECK(weak.expired());
+
+    Future invalid;
+    CHECK(invalid.weak_task().expired());
 }
 }

@@ -36,6 +36,7 @@ TEST_CASE("comparison and ordering align with std::string_view semantics") {
     CHECK(alpha == "alpha");
     CHECK((alpha <=> bravo) == std::strong_ordering::less);
     CHECK((bravo <=> alpha) == std::strong_ordering::greater);
+    CHECK(alpha.getName() == std::string_view{"alpha"});
 }
 
 TEST_CASE("hashing matches std::string_view equality") {

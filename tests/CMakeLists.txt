@@ -8,17 +8,21 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/path/test_IteratorValidation.cpp
   unit/path/test_GlobPath.cpp
   unit/path/test_ConcretePath.cpp
+  unit/path/test_ConcretePathIterator.cpp
   unit/path/test_PathCoverage.cpp
   unit/path/test_PathUtils.cpp
   unit/path/test_ConcreteNameCoverage.cpp
   unit/path/test_TransparentString.cpp
   unit/core/test_WaitMap.cpp
+  unit/core/test_BlockOptions.cpp
   unit/core/test_InsertReturn.cpp
   unit/core/test_InCoverage.cpp
   unit/type/test_InputData.cpp
   unit/type/test_InputDataCoverage.cpp
   unit/type/test_InputMetadata.cpp
   unit/type/test_Serialization.cpp
+  unit/type/test_DataCategory.cpp
+  unit/type/test_FunctionCategory.cpp
   unit/type/test_TypeMetadataRegistry.cpp
   unit/type/test_TypeMetadataRegistryPrivates.cpp
   unit/type/test_SlidingBuffer.cpp
@@ -28,8 +32,13 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/core/test_PathSpaceContext.cpp
   unit/ext/test_alpaca.cpp
   unit/core/test_ExpectedShimCoverage.cpp
+  unit/core/test_ElementType.cpp
   unit/core/test_Out.cpp
   unit/task/test_TaskPool.cpp
+  unit/task/test_TaskCreate.cpp
+  unit/task/test_TaskT.cpp
+  unit/task/test_TaskPoolTraceInternals.cpp
+  unit/trace/test_PathSpaceTrace.cpp
   unit/test_PathSpace_read.cpp
   unit/test_PathSpace_nesting.cpp
   unit/test_PathSpace_extract.cpp
@@ -56,6 +65,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/pathspace/test_PathSpaceJsonExporter.cpp
   unit/pathspace/test_PathSpaceJsonConverters.cpp
   unit/pathspace/test_PathSpaceHeader.cpp
+  unit/pathspace/test_VisitOptions.cpp
   unit/test_BoundedPathSpace.cpp
   unit/core/test_Error.cpp
   unit/core/test_ExpectedShim.cpp

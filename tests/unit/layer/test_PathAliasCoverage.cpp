@@ -1,4 +1,6 @@
+#define protected public
 #include "layer/PathAlias.hpp"
+#undef protected
 #include "PathSpace.hpp"
 #include "path/Iterator.hpp"
 #include "type/InputMetadataT.hpp"
@@ -268,5 +270,23 @@ TEST_CASE("PathAlias notify is a no-op without an upstream") {
     // Should not throw or crash when upstream is missing.
     alias.notify("/any");
     alias.shutdown(); // cover the no-op shutdown path
+}
+
+TEST_CASE("PathAlias mapping helpers handle root and prefix boundaries") {
+    auto upstream = std::make_shared<PathSpace>();
+    PathAlias alias{upstream, "/root"};
+
+    CHECK(alias.mapVisitRoot("") == "/root");
+    CHECK(alias.mapVisitRoot("/") == "/root");
+    CHECK(alias.mapVisitRoot("/child") == "/root/child");
+
+    CHECK(alias.stripTargetPrefix("/root") == "/");
+    CHECK(alias.stripTargetPrefix("/root/child") == "/child");
+
+    alias.setTargetPrefix("/");
+    CHECK(alias.mapVisitRoot("") == "/");
+    CHECK(alias.mapVisitRoot("/") == "/");
+    CHECK(alias.mapVisitRoot("/child") == "/child");
+    CHECK(alias.stripTargetPrefix("/any") == "/any");
 }
 }

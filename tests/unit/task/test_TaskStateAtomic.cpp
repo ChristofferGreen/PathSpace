@@ -68,4 +68,12 @@ TEST_CASE("TaskStateAtomic toString reports Running when active") {
     REQUIRE(state.transitionToRunning());
     CHECK(state.toString() == "Running");
 }
+
+TEST_CASE("TaskState enum values are ordered") {
+    CHECK(static_cast<int>(TaskState::NotStarted) == 0);
+    CHECK(static_cast<int>(TaskState::Starting) == 1);
+    CHECK(static_cast<int>(TaskState::Running) == 2);
+    CHECK(static_cast<int>(TaskState::Completed) == 3);
+    CHECK(static_cast<int>(TaskState::Failed) == 4);
+}
 }

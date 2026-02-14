@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 using namespace SP;
 
@@ -177,6 +178,56 @@ TEST_CASE("InputMetadata covers typeInfo mapping and std::invoke_result deductio
     CHECK(fnMeta.typeInfo == &typeid(int));
 }
 
+TEST_CASE("InputMetadata handles std::function and unique_ptr categories") {
+    std::function<int()> fn = [] { return 11; };
+    InputMetadata funcMeta(InputMetadataT<decltype(fn)>{});
+    CHECK(funcMeta.dataCategory == DataCategory::Execution);
+    CHECK(funcMeta.functionCategory == FunctionCategory::StdFunction);
+    CHECK(funcMeta.typeInfo == &typeid(int));
+    CHECK(funcMeta.serialize == nullptr);
+    CHECK(funcMeta.deserialize == nullptr);
+    CHECK(funcMeta.deserializePop == nullptr);
+
+    auto ptr = std::make_unique<int>(7);
+    InputMetadata ptrMeta(InputMetadataT<decltype(ptr)>{});
+    CHECK(ptrMeta.dataCategory == DataCategory::UniquePtr);
+    CHECK(ptrMeta.functionCategory == FunctionCategory::None);
+    CHECK(ptrMeta.typeInfo == &typeid(std::unique_ptr<int>));
+    CHECK(ptrMeta.serialize == nullptr);
+    CHECK(ptrMeta.deserialize == nullptr);
+    CHECK(ptrMeta.deserializePop == nullptr);
+    CHECK_FALSE(ptrMeta.podPreferred);
+}
+
+TEST_CASE("InputMetadata maps string views and literals to std::string metadata") {
+    InputMetadata viewMeta(InputMetadataT<std::string_view>{});
+    CHECK(viewMeta.typeInfo == &typeid(std::string));
+    CHECK(viewMeta.dataCategory == DataCategory::SerializedData);
+    CHECK(viewMeta.serialize != nullptr);
+    CHECK(viewMeta.deserialize == nullptr);
+    CHECK(viewMeta.deserializePop == nullptr);
+
+    InputMetadata litMeta(InputMetadataT<char const[4]>{});
+    CHECK(litMeta.typeInfo == &typeid(std::string));
+    CHECK(litMeta.dataCategory == DataCategory::SerializedData);
+    CHECK(litMeta.serialize != nullptr);
+    CHECK(litMeta.deserialize == nullptr);
+    CHECK(litMeta.deserializePop == nullptr);
+}
+
+TEST_CASE("InputMetadata treats shared_ptr as non-serializable") {
+    auto shared = std::make_shared<int>(5);
+    InputMetadata sharedMeta(InputMetadataT<decltype(shared)>{});
+
+    CHECK(sharedMeta.dataCategory == DataCategory::None);
+    CHECK(sharedMeta.functionCategory == FunctionCategory::None);
+    CHECK(sharedMeta.typeInfo == &typeid(std::shared_ptr<int>));
+    CHECK(sharedMeta.serialize == nullptr);
+    CHECK(sharedMeta.deserialize == nullptr);
+    CHECK(sharedMeta.deserializePop == nullptr);
+    CHECK_FALSE(sharedMeta.podPreferred);
+}
+
 TEST_CASE("ValueSerializationHelper fundamental paths serialize and reject undersized buffers") {
     SlidingBuffer buffer;
     int           value = 1234;
@@ -347,6 +398,21 @@ TEST_CASE("InputMetadata Alpaca-compatible containers serialize/deserialize") {
         REQUIRE(meta.serialize != nullptr);
         REQUIRE(meta.deserialize != nullptr);
         CHECK_FALSE(meta.podPreferred); // std::pair is not trivially copyable here
+
+        meta.serialize(&value, bytes);
+        meta.deserialize(&out, bytes);
+        CHECK(out == value);
+    }
+
+    SUBCASE("std::vector<int> round-trips and is not POD preferred") {
+        std::vector<int> value{1, 2, 3};
+        std::vector<int> out{};
+        InputMetadata    meta(InputMetadataT<decltype(value)>{});
+        SlidingBuffer    bytes;
+
+        REQUIRE(meta.serialize != nullptr);
+        REQUIRE(meta.deserialize != nullptr);
+        CHECK_FALSE(meta.podPreferred);
 
         meta.serialize(&value, bytes);
         meta.deserialize(&out, bytes);

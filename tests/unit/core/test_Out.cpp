@@ -37,4 +37,27 @@ TEST_CASE("Out modifiers compose via operator&") {
     CHECK(chained.validationLevel == ValidationLevel::Full);
 }
 
+TEST_CASE("Out defaults and remaining modifiers are exercised") {
+    Out base{};
+    CHECK_FALSE(base.doBlock);
+    CHECK_FALSE(base.doPop);
+    CHECK_FALSE(base.isMinimal);
+    CHECK(base.timeout == DEFAULT_TIMEOUT);
+    CHECK(base.validationLevel == ValidationLevel::Basic);
+
+    auto withPop = base & Pop{};
+    CHECK(withPop.doPop);
+    CHECK(withPop.timeout == DEFAULT_TIMEOUT);
+
+    auto noValidation = base & OutNoValidation{};
+    CHECK(noValidation.validationLevel == ValidationLevel::None);
+
+    auto fullValidation = base & OutFullValidation{};
+    CHECK(fullValidation.validationLevel == ValidationLevel::Full);
+
+    Block defaultBlock{};
+    CHECK(defaultBlock.doBlock);
+    CHECK(defaultBlock.timeout == DEFAULT_TIMEOUT);
+}
+
 } // TEST_SUITE

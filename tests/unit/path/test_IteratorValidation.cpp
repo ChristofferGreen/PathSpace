@@ -16,11 +16,17 @@ TEST_CASE("Iterator basic validation surfaces expected errors") {
     CHECK(basicErr->message == std::optional<std::string>{"Empty path"});
 
     Iterator noSlash{"relative"};
+    auto basicNoSlash = noSlash.validate(ValidationLevel::Basic);
+    REQUIRE(basicNoSlash.has_value());
+    CHECK(basicNoSlash->message == std::optional<std::string>{"Path must start with '/'"});    
     auto fullErr = noSlash.validate(ValidationLevel::Full);
     REQUIRE(fullErr.has_value());
     CHECK(fullErr->message == std::optional<std::string>{"Path must start with '/'"});
 
     Iterator trailing{"/path/"};
+    auto basicTrailing = trailing.validate(ValidationLevel::Basic);
+    REQUIRE(basicTrailing.has_value());
+    CHECK(basicTrailing->message == std::optional<std::string>{"Path ends with slash"});
     auto trailingErr = trailing.validate(ValidationLevel::Full);
     REQUIRE(trailingErr.has_value());
     CHECK(trailingErr->message == std::optional<std::string>{"Path ends with slash"});
@@ -41,6 +47,9 @@ TEST_CASE("Iterator basic validation surfaces expected errors") {
 
     Iterator noneLevel{"/ok/path"};
     CHECK_FALSE(noneLevel.validate(ValidationLevel::None).has_value());
+
+    Iterator invalidNone{"/bad//path"};
+    CHECK_FALSE(invalidNone.validate(ValidationLevel::None).has_value());
 }
 
 TEST_CASE("Iterator iteration utilities expose start and end slices") {

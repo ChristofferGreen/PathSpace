@@ -17,14 +17,33 @@ TEST_CASE("Path validity rejects missing slash and embedded relative segments") 
     Path<std::string> empty{""};
     CHECK_FALSE(empty.isValid()); // empty path should fail fast
 
+    Path<std::string> root{"/"};
+    CHECK(root.isValid());
+
     Path<std::string> embeddedDot{"/root/.hidden"};
     CHECK_FALSE(embeddedDot.isValid());
+
+    Path<std::string> dotRoot{"/."};
+    CHECK_FALSE(dotRoot.isValid());
+
+    Path<std::string> dotDot{"/root/../child"};
+    CHECK_FALSE(dotDot.isValid());
 
     Path<std::string> ok{"/root/child"};
     CHECK(ok.isValid());
 
     Path<std::string_view> viewOk{std::string_view{"/view/ok"}};
     CHECK(viewOk.isValid());
+}
+
+TEST_CASE("Path getPath returns underlying storage") {
+    std::string backing = "/root/child";
+    Path<std::string>   owned{backing};
+    CHECK(owned.getPath() == backing);
+
+    std::string_view view{"/view/path"};
+    Path<std::string_view> viewPath{view};
+    CHECK(viewPath.getPath() == view);
 }
 
 TEST_CASE("ConcreteName constructors and comparisons") {
@@ -62,5 +81,26 @@ TEST_CASE("GlobPathIterator skips redundant slashes and supports postfix increme
     }
 
     CHECK(segments == std::vector<std::string>{"alpha", "beta", "gamma"});
+}
+
+TEST_CASE("GlobPathIterator works with string_view input") {
+    std::string_view glob = "/a//b";
+    auto iter = GlobPathIterator<std::string_view>{glob.begin(), glob.end()};
+    auto end  = GlobPathIterator<std::string_view>{glob.end(), glob.end()};
+
+    REQUIRE(iter != end);
+    CHECK((*iter).getName() == "a");
+    ++iter;
+    REQUIRE(iter != end);
+    CHECK((*iter).getName() == "b");
+    ++iter;
+    CHECK(iter == end);
+}
+
+TEST_CASE("GlobPathIterator treats empty or slash-only paths as end") {
+    std::string_view glob = "////";
+    auto iter = GlobPathIterator<std::string_view>{glob.begin(), glob.end()};
+    auto end  = GlobPathIterator<std::string_view>{glob.end(), glob.end()};
+    CHECK(iter == end);
 }
 }

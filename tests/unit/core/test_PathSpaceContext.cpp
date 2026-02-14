@@ -93,6 +93,14 @@ TEST_CASE("sink lifecycle forwards notifications and can be invalidated") {
     CHECK(sink->notifications.size() == 1);
 }
 
+TEST_CASE("getSink returns empty when no sink is set") {
+    PathSpaceContext ctx;
+    CHECK(ctx.getSink().expired());
+    // notify should be safe even with no sink installed.
+    ctx.notify("/noop");
+    CHECK(ctx.getSink().expired());
+}
+
 TEST_CASE("shutdown sets flag and wakes waiters") {
     PathSpaceContext ctx(&TaskPool::Instance());
 
@@ -112,5 +120,46 @@ TEST_CASE("shutdown sets flag and wakes waiters") {
         auto status = guardAfter.wait_until(std::chrono::system_clock::now() + std::chrono::milliseconds(5));
         CHECK(status == std::cv_status::timeout);
     }
+}
+
+TEST_CASE("clearWaits drops registered waiters and allows reuse") {
+    PathSpaceContext ctx;
+
+    {
+        auto guard = ctx.wait("/clear");
+        auto status = guard.wait_until(std::chrono::system_clock::now() + std::chrono::milliseconds(2));
+        CHECK(status == std::cv_status::timeout);
+    }
+
+    CHECK(ctx.hasWaiters());
+    ctx.clearWaits();
+    CHECK_FALSE(ctx.hasWaiters());
+
+    // Ensure waits still function after clearing.
+    auto guardAfter = ctx.wait("/clear");
+    auto statusAfter = guardAfter.wait_until(std::chrono::system_clock::now() + std::chrono::milliseconds(2));
+    CHECK(statusAfter == std::cv_status::timeout);
+}
+
+TEST_CASE("notifyAll wakes context waiters") {
+    PathSpaceContext ctx;
+    std::atomic<bool> waiting{false};
+    std::atomic<bool> woke{false};
+
+    std::thread waiter([&] {
+        auto guard = ctx.wait("/notify/all");
+        waiting.store(true, std::memory_order_release);
+        auto status = guard.wait_until(std::chrono::system_clock::now() + std::chrono::milliseconds(250));
+        woke.store(status == std::cv_status::no_timeout, std::memory_order_release);
+    });
+
+    while (!waiting.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+
+    ctx.notifyAll();
+
+    waiter.join();
+    CHECK(woke.load(std::memory_order_acquire));
 }
 }

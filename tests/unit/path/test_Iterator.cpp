@@ -293,6 +293,32 @@ TEST_CASE("Path Iterator and Utilities") {
             CHECK_FALSE(target.isAtEnd());
         }
 
+        SUBCASE("Move constructor preserves iteration state") {
+            Iterator iter("/move/state");
+            ++iter; // now at "state"
+
+            Iterator moved{std::move(iter)};
+            CHECK(std::string(*moved) == "state");
+            CHECK_FALSE(moved.isAtStart());
+            CHECK_FALSE(moved.isAtEnd());
+            CHECK(moved.startToCurrent() == "move");
+            CHECK(moved.currentToEnd() == "state");
+        }
+
+        SUBCASE("Move assignment rebinds storage and offsets") {
+            Iterator source("/assign/move");
+            ++source; // now at "move"
+            Iterator target("/placeholder");
+
+            target = std::move(source);
+
+            CHECK(std::string(*target) == "move");
+            CHECK_FALSE(target.isAtStart());
+            CHECK_FALSE(target.isAtEnd());
+            CHECK(target.startToCurrent() == "assign");
+            CHECK(target.currentToEnd() == "move");
+        }
+
         SUBCASE("Pass-by-value copy constructor preserves iteration state") {
             Iterator iter("/copied/segment");
             ++iter; // advance to second component so offsets are non-zero

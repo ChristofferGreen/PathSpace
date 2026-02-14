@@ -31,6 +31,18 @@ struct ExposedPathSpace : PathSpace {
     using PathSpace::shutdownPublic;
     using PathSpace::spanPackMut;
 };
+
+struct NotificationProbe : PathSpace {
+    using PathSpace::PathSpace;
+    using PathSpace::getNotificationSink;
+
+    std::vector<std::string> notifications;
+
+protected:
+    void notify(std::string const& notificationPath) override {
+        notifications.push_back(notificationPath);
+    }
+};
 }
 
 TEST_SUITE("pathspace.internal.coverage") {
@@ -174,6 +186,60 @@ TEST_CASE("retargetNestedMounts short-circuits when node is missing") {
     PathSpace space;
     PathSpaceTestHelper::retarget(space, nullptr, "/unused");
     CHECK_EQ(1, 1); // No crash and coverage of guard path
+}
+
+TEST_CASE("getNotificationSink creates a default sink without context") {
+    NotificationProbe space{std::shared_ptr<PathSpaceContext>{}, ""};
+
+    auto sink = space.getNotificationSink().lock();
+    REQUIRE(sink);
+
+    sink->notify("/ping");
+    REQUIRE(space.notifications.size() == 1);
+    CHECK(space.notifications.front() == "/ping");
+
+    auto sinkAgain = space.getNotificationSink().lock();
+    REQUIRE(sinkAgain);
+    CHECK(sinkAgain.get() == sink.get());
+}
+
+TEST_CASE("getNotificationSink seeds or reuses the context sink") {
+    struct RecordingSink : NotificationSink {
+        void notify(std::string const& notificationPath) override {
+            notifications.push_back(notificationPath);
+        }
+        std::vector<std::string> notifications;
+    };
+
+    auto ctx = std::make_shared<PathSpaceContext>();
+
+    // If the context is missing a sink, getNotificationSink should seed one.
+    {
+        NotificationProbe space{ctx, ""};
+        auto seeded = space.getNotificationSink().lock();
+        REQUIRE(seeded);
+
+        auto ctxSink = ctx->getSink().lock();
+        REQUIRE(ctxSink);
+        CHECK(ctxSink.get() == seeded.get());
+
+        seeded->notify("/seeded");
+        REQUIRE(space.notifications.size() == 1);
+        CHECK(space.notifications.front() == "/seeded");
+    }
+
+    // If a sink is already set, getNotificationSink should reuse it.
+    auto externalSink = std::make_shared<RecordingSink>();
+    ctx->setSink(externalSink);
+
+    NotificationProbe space{ctx, ""};
+    auto reused = space.getNotificationSink().lock();
+    REQUIRE(reused);
+    CHECK(reused.get() == externalSink.get());
+
+    reused->notify("/external");
+    REQUIRE(externalSink->notifications.size() == 1);
+    CHECK(externalSink->notifications.front() == "/external");
 }
 
 } // TEST_SUITE

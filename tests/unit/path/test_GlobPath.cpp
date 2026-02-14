@@ -40,6 +40,13 @@ TEST_CASE("isConcrete and isGlob reflect wildcard usage") {
     CHECK_FALSE(concrete.isGlob());
     CHECK_FALSE(wildcard.isConcrete());
     CHECK(wildcard.isGlob());
+
+    GlobPathStringView viewConcrete{std::string_view{"/plain/path"}};
+    GlobPathStringView viewWildcard{std::string_view{"/plain/*"}};
+    CHECK(viewConcrete.isConcrete());
+    CHECK_FALSE(viewConcrete.isGlob());
+    CHECK_FALSE(viewWildcard.isConcrete());
+    CHECK(viewWildcard.isGlob());
 }
 
 TEST_CASE("string_view equality delegates to path comparison") {
@@ -55,6 +62,12 @@ TEST_CASE("glob equality compares glob-to-glob paths") {
 
     CHECK(globA == globB);
     CHECK_FALSE(globA == globMismatch);
+
+    GlobPathStringView viewA{std::string_view{"/tree/**"}};
+    GlobPathStringView viewB{std::string_view{"/tree/**"}};
+    GlobPathStringView viewMismatch{std::string_view{"/tree/*/leaf"}};
+    CHECK(viewA == viewB);
+    CHECK_FALSE(viewA == viewMismatch);
 }
 
 TEST_CASE("three-way comparison mirrors underlying path ordering") {
@@ -66,5 +79,24 @@ TEST_CASE("three-way comparison mirrors underlying path ordering") {
 
     auto cmpEq = (a <=> GlobPathString{"/a"});
     CHECK(std::is_eq(cmpEq));
+
+    GlobPathStringView viewA{std::string_view{"/a"}};
+    GlobPathStringView viewB{std::string_view{"/b"}};
+    auto viewCmp = (viewA <=> viewB);
+    CHECK(std::is_lt(viewCmp));
+}
+
+TEST_CASE("empty and root glob paths expose iterator edges") {
+    GlobPathString empty{};
+    CHECK_FALSE(empty.isValid());
+    CHECK(empty.begin() == empty.end());
+    CHECK(empty.isConcrete());
+    CHECK_FALSE(empty.isGlob());
+
+    GlobPathString root{"/"};
+    CHECK(root.isValid());
+    CHECK(root.begin() == root.end());
+    CHECK(root.isConcrete());
+    CHECK_FALSE(root.isGlob());
 }
 }

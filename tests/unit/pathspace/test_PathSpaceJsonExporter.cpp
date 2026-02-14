@@ -215,6 +215,127 @@ TEST_CASE("PathSpace JSON exporter honors includeValues toggle") {
     CHECK_FALSE(node.at("values_sampled").get<bool>());
 }
 
+TEST_CASE("Flat path export retains empty values when sampling is disabled") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/value", 7).errors.empty());
+
+    PathSpaceJsonOptions opts;
+    opts.mode                   = PathSpaceJsonOptions::Mode::Debug;
+    opts.includeStructureFields = true;
+    opts.visit.includeValues    = false;
+    opts.flatPaths              = true;
+    opts.flatSimpleValues       = true;
+
+    auto flat = space.toJSON(opts);
+    REQUIRE(flat);
+    auto doc = Json::parse(*flat);
+    REQUIRE(doc.contains("/root/value"));
+    CHECK(doc.at("/root/value").is_array());
+    CHECK(doc.at("/root/value").empty());
+}
+
+TEST_CASE("PathSpace JSON exporter reports sampling fields for nodes without values") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/child", 1).nbrValuesInserted == 1);
+
+    PathSpaceJsonOptions options;
+    options.mode                   = PathSpaceJsonOptions::Mode::Debug;
+    options.includeStructureFields = true;
+    options.visit.root             = "/root";
+
+    auto doc  = dump(space, options);
+    auto node = findNode(doc, "/root", "/root");
+
+    CHECK_FALSE(node.at("has_value").get<bool>());
+    CHECK(node.at("values").empty());
+    CHECK_FALSE(node.at("values_truncated").get<bool>());
+    CHECK(node.at("values_sampled").get<bool>());
+}
+
+TEST_CASE("PathSpace JSON exporter reports truncation when sampling disabled and maxQueueEntries is zero") {
+    PathSpace space;
+    REQUIRE(space.insert("/alpha/value", 5).nbrValuesInserted == 1);
+
+    PathSpaceJsonOptions options;
+    options.mode                   = PathSpaceJsonOptions::Mode::Debug;
+    options.includeStructureFields = true;
+    options.visit.includeValues    = false;
+    options.maxQueueEntries        = 0;
+
+    auto doc  = dump(space, options);
+    auto node = findNode(doc, "/", "/alpha/value");
+    CHECK(node.at("values").empty());
+    CHECK(node.at("values_truncated").get<bool>());
+    CHECK_FALSE(node.at("values_sampled").get<bool>());
+}
+
+TEST_CASE("PathSpace JSON exporter reports truncation when maxQueueEntries is zero and values are sampled") {
+    PathSpace space;
+    REQUIRE(space.insert("/alpha/value", 8).nbrValuesInserted == 1);
+
+    PathSpaceJsonOptions options;
+    options.mode                   = PathSpaceJsonOptions::Mode::Debug;
+    options.includeStructureFields = true;
+    options.visit.includeValues    = true;
+    options.maxQueueEntries        = 0;
+
+    auto doc  = dump(space, options);
+    auto node = findNode(doc, "/", "/alpha/value");
+    CHECK(node.at("values").empty());
+    CHECK(node.at("values_truncated").get<bool>());
+    CHECK(node.at("values_sampled").get<bool>());
+}
+
+TEST_CASE("PathSpace JSON exporter stats track child and value truncation") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/a", 1).errors.empty());
+    REQUIRE(space.insert("/root/a", 2).errors.empty());
+    REQUIRE(space.insert("/root/b", 3).errors.empty());
+    REQUIRE(space.insert("/root/b", 4).errors.empty());
+
+    PathSpaceJsonOptions opts;
+    opts.mode                   = PathSpaceJsonOptions::Mode::Debug;
+    opts.includeMetadata         = true;
+    opts.includeStructureFields = true;
+    opts.visit.root             = "/root";
+    opts.visit.maxChildren       = 1;
+    opts.maxQueueEntries         = 1;
+
+    auto jsonStr = space.toJSON(opts);
+    REQUIRE(jsonStr);
+    auto doc = Json::parse(*jsonStr);
+
+    auto stats = doc.at("_meta").at("stats");
+    CHECK(stats.at("node_count") == 2);
+    CHECK(stats.at("values_exported") == 1);
+    CHECK(stats.at("children_truncated") == 1);
+    CHECK(stats.at("values_truncated") == 1);
+    CHECK(stats.at("depth_limited") == 0);
+}
+
+TEST_CASE("PathSpace JSON exporter stats report depth limits") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/child/grand", 1).errors.empty());
+
+    PathSpaceJsonOptions opts;
+    opts.mode                   = PathSpaceJsonOptions::Mode::Debug;
+    opts.includeMetadata         = true;
+    opts.includeStructureFields = true;
+    opts.visit.root             = "/root";
+    opts.visit.maxDepth         = 0;
+
+    auto jsonStr = space.toJSON(opts);
+    REQUIRE(jsonStr);
+    auto doc = Json::parse(*jsonStr);
+
+    auto stats = doc.at("_meta").at("stats");
+    CHECK(stats.at("node_count") == 1);
+    CHECK(stats.at("depth_limited") == 1);
+    CHECK(stats.at("children_truncated") == 1);
+    CHECK(stats.at("values_exported") == 0);
+    CHECK(stats.at("values_truncated") == 0);
+}
+
 TEST_CASE("PathSpace JSON exporter reports unlimited child limit") {
     PathSpace space;
     REQUIRE(space.insert("/root/a", 1).nbrValuesInserted == 1);
@@ -266,8 +387,9 @@ TEST_CASE("PathSpace JSON exporter emits opaque placeholder for missing converte
     REQUIRE(space.insert("/opaque/value", CustomType{7}).errors.empty());
 
     PathSpaceJsonOptions options;
-    options.mode       = PathSpaceJsonOptions::Mode::Debug;
-    options.visit.root = "/opaque";
+    options.mode                    = PathSpaceJsonOptions::Mode::Debug;
+    options.visit.root              = "/opaque";
+    options.includeOpaquePlaceholders = false; // debug mode should override this to true
 
     auto doc   = dump(space, options);
     auto node  = findNode(doc, "/opaque", "/opaque/value");
@@ -275,6 +397,42 @@ TEST_CASE("PathSpace JSON exporter emits opaque placeholder for missing converte
     auto entry = node.at("values")[0];
     CHECK(entry.at("placeholder") == "opaque");
     CHECK(entry.at("reason") == "converter-missing");
+}
+
+TEST_CASE("PathSpace JSON exporter omits opaque placeholders in minimal mode") {
+    PathSpace space;
+    REQUIRE(space.insert("/opaque/value", CustomType{3}).errors.empty());
+
+    PathSpaceJsonOptions options;
+    options.visit.root = "/opaque";
+
+    auto doc  = dump(space, options);
+    auto node = findNode(doc, "/opaque", "/opaque/value");
+    REQUIRE(node.at("values").size() == 1);
+    auto entry = node.at("values")[0];
+    CHECK_FALSE(entry.contains("placeholder"));
+    CHECK_FALSE(entry.contains("value"));
+ }
+
+TEST_CASE("Flat path export preserves placeholder entries without values") {
+    PathSpace space;
+    REQUIRE(space.insert("/opaque/value", CustomType{11}).errors.empty());
+
+    PathSpaceJsonOptions opts;
+    opts.mode             = PathSpaceJsonOptions::Mode::Debug;
+    opts.flatPaths        = true;
+    opts.flatSimpleValues = true;
+
+    auto flat = space.toJSON(opts);
+    REQUIRE(flat);
+    auto doc = Json::parse(*flat);
+    REQUIRE(doc.contains("/opaque/value"));
+
+    auto entry = doc.at("/opaque/value");
+    REQUIRE(entry.is_array());
+    REQUIRE(entry.size() == 1);
+    CHECK(entry[0].at("placeholder") == "opaque");
+    CHECK_FALSE(entry[0].contains("value"));
 }
 
 TEST_CASE("PathSpace JSON exporter rejects entries outside export root") {
@@ -288,6 +446,18 @@ TEST_CASE("PathSpace JSON exporter rejects entries outside export root") {
     CHECK_FALSE(result);
     auto code = result.error().code;
     CHECK((code == Error::Code::InvalidPath || code == Error::Code::NoSuchPath));
+}
+
+TEST_CASE("PathSpace JSON exporter rejects glob roots") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/value", 1).errors.empty());
+
+    PathSpaceJsonOptions options;
+    options.visit.root = "/root/*";
+
+    auto result = space.toJSON(options);
+    CHECK_FALSE(result);
+    CHECK(result.error().code == Error::Code::InvalidPathSubcomponent);
 }
 
 TEST_CASE("PathSpace JSON exporter flattens values when flatPaths are enabled") {
@@ -308,6 +478,27 @@ TEST_CASE("PathSpace JSON exporter flattens values when flatPaths are enabled") 
     CHECK(json.at("/root/value") == 123);
     REQUIRE(json.contains("/root/list/item"));
     CHECK(json.at("/root/list/item").is_string());
+}
+
+TEST_CASE("Flat path export preserves full entries when flatSimpleValues is false") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/value", 42).errors.empty());
+
+    PathSpaceJsonOptions options;
+    options.mode             = PathSpaceJsonOptions::Mode::Debug;
+    options.visit.root       = "/root";
+    options.flatPaths        = true;
+    options.flatSimpleValues = false;
+
+    auto flat = space.toJSON(options);
+    REQUIRE(flat);
+    auto json = Json::parse(*flat);
+    REQUIRE(json.contains("/root/value"));
+    auto entry = json.at("/root/value");
+    REQUIRE(entry.is_array());
+    REQUIRE(entry.size() == 1);
+    CHECK(entry[0].at("value") == 42);
+    CHECK(entry[0].contains("type"));
 }
 
 TEST_CASE("PathSpace JSON exporter honors friendly converter aliases") {

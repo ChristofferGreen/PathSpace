@@ -18,6 +18,7 @@
 #include <any>
 #include <optional>
 #include <tuple>
+#include <typeinfo>
 #include <utility> // for std::pair
 #include <variant>
 
@@ -310,6 +311,74 @@ TEST_CASE("PathSpace Read") {
         auto const val = pspace.read<std::list<std::string>>("/list");
         CHECK(val.has_value());
         CHECK(val.value() == lst);
+    }
+
+    SUBCASE("Compile-time read and take use FixedString overloads") {
+        CHECK(pspace.insert("/fixed", 7).errors.empty());
+        auto readFixed = pspace.read<"/fixed", int>();
+        REQUIRE(readFixed.has_value());
+        CHECK(*readFixed == 7);
+
+        CHECK(pspace.insert("/fixed", 9).errors.empty());
+        auto takeFixed = pspace.take<"/fixed", int>();
+        REQUIRE(takeFixed.has_value());
+        CHECK(*takeFixed == 7);
+
+        auto takeFixed2 = pspace.take<"/fixed", int>();
+        REQUIRE(takeFixed2.has_value());
+        CHECK(*takeFixed2 == 9);
+
+        auto emptyTake = pspace.take<"/fixed", int>();
+        CHECK_FALSE(emptyTake.has_value());
+    }
+
+    SUBCASE("Runtime FutureAny read surfaces execution futures and missing paths") {
+        auto missing = pspace.read("/noexec");
+        CHECK_FALSE(missing.has_value());
+        CHECK(missing.error().code == Error::Code::NoObjectFound);
+
+        auto insertRet = pspace.insert("/exec", []() -> int { return 17; }, In{.executionCategory = ExecutionCategory::Lazy});
+        CHECK(insertRet.errors.empty());
+        CHECK(insertRet.nbrTasksInserted == 1);
+
+        auto futAny = pspace.read("/exec");
+        REQUIRE(futAny.has_value());
+        CHECK(futAny->valid());
+        CHECK(futAny->type() == typeid(int));
+    }
+
+    SUBCASE("FutureAny read honors validation level for malformed paths") {
+        auto invalid = pspace.read("/bad//path", OutFullValidation{});
+        CHECK_FALSE(invalid.has_value());
+        CHECK(invalid.error().code == Error::Code::InvalidPath);
+
+        auto skippedValidation = pspace.read("relative/path", OutNoValidation{});
+        CHECK_FALSE(skippedValidation.has_value());
+        CHECK(skippedValidation.error().code == Error::Code::NoObjectFound);
+    }
+
+    SUBCASE("Compile-time FutureAny read exposes execution future") {
+        auto missing = pspace.read<"/noexec">();
+        CHECK_FALSE(missing.has_value());
+        CHECK(missing.error().code == Error::Code::NoObjectFound);
+
+        auto insertRet = pspace.insert("/exec", []() -> int { return 42; }, In{.executionCategory = ExecutionCategory::Lazy});
+        CHECK(insertRet.errors.empty());
+        CHECK(insertRet.nbrTasksInserted == 1);
+
+        auto futAny = pspace.read<"/exec">();
+        REQUIRE(futAny.has_value());
+        CHECK(futAny->valid());
+        CHECK(futAny->type() == typeid(int));
+
+        // Force execution, then verify the future can copy the result.
+        auto readValue = pspace.read<int>("/exec", Block{});
+        REQUIRE(readValue.has_value());
+        CHECK(*readValue == 42);
+
+        int copied = 0;
+        CHECK(futAny->copy_to(&copied));
+        CHECK(copied == 42);
     }
 }
 

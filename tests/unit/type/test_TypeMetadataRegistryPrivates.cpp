@@ -29,4 +29,27 @@ TEST_CASE("registerEntry rejects missing metadata or empty names") {
                                        validMeta,
                                        ops));
 }
+
+TEST_CASE("registerEntry rejects duplicate names and types") {
+    TypeMetadataRegistry registry;
+    TypeOperations       ops{};
+
+    InputMetadata intMeta{InputMetadataT<int>{}};
+    CHECK(registry.registerEntry(std::type_index(typeid(int)),
+                                 "int_type",
+                                 intMeta,
+                                 ops));
+
+    InputMetadata doubleMeta{InputMetadataT<double>{}};
+    CHECK_FALSE(registry.registerEntry(std::type_index(typeid(double)),
+                                       "int_type",
+                                       doubleMeta,
+                                       ops));
+
+    CHECK_FALSE(registry.registerEntry(std::type_index(typeid(int)),
+                                       "int_type_alt",
+                                       intMeta,
+                                       ops));
+}
+
 }

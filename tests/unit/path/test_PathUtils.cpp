@@ -11,6 +11,18 @@ TEST_CASE("parse_indexed_component extracts numeric suffix and preserves base") 
     REQUIRE(parsed.index.has_value());
     CHECK(*parsed.index == 12u);
     CHECK_FALSE(parsed.malformed);
+
+    auto zeroIndex = parse_indexed_component("child[0]");
+    CHECK(zeroIndex.base == "child");
+    REQUIRE(zeroIndex.index.has_value());
+    CHECK(*zeroIndex.index == 0u);
+    CHECK_FALSE(zeroIndex.malformed);
+
+    auto leadingZeros = parse_indexed_component("child[001]");
+    CHECK(leadingZeros.base == "child");
+    REQUIRE(leadingZeros.index.has_value());
+    CHECK(*leadingZeros.index == 1u);
+    CHECK_FALSE(leadingZeros.malformed);
 }
 
 TEST_CASE("parse_indexed_component handles malformed or escaped brackets") {
@@ -57,6 +69,8 @@ TEST_CASE("parse_indexed_component handles malformed or escaped brackets") {
 TEST_CASE("append_index_suffix elides zero and formats numeric suffixes") {
     CHECK(append_index_suffix("base", 0) == "base");
     CHECK(append_index_suffix("base", 5) == "base[5]");
+    CHECK(append_index_suffix("", 0).empty());
+    CHECK(append_index_suffix("", 3) == "[3]");
 }
 
 TEST_CASE("append_index_suffix round-trips through parse_indexed_component") {
@@ -71,6 +85,7 @@ TEST_CASE("append_index_suffix round-trips through parse_indexed_component") {
 
 TEST_CASE("is_glob treats numeric indices as concrete") {
     CHECK_FALSE(is_glob("/root/child[3]"));
+    CHECK_FALSE(is_glob("/root/child[3]/"));
     CHECK(is_glob("/root/child[*]"));
 
     CHECK_FALSE(is_glob("/root/node[12]/leaf"));
@@ -80,6 +95,7 @@ TEST_CASE("is_glob treats numeric indices as concrete") {
 
 TEST_CASE("is_glob handles escapes and malformed brackets") {
     CHECK_FALSE(is_glob("/root/escaped\\[7\\]"));
+    CHECK_FALSE(is_glob("/root/escaped\\?/ok"));
     CHECK(is_glob("/root/unmatched]"));
     CHECK(is_glob("/root/unclosed["));
     CHECK(is_glob("/root/alpha[1a]/beta"));
@@ -93,13 +109,38 @@ TEST_CASE("match_names rejects malformed character classes") {
 
 TEST_CASE("match_names covers wildcards, ranges, and escapes") {
     CHECK(match_names("fo*", "foobar"));
+    CHECK(match_names("*a", "ba"));
     CHECK(match_names("ba?r", "baar"));
     CHECK_FALSE(match_names("ba?r", "bar")); // missing char for '?'
     CHECK(match_names("h[ae]llo", "hello"));
     CHECK(match_names("h[!a]llo", "hello"));
     CHECK(match_names("h[!a]llo", "hbllo"));
+    CHECK(match_names("a[0-9]b", "a5b"));
+    CHECK_FALSE(match_names("a[0-9]b", "acb"));
     CHECK(match_names("star\\*", "star*"));
     CHECK_FALSE(match_names("star\\*", "starX"));
+}
+
+TEST_CASE("match_names handles star backtracking misses and literal hyphens") {
+    CHECK_FALSE(match_names("a*b", "ac")); // '*' cannot find trailing 'b'
+    CHECK(match_names("[-a]", "-"));
+    CHECK(match_names("[-a]", "a"));
+    CHECK_FALSE(match_names("[-a]", "b"));
+
+    // Leading range before any previous character should still match properly.
+    CHECK(match_names("[a-c]", "b"));
+    CHECK_FALSE(match_names("[a-c]", "d"));
+}
+
+TEST_CASE("match_names handles empty and dangling escape patterns") {
+    CHECK(match_names("", ""));
+    CHECK_FALSE(match_names("", "x"));
+    CHECK_FALSE(match_names("foo\\", "foo"));
+
+    CHECK(match_names("a*", "a"));
+    CHECK_FALSE(match_names("a*", ""));
+
+    CHECK(match_names("*", "")); // trailing-star cleanup
 }
 
 TEST_CASE("match_paths handles mismatched lengths and escaped components") {
@@ -110,6 +151,13 @@ TEST_CASE("match_paths handles mismatched lengths and escaped components") {
 
     CHECK(match_paths("/a/*/c", "/a/b/c"));
     CHECK_FALSE(match_paths("/a/*/c", "/a/b/d"));
+}
+
+TEST_CASE("match_paths handles root and empty paths") {
+    CHECK(match_paths("/", "/"));
+    CHECK_FALSE(match_paths("/", "/a"));
+    CHECK_FALSE(match_paths("/a", "/"));
+    CHECK_FALSE(match_paths("/*", "/"));
 }
 
 TEST_SUITE_END();

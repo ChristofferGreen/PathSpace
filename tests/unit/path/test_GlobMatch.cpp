@@ -1,7 +1,10 @@
 #include "path/GlobName.hpp"
 #include "path/GlobPath.hpp"
+#include "path/ConcreteName.hpp"
 #include "path/ConcretePath.hpp"
 #include "third_party/doctest.h"
+
+#include <string>
 
 using namespace SP;
 
@@ -59,6 +62,7 @@ TEST_CASE("GlobName comparisons and negative matches") {
     CHECK((exact <=> same) == std::strong_ordering::equal);
     CHECK(exact == same);
     CHECK(exact == "alpha");
+    CHECK(exact == ConcreteName{"alpha"});
     CHECK(exact.isConcrete());
     CHECK_FALSE(GlobName{"*"}.isConcrete());
     CHECK(GlobName{"*"} .isGlob());
@@ -72,6 +76,54 @@ TEST_CASE("GlobName comparisons and negative matches") {
     auto [emptyMatch, emptySuper] = GlobName{"[ab]"}.match(std::string_view{""});
     CHECK_FALSE(emptyMatch);
     CHECK_FALSE(emptySuper);
+
+    // Empty string should match a pure '*' pattern via trailing-star handling.
+    auto [starMatch, starSuper] = GlobName{"*"}.match(std::string_view{""});
+    CHECK(starMatch);
+    CHECK_FALSE(starSuper);
+
+    // Escaped backslash should match a literal backslash in the input.
+    auto [backslashMatch, backslashSuper] = GlobName{"\\\\"}.match(std::string_view{"\\"});
+    CHECK(backslashMatch);
+    CHECK_FALSE(backslashSuper);
+}
+
+TEST_CASE("GlobName handles escaped mismatch and star skips") {
+    auto [miss, missSuper] = GlobName{"a\\*b"}.match(std::string_view{"aXb"});
+    CHECK_FALSE(miss);
+    CHECK_FALSE(missSuper);
+
+    auto [skipMatch, skipSuper] = GlobName{"ab*de"}.match(std::string_view{"abXXde"});
+    CHECK(skipMatch);
+    CHECK_FALSE(skipSuper);
+}
+
+TEST_CASE("GlobName matches ConcreteName inputs") {
+    ConcreteName name{"test"};
+    auto [match, super] = GlobName{"t?st"}.match(name);
+    CHECK(match);
+    CHECK_FALSE(super);
+}
+
+TEST_CASE("GlobName exposes name view and serializes to owned string") {
+    std::string backing{"alpha*"};
+    GlobName name{backing.cbegin(), backing.cend()};
+
+    CHECK(name.getName().data() == backing.data());
+    CHECK(name.isGlob());
+    CHECK_FALSE(name.isConcrete());
+
+    struct Archive {
+        std::string captured;
+        void operator()(std::string value) { captured = std::move(value); }
+    } archive;
+
+    name.serialize(archive);
+    CHECK(archive.captured == "alpha*");
+
+    // serialization should capture the contents, not alias the backing string
+    backing[0] = 'b';
+    CHECK(archive.captured == "alpha*");
 }
 
 TEST_CASE("GlobPath supermatch with **") {
@@ -98,10 +150,16 @@ TEST_CASE("GlobPath and ConcretePath equality overloads") {
     GlobPathString glob{"/foo/bar"};
     ConcretePathString concrete{"/foo/bar"};
     CHECK(glob == concrete);
+    CHECK(glob == "/foo/bar");
     CHECK(concrete == "/foo/bar");
     CHECK(concrete.canonicalized().has_value());
 
     GlobPathString extraComponent{"/foo/bar/baz"};
     CHECK_FALSE(extraComponent == concrete); // glob longer than concrete without supermatch
+
+    GlobPathStringView view{std::string_view{"/foo/bar"}};
+    CHECK(view == concrete);
+    CHECK(view == "/foo/bar");
+    CHECK(view == std::string_view{"/foo/bar"});
 }
 }

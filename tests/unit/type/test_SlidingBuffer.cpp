@@ -66,6 +66,27 @@ TEST_CASE("SlidingBuffer") {
             }
         }
 
+        SUBCASE("assignRaw clamps front offset and exposes raw storage") {
+            std::vector<uint8_t> raw = {10, 20, 30};
+            buffer.assignRaw(raw, 1);
+
+            CHECK(buffer.rawSize() == 3);
+            CHECK(buffer.size() == 2);
+            CHECK(buffer.virtualFront() == 1);
+            CHECK(buffer.data()[0] == 20);
+
+            auto rawSpan = buffer.rawDataMutable();
+            CHECK(rawSpan.size() == 3);
+            rawSpan[1] = 25;
+            CHECK(buffer.data()[0] == 25);
+            CHECK(buffer.rawData()[0] == 10);
+
+            buffer.assignRaw(std::vector<uint8_t>{4, 5}, 10);
+            CHECK(buffer.rawSize() == 2);
+            CHECK(buffer.size() == 0);
+            CHECK(buffer.virtualFront() == 2);
+        }
+
         SUBCASE("at() bounds checking") {
             std::vector<uint8_t> testData = {1, 2, 3, 4, 5};
             buffer.append(testData.data(), testData.size());

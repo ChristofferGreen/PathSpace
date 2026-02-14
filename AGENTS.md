@@ -69,6 +69,7 @@ This guide collects the conventions and scripts used when pairing with the PathS
 
 ## Testing Protocol (must follow)
 - Do not change tests just to silence failures.
+- **No-flake policy:** If any test fails, pause all other work and focus exclusively on making that test reliable. Do not resume feature work or coverage expansion until the test is stable and you are confident in it (use repeated loop runs to verify).
 - Always execute the full suite after any code modification (docs-only edits are exempt).
 - Run the suite in a loop: minimum 5 iterations with timeout protection.
 - Target runtime: < 10 s per iteration; use a 20 s timeout to catch hangs.
