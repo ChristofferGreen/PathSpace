@@ -35,6 +35,31 @@ TEST_CASE("PathSpace Insert") {
         CHECK(ret.errors[0].code == Error::Code::InvalidPath);
     }
 
+    SUBCASE("Basic validation accepts glob inserts and updates matching nodes") {
+        CHECK(pspace.insert("/glob/a", 1).errors.empty());
+        CHECK(pspace.insert("/glob/b", 2).errors.empty());
+
+        auto ret = pspace.insert("/glob/*", 5, In{.validationLevel = ValidationLevel::Basic});
+        CHECK(ret.errors.empty());
+        CHECK(ret.nbrValuesInserted == 2);
+
+        auto aFirst = pspace.take<int>("/glob/a");
+        auto aSecond = pspace.take<int>("/glob/a");
+        REQUIRE(aFirst.has_value());
+        REQUIRE(aSecond.has_value());
+        CHECK(*aFirst == 1);
+        CHECK(*aSecond == 5);
+        CHECK_FALSE(pspace.take<int>("/glob/a").has_value());
+
+        auto bFirst = pspace.take<int>("/glob/b");
+        auto bSecond = pspace.take<int>("/glob/b");
+        REQUIRE(bFirst.has_value());
+        REQUIRE(bSecond.has_value());
+        CHECK(*bFirst == 2);
+        CHECK(*bSecond == 5);
+        CHECK_FALSE(pspace.take<int>("/glob/b").has_value());
+    }
+
     SUBCASE("Indexed component requires nested payloads and validates path") {
         auto valueRet = pspace.insert("/node[1]", 5);
         CHECK(valueRet.nbrValuesInserted == 0);
