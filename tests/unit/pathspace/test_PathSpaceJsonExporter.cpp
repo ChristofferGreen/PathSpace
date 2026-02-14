@@ -1,3 +1,6 @@
+#define private public
+#include "core/NodeData.hpp"
+#undef private
 #include "third_party/doctest.h"
 
 #include <nlohmann/json.hpp>
@@ -166,6 +169,36 @@ TEST_CASE("PathSpace JSON exporter rejects invalid entry components") {
     auto result = space.toJSON(options);
     CHECK_FALSE(result);
     CHECK(result.error().code == Error::Code::InvalidPathSubcomponent);
+}
+
+TEST_CASE("PathSpace JSON exporter emits placeholder for missing type info") {
+    PathSpace space;
+    REQUIRE(space.insert("/missing/type", std::string{"value"}).nbrValuesInserted == 1);
+
+    auto* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+    auto* missing = root->getChild("missing");
+    REQUIRE(missing != nullptr);
+    auto* typeNode = missing->getChild("type");
+    REQUIRE(typeNode != nullptr);
+
+    {
+        std::lock_guard<std::mutex> guard(typeNode->payloadMutex);
+        REQUIRE(typeNode->data != nullptr);
+        REQUIRE_FALSE(typeNode->data->types.empty());
+        typeNode->data->types.front().typeInfo = nullptr;
+    }
+
+    PathSpaceJsonOptions options;
+    options.mode = PathSpaceJsonOptions::Mode::Debug;
+    options.visit.root = "/missing";
+
+    auto doc  = dump(space, options);
+    auto node = findNode(doc, "/missing", "/missing/type");
+    REQUIRE(node.at("values").size() == 1);
+    auto entry = node.at("values")[0];
+    CHECK(entry.at("type") == "unknown");
+    CHECK(entry.at("reason") == "missing-type-info");
 }
 
 TEST_CASE("PathSpace JSON exporter exposes structure and diagnostics in debug mode") {
