@@ -70,6 +70,11 @@ void reset_pathspace_trace_state() {
 } // namespace
 
 TEST_SUITE("trace.pathspace") {
+TEST_CASE("current_thread_id returns a non-zero identifier") {
+    auto id = current_thread_id();
+    CHECK(id != 0);
+}
+
 TEST_CASE("ScopedOp ignores work when no active group") {
     TaskPoolTraceGuard guard;
     reset_pathspace_trace_state();
