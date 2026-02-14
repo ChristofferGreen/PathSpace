@@ -67,8 +67,32 @@ void WaitMap::debug_log(char const* event,
                  notified);
 }
 
-WaitMap::Guard::Guard(WaitMap& waitMap, std::string_view path, std::uint64_t initialVersion)
-    : waitMap(waitMap), path(path), awaitedVersion(initialVersion), versionInitialized(true) {}
+WaitMap::Guard::Guard(WaitMap& waitMap,
+                      std::string_view path,
+                      std::uint64_t initialVersion,
+                      bool countImmediately)
+    : waitMap(waitMap),
+      path(path),
+      awaitedVersion(initialVersion),
+      versionInitialized(true),
+      counted(countImmediately) {
+    if (countImmediately) {
+        waitMap.activeWaiterCount.fetch_add(1, std::memory_order_acq_rel);
+    }
+}
+
+WaitMap::Guard::Guard(Guard&& other) noexcept
+    : waitMap(other.waitMap),
+      path(std::move(other.path)),
+      entry(other.entry),
+      waitLock(std::move(other.waitLock)),
+      counted(other.counted),
+      awaitedVersion(other.awaitedVersion),
+      versionInitialized(other.versionInitialized) {
+    other.entry = nullptr;
+    other.counted = false;
+    other.versionInitialized = false;
+}
 
 auto WaitMap::Guard::ensure_entry() -> WaiterEntry* {
     if (!entry) {
@@ -124,7 +148,7 @@ auto WaitMap::wait(std::string_view path) -> Guard {
     // if they run before the thread calls Guard::wait_until.
     auto& entry = this->getEntry(path);
     auto const initialVersion = entry.notifyVersion.load(std::memory_order_acquire);
-    return Guard(*this, path, initialVersion);
+    return Guard(*this, path, initialVersion, true);
 }
 
 // Helper: traverse trie to the node for a concrete path; create nodes as needed.
@@ -257,8 +281,6 @@ auto WaitMap::notify(std::string_view path) -> void {
         }
     }
 
-    registryLock.unlock();
-
     if (WaitMap::debug_enabled()) {
         WaitMap::debug_log("notify",
                            path,
@@ -267,6 +289,8 @@ auto WaitMap::notify(std::string_view path) -> void {
                            toNotify.size() + toNotifyGlob.size());
     }
 
+    // Keep the registry mutex held while notifying to prevent entries from
+    // being cleared concurrently and leaving dangling pointers.
     for (auto* entry : toNotify) {
         entry->notifyVersion.fetch_add(1, std::memory_order_release);
         entry->cv.notify_all();
@@ -281,30 +305,27 @@ auto WaitMap::notifyAll() -> void {
 
     std::vector<WaiterEntry*> toNotify;
 
-    {
-        std::lock_guard<std::timed_mutex> lock(registryMutex);
+    std::unique_lock<std::timed_mutex> lock(registryMutex);
 
-        // Notify all trie-based concrete waiters
-        if (this->root) {
-            std::function<void(TrieNode*)> dfsNotify = [&](TrieNode* node) {
-                if (!node) return;
-                toNotify.push_back(&node->entry);
-                for (auto& [_, child] : node->children) {
-                    dfsNotify(child.get());
-                }
-            };
-            dfsNotify(this->root.get());
-        }
+    // Notify all trie-based concrete waiters
+    if (this->root) {
+        std::function<void(TrieNode*)> dfsNotify = [&](TrieNode* node) {
+            if (!node) return;
+            toNotify.push_back(&node->entry);
+            for (auto& [_, child] : node->children) {
+                dfsNotify(child.get());
+            }
+        };
+        dfsNotify(this->root.get());
+    }
 
+    // Notify all glob waiters
+    for (auto& [pattern, entry] : this->globWaiters) {
+        (void)pattern;
+        toNotify.push_back(&entry);
+    }
 
-
-        // Notify all glob waiters
-        for (auto& [pattern, entry] : this->globWaiters) {
-            (void)pattern;
-            toNotify.push_back(&entry);
-        }
-    } // release mutex
-
+    // Hold the registry mutex while notifying to avoid concurrent clear().
     for (auto* entry : toNotify) {
         entry->notifyVersion.fetch_add(1, std::memory_order_release);
         entry->cv.notify_all();

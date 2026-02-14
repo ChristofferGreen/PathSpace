@@ -16,7 +16,12 @@ namespace SP {
 struct WaitMap {
     struct WaiterEntry;
     struct Guard {
-        Guard(WaitMap& waitMap, std::string_view path, std::uint64_t initialVersion);
+        Guard(WaitMap& waitMap, std::string_view path, std::uint64_t initialVersion, bool countImmediately);
+
+        Guard(Guard const&) = delete;
+        auto operator=(Guard const&) -> Guard& = delete;
+        Guard(Guard&& other) noexcept;
+        auto operator=(Guard&& other) noexcept -> Guard& = delete;
 
         // When a Guard is destroyed, decrement active waiter count if this Guard performed a wait.
         ~Guard() {

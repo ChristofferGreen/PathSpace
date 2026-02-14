@@ -197,9 +197,17 @@ auto SnapshotCachedPathSpace::rebuildSnapshotNow() -> void {
         return;
     }
     {
-        std::lock_guard<std::mutex> guard(state->mutex);
-        if (!state->enabled.load(std::memory_order_acquire) || state->rebuildInProgress) {
+        std::unique_lock<std::mutex> guard(state->mutex);
+        if (!state->enabled.load(std::memory_order_acquire)) {
             return;
+        }
+        if (state->rebuildInProgress) {
+            state->cv.wait(guard, [&]() {
+                return !state->enabled.load(std::memory_order_acquire) || !state->rebuildInProgress;
+            });
+            if (!state->enabled.load(std::memory_order_acquire)) {
+                return;
+            }
         }
         state->rebuildInProgress = true;
     }

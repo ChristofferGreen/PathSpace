@@ -50,9 +50,36 @@ public:
         return *this;
     }
 
-    // Default move semantics
-    Iterator(Iterator&&) noexcept            = default;
-    Iterator& operator=(Iterator&&) noexcept = default;
+    // Move semantics: rebind views/iterators to this->storage
+    Iterator(Iterator&& other) noexcept
+        : storage()
+        , path()
+        , current()
+        , segment_end() {
+        size_t curOff = static_cast<size_t>(other.current - other.storage.begin());
+        size_t endOff = static_cast<size_t>(other.segment_end - other.storage.begin());
+        storage = std::move(other.storage);
+        path    = std::string_view{storage};
+        if (curOff > storage.size()) curOff = storage.size();
+        if (endOff > storage.size()) endOff = storage.size();
+        current     = storage.begin() + curOff;
+        segment_end = storage.begin() + endOff;
+        updateCurrentSegment();
+    }
+
+    Iterator& operator=(Iterator&& other) noexcept {
+        if (this == &other) return *this;
+        size_t curOff = static_cast<size_t>(other.current - other.storage.begin());
+        size_t endOff = static_cast<size_t>(other.segment_end - other.storage.begin());
+        storage = std::move(other.storage);
+        path    = std::string_view{storage};
+        if (curOff > storage.size()) curOff = storage.size();
+        if (endOff > storage.size()) endOff = storage.size();
+        current     = storage.begin() + curOff;
+        segment_end = storage.begin() + endOff;
+        updateCurrentSegment();
+        return *this;
+    }
 
     [[nodiscard]] auto operator*() const noexcept -> value_type;
     [[nodiscard]] auto operator->() const noexcept -> pointer;

@@ -627,7 +627,7 @@ public:
         requires(validate_path(pathIn) && std::is_same_v<std::remove_cvref_t<DataType>, FutureAny>)
     auto read(Out const& options = {}) const -> Expected<FutureAny> {
         sp_log("PathSpace::read<FutureAny>", "Function Called");
-        return this->read<FutureAny>(pathIn, options & OutNoValidation{});
+        return this->read(pathIn, options & OutNoValidation{});
     }
 
     // Take typed values (pop). Use Out options for blocking behavior via Pop{} and Block{timeout}.
