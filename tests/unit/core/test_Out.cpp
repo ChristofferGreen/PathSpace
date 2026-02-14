@@ -60,4 +60,20 @@ TEST_CASE("Out defaults and remaining modifiers are exercised") {
     CHECK(defaultBlock.timeout == DEFAULT_TIMEOUT);
 }
 
+TEST_CASE("Out modifiers preserve unrelated fields") {
+    Out base{};
+    base.isMinimal = true;
+    base.timeout   = 15ms;
+
+    auto withPop = base & Pop{};
+    CHECK(withPop.isMinimal);
+    CHECK(withPop.timeout == 15ms);
+    CHECK(withPop.doPop);
+
+    auto withBlock = base & Block{3ms};
+    CHECK(withBlock.isMinimal);
+    CHECK(withBlock.timeout == 3ms);
+    CHECK(withBlock.doBlock);
+}
+
 } // TEST_SUITE
