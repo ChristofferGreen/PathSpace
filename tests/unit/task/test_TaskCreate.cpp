@@ -153,7 +153,7 @@ TEST_CASE("Executor shared_ptr submit forwards to weak overload") {
     RecordingExecutor exec;
     auto task = Task::Create([](Task&, bool) {});
 
-    auto err = exec.submit(task);
+    auto err = exec.Executor::submit(task);
     CHECK_FALSE(err.has_value());
     CHECK_FALSE(exec.lastTask.expired());
 }

@@ -1,4 +1,6 @@
+#define private public
 #include "task/TaskT.hpp"
+#undef private
 #include "task/TaskPool.hpp"
 #include "third_party/doctest.h"
 
@@ -84,6 +86,16 @@ TEST_CASE("TaskT schedule returns error when executor is missing") {
     REQUIRE(task);
 
     auto err = task->schedule(nullptr);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::UnknownError);
+}
+
+TEST_CASE("TaskT schedule fails when legacy task is missing") {
+    TaskPool pool(1);
+    auto task = std::shared_ptr<TaskT<int>>(new TaskT<int>());
+    REQUIRE(task);
+
+    auto err = task->schedule(&pool);
     REQUIRE(err.has_value());
     CHECK(err->code == Error::Code::UnknownError);
 }

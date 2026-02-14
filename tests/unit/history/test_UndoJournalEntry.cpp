@@ -2,10 +2,55 @@
 #include "third_party/doctest.h"
 
 #include <span>
+#include <cstring>
 #include <vector>
 
 using namespace SP;
 using namespace SP::History::UndoJournal;
+
+namespace {
+
+struct PayloadLayout {
+    std::size_t valueOffset = 0;
+    std::size_t inverseOffset = 0;
+    std::size_t tagLengthOffset = 0;
+    std::uint32_t valueLength = 0;
+    std::uint32_t inverseLength = 0;
+};
+
+auto readU32(std::vector<std::byte> const& buffer, std::size_t offset) -> std::uint32_t {
+    std::uint32_t value = 0;
+    std::memcpy(&value, buffer.data() + offset, sizeof(value));
+    return value;
+}
+
+auto computeLayout(std::vector<std::byte> const& buffer) -> PayloadLayout {
+    PayloadLayout layout;
+    std::size_t offset = 0;
+    offset += sizeof(std::uint32_t); // magic
+    offset += sizeof(std::uint16_t); // version
+    offset += sizeof(std::uint8_t);  // op
+    offset += sizeof(std::uint8_t);  // flags
+    offset += sizeof(std::uint16_t); // reserved
+    offset += sizeof(std::uint64_t) * 3; // timestamps + sequence
+
+    auto pathLength = readU32(buffer, offset);
+    offset += sizeof(std::uint32_t);
+    offset += pathLength;
+
+    layout.valueOffset = offset;
+    layout.valueLength = readU32(buffer, offset + sizeof(std::uint8_t));
+    offset += sizeof(std::uint8_t) + sizeof(std::uint32_t) + layout.valueLength;
+
+    layout.inverseOffset = offset;
+    layout.inverseLength = readU32(buffer, offset + sizeof(std::uint8_t));
+    offset += sizeof(std::uint8_t) + sizeof(std::uint32_t) + layout.inverseLength;
+
+    layout.tagLengthOffset = offset;
+    return layout;
+}
+
+} // namespace
 
 TEST_SUITE_BEGIN("history.undojournal.entry");
 
@@ -107,6 +152,116 @@ TEST_CASE("deserializeEntry rejects bad magic, version, and truncated fields") {
     auto truncated = deserializeEntry(std::span<const std::byte>{encoded->data(), encoded->size()});
     CHECK_FALSE(truncated.has_value());
     CHECK(truncated.error().code == Error::Code::MalformedInput);
+}
+
+TEST_CASE("deserializeEntry rejects truncated header segments") {
+    JournalEntry entry{};
+    auto encoded = serializeEntry(entry);
+    REQUIRE(encoded.has_value());
+
+    SUBCASE("missing version") {
+        std::vector<std::byte> buffer;
+        buffer.resize(sizeof(std::uint32_t));
+        std::memcpy(buffer.data(), encoded->data(), sizeof(std::uint32_t));
+        auto decoded = deserializeEntry(std::span<const std::byte>{buffer.data(), buffer.size()});
+        CHECK_FALSE(decoded.has_value());
+        CHECK(decoded.error().code == Error::Code::MalformedInput);
+    }
+
+    SUBCASE("truncated operation fields") {
+        auto buffer = *encoded;
+        buffer.resize(sizeof(std::uint32_t) + sizeof(std::uint16_t));
+        auto decoded = deserializeEntry(std::span<const std::byte>{buffer.data(), buffer.size()});
+        CHECK_FALSE(decoded.has_value());
+        CHECK(decoded.error().code == Error::Code::MalformedInput);
+    }
+
+    SUBCASE("truncated metadata") {
+        auto buffer = *encoded;
+        buffer.resize(sizeof(std::uint32_t) + sizeof(std::uint16_t) + sizeof(std::uint8_t)
+                      + sizeof(std::uint8_t) + sizeof(std::uint16_t) + 4);
+        auto decoded = deserializeEntry(std::span<const std::byte>{buffer.data(), buffer.size()});
+        CHECK_FALSE(decoded.has_value());
+        CHECK(decoded.error().code == Error::Code::MalformedInput);
+    }
+
+    SUBCASE("truncated path length") {
+        auto buffer = *encoded;
+        buffer.resize(sizeof(std::uint32_t) + sizeof(std::uint16_t) + sizeof(std::uint8_t)
+                      + sizeof(std::uint8_t) + sizeof(std::uint16_t) + sizeof(std::uint64_t) * 3);
+        auto decoded = deserializeEntry(std::span<const std::byte>{buffer.data(), buffer.size()});
+        CHECK_FALSE(decoded.has_value());
+        CHECK(decoded.error().code == Error::Code::MalformedInput);
+    }
+}
+
+TEST_CASE("deserializeEntry rejects truncated payload segments") {
+    JournalEntry entry{};
+    entry.path = "/payload";
+    entry.tag = "tag";
+    entry.value.present = true;
+    entry.value.bytes = {std::byte{0x01}, std::byte{0x02}, std::byte{0x03}};
+    entry.inverseValue.present = true;
+    entry.inverseValue.bytes = {std::byte{0x04}};
+
+    auto encoded = serializeEntry(entry);
+    REQUIRE(encoded.has_value());
+    auto layout = computeLayout(*encoded);
+
+    SUBCASE("missing payload flag") {
+        auto buffer = *encoded;
+        buffer.resize(layout.valueOffset);
+        auto decoded = deserializeEntry(std::span<const std::byte>{buffer.data(), buffer.size()});
+        CHECK_FALSE(decoded.has_value());
+        CHECK(decoded.error().code == Error::Code::MalformedInput);
+    }
+
+    SUBCASE("missing payload length") {
+        auto buffer = *encoded;
+        buffer.resize(layout.valueOffset + sizeof(std::uint8_t));
+        auto decoded = deserializeEntry(std::span<const std::byte>{buffer.data(), buffer.size()});
+        CHECK_FALSE(decoded.has_value());
+        CHECK(decoded.error().code == Error::Code::MalformedInput);
+    }
+
+    SUBCASE("truncated payload bytes") {
+        auto buffer = *encoded;
+        auto truncatedSize = layout.valueOffset + sizeof(std::uint8_t) + sizeof(std::uint32_t)
+                             + static_cast<std::size_t>(layout.valueLength - 1);
+        buffer.resize(truncatedSize);
+        auto decoded = deserializeEntry(std::span<const std::byte>{buffer.data(), buffer.size()});
+        CHECK_FALSE(decoded.has_value());
+        CHECK(decoded.error().code == Error::Code::MalformedInput);
+    }
+
+    SUBCASE("truncated inverse payload") {
+        auto buffer = *encoded;
+        buffer.resize(layout.inverseOffset);
+        auto decoded = deserializeEntry(std::span<const std::byte>{buffer.data(), buffer.size()});
+        CHECK_FALSE(decoded.has_value());
+        CHECK(decoded.error().code == Error::Code::MalformedInput);
+    }
+
+    SUBCASE("truncated tag length") {
+        auto buffer = *encoded;
+        buffer.resize(layout.tagLengthOffset + 2);
+        auto decoded = deserializeEntry(std::span<const std::byte>{buffer.data(), buffer.size()});
+        CHECK_FALSE(decoded.has_value());
+        CHECK(decoded.error().code == Error::Code::MalformedInput);
+    }
+
+    SUBCASE("truncated tag bytes") {
+        auto buffer = *encoded;
+        auto tagLength = readU32(buffer, layout.tagLengthOffset);
+        if (tagLength > 0) {
+            buffer.resize(layout.tagLengthOffset + sizeof(std::uint32_t) + tagLength - 1);
+        } else {
+            buffer.resize(layout.tagLengthOffset + sizeof(std::uint32_t) - 1);
+        }
+        auto decoded = deserializeEntry(std::span<const std::byte>{buffer.data(), buffer.size()});
+        CHECK_FALSE(decoded.has_value());
+        CHECK(decoded.error().code == Error::Code::MalformedInput);
+    }
 }
 
 TEST_CASE("encode/decode NodeData payload round-trips value queue") {
