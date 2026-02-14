@@ -147,6 +147,7 @@ TEST_CASE("match_names handles empty and dangling escape patterns") {
     CHECK(match_names("", ""));
     CHECK_FALSE(match_names("", "x"));
     CHECK_FALSE(match_names("foo\\", "foo"));
+    CHECK_FALSE(match_names("foo\\", "foo\\"));
 
     CHECK(match_names("a*", "a"));
     CHECK_FALSE(match_names("a*", ""));
