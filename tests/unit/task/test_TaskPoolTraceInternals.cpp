@@ -128,6 +128,11 @@ TEST_CASE("trace helpers are no-ops when tracing is disabled") {
     CHECK(pool.traceEvents.empty());
 }
 
+TEST_CASE("traceNowUs returns zero when tracing is disabled") {
+    TaskPool pool(1);
+    CHECK(pool.traceNowUs() == 0);
+}
+
 TEST_CASE("traceNowUs returns zero when trace base is in the future") {
     TaskPool pool(1);
     pool.enableTrace("trace_unused.json");
