@@ -71,6 +71,29 @@ TEST_CASE("PathSpace listChildren enumerates child names") {
         CHECK(missing->names.empty());
     }
 
+    SUBCASE("Indexed nested paths traverse deeper segments") {
+        auto first = std::make_unique<PathSpace>();
+        REQUIRE(first->insert("/inner/grand/leaf", 1).nbrValuesInserted == 1);
+        REQUIRE(first->insert("/inner/grand/other", 2).nbrValuesInserted == 1);
+        auto second = std::make_unique<PathSpace>();
+        REQUIRE(second->insert("/inner/grand/alt", 3).nbrValuesInserted == 1);
+
+        REQUIRE(space.insert("/mount", std::move(first)).nbrSpacesInserted == 1);
+        REQUIRE(space.insert("/mount", std::move(second)).nbrSpacesInserted == 1);
+
+        auto firstNames = space.read<Children>(ConcretePathStringView{"/mount[0]/inner/grand"});
+        REQUIRE(firstNames.has_value());
+        CHECK(firstNames->names == std::vector<std::string>{"leaf", "other"});
+
+        auto secondNames = space.read<Children>(ConcretePathStringView{"/mount[1]/inner/grand"});
+        REQUIRE(secondNames.has_value());
+        CHECK(secondNames->names == std::vector<std::string>{"alt"});
+
+        auto missingNames = space.read<Children>(ConcretePathStringView{"/mount[9]/inner/grand"});
+        REQUIRE(missingNames.has_value());
+        CHECK(missingNames->names.empty());
+    }
+
     SUBCASE("Children can be read through alias and trellis layers") {
         auto backing = std::make_shared<PathSpace>();
         REQUIRE(backing->insert("/root/a", 1).nbrValuesInserted == 1);
