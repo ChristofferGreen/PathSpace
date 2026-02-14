@@ -158,6 +158,9 @@ TEST_CASE("match_paths handles root and empty paths") {
     CHECK_FALSE(match_paths("/", "/a"));
     CHECK_FALSE(match_paths("/a", "/"));
     CHECK_FALSE(match_paths("/*", "/"));
+    CHECK(match_paths("", ""));
+    CHECK(match_paths("", "/"));
+    CHECK(match_paths("/", ""));
 }
 
 TEST_SUITE_END();
