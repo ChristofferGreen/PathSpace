@@ -80,6 +80,39 @@ TEST_CASE("unsupported history records default fields") {
     CHECK(stats.lastTimestampMs == 0);
 }
 
+TEST_CASE("savefile defaults are initialized") {
+    Savefile::OptionsBlock opts{};
+    CHECK(opts.maxEntries == 0);
+    CHECK(opts.maxBytesRetained == 0);
+    CHECK(opts.maxDiskBytes == 0);
+    CHECK(opts.keepLatestForMs == 0);
+    CHECK_FALSE(opts.manualGarbageCollect);
+
+    Savefile::Document doc{};
+    CHECK(doc.rootPath.empty());
+    CHECK(doc.options.maxEntries == 0);
+    CHECK(doc.nextSequence == 0);
+    CHECK(doc.undoCount == 0);
+    CHECK(doc.entries.empty());
+}
+
+TEST_CASE("HistoryOptions defaults are populated") {
+    HistoryOptions opts{};
+    CHECK(opts.maxEntries == 128);
+    CHECK(opts.maxBytesRetained == 0);
+    CHECK_FALSE(opts.manualGarbageCollect);
+    CHECK_FALSE(opts.allowNestedUndo);
+    CHECK_FALSE(opts.useMutationJournal);
+    CHECK_FALSE(opts.persistHistory);
+    CHECK(opts.persistenceRoot.empty());
+    CHECK(opts.persistenceNamespace.empty());
+    CHECK(opts.ramCacheEntries == 8);
+    CHECK(opts.maxDiskBytes == 0);
+    CHECK(opts.keepLatestFor.count() == 0);
+    CHECK(opts.restoreFromPersistence);
+    CHECK_FALSE(opts.sharedStackKey.has_value());
+}
+
 TEST_CASE("exportHistorySavefile reports missing history root") {
     auto space = makeUndoableSpace();
     auto path  = tempFile("export_missing.bin");

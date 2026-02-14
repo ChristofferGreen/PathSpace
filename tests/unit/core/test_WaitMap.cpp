@@ -12,6 +12,11 @@ using namespace SP;
 using namespace std::chrono_literals;
 
 TEST_SUITE("core.waitmap") {
+TEST_CASE("debug_log no-ops when disabled") {
+    testing::waitMapDebugOverride().store(false, std::memory_order_relaxed);
+    WaitMap::debug_log("noop", "/debug/noop", std::chrono::milliseconds{0}, std::chrono::milliseconds{0}, 0);
+}
+
 TEST_CASE("guard tracks active waiters and clear waits for drain") {
     testing::waitMapDebugOverride().store(true, std::memory_order_relaxed);
 
