@@ -8,13 +8,19 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <filesystem>
+#include <fstream>
 #include <limits>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include <optional>
+#include <sstream>
+#include <string>
 #include <thread>
 
 using namespace SP;
 using namespace std::chrono_literals;
+using Json = nlohmann::json;
 
 namespace {
 
@@ -33,6 +39,23 @@ auto find_span(TaskPool& pool, std::string_view name) -> std::optional<TaskPool:
         }
     }
     return std::nullopt;
+}
+
+auto make_temp_path(std::string_view suffix) -> std::filesystem::path {
+    auto base = std::filesystem::temp_directory_path();
+    auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    auto tid = std::hash<std::thread::id>{}(std::this_thread::get_id());
+    std::string filename = "pathspace_trace_" + std::to_string(stamp) + "_" + std::to_string(tid) + "_";
+    filename.append(suffix.begin(), suffix.end());
+    return base / filename;
+}
+
+auto read_file(std::filesystem::path const& path) -> std::string {
+    std::ifstream in(path, std::ios::in | std::ios::binary);
+    REQUIRE(in.is_open());
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    return buffer.str();
 }
 
 } // namespace
@@ -306,5 +329,83 @@ TEST_CASE("TraceScope move assignment handles self-assignment") {
     auto count = std::count_if(pool.traceEvents.begin(), pool.traceEvents.end(),
                                [](TaskPool::TaskTraceEvent const& e) { return e.name == "SelfMove"; });
     CHECK(count <= 1);
+}
+
+TEST_CASE("flushTrace writes escaped JSON strings") {
+    TaskPool pool(1);
+    auto tracePath = make_temp_path("trace.json");
+    pool.enableTrace(tracePath.string());
+
+    std::string name = std::string("Span\"\\\\\n\t") + '\x01';
+    std::string path = "/path/\"quote\"\\\n";
+    std::string category = "cat\t\"\\";
+    pool.recordTraceSpan(name, path, category, 5, 6, 123, 7);
+
+    auto err = pool.flushTrace();
+    CHECK_FALSE(err.has_value());
+
+    auto contents = read_file(tracePath);
+    CHECK(contents.find("\\u0001") != std::string::npos);
+    CHECK(contents.find("\\n") != std::string::npos);
+    CHECK(contents.find("\\t") != std::string::npos);
+    CHECK(contents.find("\\\"") != std::string::npos);
+    CHECK(contents.find("\\\\") != std::string::npos);
+
+    auto parsed = Json::parse(contents);
+    bool found = false;
+    for (auto const& event : parsed.at("traceEvents")) {
+        if (event.contains("name") && event.at("name") == name) {
+            REQUIRE(event.contains("args"));
+            CHECK(event.at("args").at("path") == path);
+            CHECK(event.at("args").at("category") == category);
+            found = true;
+            break;
+        }
+    }
+    CHECK(found);
+}
+
+TEST_CASE("flushTrace writes NDJSON queue wait and thread names") {
+    TaskPool pool(1);
+    auto tracePath = make_temp_path("trace.ndjson");
+    pool.enableTraceNdjson(tracePath.string());
+
+    pool.recordTraceThreadName(999999u, "worker_name");
+    pool.recordTraceSpan("QueueSpan", "/queue", "queue", 10, 5, 321, 7);
+
+    auto err = pool.flushTrace();
+    CHECK_FALSE(err.has_value());
+
+    auto contents = read_file(tracePath);
+    std::istringstream lines(contents);
+    std::string line;
+    bool sawThreadName = false;
+    bool sawQueueWait = false;
+    while (std::getline(lines, line)) {
+        if (line.empty()) {
+            continue;
+        }
+        auto entry = Json::parse(line);
+        if (entry.contains("thread_name")) {
+            sawThreadName = true;
+        }
+        if (entry.contains("queue_wait_us")) {
+            sawQueueWait = true;
+            CHECK(entry.at("queue_wait_us") == 7);
+        }
+    }
+    CHECK(sawThreadName);
+    CHECK(sawQueueWait);
+}
+
+TEST_CASE("flushTrace reports errors when trace path is invalid") {
+    TaskPool pool(1);
+    auto badDir = make_temp_path("trace_dir");
+    std::filesystem::create_directory(badDir);
+    pool.enableTrace(badDir.string());
+
+    auto err = pool.flushTrace();
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::UnknownError);
 }
 }
