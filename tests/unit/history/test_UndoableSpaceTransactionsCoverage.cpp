@@ -145,4 +145,71 @@ TEST_CASE("recordJournalOperation updates telemetry and last operation fields") 
     CHECK(state.telemetry.cachedRedo == state.journal.stats().redoCount);
 }
 
+TEST_CASE("JournalTransactionGuard commit and deactivate handle inactive guards") {
+    UndoableSpace::JournalTransactionGuard guard;
+    auto result = guard.commit();
+    CHECK(result.has_value());
+
+    guard.deactivate();
+    CHECK_FALSE(static_cast<bool>(guard));
+}
+
+TEST_CASE("commitJournalTransaction handles zero depth and updates timestamps") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+
+    UndoJournalRootState state;
+    state.activeTransaction = UndoJournalRootState::TransactionState{
+        .owner          = std::this_thread::get_id(),
+        .depth          = 0,
+        .dirty          = false,
+        .pendingEntries = {},
+    };
+    auto emptyCommit = space.commitJournalTransaction(state);
+    CHECK(emptyCommit.has_value());
+    CHECK_FALSE(state.activeTransaction.has_value());
+
+    state.activeTransaction = UndoJournalRootState::TransactionState{
+        .owner          = std::this_thread::get_id(),
+        .depth          = 1,
+        .dirty          = true,
+        .pendingEntries = {},
+    };
+    UndoJournal::JournalEntry entry;
+    entry.path        = "/doc/value";
+    entry.timestampMs = 0;
+    entry.monotonicNs = 0;
+    state.activeTransaction->pendingEntries.push_back(entry);
+
+    auto commit = space.commitJournalTransaction(state);
+    CHECK(commit.has_value());
+    CHECK(state.journal.size() == 1);
+    auto const& stored = state.journal.entryAt(0);
+    CHECK(stored.timestampMs != 0);
+    CHECK(stored.monotonicNs != 0);
+    CHECK(stored.sequence == 0);
+}
+
+TEST_CASE("recordJournalMutation reports inverse payload encoding failures") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+
+    InputMetadata meta{InputMetadataT<int>{}};
+    int           value = 9;
+    NodeData      after;
+    REQUIRE_FALSE(after.serialize(InputData{&value, meta}).has_value());
+
+    UndoJournalRootState state;
+    std::optional<NodeData> inverse{NodeData{}};
+    auto result = space.recordJournalMutation(state,
+                                              UndoJournal::OperationKind::Insert,
+                                              "/doc/inverse",
+                                              after,
+                                              inverse,
+                                              false);
+    CHECK_FALSE(result.has_value());
+    CHECK(state.telemetry.unsupportedTotal == 1);
+    REQUIRE(state.telemetry.unsupportedLog.size() == 1);
+    CHECK(state.telemetry.unsupportedLog.front().reason.find("serialize")
+          != std::string::npos);
+}
+
 TEST_SUITE_END();
