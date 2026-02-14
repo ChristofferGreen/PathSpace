@@ -17,4 +17,16 @@ TEST_CASE("operator new/delete handles size mismatches and nullptr") {
     Node::operator delete(node, sizeof(Node));
     Node::operator delete(nullptr, sizeof(Node));
 }
+
+TEST_CASE("getOrCreateChild registers and returns child") {
+    Node node;
+    CHECK_FALSE(node.hasChildren());
+
+    Node& child = node.getOrCreateChild("alpha");
+    CHECK(node.hasChildren());
+    CHECK(node.getChild("alpha") == &child);
+
+    Node const& constNode = node;
+    CHECK(constNode.getChild("alpha") == &child);
+}
 }

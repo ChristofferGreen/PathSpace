@@ -25,6 +25,8 @@ struct DummyExecutor : Executor {
 };
 
 struct RecordingExecutor : Executor {
+    using Executor::submit;
+
     auto submit(std::weak_ptr<Task>&& task) -> std::optional<Error> override {
         lastTask = std::move(task);
         return std::nullopt;
@@ -90,6 +92,15 @@ TEST_CASE("Task::Create with PathSpaceBase wires space pointer and defaults cate
 
     task->setLabel("SpaceTask");
     CHECK(task->getLabel() == "SpaceTask");
+
+    REQUIRE(task->tryStart());
+    REQUIRE(task->transitionToRunning());
+    task->function(*task, false);
+    task->markCompleted();
+
+    int out = 0;
+    task->resultCopy(&out);
+    CHECK(out == 10);
 }
 
 TEST_CASE("Task::Create rejects non-callable inputs") {
