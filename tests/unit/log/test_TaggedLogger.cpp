@@ -307,4 +307,19 @@ TEST_CASE("short_path_handles_file_without_parent_directory") {
     CHECK(output.find("TaggedLoggerNoParent.cpp:500") != std::string::npos);
 }
 
+TEST_CASE("short_path_includes_parent_directory") {
+    auto env = makeBaselineEnvBlock();
+    EnvGuard enableLog("PATHSPACE_LOG_ENABLED", "1");
+
+    auto output = captureStderr([] {
+        SP::TaggedLogger logger;
+#line 42 "dir/subdir/TaggedLoggerChild.cpp"
+        logger.log_impl("has parent", std::source_location::current(), "Solo");
+#line 1 "tests/unit/log/test_TaggedLogger.cpp"
+        waitForFlush();
+    });
+
+    CHECK(output.find("subdir/TaggedLoggerChild.cpp:42") != std::string::npos);
+}
+
 } // TEST_SUITE
