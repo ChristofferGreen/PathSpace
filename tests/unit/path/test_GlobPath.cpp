@@ -49,6 +49,14 @@ TEST_CASE("isConcrete and isGlob reflect wildcard usage") {
     CHECK(viewWildcard.isGlob());
 }
 
+TEST_CASE("escaped glob tokens are treated as concrete") {
+    GlobPathString escaped{"/root/esc\\*"};
+    ConcretePathString concrete{"/root/esc*"};
+    CHECK(escaped.isConcrete());
+    CHECK_FALSE(escaped.isGlob());
+    CHECK(escaped == concrete);
+}
+
 TEST_CASE("string_view equality delegates to path comparison") {
     GlobPathStringView view{std::string_view{"/alpha/*"}};
     CHECK(view == std::string_view{"/alpha/*"});
