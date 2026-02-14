@@ -63,6 +63,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/history/test_UndoHistoryUtils.cpp
   unit/history/test_UndoSavefileCodec.cpp
   unit/history/test_UndoableSpace.cpp
+  unit/history/test_UndoJournalPersistenceCoverage.cpp
   unit/history/test_UndoableSpaceCoverage.cpp
   unit/history/test_UndoableSpaceHistoryCoverage.cpp
   unit/history/test_UndoableSpaceTransactionsCoverage.cpp
