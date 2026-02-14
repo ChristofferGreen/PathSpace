@@ -880,6 +880,24 @@ TEST_CASE("PathSpace JSON exporter metadata is opt-in") {
     CHECK(meta.at("flags").at("include_metadata").get<bool>());
 }
 
+TEST_CASE("Minimal mode clears diagnostics even when requested") {
+    PathSpace space;
+    REQUIRE(space.insert("/alpha/value", 12).errors.empty());
+
+    PathSpaceJsonOptions options;
+    options.mode                   = PathSpaceJsonOptions::Mode::Minimal;
+    options.includeDiagnostics     = true;
+    options.includeStructureFields = true;
+    options.includeMetadata        = true;
+
+    auto doc  = dump(space, options);
+    auto node = findNode(doc, "/", "/alpha/value");
+    CHECK_FALSE(node.contains("diagnostics"));
+
+    auto flags = doc.at("_meta").at("flags");
+    CHECK_FALSE(flags.at("include_diagnostics").get<bool>());
+}
+
 TEST_CASE("JSON namespace Export matches direct exporter") {
     PathSpace space;
     REQUIRE(space.insert("/alias/value", 123).nbrValuesInserted == 1);
