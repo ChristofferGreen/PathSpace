@@ -159,6 +159,11 @@ TEST_CASE("match_names handles empty and dangling escape patterns") {
     CHECK(match_names("*", "")); // trailing-star cleanup
 }
 
+TEST_CASE("match_names handles negated class with no match") {
+    CHECK_FALSE(match_names("[!a]", "a"));
+    CHECK(match_names("[!a]", "b"));
+}
+
 TEST_CASE("match_paths handles mismatched lengths and escaped components") {
     CHECK_FALSE(match_paths("/a/b", "/a/b/c"));
     CHECK_FALSE(match_paths("/a/b/c", "/a/b"));
