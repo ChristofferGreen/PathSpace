@@ -176,4 +176,30 @@ TEST_CASE("root waits wake for empty or slash paths") {
     CHECK_FALSE(registry.hasWaiters());
 }
 
+TEST_CASE("notify empty path wakes root waiters") {
+    SP::WatchRegistry registry;
+    std::atomic<bool> ready{false};
+    std::atomic<bool> go{false};
+    std::atomic<bool> woke{false};
+
+    std::thread waiter([&] {
+        auto guard = registry.wait("/");
+        ready.store(true, std::memory_order_release);
+        auto deadline = std::chrono::system_clock::now() + 200ms;
+        auto signaled = guard.wait_until(deadline, [&] { return go.load(std::memory_order_acquire); });
+        woke.store(signaled, std::memory_order_release);
+    });
+
+    while (!ready.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+
+    go.store(true, std::memory_order_release);
+    registry.notify("");
+
+    waiter.join();
+    CHECK(woke.load(std::memory_order_acquire));
+    CHECK_FALSE(registry.hasWaiters());
+}
+
 TEST_SUITE_END();
