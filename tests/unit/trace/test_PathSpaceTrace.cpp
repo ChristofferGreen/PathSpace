@@ -295,4 +295,25 @@ TEST_CASE("EndGroup clears totals when no time is recorded") {
     }
     CHECK(cleared);
 }
+
+TEST_CASE("EndGroup is a no-op when no totals are recorded") {
+    TaskPoolTraceGuard guard;
+    reset_pathspace_trace_state();
+
+    TaskPool& pool = TaskPool::Instance();
+    pool.enableTraceNdjson("trace_unused.ndjson");
+
+    size_t before = 0;
+    {
+        std::lock_guard<std::mutex> lock(pool.traceMutex);
+        before = pool.traceEvents.size();
+    }
+
+    EndGroup(pool, 4242, 100, 200);
+
+    {
+        std::lock_guard<std::mutex> lock(pool.traceMutex);
+        CHECK(pool.traceEvents.size() == before);
+    }
+}
 }
