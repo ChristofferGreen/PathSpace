@@ -98,6 +98,7 @@ TEST_CASE("is_glob handles escapes and malformed brackets") {
     CHECK_FALSE(is_glob("/root/escaped\\?/ok"));
     CHECK_FALSE(is_glob("/root/escaped\\*/ok"));
     CHECK_FALSE(is_glob("/root/escaped\\]/ok"));
+    CHECK_FALSE(is_glob("/root/escaped\\\\/ok"));
     CHECK(is_glob("/root/has?mark"));
     CHECK(is_glob("/root/unmatched]"));
     CHECK(is_glob("/root/unclosed["));
@@ -180,6 +181,7 @@ TEST_CASE("match_paths handles root and empty paths") {
     CHECK(match_paths("/", ""));
     CHECK(match_paths("/alpha/", "/alpha"));
     CHECK(match_paths("/alpha/", "/alpha/"));
+    CHECK(match_paths("alpha/beta/", "/alpha/beta"));
     CHECK_FALSE(match_paths("/alpha/", "/alpha/beta"));
     CHECK(match_paths("alpha/beta", "alpha/beta"));
     CHECK(match_paths("alpha/beta", "/alpha/beta"));
