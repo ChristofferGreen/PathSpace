@@ -61,6 +61,7 @@ TEST_CASE("string_view equality delegates to path comparison") {
     GlobPathStringView view{std::string_view{"/alpha/*"}};
     CHECK(view == std::string_view{"/alpha/*"});
     CHECK_FALSE(view == std::string_view{"/alpha/beta/gamma"});
+    CHECK_FALSE(view == std::string_view{"relative/path"});
 }
 
 TEST_CASE("glob equality with concrete rhs rejects invalid concrete paths") {
