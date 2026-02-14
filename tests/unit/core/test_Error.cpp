@@ -32,6 +32,9 @@ TEST_SUITE("core.error") {
         Error withoutMsg{Error::Code::NoSuchPath, {}};
         CHECK(describeError(withoutMsg) == "no_such_path");
 
+        Error emptyMsg{Error::Code::NotSupported, ""};
+        CHECK(describeError(emptyMsg) == "not_supported");
+
         // Unknown enum value should still return fallback label.
         auto unknownLabel = errorCodeToString(static_cast<Error::Code>(999));
         CHECK(unknownLabel == "unknown_error");
