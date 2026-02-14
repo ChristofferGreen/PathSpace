@@ -115,6 +115,20 @@ TEST_CASE("PathSpace JSON exporter serializes primitive values (minimal)") {
     CHECK(nameNode.at("values")[0].at("value") == "Ada");
 }
 
+TEST_CASE("JSON::Export forwards to PathSpaceJsonExporter") {
+    PathSpace space;
+    REQUIRE(space.insert("/value", 3).nbrValuesInserted == 1);
+
+    PathSpaceJsonOptions options;
+    options.visit.root = "/";
+
+    auto exportFn = &JSON::Export;
+    auto result = exportFn(space, options);
+    REQUIRE(result);
+    auto doc = Json::parse(*result);
+    CHECK(doc.contains("/"));
+}
+
 TEST_CASE("PathSpace JSON exporter flattens children capsule nodes") {
     PathSpace space;
     REQUIRE(space.insert("/root/children/alpha", 1).nbrValuesInserted == 1);

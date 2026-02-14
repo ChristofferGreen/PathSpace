@@ -1,4 +1,5 @@
 #include "PathSpace.hpp"
+#include <pathspace/type/DataCategory.hpp>
 #include "third_party/doctest.h"
 
 #include <typeinfo>
@@ -21,10 +22,13 @@ TEST_CASE("PathSpace inline helpers are reachable") {
     PathSpaceProbe space;
 
     // notifyAll/shutdownPublic are thin wrappers; just ensure they can be called.
-    space.notifyAll();
-    space.shutdownPublic();
+    auto notifyFn = &PathSpaceProbe::notifyAll;
+    auto shutdownFn = &PathSpaceProbe::shutdownPublic;
+    (space.*notifyFn)();
+    (space.*shutdownFn)();
 
-    CHECK_FALSE(space.peekFuture("/nothing").has_value());
+    auto peekFn = &PathSpaceProbe::peekFuture;
+    CHECK_FALSE((space.*peekFn)("/nothing").has_value());
     CHECK_FALSE(space.typedPeekFuture("/nothing").has_value());
 }
 
@@ -50,5 +54,16 @@ TEST_CASE("peekFuture surfaces execution futures and ignores non-exec or glob pa
 
     CHECK_FALSE(space.peekFuture("/jobs/*").has_value());
     CHECK_FALSE(space.typedPeekFuture("/jobs/*").has_value());
+}
+
+TEST_CASE("PathEntry defaults are well-defined") {
+    PathEntry entry{};
+
+    CHECK(entry.path.empty());
+    CHECK_FALSE(entry.hasChildren);
+    CHECK_FALSE(entry.hasValue);
+    CHECK_FALSE(entry.hasNestedSpace);
+    CHECK(entry.approxChildCount == 0);
+    CHECK(entry.frontCategory == DataCategory::None);
 }
 }
