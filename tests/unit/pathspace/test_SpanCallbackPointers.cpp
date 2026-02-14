@@ -40,6 +40,20 @@ TEST_CASE("Span read accepts function pointer callbacks") {
     CHECK(observed == std::vector<int>{1, 2, 3});
 }
 
+TEST_CASE("Span read accepts compile-time path with function pointer") {
+    PathSpace space;
+    CHECK(space.insert("/ints", 7).errors.empty());
+    CHECK(space.insert("/ints", 8).errors.empty());
+
+    std::vector<int> observed;
+    gObserved = &observed;
+    auto result = space.read<"/ints">(&capture_ints);
+    gObserved = nullptr;
+
+    REQUIRE(result.has_value());
+    CHECK(observed == std::vector<int>{7, 8});
+}
+
 TEST_CASE("Span take accepts function pointer mutators") {
     PathSpace space;
     CHECK(space.insert("/ints", 4).errors.empty());
@@ -55,5 +69,22 @@ TEST_CASE("Span take accepts function pointer mutators") {
 
     REQUIRE(readResult.has_value());
     CHECK(observed == std::vector<int>{5, 6});
+}
+
+TEST_CASE("Span take accepts compile-time path with function pointer") {
+    PathSpace space;
+    CHECK(space.insert("/ints", 10).errors.empty());
+    CHECK(space.insert("/ints", 11).errors.empty());
+
+    auto mutResult = space.take<"/ints">(&increment_ints);
+    REQUIRE(mutResult.has_value());
+
+    std::vector<int> observed;
+    auto readResult = space.read("/ints", [&](std::span<const int> ints) {
+        observed.assign(ints.begin(), ints.end());
+    });
+
+    REQUIRE(readResult.has_value());
+    CHECK(observed == std::vector<int>{11, 12});
 }
 }
