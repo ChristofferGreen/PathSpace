@@ -89,6 +89,20 @@ TEST_CASE("Iterator iteration utilities expose start and end slices") {
     CHECK(iter.isAtEnd());
 }
 
+TEST_CASE("Iterator slices handle relative paths without leading slash") {
+    Iterator iter{"alpha/beta"};
+    CHECK(iter.isAtStart());
+    CHECK(iter.currentComponent() == "alpha");
+    CHECK(iter.startToCurrent().empty());
+    CHECK(iter.currentToEnd() == "alpha/beta");
+
+    ++iter;
+    CHECK(iter.currentComponent() == "beta");
+    CHECK(iter.isAtFinalComponent());
+    CHECK(iter.startToCurrent() == "alpha");
+    CHECK(iter.currentToEnd() == "beta");
+}
+
 TEST_CASE("Iterator constructed from iterator range canonicalizes slashes and equality") {
     std::string pathStr{"//root//child"};
     Iterator    fromRange{pathStr};
