@@ -69,6 +69,16 @@ TEST_CASE("Path Iterator and Utilities") {
             CHECK(iter.toStringView() == path);
         }
 
+        SUBCASE("End slice views") {
+            Iterator iter("/a/b");
+            ++iter;
+            ++iter;
+            CHECK(iter.isAtEnd());
+            CHECK(iter.currentComponent().empty());
+            CHECK(iter.currentToEnd().empty());
+            CHECK(iter.startToCurrent() == "a/b");
+        }
+
         SUBCASE("startToCurrent and currentToEnd slices") {
             Iterator iter("/alpha/beta/gamma");
             CHECK(iter.startToCurrent() == "");
