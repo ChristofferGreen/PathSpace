@@ -252,6 +252,35 @@ TEST_CASE("importHistorySavefile defaults ram cache when zero") {
     CHECK(stats->limits.ramCacheEntries == 8);
 }
 
+TEST_CASE("disableHistory reports missing history root") {
+    auto space = makeUndoableSpace();
+    auto result = space->disableHistory(ConcretePathStringView{"/missing"});
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::NotFound);
+}
+
+TEST_CASE("disableHistory removes persistence directory when enabled") {
+    HistoryOptions opts;
+    opts.useMutationJournal   = true;
+    opts.persistHistory       = true;
+    opts.persistenceNamespace = "disable_ns";
+    auto persistenceRoot      = tempFile("disable_persist_root");
+    std::filesystem::create_directories(persistenceRoot);
+    opts.persistenceRoot = persistenceRoot.string();
+
+    auto space = makeUndoableSpace(opts);
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto persistencePath = persistenceRoot / "disable_ns" / "_doc";
+    CHECK(std::filesystem::exists(persistencePath));
+
+    REQUIRE(space->disableHistory(ConcretePathStringView{"/doc"}).has_value());
+    CHECK_FALSE(std::filesystem::exists(persistencePath));
+
+    std::error_code ec;
+    std::filesystem::remove_all(persistenceRoot, ec);
+}
+
 TEST_CASE("importHistorySavefile preserves options when applyOptions is false") {
     HistoryOptions sourceOpts;
     sourceOpts.useMutationJournal = true;
