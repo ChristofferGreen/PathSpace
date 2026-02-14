@@ -8,9 +8,11 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <pathspace/PathSpaceBase.hpp>
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/tools/PathSpaceJsonExporter.hpp>
 #include <pathspace/tools/PathSpaceJsonConverters.hpp>
+#include <pathspace/type/DataCategory.hpp>
 
 #include "../PathSpaceTestHelper.hpp"
 
@@ -56,6 +58,34 @@ auto findNode(Json const& doc, std::string const& rootPath, std::string const& p
     }
     return node;
 }
+
+class BrokenVisitSpace final : public PathSpaceBase {
+public:
+    auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void> override {
+        if (!visitor) {
+            return std::unexpected(Error{Error::Code::InvalidType, "Visitor callback is empty"});
+        }
+        PathEntry entry;
+        entry.path             = options.root.empty() ? std::string{"/"} : options.root;
+        entry.hasValue         = true;
+        entry.hasChildren      = false;
+        entry.hasNestedSpace   = false;
+        entry.approxChildCount = 0;
+        entry.frontCategory    = DataCategory::Fundamental;
+
+        ValueHandle handle;
+        visitor(entry, handle);
+        return {};
+    }
+
+private:
+    auto in(Iterator const&, InputData const&) -> InsertReturn override { return {}; }
+    auto out(Iterator const&, InputMetadata const&, Out const&, void*) -> std::optional<Error> override {
+        return Error{Error::Code::NotSupported, "BrokenVisitSpace does not support out"};
+    }
+    auto shutdown() -> void override {}
+    auto notify(std::string const&) -> void override {}
+};
 
 } // namespace
 
@@ -117,6 +147,22 @@ TEST_CASE("PathSpace JSON exporter collapses duplicate children capsules in entr
     auto const& children = rootNode.at("children");
     CHECK(children.contains("alpha"));
     CHECK_FALSE(children.contains("children"));
+}
+
+TEST_CASE("PathSpace JSON exporter reports snapshot errors as value_error") {
+    BrokenVisitSpace space;
+
+    PathSpaceJsonOptions options;
+    options.mode       = PathSpaceJsonOptions::Mode::Debug;
+    options.visit.root = "/root";
+
+    auto result = PathSpaceJsonExporter::Export(space, options);
+    REQUIRE(result);
+
+    auto doc  = Json::parse(*result);
+    auto node = findNode(doc, "/root", "/root");
+    CHECK(node.contains("value_error"));
+    CHECK(node.at("value_error") == "unknown_error:ValueHandle missing node");
 }
 
 TEST_CASE("PathSpace JSON exporter rejects duplicated children capsules in root") {
