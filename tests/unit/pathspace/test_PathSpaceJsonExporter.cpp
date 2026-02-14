@@ -269,6 +269,25 @@ TEST_CASE("PathSpace JSON exporter handles corrupt serialized payloads") {
     CHECK(entry.at("reason") == "converter-missing");
 }
 
+TEST_CASE("PathSpace JSON exporter rejects nested entries outside root") {
+    PathSpace space;
+    auto nested0 = std::make_unique<PathSpace>();
+    REQUIRE(nested0->insert("/child", 1).nbrValuesInserted == 1);
+    auto nested1 = std::make_unique<PathSpace>();
+    REQUIRE(nested1->insert("/child", 2).nbrValuesInserted == 1);
+    REQUIRE(space.insert("/root", std::move(nested0)).nbrSpacesInserted == 1);
+    REQUIRE(space.insert("/root", std::move(nested1)).nbrSpacesInserted == 1);
+
+    PathSpaceJsonOptions options;
+    options.mode = PathSpaceJsonOptions::Mode::Debug;
+    options.visit.root = "/root";
+    options.visit.includeNestedSpaces = true;
+
+    auto result = space.toJSON(options);
+    CHECK_FALSE(result);
+    CHECK(result.error().code == Error::Code::InvalidPath);
+}
+
 TEST_CASE("PathSpace JSON exporter exposes structure and diagnostics in debug mode") {
     PathSpace space;
     REQUIRE(space.insert("/alpha/int", 1).nbrValuesInserted == 1);
