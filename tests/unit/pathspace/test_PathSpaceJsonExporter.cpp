@@ -958,6 +958,26 @@ TEST_CASE("JSON namespace Export supports flat paths") {
     CHECK(doc.size() == 2);
 }
 
+TEST_CASE("Flat path export from root preserves leading slashes") {
+    PathSpace space;
+    REQUIRE(space.insert("/a", 1).errors.empty());
+    REQUIRE(space.insert("/b/c", 2).errors.empty());
+
+    PathSpaceJsonOptions opts;
+    opts.flatPaths        = true;
+    opts.flatSimpleValues = true;
+    opts.visit.root       = "/";
+
+    auto flat = space.toJSON(opts);
+    REQUIRE(flat);
+    auto doc = Json::parse(*flat);
+    REQUIRE(doc.contains("/a"));
+    REQUIRE(doc.contains("/b/c"));
+    CHECK(doc.at("/a") == 1);
+    CHECK(doc.at("/b/c") == 2);
+    CHECK_FALSE(doc.contains("a"));
+}
+
 TEST_CASE("PathSpace JSON exporter emits placeholders for function pointers") {
     auto sampleFunction = +[]() -> int { return 21; };
 
