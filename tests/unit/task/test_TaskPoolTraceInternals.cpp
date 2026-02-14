@@ -184,6 +184,24 @@ TEST_CASE("traceCounter records counter events when tracing is enabled") {
     CHECK(it->threadId != 0);
 }
 
+TEST_CASE("traceCounter clamps start time when trace base is in the future") {
+    TaskPool pool(1);
+    pool.enableTrace("trace_unused.json");
+    pool.traceStartMicros.store(std::numeric_limits<int64_t>::max(), std::memory_order_relaxed);
+
+    pool.traceCounter("FutureCounter", 1.0);
+
+    std::lock_guard<std::mutex> lock(pool.traceMutex);
+    auto it = std::find_if(pool.traceEvents.begin(), pool.traceEvents.end(),
+                           [](TaskPool::TaskTraceEvent const& e) {
+                               return e.phase == 'C' && e.name == "FutureCounter";
+                           });
+    REQUIRE(it != pool.traceEvents.end());
+    CHECK(it->startUs == 0);
+    CHECK(it->hasCounter);
+    CHECK(it->counterValue == doctest::Approx(1.0));
+}
+
 TEST_CASE("traceNowUs returns zero when tracing is disabled") {
     TaskPool pool(1);
     CHECK(pool.traceNowUs() == 0);
