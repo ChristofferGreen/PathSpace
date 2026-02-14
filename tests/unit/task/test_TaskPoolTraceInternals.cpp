@@ -248,6 +248,24 @@ TEST_CASE("traceSpan uses current thread when no thread id is provided") {
     CHECK(it->path == "/path");
 }
 
+TEST_CASE("recordTraceAsync captures async metadata") {
+    TaskPool pool(1);
+    pool.enableTrace("trace_unused.json");
+
+    pool.recordTraceAsync("AsyncEvent", "/async/path", "async", 42, 'b', 77);
+
+    std::lock_guard<std::mutex> lock(pool.traceMutex);
+    auto it = std::find_if(pool.traceEvents.begin(), pool.traceEvents.end(),
+                           [](TaskPool::TaskTraceEvent const& e) { return e.name == "AsyncEvent"; });
+    REQUIRE(it != pool.traceEvents.end());
+    CHECK(it->phase == 'b');
+    CHECK(it->path == "/async/path");
+    CHECK(it->category == "async");
+    CHECK(it->startUs == 42);
+    CHECK(it->asyncId == 77);
+    CHECK(it->threadId == 0);
+}
+
 TEST_CASE("traceScope returns inactive scope when tracing is disabled") {
     TaskPool pool(1);
 
