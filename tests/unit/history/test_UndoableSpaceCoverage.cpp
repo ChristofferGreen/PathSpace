@@ -252,6 +252,79 @@ TEST_CASE("importHistorySavefile defaults ram cache when zero") {
     CHECK(stats->limits.ramCacheEntries == 8);
 }
 
+TEST_CASE("importHistorySavefile preserves options when applyOptions is false") {
+    HistoryOptions sourceOpts;
+    sourceOpts.useMutationJournal = true;
+    auto source = makeUndoableSpace(sourceOpts);
+    REQUIRE(source->enableHistory(ConcretePathStringView{"/doc"}, sourceOpts).has_value());
+    REQUIRE(source->insert("/doc/value", 101).errors.empty());
+
+    auto savePath = tempFile("import_keep_options.bin");
+    REQUIRE(source->exportHistorySavefile(ConcretePathStringView{"/doc"}, savePath, false).has_value());
+
+    HistoryOptions destOpts;
+    destOpts.useMutationJournal   = true;
+    destOpts.maxEntries           = 5;
+    destOpts.maxBytesRetained     = 123;
+    destOpts.maxDiskBytes         = 456;
+    destOpts.keepLatestFor        = std::chrono::milliseconds{789};
+    destOpts.manualGarbageCollect = true;
+    destOpts.ramCacheEntries      = 3;
+
+    auto destination = makeUndoableSpace(destOpts);
+    REQUIRE(destination->enableHistory(ConcretePathStringView{"/doc"}, destOpts).has_value());
+
+    auto importResult =
+        destination->importHistorySavefile(ConcretePathStringView{"/doc"}, savePath, false);
+    REQUIRE(importResult.has_value());
+
+    auto stats = destination->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(stats.has_value());
+    CHECK(stats->limits.maxEntries == destOpts.maxEntries);
+    CHECK(stats->limits.maxBytesRetained == destOpts.maxBytesRetained);
+    CHECK(stats->limits.maxDiskBytes == destOpts.maxDiskBytes);
+    CHECK(stats->limits.keepLatestForMs == destOpts.keepLatestFor.count());
+    CHECK(stats->limits.ramCacheEntries == destOpts.ramCacheEntries);
+    CHECK(stats->counts.manualGarbageCollect == destOpts.manualGarbageCollect);
+    CHECK(stats->counts.undo >= 1);
+}
+
+TEST_CASE("importHistorySavefile writes persistence journal when enabled") {
+    HistoryOptions sourceOpts;
+    sourceOpts.useMutationJournal = true;
+    auto source = makeUndoableSpace(sourceOpts);
+    REQUIRE(source->enableHistory(ConcretePathStringView{"/doc"}, sourceOpts).has_value());
+    REQUIRE(source->insert("/doc/value", std::string{"alpha"}).errors.empty());
+    REQUIRE(source->insert("/doc/value", std::string{"beta"}).errors.empty());
+
+    auto savePath = tempFile("import_persist.bin");
+    REQUIRE(source->exportHistorySavefile(ConcretePathStringView{"/doc"}, savePath, false).has_value());
+
+    auto persistenceRoot = tempFile("history_persist_root");
+    std::filesystem::create_directories(persistenceRoot);
+
+    HistoryOptions destOpts;
+    destOpts.useMutationJournal   = true;
+    destOpts.persistHistory       = true;
+    destOpts.persistenceRoot      = persistenceRoot.string();
+    destOpts.persistenceNamespace = "persist_test";
+
+    auto destination = makeUndoableSpace(destOpts);
+    REQUIRE(destination->enableHistory(ConcretePathStringView{"/doc"}, destOpts).has_value());
+
+    auto importResult =
+        destination->importHistorySavefile(ConcretePathStringView{"/doc"}, savePath, false);
+    REQUIRE(importResult.has_value());
+
+    auto stats = destination->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(stats.has_value());
+    CHECK(stats->bytes.disk > 0);
+    CHECK(stats->counts.diskEntries > 0);
+
+    std::error_code ec;
+    std::filesystem::remove_all(persistenceRoot, ec);
+}
+
 TEST_CASE("unknown history control command reports error") {
     auto space = makeUndoableSpace();
     REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
