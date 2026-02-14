@@ -14,6 +14,24 @@ using namespace SP;
 using namespace std::chrono_literals;
 
 TEST_SUITE("core.waitmap") {
+TEST_CASE("notify and clear are safe when no waiters are registered") {
+    WaitMap waitMap;
+
+    CHECK_FALSE(waitMap.hasWaiters());
+
+    // Concrete notify should no-op when no trie exists.
+    waitMap.notify("/missing/path");
+
+    // Glob notify should handle empty trie without crashing.
+    waitMap.notify("/missing/*");
+
+    // notifyAll and clear should be no-ops on empty registries.
+    waitMap.notifyAll();
+    waitMap.clear();
+
+    CHECK_FALSE(waitMap.hasWaiters());
+}
+
 TEST_CASE("Guard initializes version and counts lazily") {
     WaitMap waitMap;
     WaitMap::Guard guard(waitMap, "/lazy", 0, false);
