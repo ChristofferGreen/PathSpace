@@ -60,6 +60,9 @@ TEST_CASE("Iterator basic validation surfaces expected errors") {
     Iterator valid{"/ok"};
     auto invalidLevel = valid.validate(static_cast<ValidationLevel>(999));
     CHECK_FALSE(invalidLevel.has_value());
+
+    auto validFull = valid.validate(ValidationLevel::Full);
+    CHECK_FALSE(validFull.has_value());
 }
 
 TEST_CASE("Iterator iteration utilities expose start and end slices") {
