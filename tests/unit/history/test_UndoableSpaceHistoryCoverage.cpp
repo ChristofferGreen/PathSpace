@@ -11,6 +11,7 @@
 #include "type/InputMetadataT.hpp"
 
 #include <chrono>
+#include <cstdlib>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -20,6 +21,46 @@
 using namespace SP;
 using namespace SP::History;
 namespace UndoPaths = SP::History::UndoUtils::Paths;
+
+namespace {
+
+struct EnvVarGuard {
+    explicit EnvVarGuard(std::string varName)
+        : name(std::move(varName)) {
+        if (auto* value = std::getenv(name.c_str())) {
+            previous = std::string{value};
+        }
+    }
+
+    auto set(std::string const& value) const -> bool {
+#ifdef _WIN32
+        return _putenv_s(name.c_str(), value.c_str()) == 0;
+#else
+        return ::setenv(name.c_str(), value.c_str(), 1) == 0;
+#endif
+    }
+
+    ~EnvVarGuard() {
+        if (previous) {
+#ifdef _WIN32
+            (void)_putenv_s(name.c_str(), previous->c_str());
+#else
+            (void)::setenv(name.c_str(), previous->c_str(), 1);
+#endif
+        } else {
+#ifdef _WIN32
+            (void)_putenv_s(name.c_str(), "");
+#else
+            (void)::unsetenv(name.c_str());
+#endif
+        }
+    }
+
+    std::string                    name;
+    std::optional<std::string>     previous;
+};
+
+} // namespace
 
 TEST_SUITE_BEGIN("history.undoable.history.coverage");
 
@@ -317,6 +358,31 @@ TEST_CASE("UndoableSpace updateJournalDiskTelemetry zeros when disabled") {
     space.updateJournalDiskTelemetry(state);
     CHECK(state.telemetry.diskBytes == 0);
     CHECK(state.telemetry.diskEntries == 0);
+}
+
+TEST_CASE("UndoableSpace persistence root helpers honor env override") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    EnvVarGuard envGuard("PATHSPACE_HISTORY_ROOT");
+
+    auto suffix = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    auto envRoot = std::filesystem::temp_directory_path() / ("history_env_root_" + suffix);
+    REQUIRE(envGuard.set(envRoot.string()));
+
+    CHECK(space.defaultPersistenceRoot() == (envRoot / "history"));
+
+    auto explicitRoot = std::filesystem::temp_directory_path() / ("history_explicit_root_" + suffix);
+    HistoryOptions opts;
+    opts.persistenceRoot = explicitRoot.string();
+    CHECK(space.persistenceRootPath(opts) == explicitRoot);
+}
+
+TEST_CASE("UndoableSpace encodeRootForPersistence replaces separators") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+
+    CHECK(space.encodeRootForPersistence("") == "__root");
+    CHECK(space.encodeRootForPersistence("/") == "__root");
+    CHECK(space.encodeRootForPersistence("/doc") == "_doc");
+    CHECK(space.encodeRootForPersistence("/doc/child") == "_doc_child");
 }
 
 TEST_SUITE_END();
