@@ -174,6 +174,8 @@ TEST_CASE("match_paths handles mismatched lengths and escaped components") {
     CHECK_FALSE(match_paths("/a/*/c", "/a/b/d"));
     CHECK(match_paths("/a/?/c", "/a/b/c"));
     CHECK_FALSE(match_paths("/a/?/c", "/a/bb/c"));
+    CHECK(match_paths("/a/[a-c]/c", "/a/b/c"));
+    CHECK_FALSE(match_paths("/a/[a-c]/c", "/a/d/c"));
 }
 
 TEST_CASE("match_paths handles root and empty paths") {
