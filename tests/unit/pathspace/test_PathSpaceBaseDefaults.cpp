@@ -151,6 +151,16 @@ TEST_CASE("PathSpaceBase visit rejects empty visitors") {
     CHECK(result.error().code == Error::Code::InvalidType);
 }
 
+TEST_CASE("VisitOptions child limit helpers reflect settings") {
+    VisitOptions defaults;
+    CHECK(defaults.childLimitEnabled());
+    CHECK(VisitOptions::isUnlimitedChildren(VisitOptions::UnlimitedChildren));
+
+    VisitOptions unlimited = defaults;
+    unlimited.maxChildren = VisitOptions::UnlimitedChildren;
+    CHECK_FALSE(unlimited.childLimitEnabled());
+}
+
 TEST_CASE("PathSpaceBase visit reports NotSupported when no root node exists") {
     BaseStub stub;
 
