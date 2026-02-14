@@ -201,6 +201,74 @@ TEST_CASE("PathSpace JSON exporter emits placeholder for missing type info") {
     CHECK(entry.at("reason") == "missing-type-info");
 }
 
+TEST_CASE("PathSpace JSON exporter maps unusual data categories") {
+    PathSpace space;
+    REQUIRE(space.insert("/weird/value", std::string{"data"}).nbrValuesInserted == 1);
+
+    auto* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+    auto* weird = root->getChild("weird");
+    REQUIRE(weird != nullptr);
+    auto* valueNode = weird->getChild("value");
+    REQUIRE(valueNode != nullptr);
+
+    {
+        std::lock_guard<std::mutex> guard(valueNode->payloadMutex);
+        REQUIRE(valueNode->data != nullptr);
+        REQUIRE_FALSE(valueNode->data->types.empty());
+        valueNode->data->types.front().category = DataCategory::FunctionPointer;
+    }
+
+    PathSpaceJsonOptions options;
+    options.mode = PathSpaceJsonOptions::Mode::Debug;
+    options.visit.root = "/weird";
+
+    auto doc  = dump(space, options);
+    auto node = findNode(doc, "/weird", "/weird/value");
+    REQUIRE(node.at("values").size() == 1);
+    CHECK(node.at("values")[0].at("category") == "FunctionPointer");
+
+    {
+        std::lock_guard<std::mutex> guard(valueNode->payloadMutex);
+        valueNode->data->types.front().category = static_cast<DataCategory>(99);
+    }
+
+    auto doc2  = dump(space, options);
+    auto node2 = findNode(doc2, "/weird", "/weird/value");
+    REQUIRE(node2.at("values").size() == 1);
+    CHECK(node2.at("values")[0].at("category") == "Unknown");
+}
+
+TEST_CASE("PathSpace JSON exporter handles corrupt serialized payloads") {
+    PathSpace space;
+    REQUIRE(space.insert("/corrupt/value", std::string{"data"}).nbrValuesInserted == 1);
+
+    auto* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+    auto* corrupt = root->getChild("corrupt");
+    REQUIRE(corrupt != nullptr);
+    auto* valueNode = corrupt->getChild("value");
+    REQUIRE(valueNode != nullptr);
+
+    {
+        std::lock_guard<std::mutex> guard(valueNode->payloadMutex);
+        REQUIRE(valueNode->data != nullptr);
+        REQUIRE_FALSE(valueNode->data->valueSizes.empty());
+        valueNode->data->valueSizes.front() = std::numeric_limits<std::size_t>::max();
+    }
+
+    PathSpaceJsonOptions options;
+    options.mode = PathSpaceJsonOptions::Mode::Debug;
+    options.visit.root = "/corrupt";
+
+    auto doc  = dump(space, options);
+    auto node = findNode(doc, "/corrupt", "/corrupt/value");
+    REQUIRE(node.at("values").size() == 1);
+    auto entry = node.at("values")[0];
+    CHECK(entry.at("placeholder") == "opaque");
+    CHECK(entry.at("reason") == "converter-missing");
+}
+
 TEST_CASE("PathSpace JSON exporter exposes structure and diagnostics in debug mode") {
     PathSpace space;
     REQUIRE(space.insert("/alpha/int", 1).nbrValuesInserted == 1);
