@@ -75,6 +75,20 @@ TEST_CASE("current_thread_id returns a non-zero identifier") {
     CHECK(id != 0);
 }
 
+TEST_CASE("ScopedOp ignores work when trace is disabled") {
+    TaskPoolTraceGuard guard;
+    reset_pathspace_trace_state();
+
+    BeginGroup(77);
+    {
+        ScopedOp scope(Op::Read);
+        std::this_thread::sleep_for(1ms);
+    }
+
+    std::lock_guard<std::mutex> lock(gMutex);
+    CHECK(gTotals.empty());
+}
+
 TEST_CASE("ScopedOp ignores work when no active group") {
     TaskPoolTraceGuard guard;
     reset_pathspace_trace_state();
