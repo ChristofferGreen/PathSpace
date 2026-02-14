@@ -78,6 +78,13 @@ private:
     int value = 0;
 };
 
+class DummyReader final : public detail::PathSpaceJsonValueReader {
+private:
+    auto popImpl(void*, InputMetadata const&) -> std::optional<Error> override {
+        return Error{Error::Code::NotSupported, "DummyReader pop"};
+    }
+};
+
 class BrokenVisitSpace final : public PathSpaceBase {
 public:
     auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void> override {
@@ -143,6 +150,33 @@ TEST_CASE("PathSpaceJsonValueReader pop forwards metadata and values") {
     CHECK_FALSE(err.has_value());
     CHECK(out == 12);
     CHECK(reader.calls == 1);
+}
+
+TEST_CASE("JSON converter registry can register, convert, and describe types") {
+    struct LocalType {
+        int value = 0;
+    };
+
+    bool called = false;
+    detail::RegisterPathSpaceJsonConverter(
+        std::type_index(typeid(LocalType)),
+        "LocalType",
+        [&](detail::PathSpaceJsonValueReader&) -> std::optional<Json> {
+            called = true;
+            return Json("ok");
+        });
+
+    DummyReader reader;
+    auto converted = detail::ConvertWithRegisteredConverter(std::type_index(typeid(LocalType)), reader);
+    REQUIRE(converted.has_value());
+    CHECK(converted->get<std::string>() == "ok");
+    CHECK(called);
+
+    auto missing = detail::ConvertWithRegisteredConverter(std::type_index(typeid(long double)), reader);
+    CHECK_FALSE(missing.has_value());
+
+    CHECK(detail::DescribeRegisteredType(std::type_index(typeid(LocalType))) == "LocalType");
+    CHECK(detail::DescribeRegisteredType(std::type_index(typeid(long double))) == typeid(long double).name());
 }
 
 TEST_CASE("JSON::Export forwards to PathSpaceJsonExporter") {

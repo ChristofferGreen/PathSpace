@@ -259,6 +259,32 @@ TEST_CASE("PathSpace Read") {
         CHECK_FALSE(bad.has_value());
     }
 
+    SUBCASE("Glob read skips incompatible children and returns first compatible value") {
+        CHECK(pspace.insert("/glob_read/a", std::string("nope")).errors.empty());
+        CHECK(pspace.insert("/glob_read/b", 42).errors.empty());
+
+        auto value = pspace.read<int>("/glob_read/*");
+        REQUIRE(value.has_value());
+        CHECK(value.value() == 42);
+
+        auto stillString = pspace.read<std::string>("/glob_read/a");
+        REQUIRE(stillString.has_value());
+        CHECK(stillString.value() == "nope");
+    }
+
+    SUBCASE("Glob read reports type mismatch when no child matches") {
+        CHECK(pspace.insert("/glob_mismatch/a", std::string("alpha")).errors.empty());
+        CHECK(pspace.insert("/glob_mismatch/b", std::string("beta")).errors.empty());
+
+        auto bad = pspace.read<int>("/glob_mismatch/*");
+        CHECK_FALSE(bad.has_value());
+        CHECK(bad.error().code == Error::Code::InvalidType);
+
+        auto stillThere = pspace.read<std::string>("/glob_mismatch/a");
+        REQUIRE(stillThere.has_value());
+        CHECK(stillThere.value() == "alpha");
+    }
+
     SUBCASE("Span read rejects glob and indexed paths without consuming data") {
         CHECK(pspace.insert("/glob/value", 9).errors.empty());
         auto globRead = pspace.read("/glob/*", [&](std::span<const int>) {});

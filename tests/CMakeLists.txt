@@ -15,6 +15,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/path/test_TransparentString.cpp
   unit/core/test_WaitMap.cpp
   unit/core/test_Node.cpp
+  unit/core/test_LeafCoverage.cpp
   unit/core/test_BlockOptions.cpp
   unit/core/test_InsertReturn.cpp
   unit/core/test_InCoverage.cpp
