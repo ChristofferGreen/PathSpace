@@ -139,6 +139,7 @@ TEST_CASE("match_names handles star backtracking misses and literal hyphens") {
     CHECK(match_names("[-a]", "-"));
     CHECK(match_names("[-a]", "a"));
     CHECK_FALSE(match_names("[-a]", "b"));
+    CHECK_FALSE(match_names("[!a-c]", "b"));
 
     // Leading range before any previous character should still match properly.
     CHECK(match_names("[a-c]", "b"));
