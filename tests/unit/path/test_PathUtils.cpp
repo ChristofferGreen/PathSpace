@@ -96,6 +96,7 @@ TEST_CASE("is_glob treats numeric indices as concrete") {
 TEST_CASE("is_glob handles escapes and malformed brackets") {
     CHECK_FALSE(is_glob("/root/escaped\\[7\\]"));
     CHECK_FALSE(is_glob("/root/escaped\\?/ok"));
+    CHECK_FALSE(is_glob("/root/escaped\\]/ok"));
     CHECK(is_glob("/root/unmatched]"));
     CHECK(is_glob("/root/unclosed["));
     CHECK(is_glob("/root/alpha[1a]/beta"));
@@ -111,6 +112,7 @@ TEST_CASE("is_concrete mirrors glob detection") {
 TEST_CASE("match_names rejects malformed character classes") {
     CHECK_FALSE(match_names("[abc", "a"));
     CHECK_FALSE(match_names("test[!", "testa"));
+    CHECK_FALSE(match_names("[]", "a"));
 }
 
 TEST_CASE("match_names covers wildcards, ranges, and escapes") {
