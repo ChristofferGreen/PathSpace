@@ -88,6 +88,22 @@ TEST_CASE("GlobName comparisons and negative matches") {
     CHECK_FALSE(backslashSuper);
 }
 
+TEST_CASE("GlobName treats escaped wildcards as concrete") {
+    GlobName escapedStar{"\\*"};
+    CHECK(escapedStar.isConcrete());
+    CHECK_FALSE(escapedStar.isGlob());
+    auto [starMatch, starSuper] = escapedStar.match(std::string_view{"*"});
+    CHECK(starMatch);
+    CHECK_FALSE(starSuper);
+
+    GlobName escapedQuestion{"\\?"};
+    CHECK(escapedQuestion.isConcrete());
+    CHECK_FALSE(escapedQuestion.isGlob());
+    auto [questionMatch, questionSuper] = escapedQuestion.match(std::string_view{"?"});
+    CHECK(questionMatch);
+    CHECK_FALSE(questionSuper);
+}
+
 TEST_CASE("GlobName handles escaped mismatch and star skips") {
     auto [miss, missSuper] = GlobName{"a\\*b"}.match(std::string_view{"aXb"});
     CHECK_FALSE(miss);
