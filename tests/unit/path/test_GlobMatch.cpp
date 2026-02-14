@@ -15,6 +15,9 @@ TEST_CASE("GlobName matches complex patterns") {
     auto [m1, super1] = any.match(std::string_view{"anything"});
     CHECK(m1);
     CHECK(super1);
+    auto [m1Empty, super1Empty] = any.match(std::string_view{""});
+    CHECK(m1Empty);
+    CHECK_FALSE(super1Empty);
 
     // Escaped wildcard
     GlobName esc{"a\\*b"};
