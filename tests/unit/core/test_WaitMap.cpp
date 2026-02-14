@@ -194,6 +194,16 @@ TEST_CASE("predicate wait_until returns false on timeout") {
     CHECK_FALSE(ok);
 }
 
+TEST_CASE("guard destructor leaves counts unchanged when never waited") {
+    WaitMap waitMap;
+    CHECK(waitMap.activeWaiterCount.load(std::memory_order_acquire) == 0);
+    {
+        WaitMap::Guard guard(waitMap, "/never/waited", 0, false);
+        CHECK(waitMap.activeWaiterCount.load(std::memory_order_acquire) == 0);
+    }
+    CHECK(waitMap.activeWaiterCount.load(std::memory_order_acquire) == 0);
+}
+
 TEST_CASE("Guard move constructor preserves wait entry and counts") {
     WaitMap waitMap;
     auto original = waitMap.wait("/move");
