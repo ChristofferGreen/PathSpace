@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <limits>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
@@ -137,6 +138,25 @@ TEST_CASE("ScopedOp records totals for active group and skips nested ops") {
         }
     }
     CHECK(found);
+}
+
+TEST_CASE("ScopedOp skips update when trace time goes backwards") {
+    TaskPoolTraceGuard guard;
+    reset_pathspace_trace_state();
+
+    TaskPool& pool = TaskPool::Instance();
+    pool.enableTraceNdjson("trace_unused.ndjson");
+
+    BeginGroup(33);
+    std::this_thread::sleep_for(1ms);
+
+    {
+        ScopedOp scope(Op::Read);
+        pool.traceStartMicros.store(std::numeric_limits<int64_t>::max(), std::memory_order_relaxed);
+    }
+
+    std::lock_guard<std::mutex> lock(gMutex);
+    CHECK(gTotals.empty());
 }
 
 TEST_CASE("EndGroup emits trace spans and resets totals") {
