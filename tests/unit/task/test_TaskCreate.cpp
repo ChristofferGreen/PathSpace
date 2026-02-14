@@ -4,8 +4,11 @@
 #include "core/ExecutionCategory.hpp"
 #include "third_party/doctest.h"
 
+#include <atomic>
+#include <chrono>
 #include <memory>
 #include <string>
+#include <thread>
 
 using namespace SP;
 
@@ -93,5 +96,34 @@ TEST_CASE("Task::Create rejects non-callable inputs") {
                                       nonCallable,
                                       ExecutionCategory::Immediate);
     CHECK(taskWithSpace == nullptr);
+}
+
+TEST_CASE("Task::resultCopy waits until completion") {
+    auto task = std::make_shared<Task>();
+    task->resultCopyFn = [](std::any const& from, void* const to) {
+        *static_cast<int*>(to) = std::any_cast<int>(from);
+    };
+
+    REQUIRE(task->tryStart());
+    REQUIRE(task->transitionToRunning());
+
+    std::atomic<bool> started{false};
+    std::thread finisher([&]() {
+        started.store(true, std::memory_order_release);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        task->result = 7;
+        task->markCompleted();
+    });
+
+    while (!started.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+
+    int out = 0;
+    task->resultCopy(&out);
+    finisher.join();
+
+    CHECK(task->state.isCompleted());
+    CHECK(out == 7);
 }
 }
