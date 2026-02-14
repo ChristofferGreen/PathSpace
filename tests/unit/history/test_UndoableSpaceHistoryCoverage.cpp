@@ -184,4 +184,53 @@ TEST_CASE("UndoableSpace readHistoryStatsValue handles last operation and unsupp
     CHECK(err->code == Error::Code::NoObjectFound);
 }
 
+TEST_CASE("UndoableSpace readHistoryStatsValue validates metadata and pointers") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryStats stats;
+    stats.counts.undo = 4;
+
+    std::size_t undoCount = 0;
+    InputMetadata metaSize{InputMetadataT<std::size_t>{}};
+    auto err = space.readHistoryStatsValue(stats,
+                                           std::optional<std::size_t>{0},
+                                           std::string(UndoPaths::HistoryStatsUndoCount),
+                                           metaSize,
+                                           &undoCount);
+    CHECK_FALSE(err.has_value());
+    CHECK(undoCount == 4);
+
+    std::string wrong;
+    InputMetadata metaStr{InputMetadataT<std::string>{}};
+    err = space.readHistoryStatsValue(stats,
+                                      std::optional<std::size_t>{0},
+                                      std::string(UndoPaths::HistoryStatsUndoCount),
+                                      metaStr,
+                                      &wrong);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::InvalidType);
+
+    err = space.readHistoryStatsValue(stats,
+                                      std::optional<std::size_t>{0},
+                                      std::string(UndoPaths::HistoryStatsUndoCount),
+                                      metaSize,
+                                      nullptr);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::MalformedInput);
+}
+
+TEST_CASE("UndoableSpace readHistoryStatsValue reports missing last operation") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryStats stats;
+
+    std::string opType;
+    InputMetadata metaStr{InputMetadataT<std::string>{}};
+    auto err = space.readHistoryStatsValue(stats,
+                                           std::optional<std::size_t>{0},
+                                           std::string(UndoPaths::HistoryLastOperationType),
+                                           metaStr,
+                                           &opType);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::NoObjectFound);
+}
+
 TEST_SUITE_END();
