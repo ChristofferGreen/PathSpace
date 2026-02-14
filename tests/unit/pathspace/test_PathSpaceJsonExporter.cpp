@@ -113,6 +113,21 @@ private:
     auto notify(std::string const&) -> void override {}
 };
 
+class FailingVisitSpace final : public PathSpaceBase {
+public:
+    auto visit(PathVisitor const&, VisitOptions const& = {}) -> Expected<void> override {
+        return std::unexpected(Error{Error::Code::NotSupported, "Visit failed"});
+    }
+
+private:
+    auto in(Iterator const&, InputData const&) -> InsertReturn override { return {}; }
+    auto out(Iterator const&, InputMetadata const&, Out const&, void*) -> std::optional<Error> override {
+        return Error{Error::Code::NotSupported, "FailingVisitSpace does not support out"};
+    }
+    auto shutdown() -> void override {}
+    auto notify(std::string const&) -> void override {}
+};
+
 } // namespace
 
 TEST_SUITE_BEGIN("pathspace.json");
@@ -241,6 +256,14 @@ TEST_CASE("PathSpace JSON exporter reports snapshot errors as value_error") {
     auto node = findNode(doc, "/root", "/root");
     CHECK(node.contains("value_error"));
     CHECK(node.at("value_error") == "unknown_error:ValueHandle missing node");
+}
+
+TEST_CASE("PathSpace JSON exporter propagates visit errors") {
+    FailingVisitSpace space;
+
+    auto result = PathSpaceJsonExporter::Export(space, PathSpaceJsonOptions{});
+    CHECK_FALSE(result);
+    CHECK(result.error().code == Error::Code::NotSupported);
 }
 
 TEST_CASE("PathSpace JSON exporter rejects duplicated children capsules in root") {
