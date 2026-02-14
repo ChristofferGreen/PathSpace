@@ -62,6 +62,23 @@ TEST_CASE("TaskPool Misc") {
         CHECK(counter == NUM_TASKS);
     }
 
+    SUBCASE("Executor submit forwards to TaskPool and runs task") {
+        TaskPool pool(1);
+        std::atomic<bool> done{false};
+
+        auto task = Task::Create([&done](Task const&, bool) { done = true; });
+        Executor& exec = pool;
+
+        auto err = exec.submit(task);
+        CHECK_FALSE(err.has_value());
+
+        while (!done) {
+            std::this_thread::yield();
+        }
+
+        CHECK(done.load());
+    }
+
     SUBCASE("Trace output writes file") {
         TaskPool         pool(1);
         std::atomic<bool> done{false};
