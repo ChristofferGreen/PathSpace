@@ -125,6 +125,18 @@ TEST_CASE("enableHistory blocks nested roots without allowNestedUndo") {
     CHECK(nested.error().code == Error::Code::InvalidPermissions);
 }
 
+TEST_CASE("enableHistory rejects duplicate root activation") {
+    auto space = makeUndoableSpace();
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/root"}, opts).has_value());
+
+    auto repeat = space->enableHistory(ConcretePathStringView{"/root"}, opts);
+    CHECK_FALSE(repeat.has_value());
+    CHECK(repeat.error().code == Error::Code::UnknownError);
+}
+
 TEST_CASE("exportHistorySavefile reports missing history root") {
     auto space = makeUndoableSpace();
     auto path  = tempFile("export_missing.bin");
