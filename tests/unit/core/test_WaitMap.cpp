@@ -291,6 +291,22 @@ TEST_CASE("notifyAll wakes all registered waiters") {
     }
 }
 
+TEST_CASE("hasWaiters tracks glob registrations and clear resets") {
+    WaitMap waitMap;
+    CHECK_FALSE(waitMap.hasWaiters());
+
+    {
+        auto guard = waitMap.wait("/*");
+        CHECK(waitMap.hasWaiters());
+        auto status = guard.wait_until(std::chrono::system_clock::now() + 1ms);
+        CHECK(status == std::cv_status::timeout);
+    }
+
+    CHECK(waitMap.hasWaiters());
+    waitMap.clear();
+    CHECK_FALSE(waitMap.hasWaiters());
+}
+
 TEST_CASE("wait_until without predicate exercises debug logging path") {
     testing::waitMapDebugOverride().store(true, std::memory_order_relaxed);
 
