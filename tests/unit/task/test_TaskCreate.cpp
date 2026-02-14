@@ -24,6 +24,17 @@ struct DummyExecutor : Executor {
     auto size() const -> size_t override { return 1; }
 };
 
+struct RecordingExecutor : Executor {
+    auto submit(std::weak_ptr<Task>&& task) -> std::optional<Error> override {
+        lastTask = std::move(task);
+        return std::nullopt;
+    }
+    auto shutdown() -> void override {}
+    auto size() const -> size_t override { return 1; }
+
+    std::weak_ptr<Task> lastTask;
+};
+
 } // namespace
 
 TEST_SUITE("task.task_create") {
@@ -125,5 +136,14 @@ TEST_CASE("Task::resultCopy waits until completion") {
 
     CHECK(task->state.isCompleted());
     CHECK(out == 7);
+}
+
+TEST_CASE("Executor shared_ptr submit forwards to weak overload") {
+    RecordingExecutor exec;
+    auto task = Task::Create([](Task&, bool) {});
+
+    auto err = exec.submit(task);
+    CHECK_FALSE(err.has_value());
+    CHECK_FALSE(exec.lastTask.expired());
 }
 }

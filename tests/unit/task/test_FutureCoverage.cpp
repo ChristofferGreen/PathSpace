@@ -74,6 +74,22 @@ TEST_CASE("Future wait_until with system_clock handles past deadlines") {
     CHECK_FALSE(invalid.wait_until(pastDeadline));
 }
 
+TEST_CASE("Future wait_until with system_clock handles future deadlines") {
+    auto task = std::make_shared<Task>();
+    task->resultCopyFn = [](std::any const& from, void* const to) {
+        *static_cast<int*>(to) = std::any_cast<int>(from);
+    };
+
+    REQUIRE(task->tryStart());
+    REQUIRE(task->transitionToRunning());
+    task->result = 12;
+    task->markCompleted();
+
+    Future fut = Future::FromShared(task);
+    auto futureDeadline = std::chrono::system_clock::now() + std::chrono::milliseconds(10);
+    CHECK(fut.wait_until(futureDeadline));
+}
+
 TEST_CASE("Future wait_until_steady times out when task is not completed") {
     auto task = std::make_shared<Task>();
     task->function = [](Task& t, bool const) { t.result = 7; };

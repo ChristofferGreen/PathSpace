@@ -85,11 +85,15 @@ TEST_CASE("PathView join/strip helpers cover edge cases") {
     CHECK(joinCanonicalForTest("/root", "/") == "/root");
     CHECK(joinCanonicalForTest("/root", "child") == "/root/child");
     CHECK(joinCanonicalForTest("relative", "../bad") == "relative/../bad");
+    CHECK(joinCanonicalForTest("/", "") == "/");
+    CHECK(joinCanonicalForTest("/", "child") == "child");
 
     CHECK(stripPrefixForTest("/root", "/root") == std::optional<std::string>{"/"});
     CHECK(stripPrefixForTest("/rootchild", "/root") == std::optional<std::string>{"/child"});
     CHECK(stripPrefixForTest("/root/child", "/root") == std::optional<std::string>{"/child"});
     CHECK(stripPrefixForTest("/other", "/root") == std::nullopt);
+    CHECK(stripPrefixForTest("/any", "/") == std::optional<std::string>{"/any"});
+    CHECK(stripPrefixForTest("/any", "") == std::optional<std::string>{"/any"});
 }
 
 TEST_CASE("ConcretePathIterator and GlobPathIterator iterate components") {
