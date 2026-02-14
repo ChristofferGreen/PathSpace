@@ -244,7 +244,6 @@ TEST_CASE("notifyAll wakes all registered waiters") {
 
     struct WaiterState {
         std::string path;
-        std::atomic<bool> waiting{false};
         std::atomic<bool> woke{false};
     };
 
@@ -264,8 +263,7 @@ TEST_CASE("notifyAll wakes all registered waiters") {
         threads.emplace_back([&, statePtr = state.get()] {
             auto guard = waitMap.wait(statePtr->path);
             started.fetch_add(1, std::memory_order_acq_rel);
-            statePtr->waiting.store(true, std::memory_order_release);
-            auto status = guard.wait_until(std::chrono::system_clock::now() + 250ms);
+            auto status = guard.wait_until(std::chrono::system_clock::now() + 1000ms);
             statePtr->woke.store(status == std::cv_status::no_timeout, std::memory_order_release);
         });
     }
@@ -273,12 +271,10 @@ TEST_CASE("notifyAll wakes all registered waiters") {
     while (started.load(std::memory_order_acquire) < static_cast<int>(states.size())) {
         std::this_thread::yield();
     }
-    // Ensure all waiters have called wait_until before notifying.
+    // Ensure all waiters have entered wait_until before notifying.
     bool allWaiting = false;
-    for (int i = 0; i < 50 && !allWaiting; ++i) {
-        allWaiting = std::all_of(states.begin(), states.end(), [](auto const& s) {
-            return s->waiting.load(std::memory_order_acquire);
-        });
+    for (int i = 0; i < 100 && !allWaiting; ++i) {
+        allWaiting = waitMap.activeWaiterCount.load(std::memory_order_acquire) == states.size();
         if (!allWaiting) {
             std::this_thread::sleep_for(2ms);
         }
@@ -306,4 +302,5 @@ TEST_CASE("wait_until without predicate exercises debug logging path") {
 
     testing::waitMapDebugOverride().store(false, std::memory_order_relaxed);
 }
+
 }
