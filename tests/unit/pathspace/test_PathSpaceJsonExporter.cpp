@@ -898,6 +898,24 @@ TEST_CASE("Minimal mode clears diagnostics even when requested") {
     CHECK_FALSE(flags.at("include_diagnostics").get<bool>());
 }
 
+TEST_CASE("Debug mode forces metadata and diagnostics flags") {
+    PathSpace space;
+    REQUIRE(space.insert("/debug/value", 4).errors.empty());
+
+    PathSpaceJsonOptions options;
+    options.mode                   = PathSpaceJsonOptions::Mode::Debug;
+    options.includeMetadata         = false;
+    options.includeDiagnostics      = false;
+    options.includeStructureFields  = false;
+
+    auto doc = dump(space, options);
+    REQUIRE(doc.contains("_meta"));
+    auto flags = doc.at("_meta").at("flags");
+    CHECK(flags.at("include_metadata").get<bool>());
+    CHECK(flags.at("include_diagnostics").get<bool>());
+    CHECK(flags.at("include_structure").get<bool>());
+}
+
 TEST_CASE("JSON namespace Export matches direct exporter") {
     PathSpace space;
     REQUIRE(space.insert("/alias/value", 123).nbrValuesInserted == 1);
