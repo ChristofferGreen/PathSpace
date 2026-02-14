@@ -179,6 +179,24 @@ TEST_CASE("TraceScope move assignment preserves a single span") {
     CHECK(find_span(pool, "MoveSpan").has_value());
 }
 
+TEST_CASE("TraceScope move constructor preserves a single span") {
+    TaskPool pool(1);
+    pool.enableTrace("trace_unused.json");
+
+    {
+        auto scopeA = pool.traceScope("MoveCtorSpan", "trace");
+        TaskPool::TraceScope scopeB{std::move(scopeA)};
+        std::this_thread::sleep_for(1ms);
+    }
+
+    std::lock_guard<std::mutex> lock(pool.traceMutex);
+    size_t spanCount = std::count_if(pool.traceEvents.begin(), pool.traceEvents.end(),
+                                     [](TaskPool::TaskTraceEvent const& e) {
+                                         return e.phase == 'X' && e.name == "MoveCtorSpan";
+                                     });
+    CHECK(spanCount == 1);
+}
+
 TEST_CASE("trace helpers are no-ops when tracing is disabled") {
     TaskPool pool(1);
 
