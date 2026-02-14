@@ -162,4 +162,54 @@ TEST_CASE("fsync helpers propagate success and failure") {
     CHECK(syncDir.has_value());
 }
 
+TEST_CASE("fsyncDirectory reports error for non-directory path") {
+    TempDir tmp("pathspace_undo_utils_notdir");
+    auto    file = tmp.path / "file.txt";
+
+    auto write = UndoUtils::writeTextFileAtomic(file, "data", false);
+    REQUIRE(write.has_value());
+
+    auto badDir = UndoUtils::fsyncDirectory(file);
+    CHECK_FALSE(badDir.has_value());
+    CHECK(badDir.error().code == SP::Error::Code::UnknownError);
+}
+
+TEST_CASE("writeFileAtomic reports error when parent path is not a directory") {
+    TempDir tmp("pathspace_undo_utils_bad_parent");
+    auto    fileParent = tmp.path / "parent_file";
+
+    auto write = UndoUtils::writeTextFileAtomic(fileParent, "seed", false);
+    REQUIRE(write.has_value());
+
+    auto child = fileParent / "child.txt";
+    auto result = UndoUtils::writeTextFileAtomic(child, "payload", false);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == SP::Error::Code::UnknownError);
+}
+
+#ifndef _WIN32
+TEST_CASE("writeFileAtomic reports error when directory is not writable") {
+    TempDir tmp("pathspace_undo_utils_ro");
+    auto    roDir = tmp.path / "readonly";
+
+    std::filesystem::create_directories(roDir);
+    auto originalPerms = std::filesystem::status(roDir).permissions();
+    auto readonlyPerms = originalPerms
+                         & ~std::filesystem::perms::owner_write
+                         & ~std::filesystem::perms::group_write
+                         & ~std::filesystem::perms::others_write;
+    std::error_code ec;
+    std::filesystem::permissions(roDir, readonlyPerms, ec);
+    REQUIRE_FALSE(ec);
+
+    auto target = roDir / "note.txt";
+    auto result = UndoUtils::writeTextFileAtomic(target, "data", false);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == SP::Error::Code::UnknownError);
+
+    std::filesystem::permissions(roDir, originalPerms, ec);
+    CHECK_FALSE(ec);
+}
+#endif
+
 TEST_SUITE_END();
