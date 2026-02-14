@@ -88,6 +88,17 @@ TEST_CASE("GlobName comparisons and negative matches") {
     CHECK_FALSE(backslashSuper);
 }
 
+TEST_CASE("GlobName empty pattern only matches empty input") {
+    GlobName empty{""};
+    auto [emptyMatch, emptySuper] = empty.match(std::string_view{""});
+    CHECK(emptyMatch);
+    CHECK_FALSE(emptySuper);
+
+    auto [nonMatch, nonSuper] = empty.match(std::string_view{"a"});
+    CHECK_FALSE(nonMatch);
+    CHECK_FALSE(nonSuper);
+}
+
 TEST_CASE("GlobName treats escaped wildcards as concrete") {
     GlobName escapedStar{"\\*"};
     CHECK(escapedStar.isConcrete());
