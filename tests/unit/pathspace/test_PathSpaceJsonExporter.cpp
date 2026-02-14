@@ -9,6 +9,8 @@
 #include <pathspace/tools/PathSpaceJsonExporter.hpp>
 #include <pathspace/tools/PathSpaceJsonConverters.hpp>
 
+#include "../PathSpaceTestHelper.hpp"
+
 using Json = nlohmann::json;
 using namespace SP;
 
@@ -124,6 +126,46 @@ TEST_CASE("PathSpace JSON exporter rejects duplicated children capsules in root"
     auto result = space.toJSON(options);
     CHECK_FALSE(result);
     CHECK(result.error().code == Error::Code::InvalidPath);
+}
+
+TEST_CASE("PathSpace JSON exporter drops empty housekeeping nodes") {
+    PathSpace space;
+    auto* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+
+    root->getOrCreateChild("space");
+    root->getOrCreateChild("log");
+    root->getOrCreateChild("metrics");
+    root->getOrCreateChild("runtime");
+    root->getOrCreateChild("keep");
+
+    PathSpaceJsonOptions options;
+    options.visit.root = "/";
+
+    auto doc      = dump(space, options);
+    auto rootNode = findNode(doc, "/", "/");
+    REQUIRE(rootNode.contains("children"));
+    auto const& children = rootNode.at("children");
+    CHECK_FALSE(children.contains("space"));
+    CHECK_FALSE(children.contains("log"));
+    CHECK_FALSE(children.contains("metrics"));
+    CHECK_FALSE(children.contains("runtime"));
+    CHECK(children.contains("keep"));
+}
+
+TEST_CASE("PathSpace JSON exporter rejects invalid entry components") {
+    PathSpace space;
+    auto* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+
+    root->getOrCreateChild("*");
+
+    PathSpaceJsonOptions options;
+    options.visit.root = "/";
+
+    auto result = space.toJSON(options);
+    CHECK_FALSE(result);
+    CHECK(result.error().code == Error::Code::InvalidPathSubcomponent);
 }
 
 TEST_CASE("PathSpace JSON exporter exposes structure and diagnostics in debug mode") {
