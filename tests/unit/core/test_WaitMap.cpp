@@ -32,6 +32,20 @@ TEST_CASE("notify and clear are safe when no waiters are registered") {
     CHECK_FALSE(waitMap.hasWaiters());
 }
 
+TEST_CASE("hasWaiters reflects glob registry entries") {
+    WaitMap waitMap;
+    {
+        auto guard = waitMap.wait("/glob/*");
+        CHECK(waitMap.hasWaiters());
+    }
+
+    // Entries persist until clear() even after guards are dropped.
+    CHECK(waitMap.hasWaiters());
+
+    waitMap.clear();
+    CHECK_FALSE(waitMap.hasWaiters());
+}
+
 TEST_CASE("Guard initializes version and counts lazily") {
     WaitMap waitMap;
     WaitMap::Guard guard(waitMap, "/lazy", 0, false);
