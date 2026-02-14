@@ -4,6 +4,7 @@
 
 #include "PathSpace.hpp"
 #include "core/NodeData.hpp"
+#include "history/UndoHistoryUtils.hpp"
 #include "third_party/doctest.h"
 #include "type/InputData.hpp"
 #include "type/InputMetadataT.hpp"
@@ -11,9 +12,11 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 
 using namespace SP;
 using namespace SP::History;
+namespace UndoPaths = SP::History::UndoUtils::Paths;
 
 TEST_SUITE_BEGIN("history.undoable.history.coverage");
 
@@ -88,6 +91,97 @@ TEST_CASE("UndoableSpace interpretSteps normalizes step counts") {
 
     InputMetadata emptyMeta;
     CHECK(space.interpretSteps(InputData{nullptr, emptyMeta}) == 1);
+}
+
+TEST_CASE("UndoableSpace computeJournalLiveBytes reports subtree payloads") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    REQUIRE(space.insert("/doc/a", 1).errors.empty());
+    REQUIRE(space.insert("/doc/b/c", 2).errors.empty());
+
+    auto stateIt = space.journalRoots.find("/doc");
+    REQUIRE(stateIt != space.journalRoots.end());
+
+    auto liveBytes = space.computeJournalLiveBytes(*stateIt->second);
+    CHECK(liveBytes > 0);
+
+    UndoJournalRootState missing;
+    missing.components = {"missing"};
+    CHECK(space.computeJournalLiveBytes(missing) == 0);
+}
+
+TEST_CASE("UndoableSpace readHistoryStatsValue handles last operation and unsupported entries") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryStats stats;
+
+    HistoryLastOperation op;
+    op.type        = "insert";
+    op.timestampMs = 123;
+    op.success     = false;
+    stats.lastOperation = op;
+
+    HistoryUnsupportedRecord record;
+    record.path            = "/bad";
+    record.reason          = "unsupported";
+    record.occurrences     = 2;
+    record.lastTimestampMs = 99;
+    stats.unsupported.recent.push_back(record);
+    stats.unsupported.total = 1;
+
+    std::string opType;
+    InputMetadata metaStr{InputMetadataT<std::string>{}};
+    auto err = space.readHistoryStatsValue(stats,
+                                           std::optional<std::size_t>{5},
+                                           std::string(UndoPaths::HistoryLastOperationType),
+                                           metaStr,
+                                           &opType);
+    CHECK_FALSE(err.has_value());
+    CHECK(opType == "insert");
+
+    std::string recPath;
+    err = space.readHistoryStatsValue(stats,
+                                      std::optional<std::size_t>{5},
+                                      std::string(UndoPaths::HistoryUnsupportedRecentPrefix) + "0",
+                                      metaStr,
+                                      &recPath);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::NoObjectFound);
+
+    std::size_t totalCount = 0;
+    InputMetadata metaSize{InputMetadataT<std::size_t>{}};
+    err = space.readHistoryStatsValue(stats,
+                                      std::optional<std::size_t>{5},
+                                      std::string(UndoPaths::HistoryUnsupportedTotalCount),
+                                      metaSize,
+                                      &totalCount);
+    CHECK_FALSE(err.has_value());
+    CHECK(totalCount == 1);
+
+    err = space.readHistoryStatsValue(stats,
+                                      std::optional<std::size_t>{5},
+                                      std::string(UndoPaths::HistoryUnsupportedRecentPrefix) + "1/path",
+                                      metaStr,
+                                      &recPath);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::NoObjectFound);
+
+    err = space.readHistoryStatsValue(stats,
+                                      std::optional<std::size_t>{5},
+                                      std::string(UndoPaths::HistoryUnsupportedRecentPrefix) + "bad/path",
+                                      metaStr,
+                                      &recPath);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::NoObjectFound);
+
+    std::size_t head = 0;
+    err = space.readHistoryStatsValue(stats,
+                                      std::optional<std::size_t>{},
+                                      std::string(UndoPaths::HistoryHeadGeneration),
+                                      metaSize,
+                                      &head);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::NoObjectFound);
 }
 
 TEST_SUITE_END();
