@@ -833,6 +833,45 @@ TEST_CASE("Flat path export preserves full entries when flatSimpleValues is fals
     CHECK(entry[0].contains("type"));
 }
 
+TEST_CASE("Flat path export keeps mixed placeholders when simple flattening is enabled") {
+    struct MixedType {
+        int value;
+    };
+
+    PathSpace space;
+    REQUIRE(space.insert("/mix/values", 2).errors.empty());
+    REQUIRE(space.insert("/mix/values", MixedType{1}).errors.empty());
+
+    PathSpaceJsonOptions options;
+    options.mode             = PathSpaceJsonOptions::Mode::Debug;
+    options.visit.root       = "/mix";
+    options.flatPaths        = true;
+    options.flatSimpleValues = true;
+
+    auto flat = space.toJSON(options);
+    REQUIRE(flat);
+    auto json = Json::parse(*flat);
+    REQUIRE(json.contains("/mix/values"));
+    auto entry = json.at("/mix/values");
+    REQUIRE(entry.is_array());
+    REQUIRE(entry.size() == 2);
+    bool sawPlaceholder = false;
+    bool sawValue = false;
+    for (auto const& valueEntry : entry) {
+        if (valueEntry.contains("placeholder")) {
+            CHECK(valueEntry.at("placeholder") == "opaque");
+            CHECK_FALSE(valueEntry.contains("value"));
+            sawPlaceholder = true;
+        }
+        if (valueEntry.contains("value")) {
+            CHECK(valueEntry.at("value") == 2);
+            sawValue = true;
+        }
+    }
+    CHECK(sawPlaceholder);
+    CHECK(sawValue);
+}
+
 TEST_CASE("PathSpace JSON exporter honors friendly converter aliases") {
     struct FriendlyStruct {
         int a = 0;
