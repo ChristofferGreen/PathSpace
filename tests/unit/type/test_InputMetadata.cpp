@@ -160,6 +160,16 @@ TEST_CASE("String-like metadata serialize/deserialize") {
         std::string out;
         CHECK_THROWS_AS(StringSerializationHelper<std::string>::Deserialize(&out, bytes), std::runtime_error);
     }
+
+    SUBCASE("string_view deserialize rejects non-string targets") {
+        SlidingBuffer bytes;
+        std::string   payload{"view-only"};
+
+        StringSerializationHelper<std::string>::Serialize(&payload, bytes);
+
+        std::string_view out;
+        CHECK_THROWS_AS(StringSerializationHelper<std::string_view>::Deserialize(&out, bytes), std::runtime_error);
+    }
 }
 
 TEST_CASE("InputMetadata covers typeInfo mapping and std::invoke_result deductions") {
