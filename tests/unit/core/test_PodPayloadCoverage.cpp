@@ -348,6 +348,44 @@ TEST_CASE("PodPayload reserveSpan returns nullopt when frozen") {
     CHECK_FALSE(payload.reserveSpan(1).has_value());
 }
 
+TEST_CASE("PodPayload raw span helpers expose mutable data with tokens") {
+    PodPayload<int> payload;
+    CHECK(payload.push(5));
+    CHECK(payload.push(6));
+    CHECK(payload.push(7));
+
+    std::size_t pinnedCount = 0;
+    int pinnedFirst = -1;
+    auto pinErr = payload.withSpanRawPinned(
+        [&](void const* data, std::size_t count, std::shared_ptr<void> const& token) {
+            pinnedCount = count;
+            CHECK(token != nullptr);
+            if (count > 0) {
+                pinnedFirst = static_cast<int const*>(data)[0];
+            }
+        });
+    CHECK_FALSE(pinErr.has_value());
+    CHECK(pinnedCount == 3);
+    CHECK(pinnedFirst == 5);
+
+    auto mutErr = payload.withSpanMutableRawFrom(
+        1, [&](void* data, std::size_t count) {
+            CHECK(count == 2);
+            if (count > 0) {
+                static_cast<int*>(data)[0] = 42;
+            }
+        });
+    CHECK_FALSE(mutErr.has_value());
+
+    std::vector<int> values;
+    auto readErr = payload.withSpanRaw([&](void const* data, std::size_t count) {
+        auto ptr = static_cast<int const*>(data);
+        values.assign(ptr, ptr + count);
+    });
+    CHECK_FALSE(readErr.has_value());
+    CHECK(values == std::vector<int>({5, 42, 7}));
+}
+
 TEST_CASE("PodPayload freezeForUpgrade blocks further writes and reservations") {
     PodPayload<int> payload;
     CHECK(payload.push(42));
