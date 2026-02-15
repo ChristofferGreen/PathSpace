@@ -60,6 +60,41 @@ struct RecordingSink : NotificationSink {
 
 TEST_SUITE("pathspace.internal.coverage") {
 
+TEST_CASE("span-pack take returns invalid type for non-POD nodes") {
+    PathSpace space;
+    REQUIRE(space.insert("/root/a", std::string{"alpha"}).nbrValuesInserted == 1);
+    REQUIRE(space.insert("/root/b", std::string{"beta"}).nbrValuesInserted == 1);
+
+    auto result = space.take<"a", "b">("/root",
+                                      [](std::span<int>, std::span<int>) {},
+                                      Block{50ms} & Minimal{});
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::InvalidType);
+}
+
+TEST_CASE("span-pack take waits on prefixed paths and times out") {
+    auto context = std::make_shared<PathSpaceContext>();
+    PathSpace space{context, "/mount"};
+
+    auto result = space.take<"a", "b">("/root",
+                                      [](std::span<int>, std::span<int>) {},
+                                      Block{50ms});
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::Timeout);
+}
+
+TEST_CASE("span-pack insert works without context") {
+    PathSpace space{std::shared_ptr<PathSpaceContext>{}, ""};
+
+    std::array<int, 2> a{1, 2};
+    std::array<int, 2> b{3, 4};
+    auto ret = space.insert<"a", "b">("/root",
+                                     std::span<const int>(a),
+                                     std::span<const int>(b));
+    CHECK(ret.errors.empty());
+    CHECK(ret.nbrValuesInserted == 4);
+}
+
 TEST_CASE("copy assignment duplicates values and resets state") {
     PathSpace source;
     REQUIRE(source.insert("/a", 7).errors.empty());
