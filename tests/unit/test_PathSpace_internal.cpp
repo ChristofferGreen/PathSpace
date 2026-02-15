@@ -1,5 +1,6 @@
 #include "PathSpace.hpp"
 #include "PathSpaceTestHelper.hpp"
+#include "core/NotificationSink.hpp"
 #include "core/PathSpaceContext.hpp"
 #include "path/Iterator.hpp"
 #include "type/InputMetadataT.hpp"
@@ -10,6 +11,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
+#include <mutex>
 #include <span>
 #include <string>
 #include <thread>
@@ -27,6 +29,7 @@ struct ExposedPathSpace : PathSpace {
     using PathSpace::PathSpace;
     using PathSpace::out;
     using PathSpace::packInsert;
+    using PathSpace::packInsertSpans;
     using PathSpace::setOwnedPool;
     using PathSpace::shutdownPublic;
     using PathSpace::spanPackMut;
@@ -42,6 +45,16 @@ protected:
     void notify(std::string const& notificationPath) override {
         notifications.push_back(notificationPath);
     }
+};
+
+struct RecordingSink : NotificationSink {
+    void notify(std::string const& notificationPath) override {
+        std::lock_guard<std::mutex> lock(mutex);
+        notifications.push_back(notificationPath);
+    }
+
+    std::mutex              mutex;
+    std::vector<std::string> notifications;
 };
 }
 
@@ -211,6 +224,63 @@ TEST_CASE("packInsert notifies waiters with mount prefix") {
         CAPTURE(ret.errors.front().message.value_or(""));
     }
     CHECK(ret.nbrValuesInserted == 0);
+}
+
+TEST_CASE("packInsert notifies sink with mount prefix when insert succeeds") {
+    auto ctx = std::make_shared<PathSpaceContext>();
+    auto sink = std::make_shared<RecordingSink>();
+    ctx->setSink(sink);
+    ExposedPathSpace space{ctx, "/mount"};
+
+    auto ret = space.insert<"/node", "/other">(12, 34);
+    CHECK(ret.errors.empty());
+    CHECK(ret.nbrValuesInserted == 2);
+
+    bool sawNode = false;
+    bool sawOther = false;
+    {
+        std::lock_guard<std::mutex> lock(sink->mutex);
+        for (auto const& path : sink->notifications) {
+            if (path == "/mount/node") {
+                sawNode = true;
+            }
+            if (path == "/mount/other") {
+                sawOther = true;
+            }
+        }
+    }
+    CHECK(sawNode);
+    CHECK(sawOther);
+}
+
+TEST_CASE("packInsertSpans notifies sink with mount prefix") {
+    auto ctx = std::make_shared<PathSpaceContext>();
+    auto sink = std::make_shared<RecordingSink>();
+    ctx->setSink(sink);
+    ExposedPathSpace space{ctx, "/mount"};
+
+    std::array<int, 2> dataA{7, 9};
+    std::array<int, 2> dataB{1, 2};
+
+    auto ret = space.insert<"one", "two">("/base", std::span<const int>(dataA), std::span<const int>(dataB));
+    CHECK(ret.errors.empty());
+    CHECK(ret.nbrValuesInserted == dataA.size() + dataB.size());
+
+    bool sawOne = false;
+    bool sawTwo = false;
+    {
+        std::lock_guard<std::mutex> lock(sink->mutex);
+        for (auto const& path : sink->notifications) {
+            if (path == "/mount/base/one") {
+                sawOne = true;
+            }
+            if (path == "/mount/base/two") {
+                sawTwo = true;
+            }
+        }
+    }
+    CHECK(sawOne);
+    CHECK(sawTwo);
 }
 
 TEST_CASE("retargetNestedMounts short-circuits when node is missing") {
