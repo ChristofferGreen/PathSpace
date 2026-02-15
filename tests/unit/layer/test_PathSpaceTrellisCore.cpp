@@ -704,4 +704,21 @@ TEST_CASE("PathSpaceTrellis listChildrenCanonical handles missing backing and sy
     auto sysKids = trellis.listChildrenCanonical("/_system");
     CHECK(sysKids.empty());
 }
+
+TEST_CASE("PathSpaceTrellis visit preserves paths with empty mount prefix") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis{backing};
+
+    backing->insert("/sensor", 11);
+    backing->insert("/sensor/inner", 12);
+
+    std::vector<std::string> paths;
+    auto result = trellis.visit([&](PathEntry const& entry, ValueHandle&) {
+        paths.push_back(entry.path);
+        return VisitControl::Continue;
+    });
+    REQUIRE(result);
+    CHECK(std::find(paths.begin(), paths.end(), "/sensor") != paths.end());
+    CHECK(std::find(paths.begin(), paths.end(), "/sensor/inner") != paths.end());
+}
 }

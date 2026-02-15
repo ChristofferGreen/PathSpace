@@ -247,6 +247,44 @@ TEST_CASE("PathAlias span packs reject glob paths before and after mapping") {
     CHECK(mutErr.error().code == Error::Code::InvalidPath);
 }
 
+TEST_CASE("PathAlias span pack const rejects glob paths introduced by mapping") {
+    auto upstream = std::make_shared<PathSpace>();
+    std::array<std::string, 1> normalInput{"/plain"};
+
+    PathAlias alias{upstream, "/prefix/*"};
+    bool constCalled = false;
+    auto constErr = alias.spanPackConst(
+        std::span<const std::string>(normalInput),
+        InputMetadata{},
+        Out{},
+        [&](std::span<RawConstSpan const>) {
+            constCalled = true;
+            return std::optional<Error>{};
+        });
+    CHECK_FALSE(constErr);
+    CHECK_FALSE(constCalled);
+    CHECK(constErr.error().code == Error::Code::InvalidPath);
+}
+
+TEST_CASE("PathAlias span pack mut rejects raw glob paths") {
+    auto upstream = std::make_shared<PathSpace>();
+    std::array<std::string, 1> globInput{"/raw/*"};
+
+    PathAlias alias{upstream, "/prefix"};
+    bool mutCalled = false;
+    auto mutErr = alias.spanPackMut(
+        std::span<const std::string>(globInput),
+        InputMetadata{},
+        Out{},
+        [&](std::span<RawMutSpan const>) {
+            mutCalled = true;
+            return SpanPackResult{};
+        });
+    CHECK_FALSE(mutErr);
+    CHECK_FALSE(mutCalled);
+    CHECK(mutErr.error().code == Error::Code::InvalidPath);
+}
+
 TEST_CASE("PathAlias packInsert rejects glob inputs pre and post mapping") {
     auto upstream = std::make_shared<PathSpace>();
     int  value    = 7;
@@ -288,5 +326,40 @@ TEST_CASE("PathAlias mapping helpers handle root and prefix boundaries") {
     CHECK(alias.mapVisitRoot("/") == "/");
     CHECK(alias.mapVisitRoot("/child") == "/child");
     CHECK(alias.stripTargetPrefix("/any") == "/any");
+}
+
+TEST_CASE("PathAlias helper paths cover non-delimited prefix matches") {
+    auto upstream = std::make_shared<PathSpace>();
+    PathAlias alias{upstream, "/root"};
+
+    CHECK(alias.stripTargetPrefix("/rootchild") == "/child");
+    CHECK(alias.stripTargetPrefix("/other") == "/other");
+}
+
+TEST_CASE("PathAlias listChildrenCanonical maps empty tails to prefix") {
+    auto upstream = std::make_shared<PathSpace>();
+    PathAlias alias{upstream, "/root"};
+
+    auto children = alias.listChildrenCanonical("");
+    CHECK(children.empty());
+}
+
+TEST_CASE("PathAlias getRootNode forwards and handles null upstream") {
+    auto upstream = std::make_shared<PathSpace>();
+    PathAlias alias{upstream, "/root"};
+
+    upstream->insert("/root/node", 1);
+    CHECK(alias.getRootNode() != nullptr);
+
+    PathAlias missing{std::shared_ptr<PathSpaceBase>{}, "/missing"};
+    CHECK(missing.getRootNode() == nullptr);
+}
+
+TEST_CASE("PathAlias listChildrenCanonical returns empty for invalid mapped paths") {
+    auto upstream = std::make_shared<PathSpace>();
+    PathAlias alias{upstream, "/bad/.."};
+
+    auto children = alias.listChildrenCanonical("/child");
+    CHECK(children.empty());
 }
 }
