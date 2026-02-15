@@ -1,6 +1,7 @@
 #define private public
 #include "task/TaskT.hpp"
 #undef private
+#include "task/Task.hpp"
 #include "task/TaskPool.hpp"
 #include "third_party/doctest.h"
 
@@ -25,6 +26,19 @@ struct RecordingSink : NotificationSink {
     std::mutex              mutex;
     std::condition_variable cv;
     std::vector<std::string> notifications;
+};
+
+struct CountingExecutor final : Executor {
+    std::optional<Error> submit(std::weak_ptr<Task>&& task) override {
+        ++submitCalls;
+        lastTask = task;
+        return std::nullopt;
+    }
+    void shutdown() override {}
+    auto size() const -> size_t override { return 1; }
+
+    int submitCalls = 0;
+    std::weak_ptr<Task> lastTask;
 };
 
 } // namespace
@@ -53,6 +67,24 @@ TEST_CASE("TaskT schedules work and fulfills future without notifier") {
     int anyOut = 0;
     CHECK(any.copy_to(&anyOut));
     CHECK(anyOut == 5);
+}
+
+TEST_CASE("Executor shared_ptr submit forwards to weak submit") {
+    CountingExecutor exec;
+    auto task = Task::Create(std::weak_ptr<NotificationSink>{},
+                             "/executor/shared",
+                             [] { return 1; },
+                             ExecutionCategory::Immediate);
+    REQUIRE(task);
+
+    Executor& base = exec;
+    auto err = base.submit(task);
+    CHECK_FALSE(err.has_value());
+    CHECK(exec.submitCalls == 1);
+
+    auto locked = exec.lastTask.lock();
+    REQUIRE(locked);
+    CHECK(locked == task);
 }
 
 TEST_CASE("TaskT notifies sink on completion") {

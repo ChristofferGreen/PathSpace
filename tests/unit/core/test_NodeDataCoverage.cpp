@@ -159,6 +159,19 @@ TEST_SUITE("core.nodedata.coverage") {
         CHECK(readErr->message == std::optional<std::string>{"executor rejected task"});
     }
 
+    TEST_CASE("serializeSnapshot returns null for execution-only payloads") {
+        InputMetadataT<int> meta{};
+        InputData input{nullptr, meta};
+        input.task = makeLazyTask();
+
+        NodeData node;
+        auto     err = node.serialize(input);
+        REQUIRE_FALSE(err.has_value());
+
+        auto snapshot = node.serializeSnapshot();
+        CHECK_FALSE(snapshot.has_value());
+    }
+
     TEST_CASE("completed execution results copy and pop when requested") {
         TaskPool pool(1);
         InputMetadataT<int> meta{};
