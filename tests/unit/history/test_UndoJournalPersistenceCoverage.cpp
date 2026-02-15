@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <string>
 #include <unistd.h>
@@ -34,6 +35,30 @@ auto tempPath(std::string_view suffix) -> std::filesystem::path {
     auto dir = std::filesystem::temp_directory_path() / name;
     std::filesystem::create_directories(dir);
     return dir / suffix;
+}
+
+auto writeHeader(std::filesystem::path const& path,
+                 std::uint32_t magic,
+                 std::uint16_t version,
+                 std::uint32_t reserved = 0u) -> void {
+    std::FILE* file = std::fopen(path.string().c_str(), "wb");
+    REQUIRE(file != nullptr);
+    REQUIRE(std::fwrite(&magic, sizeof(magic), 1, file) == 1);
+    REQUIRE(std::fwrite(&version, sizeof(version), 1, file) == 1);
+    REQUIRE(std::fwrite(&reserved, sizeof(reserved), 1, file) == 1);
+    std::fclose(file);
+}
+
+auto appendEntryPayload(std::filesystem::path const& path,
+                        std::uint32_t length,
+                        std::vector<std::byte> const& payload) -> void {
+    std::FILE* file = std::fopen(path.string().c_str(), "ab");
+    REQUIRE(file != nullptr);
+    REQUIRE(std::fwrite(&length, sizeof(length), 1, file) == 1);
+    if (!payload.empty()) {
+        REQUIRE(std::fwrite(payload.data(), 1, payload.size(), file) == payload.size());
+    }
+    std::fclose(file);
 }
 
 } // namespace
@@ -89,5 +114,66 @@ TEST_SUITE("history.journal.persistence.coverage") {
         CHECK_FALSE(result.has_value());
         CHECK(result.error().code == SP::Error::Code::UnknownError);
         CHECK(result.error().message->find("Failed to create journal directory") != std::string::npos);
+    }
+
+    TEST_CASE("replayJournal reports missing file") {
+        auto path = tempPath("missing.log");
+        auto result = replayJournal(path, [](JournalEntry&&) -> Expected<void> { return {}; });
+        CHECK_FALSE(result.has_value());
+        CHECK(result.error().code == SP::Error::Code::NotFound);
+    }
+
+    TEST_CASE("replayJournal rejects invalid header magic") {
+        auto path = tempPath("bad_magic.log");
+        writeHeader(path, JournalFileMagic + 1u, JournalFileVersion);
+
+        auto result = replayJournal(path, [](JournalEntry&&) -> Expected<void> { return {}; });
+        CHECK_FALSE(result.has_value());
+        CHECK(result.error().code == SP::Error::Code::MalformedInput);
+    }
+
+    TEST_CASE("replayJournal rejects unsupported header version") {
+        auto path = tempPath("bad_version.log");
+        writeHeader(path, JournalFileMagic, static_cast<std::uint16_t>(JournalFileVersion + 1u));
+
+        auto result = replayJournal(path, [](JournalEntry&&) -> Expected<void> { return {}; });
+        CHECK_FALSE(result.has_value());
+        CHECK(result.error().code == SP::Error::Code::MalformedInput);
+    }
+
+    TEST_CASE("replayJournal reports truncated entry payload") {
+        auto path = tempPath("truncated_payload.log");
+        writeHeader(path, JournalFileMagic, JournalFileVersion);
+
+        std::vector<std::byte> payload{std::byte{0xAB}, std::byte{0xCD}};
+        appendEntryPayload(path, 4u, payload);
+
+        auto result = replayJournal(path, [](JournalEntry&&) -> Expected<void> { return {}; });
+        CHECK_FALSE(result.has_value());
+        CHECK(result.error().code == SP::Error::Code::MalformedInput);
+        CHECK(result.error().message->find("Truncated journal entry payload") != std::string::npos);
+    }
+
+    TEST_CASE("replayJournal surfaces entry decode failures") {
+        auto path = tempPath("bad_entry.log");
+        writeHeader(path, JournalFileMagic, JournalFileVersion);
+
+        appendEntryPayload(path, 0u, {});
+
+        auto result = replayJournal(path, [](JournalEntry&&) -> Expected<void> { return {}; });
+        CHECK_FALSE(result.has_value());
+        CHECK(result.error().code == SP::Error::Code::MalformedInput);
+        CHECK(result.error().message->find("Journal entry missing magic header") != std::string::npos);
+    }
+
+    TEST_CASE("JournalFileWriter open rejects invalid on-disk header") {
+        auto path = tempPath("invalid_header.log");
+        writeHeader(path, JournalFileMagic + 1u, JournalFileVersion);
+
+        JournalFileWriter writer(path);
+        auto result = writer.open(false);
+        CHECK_FALSE(result.has_value());
+        CHECK(result.error().code == SP::Error::Code::MalformedInput);
+        CHECK(result.error().message->find("magic mismatch") != std::string::npos);
     }
 }
