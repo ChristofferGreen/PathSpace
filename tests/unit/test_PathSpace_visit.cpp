@@ -772,6 +772,20 @@ TEST_CASE("PathSpace visit rejects missing indexed nested space") {
     CHECK(result.error().code == Error::Code::NoSuchPath);
 }
 
+TEST_CASE("PathSpace visit rejects missing indexed root component") {
+    PathSpace space;
+
+    VisitOptions opts;
+    opts.includeNestedSpaces = true;
+    opts.root                = "/missing[1]";
+
+    auto result = space.visit(
+        [&](PathEntry const&, ValueHandle&) { return VisitControl::Continue; },
+        opts);
+    CHECK_FALSE(result);
+    CHECK(result.error().code == Error::Code::NoSuchPath);
+}
+
 TEST_CASE("SerializeNodeData snapshots node data and POD payloads") {
     PathSpace space;
 
