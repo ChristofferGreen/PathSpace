@@ -27,6 +27,7 @@ using namespace std::chrono_literals;
 namespace {
 struct ExposedPathSpace : PathSpace {
     using PathSpace::PathSpace;
+    using PathSpace::listChildrenCanonical;
     using PathSpace::out;
     using PathSpace::packInsert;
     using PathSpace::packInsertSpans;
@@ -93,6 +94,41 @@ TEST_CASE("span-pack insert works without context") {
                                      std::span<const int>(b));
     CHECK(ret.errors.empty());
     CHECK(ret.nbrValuesInserted == 4);
+}
+
+TEST_CASE("VisitDetail accessors handle explicit and empty handles") {
+    PathSpace space;
+    REQUIRE(space.insert("/alpha", 5).errors.empty());
+
+    Node* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+    Node* child = root->getChild("alpha");
+    REQUIRE(child != nullptr);
+
+    auto handle = VisitDetail::Access::MakeHandle(space, *child, "/alpha", true);
+    CHECK(handle.valid());
+    auto value = handle.read<int>();
+    REQUIRE(value.has_value());
+    CHECK(*value == 5);
+
+    auto bytes = VisitDetail::Access::SerializeNodeData(handle);
+    CHECK(bytes.has_value());
+
+    ValueHandle empty{};
+    CHECK_FALSE(VisitDetail::Access::SerializeNodeData(empty).has_value());
+}
+
+TEST_CASE("listChildrenCanonical returns empty for invalid or missing nested indices") {
+    ExposedPathSpace space;
+    auto nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/child", 1).nbrValuesInserted == 1);
+    REQUIRE(space.insert("/mount", std::move(nested)).nbrSpacesInserted == 1);
+
+    auto invalid = space.listChildrenCanonical("/bad/*");
+    CHECK(invalid.empty());
+
+    auto missingIndex = space.listChildrenCanonical("/mount[9]");
+    CHECK(missingIndex.empty());
 }
 
 TEST_CASE("copy assignment duplicates values and resets state") {
