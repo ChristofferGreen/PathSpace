@@ -8,10 +8,24 @@
 #include <memory>
 #include <chrono>
 #include <string>
+#include <thread>
 
 using namespace SP;
 
 TEST_SUITE("layer.pathspace.trellis.blocking") {
+namespace {
+class SlowEmptySpace final : public PathSpaceBase {
+public:
+    auto in(Iterator const&, InputData const&) -> InsertReturn override { return {}; }
+    auto out(Iterator const&, InputMetadata const&, Out const&, void*) -> std::optional<Error> override {
+        std::this_thread::sleep_for(std::chrono::milliseconds{5});
+        return Error{Error::Code::NoObjectFound, "No data available"};
+    }
+    auto shutdown() -> void override {}
+    auto notify(std::string const&) -> void override {}
+};
+} // namespace
+
 TEST_CASE("PathSpaceTrellis move-only insert routes single target") {
     auto backing = std::make_shared<PathSpace>();
     PathSpaceTrellis trellis{backing};
@@ -32,6 +46,17 @@ TEST_CASE("PathSpaceTrellis blocking fan-out times out when empty") {
     int out = 0;
     auto err = trellis.out(Iterator{"/"}, InputMetadataT<int>{}, Out{} & Block(std::chrono::milliseconds{5}), &out);
     REQUIRE(err.has_value());
+}
+
+TEST_CASE("PathSpaceTrellis blocking fan-out times out after waiting") {
+    auto backing = std::make_shared<SlowEmptySpace>();
+    PathSpaceTrellis trellis{backing};
+    trellis.in(Iterator{"/_system/enable"}, InputData{std::string{"/only"}});
+
+    int out = 0;
+    auto err = trellis.out(Iterator{"/"}, InputMetadataT<int>{}, Out{} & Block(std::chrono::milliseconds{1}), &out);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::Timeout);
 }
 
 TEST_CASE("PathSpaceTrellis blocking read succeeds when data already available") {
