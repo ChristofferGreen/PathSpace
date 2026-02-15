@@ -390,6 +390,7 @@ TEST_CASE("flushTrace writes NDJSON queue wait and thread names") {
 
     pool.recordTraceThreadName(999999u, "worker_name");
     pool.recordTraceSpan("QueueSpan", "/queue", "queue", 10, 5, 321, 7);
+    pool.recordTraceAsync("QueueWait", "/queue", "queue", 12, 'b', 77);
 
     auto err = pool.flushTrace();
     CHECK_FALSE(err.has_value());
@@ -399,6 +400,7 @@ TEST_CASE("flushTrace writes NDJSON queue wait and thread names") {
     std::string line;
     bool sawThreadName = false;
     bool sawQueueWait = false;
+    bool sawAsyncId = false;
     while (std::getline(lines, line)) {
         if (line.empty()) {
             continue;
@@ -411,9 +413,14 @@ TEST_CASE("flushTrace writes NDJSON queue wait and thread names") {
             sawQueueWait = true;
             CHECK(entry.at("queue_wait_us") == 7);
         }
+        if (entry.contains("id")) {
+            sawAsyncId = true;
+            CHECK(entry.at("id") == 77);
+        }
     }
     CHECK(sawThreadName);
     CHECK(sawQueueWait);
+    CHECK(sawAsyncId);
 }
 
 TEST_CASE("flushTrace writes JSON and NDJSON when both paths are set") {
