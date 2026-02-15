@@ -121,15 +121,30 @@ TEST_CASE("serialize surfaces nested serialize hook errors") {
     CHECK(err->code == Error::Code::InvalidType);
 }
 
+TEST_CASE("serialize accepts nested payload when hook passes") {
+    NestedHookGuard guard([]() {
+        return std::nullopt;
+    });
+
+    NodeData node;
+    std::unique_ptr<PathSpaceBase> space = std::make_unique<PathSpace>();
+    InputData input{std::move(space)};
+
+    auto err = node.serialize(input);
+    REQUIRE_FALSE(err.has_value());
+    CHECK(node.nestedCount() == 1);
+}
+
 TEST_CASE("deserializeIndexed reports missing deserializer") {
     NodeData node;
     REQUIRE_FALSE(node.serialize(InputData{1}).has_value());
+    REQUIRE_FALSE(node.serialize(InputData{2}).has_value());
 
     InputMetadata meta{InputMetadataT<int>{}};
     meta.deserialize = nullptr;
 
     int out = 0;
-    auto err = node.deserializeIndexed(0, meta, false, &out);
+    auto err = node.deserializeIndexed(1, meta, false, &out);
     REQUIRE(err.has_value());
     CHECK(err->code == Error::Code::UnserializableType);
     CHECK(err->message == std::optional<std::string>{"No deserialization function provided"});
@@ -138,12 +153,13 @@ TEST_CASE("deserializeIndexed reports missing deserializer") {
 TEST_CASE("deserializeIndexed reports missing pop deserializer") {
     NodeData node;
     REQUIRE_FALSE(node.serialize(InputData{1}).has_value());
+    REQUIRE_FALSE(node.serialize(InputData{2}).has_value());
 
     InputMetadata meta{InputMetadataT<int>{}};
     meta.deserializePop = nullptr;
 
     int out = 0;
-    auto err = node.deserializeIndexed(0, meta, true, &out);
+    auto err = node.deserializeIndexed(1, meta, true, &out);
     REQUIRE(err.has_value());
     CHECK(err->code == Error::Code::UnserializableType);
     CHECK(err->message == std::optional<std::string>{"No pop deserialization function provided"});
@@ -152,12 +168,13 @@ TEST_CASE("deserializeIndexed reports missing pop deserializer") {
 TEST_CASE("deserializeIndexed reports exceptions from deserializer") {
     NodeData node;
     REQUIRE_FALSE(node.serialize(InputData{1}).has_value());
+    REQUIRE_FALSE(node.serialize(InputData{2}).has_value());
 
     InputMetadata meta{InputMetadataT<int>{}};
     meta.deserialize = &throwingDeserialize;
 
     int out = 0;
-    auto err = node.deserializeIndexed(0, meta, false, &out);
+    auto err = node.deserializeIndexed(1, meta, false, &out);
     REQUIRE(err.has_value());
     CHECK(err->code == Error::Code::MalformedInput);
     CHECK(err->message == std::optional<std::string>{"boom"});
@@ -166,15 +183,42 @@ TEST_CASE("deserializeIndexed reports exceptions from deserializer") {
 TEST_CASE("deserializeIndexed reports exceptions from pop deserializer") {
     NodeData node;
     REQUIRE_FALSE(node.serialize(InputData{1}).has_value());
+    REQUIRE_FALSE(node.serialize(InputData{2}).has_value());
 
     InputMetadata meta{InputMetadataT<int>{}};
     meta.deserializePop = &throwingDeserializePop;
 
     int out = 0;
-    auto err = node.deserializeIndexed(0, meta, true, &out);
+    auto err = node.deserializeIndexed(1, meta, true, &out);
     REQUIRE(err.has_value());
     CHECK(err->code == Error::Code::MalformedInput);
     CHECK(err->message == std::optional<std::string>{"boom-pop"});
+}
+
+TEST_CASE("deserializeIndexed reads second value without popping") {
+    NodeData node;
+    REQUIRE_FALSE(node.serialize(InputData{1}).has_value());
+    REQUIRE_FALSE(node.serialize(InputData{2}).has_value());
+
+    int out = 0;
+    auto err = node.deserializeIndexed(1, InputMetadataT<int>{}, false, &out);
+    REQUIRE_FALSE(err.has_value());
+    CHECK(out == 2);
+    CHECK(node.valueSizes.size() == 2);
+}
+
+TEST_CASE("deserializeIndexed pops a later type run") {
+    NodeData node;
+    REQUIRE_FALSE(node.serialize(InputData{1}).has_value());
+    float value = 3.0f;
+    REQUIRE_FALSE(node.serialize(InputData{value}).has_value());
+
+    float out = 0.0f;
+    auto err = node.deserializeIndexed(1, InputMetadataT<float>{}, true, &out);
+    REQUIRE_FALSE(err.has_value());
+    CHECK(out == doctest::Approx(3.0f));
+    CHECK(node.types.size() == 1);
+    CHECK(node.valueSizes.size() == 1);
 }
 
 TEST_CASE("popFrontSerialized reports empty queues") {
@@ -237,7 +281,7 @@ TEST_CASE("deserialize skips empty nested slots and reports no data") {
     node.types.push_back(ElementType{nullptr, 1, DataCategory::UniquePtr});
 
     int out = 0;
-    auto err = node.deserialize(&out, InputMetadataT<int>{});
+    auto err = node.deserializePop(&out, InputMetadataT<int>{});
     REQUIRE(err.has_value());
     CHECK(err->code == Error::Code::NoObjectFound);
 }
@@ -257,6 +301,12 @@ TEST_CASE("nestedAt reports missing slots and null entries") {
     auto slot = std::make_shared<NodeData::NestedSlot>();
     slot->self = slot;
     node.nestedSlots.push_back(std::move(slot));
+    CHECK(node.nestedAt(0) == nullptr);
+}
+
+TEST_CASE("nestedAt reports null slots") {
+    NodeData node;
+    node.nestedSlots.push_back({});
     CHECK(node.nestedAt(0) == nullptr);
 }
 
@@ -309,6 +359,13 @@ TEST_CASE("retargetTasks rewrites notification prefixes") {
         node.retargetTasks({}, nullptr, "/old/", "/root");
         CHECK(task->notificationPath == "/root/events");
     }
+
+    {
+        NodeData node;
+        node.tasks.push_back({});
+        node.retargetTasks({}, nullptr, "/old", "/root");
+        CHECK(node.tasks.front() == nullptr);
+    }
 }
 
 TEST_CASE("fromSerializedValue and frontSerializedValueBytes cover empty and invalid buffers") {
@@ -326,6 +383,51 @@ TEST_CASE("fromSerializedValue and frontSerializedValueBytes cover empty and inv
 
     nodeResult->valueSizes.front() = bytes.size() + 1;
     CHECK_FALSE(nodeResult->frontSerializedValueBytes().has_value());
+}
+
+TEST_CASE("deserializeSnapshot rejects missing metadata chunks") {
+    {
+        std::array<std::byte, 4> bytes{
+            std::byte{0x01}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00}};
+        auto node = NodeData::deserializeSnapshot(std::span<const std::byte>(bytes.data(), bytes.size()));
+        CHECK_FALSE(node.has_value());
+    }
+
+    {
+        std::array<std::byte, 8> bytes{
+            std::byte{0x01}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+            std::byte{0x01}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00}};
+        auto node = NodeData::deserializeSnapshot(std::span<const std::byte>(bytes.data(), bytes.size()));
+        CHECK_FALSE(node.has_value());
+    }
+}
+
+TEST_CASE("deserializeSnapshot rejects truncated value size metadata") {
+    {
+        std::array<std::byte, 8> bytes{
+            std::byte{0x02}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+            std::byte{0x00}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00}};
+        auto node = NodeData::deserializeSnapshot(std::span<const std::byte>(bytes.data(), bytes.size()));
+        CHECK_FALSE(node.has_value());
+    }
+
+    {
+        std::array<std::byte, 12> bytes{
+            std::byte{0x02}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+            std::byte{0x00}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+            std::byte{0x01}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00}};
+        auto node = NodeData::deserializeSnapshot(std::span<const std::byte>(bytes.data(), bytes.size()));
+        CHECK_FALSE(node.has_value());
+    }
+}
+
+TEST_CASE("deserializeSnapshot rejects missing raw buffer metadata") {
+    std::array<std::byte, 12> bytes{
+        std::byte{0x02}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+        std::byte{0x00}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+        std::byte{0x00}, std::byte{0x00}, std::byte{0x00}, std::byte{0x00}};
+    auto node = NodeData::deserializeSnapshot(std::span<const std::byte>(bytes.data(), bytes.size()));
+    CHECK_FALSE(node.has_value());
 }
 
 TEST_CASE("popType ignores empty type queues") {
