@@ -990,6 +990,28 @@ TEST_CASE("PathSpace Nesting/remaining nested space retargets prefix after remov
     CHECK(value.value() == 99);
 }
 
+TEST_CASE("PathSpace Nesting/visit honors maxDepth for nested spaces") {
+    PathSpace root;
+    auto nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/leaf", 7).nbrValuesInserted == 1);
+    REQUIRE(root.insert("/mount", std::move(nested)).nbrSpacesInserted == 1);
+
+    VisitOptions options;
+    options.root = "/mount";
+    options.includeNestedSpaces = true;
+    options.maxDepth = 0;
+
+    std::vector<std::string> visited;
+    auto result = root.visit([&](PathEntry const& entry, ValueHandle&) {
+        visited.push_back(entry.path);
+        return VisitControl::Continue;
+    }, options);
+
+    REQUIRE(result.has_value());
+    CHECK(std::find(visited.begin(), visited.end(), "/mount") != visited.end());
+    CHECK(std::find(visited.begin(), visited.end(), "/mount/leaf") == visited.end());
+}
+
 TEST_CASE("PathSpace Nesting/json export keeps values after nested placeholder") {
     PathSpace root;
     REQUIRE(root.insert("/node", std::make_unique<PathSpace>()).nbrSpacesInserted == 1);

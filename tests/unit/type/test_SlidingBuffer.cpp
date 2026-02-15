@@ -344,4 +344,20 @@ TEST_CASE("SlidingBuffer") {
     }
 }
 
+TEST_CASE("SlidingBuffer at throws on out-of-range access") {
+    SP::SlidingBuffer buffer;
+    std::vector<uint8_t> data = {10, 20};
+    buffer.append(data.data(), data.size());
+
+    CHECK(buffer.at(0) == 10);
+    buffer.at(0) = 11;
+    CHECK(buffer.at(0) == 11);
+
+    auto const& constBuffer = buffer;
+    CHECK(constBuffer.at(1) == 20);
+
+    CHECK_THROWS_AS(static_cast<void>(buffer.at(2)), std::out_of_range);
+    CHECK_THROWS_AS(static_cast<void>(constBuffer.at(2)), std::out_of_range);
+}
+
 TEST_SUITE_END();
