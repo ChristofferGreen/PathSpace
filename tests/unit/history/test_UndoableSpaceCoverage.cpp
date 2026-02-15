@@ -149,6 +149,24 @@ TEST_CASE("UndoableSpace forwards visit, listChildrenCanonical, notify, and shut
     space->shutdown();
 }
 
+TEST_CASE("UndoableSpace reports missing inner backend") {
+    auto space = std::make_unique<ExposedUndoableSpace>(std::unique_ptr<PathSpaceBase>{}, HistoryOptions{});
+
+    auto visitResult = space->visit([](PathEntry const&, ValueHandle&) { return VisitControl::Continue; },
+                                    VisitOptions{});
+    CHECK_FALSE(visitResult.has_value());
+    CHECK(visitResult.error().code == Error::Code::InvalidPermissions);
+
+    auto enable = space->enableHistory(ConcretePathStringView{"/root"});
+    CHECK_FALSE(enable.has_value());
+    CHECK(enable.error().code == Error::Code::UnknownError);
+
+    CHECK(space->listChildrenCanonical("/root").empty());
+
+    space->notify("/root");
+    space->shutdown();
+}
+
 TEST_CASE("enableHistory blocks nested roots without allowNestedUndo") {
     auto space = makeUndoableSpace();
     HistoryOptions opts;
