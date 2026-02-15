@@ -17,6 +17,26 @@ TEST_CASE("PathSpace Insert") {
         CHECK(val.nbrValuesInserted == 0);
     }
 
+    SUBCASE("Insert under valued parent reports suppression without waiters") {
+        CHECK(pspace.insert("/parent", 1).nbrValuesInserted == 1);
+
+        auto ret = pspace.insert("/parent/child", 2);
+        CHECK(ret.nbrValuesSuppressed == 1);
+        CHECK(ret.nbrValuesInserted == 0);
+    }
+
+    SUBCASE("Suppressed insert adjusts counts when waiters are present") {
+        CHECK(pspace.insert("/waiter", 3).nbrValuesInserted == 1);
+
+        auto ctx = pspace.sharedContext();
+        REQUIRE(ctx);
+        auto guard = ctx->wait("/waiter/child");
+
+        auto ret = pspace.insert("/waiter/child", 4);
+        CHECK(ret.nbrValuesSuppressed == 1);
+        CHECK(ret.nbrValuesInserted == 0);
+    }
+
     SUBCASE("UniquePtr payload must be a PathSpace") {
         auto payload = std::make_unique<int>(42);
         auto ret     = pspace.insert("/unique", std::move(payload));
