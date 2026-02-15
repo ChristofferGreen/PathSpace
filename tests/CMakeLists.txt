@@ -31,6 +31,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/core/test_NodeDataSnapshot.cpp
   unit/core/test_NodeDataNested.cpp
   unit/core/test_NodeDataCoverage.cpp
+  unit/core/test_NodeDataDeserializeEdges.cpp
   unit/core/test_PathSpaceContext.cpp
   unit/ext/test_alpaca.cpp
   unit/core/test_ExpectedShimCoverage.cpp
