@@ -221,6 +221,37 @@ TEST_CASE("Double rehome is idempotent for notification prefix") {
     pool.shutdown();
 }
 
+TEST_CASE("Blocking read notifies with prefix after rehome") {
+    TaskPool pool(1);
+    RehomeablePathSpace root(&pool);
+
+    auto sink = std::make_shared<SinkCapture>();
+    auto ctx  = std::make_shared<PathSpaceContext>(&pool);
+    ctx->setSink(sink);
+    root.rehome(ctx, "/pref");
+
+    std::thread reader([&]() {
+        auto value = root.read<int>("/value", Block{200ms});
+        REQUIRE(value.has_value());
+        CHECK(value.value() == 42);
+    });
+
+    auto const start = std::chrono::steady_clock::now();
+    while (!ctx->hasWaiters()) {
+        if (std::chrono::steady_clock::now() - start > 100ms) {
+            break;
+        }
+        std::this_thread::sleep_for(1ms);
+    }
+    REQUIRE(root.insert("/value", 42).errors.empty());
+
+    reader.join();
+
+    auto notified = sink->waitFor(200ms);
+    REQUIRE(notified.has_value());
+    CHECK(*notified == "/pref/value");
+}
+
 TEST_CASE("Blocking read completes across rehome") {
     TaskPool poolA(1);
     TaskPool poolB(1);
