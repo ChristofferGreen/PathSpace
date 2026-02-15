@@ -373,6 +373,58 @@ TEST_CASE("PathSpace visit rejects malformed roots and empty visitors") {
     }
 }
 
+TEST_CASE("PathSpace visit stops nested traversal when visitor requests stop") {
+    PathSpace space;
+    auto nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/child/grand", 2).nbrValuesInserted == 1);
+    REQUIRE(space.insert("/mount", std::move(nested)).nbrSpacesInserted == 1);
+
+    VisitOptions options;
+    options.root = "/mount/child";
+    options.includeNestedSpaces = true;
+
+    std::vector<std::string> visited;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            visited.push_back(entry.path);
+            if (entry.path == "/mount/child") {
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        },
+        options);
+
+    REQUIRE(result);
+    CHECK(std::find(visited.begin(), visited.end(), "/mount/child") != visited.end());
+    CHECK(std::find(visited.begin(), visited.end(), "/mount/child/grand") == visited.end());
+}
+
+TEST_CASE("PathSpace visit remaps nested entries for deeper roots") {
+    PathSpace space;
+    auto nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/child/grand", 3).nbrValuesInserted == 1);
+    REQUIRE(nested->insert("/child/other", 4).nbrValuesInserted == 1);
+    REQUIRE(space.insert("/mount", std::move(nested)).nbrSpacesInserted == 1);
+
+    VisitOptions options;
+    options.root = "/mount/child/grand";
+    options.includeNestedSpaces = true;
+
+    std::vector<std::string> visited;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            visited.push_back(entry.path);
+            if (entry.path == "/mount/child/grand") {
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        },
+        options);
+
+    REQUIRE(result);
+    CHECK(std::find(visited.begin(), visited.end(), "/mount/child/grand") != visited.end());
+}
+
 TEST_CASE("ValueHandle snapshot handles nodes without payload") {
     PathSpace space;
     // Create a subtree so root has children but no payload.
