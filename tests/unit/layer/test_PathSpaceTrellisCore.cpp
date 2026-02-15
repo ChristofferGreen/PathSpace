@@ -1,4 +1,6 @@
+#define protected public
 #include "layer/PathSpaceTrellis.hpp"
+#undef protected
 #include "PathSpace.hpp"
 #include "path/Iterator.hpp"
 #include "core/In.hpp"
@@ -431,6 +433,22 @@ TEST_CASE("PathSpaceTrellis fan-out reports sources ready vs unavailable") {
     CHECK(err->message->find("ready") != std::string::npos);
 }
 
+TEST_CASE("PathSpaceTrellis fan-out reports NoSuchPath when sources are missing") {
+    auto backing = std::make_shared<ScriptedOutPathSpace>();
+    PathSpaceTrellis trellis{backing};
+    trellis.in(Iterator{"/_system/enable"}, InputData{std::string{"/a"}});
+    trellis.in(Iterator{"/_system/enable"}, InputData{std::string{"/b"}});
+
+    backing->script = {Error{Error::Code::NoSuchPath, "missing"}, Error{Error::Code::NoSuchPath, "missing"}};
+
+    int outValue = 0;
+    auto err = trellis.out(Iterator{"/"}, InputMetadataT<int>{}, Out{}, &outValue);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::NoSuchPath);
+    REQUIRE(err->message.has_value());
+    CHECK_FALSE(err->message->empty());
+}
+
 TEST_CASE("PathSpaceTrellis blocking fan-out times out without shutdown") {
     auto backing = std::make_shared<AlwaysEmptyPathSpace>();
     PathSpaceTrellis trellis{backing};
@@ -438,6 +456,20 @@ TEST_CASE("PathSpaceTrellis blocking fan-out times out without shutdown") {
 
     int outValue = 0;
     Out blocking = Block(std::chrono::milliseconds{3});
+    auto err = trellis.out(Iterator{"/"}, InputMetadataT<int>{}, blocking, &outValue);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::Timeout);
+    REQUIRE(err->message.has_value());
+    CHECK(err->message->find("timed out") != std::string::npos);
+}
+
+TEST_CASE("PathSpaceTrellis blocking fan-out zero timeout returns immediate timeout") {
+    auto backing = std::make_shared<AlwaysEmptyPathSpace>();
+    PathSpaceTrellis trellis{backing};
+    trellis.in(Iterator{"/_system/enable"}, InputData{std::string{"/foo"}});
+
+    int outValue = 0;
+    Out blocking = Block(std::chrono::milliseconds{0});
     auto err = trellis.out(Iterator{"/"}, InputMetadataT<int>{}, blocking, &outValue);
     REQUIRE(err.has_value());
     CHECK(err->code == Error::Code::Timeout);
@@ -677,6 +709,15 @@ TEST_CASE("PathSpaceTrellis listChildrenCanonical tolerates invalid canonical pa
     CHECK(kids.empty());
 }
 
+TEST_CASE("PathSpaceTrellis listChildrenCanonical returns empty for invalid mount prefix") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis{backing};
+    trellis.adoptContextAndPrefix(std::make_shared<PathSpaceContext>(), "/bad/..");
+
+    auto kids = trellis.listChildrenCanonical("/child");
+    CHECK(kids.empty());
+}
+
 TEST_CASE("PathSpaceTrellis fan-out future returns root future via read") {
     auto backing = std::make_shared<FutureScriptedPathSpace>();
     PromiseT<int> promise;
@@ -703,6 +744,17 @@ TEST_CASE("PathSpaceTrellis listChildrenCanonical handles missing backing and sy
     trellis.in(Iterator{"/_system/enable"}, InputData{std::string{"/data"}}); // register one source
     auto sysKids = trellis.listChildrenCanonical("/_system");
     CHECK(sysKids.empty());
+}
+
+TEST_CASE("PathSpaceTrellis getRootNode forwards when backing is set") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis{backing};
+
+    backing->insert("/root/node", 1);
+    CHECK(trellis.getRootNode() != nullptr);
+
+    PathSpaceTrellis missing{nullptr};
+    CHECK(missing.getRootNode() == nullptr);
 }
 
 TEST_CASE("PathSpaceTrellis visit preserves paths with empty mount prefix") {
