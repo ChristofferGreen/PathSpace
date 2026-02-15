@@ -194,6 +194,16 @@ TEST_CASE("PathSpaceBase span-pack insert validates base path and component name
     CHECK_FALSE(badName.errors.empty());
 }
 
+TEST_CASE("PathSpaceBase span-pack insert rejects empty component names") {
+    BaseStub stub;
+    std::array<int, 1> a{1};
+    std::array<int, 1> b{2};
+
+    auto emptyName = stub.insert<"", "b">("/root", std::span<const int>(a), std::span<const int>(b));
+    CHECK_FALSE(emptyName.errors.empty());
+    CHECK(emptyName.errors.front().code == Error::Code::InvalidPath);
+}
+
 TEST_CASE("PathSpaceBase span-pack insert returns NotSupported by default") {
     BaseStub stub;
     std::array<int, 2> a{1, 2};
@@ -226,6 +236,16 @@ TEST_CASE("PathSpaceBase span-pack read validates paths and reports unsupported 
     CHECK(unsupported.error().code == Error::Code::NotSupported);
 }
 
+TEST_CASE("PathSpaceBase span-pack read rejects empty component names") {
+    BaseStub stub;
+
+    auto badName = stub.read<"", "b">("/root",
+                                     [](std::span<const int>, std::span<const int>) {},
+                                     OutFullValidation{});
+    CHECK_FALSE(badName.has_value());
+    CHECK(badName.error().code == Error::Code::InvalidPath);
+}
+
 TEST_CASE("PathSpaceBase span read validates single paths") {
     BaseStub stub;
 
@@ -245,6 +265,16 @@ TEST_CASE("PathSpaceBase span-pack take validates paths and reports unsupported 
     auto unsupported = stub.take<"a", "b">("/root", [](std::span<int>, std::span<int>) {});
     CHECK_FALSE(unsupported.has_value());
     CHECK(unsupported.error().code == Error::Code::NotSupported);
+}
+
+TEST_CASE("PathSpaceBase span-pack take rejects empty component names") {
+    BaseStub stub;
+
+    auto badName = stub.take<"", "b">("/root",
+                                     [](std::span<int>, std::span<int>) {},
+                                     OutFullValidation{});
+    CHECK_FALSE(badName.has_value());
+    CHECK(badName.error().code == Error::Code::InvalidPath);
 }
 
 TEST_CASE("PathSpaceBase take<T> rejects invalid paths") {

@@ -3,6 +3,7 @@
 #include "core/Error.hpp"
 #include "core/ExecutionCategory.hpp"
 #include "task/Future.hpp"
+#include "PathSpaceTestHelper.hpp"
 
 #include "third_party/doctest.h"
 
@@ -11,6 +12,48 @@
 using namespace SP;
 
 TEST_SUITE("pathspace.copy") {
+
+namespace {
+struct DummyExecutor final : Executor {
+    auto submit(std::weak_ptr<Task>&&) -> std::optional<Error> override { return std::nullopt; }
+    auto shutdown() -> void override {}
+    [[nodiscard]] auto size() const -> size_t override { return 1; }
+};
+} // namespace
+
+TEST_CASE("context executor not backed by TaskPool falls back to singleton pool") {
+    DummyExecutor exec;
+    auto context = std::make_shared<PathSpaceContext>(&exec);
+    PathSpace space{context, "/mount"};
+
+    CHECK(PathSpaceTestHelper::executor(space) == &exec);
+    CHECK(PathSpaceTestHelper::pool(space) == &TaskPool::Instance());
+}
+
+TEST_CASE("copy constructor preserves prefix and values") {
+    DummyExecutor exec;
+    auto context = std::make_shared<PathSpaceContext>(&exec);
+    PathSpace source{context, "/prefix"};
+    REQUIRE(source.insert("/value", 5).nbrValuesInserted == 1);
+
+    PathSpace copy{source};
+
+    CHECK(PathSpaceTestHelper::prefix(copy) == PathSpaceTestHelper::prefix(source));
+    auto value = copy.read<int>("/value");
+    REQUIRE(value.has_value());
+    CHECK(value.value() == 5);
+}
+
+TEST_CASE("copy assignment short-circuits self assignment") {
+    PathSpace space;
+    REQUIRE(space.insert("/value", 12).nbrValuesInserted == 1);
+
+    space = space;
+
+    auto value = space.read<int>("/value");
+    REQUIRE(value.has_value());
+    CHECK(value.value() == 12);
+}
 
 TEST_CASE("copies_plain_values") {
     PathSpace source;
