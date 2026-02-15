@@ -1,6 +1,8 @@
+#define private public
 #define protected public
 #include "layer/PathSpaceTrellis.hpp"
 #undef protected
+#undef private
 #include "PathSpace.hpp"
 #include "path/Iterator.hpp"
 #include "core/In.hpp"
@@ -659,6 +661,16 @@ TEST_CASE("PathSpaceTrellis fan-out future returns missing when sources idle") {
     CHECK(fut.error().code == Error::Code::NoObjectFound);
 }
 
+TEST_CASE("PathSpaceTrellis typed peek handles all-slash paths") {
+    auto backing = std::make_shared<NullFuturePathSpace>();
+    PathSpaceTrellis trellis{backing};
+    trellis.in(Iterator{"/_system/enable"}, InputData{std::string{"/a"}});
+
+    auto fut = trellis.read("///", Out{} & OutNoValidation{});
+    REQUIRE_FALSE(fut.has_value());
+    CHECK(fut.error().code == Error::Code::NoObjectFound);
+}
+
 TEST_CASE("PathSpaceTrellis joinWithMount normalizes double and missing slashes") {
     auto backing = std::make_shared<RecordingOutPathSpace>();
     PathSpaceTrellis trellisSlash{backing};
@@ -744,6 +756,17 @@ TEST_CASE("PathSpaceTrellis listChildrenCanonical handles missing backing and sy
     trellis.in(Iterator{"/_system/enable"}, InputData{std::string{"/data"}}); // register one source
     auto sysKids = trellis.listChildrenCanonical("/_system");
     CHECK(sysKids.empty());
+}
+
+TEST_CASE("PathSpaceTrellis isSystemPath detects system segment") {
+    Iterator sys{"/_system/enable"};
+    CHECK(PathSpaceTrellis::isSystemPath(sys));
+
+    Iterator nonSystem{"/data"};
+    CHECK_FALSE(PathSpaceTrellis::isSystemPath(nonSystem));
+
+    Iterator root{"/"};
+    CHECK_FALSE(PathSpaceTrellis::isSystemPath(root));
 }
 
 TEST_CASE("PathSpaceTrellis getRootNode forwards when backing is set") {
