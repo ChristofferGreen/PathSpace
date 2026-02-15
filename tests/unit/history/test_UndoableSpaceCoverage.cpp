@@ -46,6 +46,18 @@ auto tempFile(std::string_view stem) -> std::filesystem::path {
     return std::filesystem::temp_directory_path() / name;
 }
 
+auto encodeRootForPersistence(std::string_view root) -> std::string {
+    if (root.empty() || root == "/") {
+        return "__root";
+    }
+    std::string encoded;
+    encoded.reserve(root.size());
+    for (char c : root) {
+        encoded.push_back(c == '/' ? '_' : c);
+    }
+    return encoded;
+}
+
 void writeBytes(std::filesystem::path const& path, std::span<const std::byte> bytes) {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     REQUIRE(out.good());
@@ -189,6 +201,70 @@ TEST_CASE("enableHistory rejects duplicate root activation") {
     auto repeat = space->enableHistory(ConcretePathStringView{"/root"}, opts);
     CHECK_FALSE(repeat.has_value());
     CHECK(repeat.error().code == Error::Code::UnknownError);
+}
+
+TEST_CASE("UndoableSpace rejects invalid roots across history APIs") {
+    auto space = makeUndoableSpace();
+    auto invalid = ConcretePathStringView{"/root/.."};
+
+    auto enable = space->enableHistory(invalid);
+    CHECK_FALSE(enable.has_value());
+    CHECK(enable.error().code == Error::Code::InvalidPathSubcomponent);
+
+    auto disable = space->disableHistory(invalid);
+    CHECK_FALSE(disable.has_value());
+    CHECK(disable.error().code == Error::Code::InvalidPathSubcomponent);
+
+    auto tx = space->beginTransaction(invalid);
+    CHECK_FALSE(tx.has_value());
+    CHECK(tx.error().code == Error::Code::NotFound);
+}
+
+TEST_CASE("UndoableSpace allows clearing shared stack keys") {
+    HistoryOptions defaults;
+    defaults.sharedStackKey = std::string{"shared"};
+    auto space = std::make_unique<UndoableSpace>(std::make_unique<PathSpace>(), defaults);
+
+    HistoryOptions clearKey;
+    clearKey.useMutationJournal = true;
+    clearKey.sharedStackKey = std::string{};
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/root"}, clearKey).has_value());
+
+    HistoryOptions withKey;
+    withKey.useMutationJournal = true;
+    withKey.sharedStackKey = std::string{"shared"};
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/other"}, withKey).has_value());
+}
+
+TEST_CASE("UndoableSpace reports corrupt journal persistence data") {
+    auto persistenceRoot = tempFile("history_root");
+    auto namespaceToken  = std::string{"coverage"};
+    auto rootPath        = std::string{"/doc"};
+    auto encodedRoot     = encodeRootForPersistence(rootPath);
+    auto journalPath = persistenceRoot / namespaceToken / encodedRoot / "journal.log";
+    std::filesystem::create_directories(journalPath.parent_path());
+
+    std::vector<std::byte> bytes{
+        std::byte{0x00},
+        std::byte{0x00},
+        std::byte{0x00},
+        std::byte{0x00},
+    };
+    writeBytes(journalPath, bytes);
+
+    HistoryOptions opts;
+    opts.persistHistory = true;
+    opts.useMutationJournal = true;
+    opts.persistenceRoot = persistenceRoot.string();
+    opts.persistenceNamespace = namespaceToken;
+
+    auto space = makeUndoableSpace();
+    auto enable = space->enableHistory(ConcretePathStringView{rootPath}, opts);
+    CHECK_FALSE(enable.has_value());
+    CHECK(enable.error().code == Error::Code::MalformedInput);
+
+    std::error_code ec;
+    std::filesystem::remove_all(persistenceRoot, ec);
 }
 
 TEST_CASE("exportHistorySavefile reports missing history root") {
@@ -465,6 +541,28 @@ TEST_CASE("diagnostics history entry out of range surfaces error") {
     auto missing = space->read<std::string>("/diagnostics/history/_doc/entries/999/path");
     CHECK_FALSE(missing.has_value());
     CHECK(missing.error().code == Error::Code::NoObjectFound);
+}
+
+TEST_CASE("diagnostics history prefix without root returns not found") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    auto missingRoot = space->read<std::string>("/diagnostics/history");
+    CHECK_FALSE(missingRoot.has_value());
+
+    auto missingKey = space->read<std::string>("/diagnostics/history/missing");
+    CHECK_FALSE(missingKey.has_value());
+}
+
+TEST_CASE("history bypasses non-root paths") {
+    auto space = makeExposedUndoableSpace();
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    auto insertResult = space->insert("/other/value", 7);
+    CHECK(insertResult.errors.empty());
+
+    auto missingChildren = space->listChildrenCanonical("/missing");
+    CHECK(missingChildren.empty());
 }
 
 TEST_SUITE_END();
