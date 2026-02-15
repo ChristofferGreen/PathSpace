@@ -208,6 +208,45 @@ TEST_CASE("trace helpers are no-ops when tracing is disabled") {
     CHECK(pool.traceEvents.empty());
 }
 
+TEST_CASE("traceCounter drops events when tracing disabled after lock") {
+    TaskPool pool(1);
+    pool.enableTrace("trace_unused.json");
+
+    std::atomic<bool> started{false};
+
+    std::unique_lock<std::mutex> lock(pool.traceMutex);
+    std::thread worker([&] {
+        started.store(true, std::memory_order_release);
+        pool.traceCounter("RaceCounter", 2.0);
+    });
+
+    while (!started.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+
+    pool.traceEnabled.store(false, std::memory_order_relaxed);
+    lock.unlock();
+
+    worker.join();
+
+    std::lock_guard<std::mutex> guard(pool.traceMutex);
+    auto it = std::find_if(pool.traceEvents.begin(), pool.traceEvents.end(),
+                           [](TaskPool::TaskTraceEvent const& e) { return e.name == "RaceCounter"; });
+    CHECK(it == pool.traceEvents.end());
+}
+
+TEST_CASE("recordTrace helpers exit early when tracing is disabled") {
+    TaskPool pool(1);
+
+    pool.recordTraceSpan("DisabledSpan", "/disabled", "span", 1, 2, 3);
+    pool.recordTraceAsync("DisabledAsync", "/disabled", "async", 4, 'b', 5);
+    pool.recordTraceThreadName(42, "DisabledThread");
+
+    std::lock_guard<std::mutex> lock(pool.traceMutex);
+    CHECK(pool.traceEvents.empty());
+    CHECK(pool.traceNamedThreads.empty());
+}
+
 TEST_CASE("traceCounter records counter events when tracing is enabled") {
     TaskPool pool(1);
     pool.enableTrace("trace_unused.json");
