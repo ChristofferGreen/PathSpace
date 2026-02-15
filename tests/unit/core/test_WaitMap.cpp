@@ -7,11 +7,27 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <thread>
 #include <vector>
 
 using namespace SP;
 using namespace std::chrono_literals;
+
+namespace {
+struct WaitMapEnvBootstrap {
+    WaitMapEnvBootstrap() {
+#if defined(_WIN32)
+        _putenv_s("PATHSPACE_DEBUG_WAITMAP", "0");
+#else
+        ::setenv("PATHSPACE_DEBUG_WAITMAP", "0", 1);
+#endif
+        (void)WaitMap::debug_enabled();
+    }
+};
+
+WaitMapEnvBootstrap waitMapEnvBootstrap;
+} // namespace
 
 TEST_SUITE("core.waitmap") {
 TEST_CASE("notify and clear are safe when no waiters are registered") {

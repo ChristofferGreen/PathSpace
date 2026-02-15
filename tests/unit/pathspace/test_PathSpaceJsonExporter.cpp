@@ -1,6 +1,7 @@
 #define private public
 #include "core/NodeData.hpp"
 #undef private
+#include "core/Node.hpp"
 #include "third_party/doctest.h"
 
 #include <nlohmann/json.hpp>
@@ -12,6 +13,7 @@
 #include <pathspace/PathSpace.hpp>
 #include <pathspace/tools/PathSpaceJsonExporter.hpp>
 #include <pathspace/tools/PathSpaceJsonConverters.hpp>
+#include <pathspace/type/InputData.hpp>
 #include <pathspace/type/DataCategory.hpp>
 
 #include "../PathSpaceTestHelper.hpp"
@@ -83,6 +85,41 @@ private:
     auto popImpl(void*, InputMetadata const&) -> std::optional<Error> override {
         return Error{Error::Code::NotSupported, "DummyReader pop"};
     }
+};
+
+class CorruptSnapshotSpace final : public PathSpaceBase {
+public:
+    explicit CorruptSnapshotSpace(NodeData data) {
+        node.data = std::make_unique<NodeData>(std::move(data));
+    }
+
+    auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void> override {
+        if (!visitor) {
+            return std::unexpected(Error{Error::Code::InvalidType, "Visitor callback is empty"});
+        }
+
+        PathEntry entry;
+        entry.path             = options.root.empty() ? std::string{"/"} : options.root;
+        entry.hasValue         = true;
+        entry.hasChildren      = false;
+        entry.hasNestedSpace   = false;
+        entry.approxChildCount = 0;
+        entry.frontCategory    = DataCategory::Fundamental;
+
+        auto handle = VisitDetail::Access::MakeHandle(*this, node, entry.path, true);
+        visitor(entry, handle);
+        return {};
+    }
+
+private:
+    Node node;
+
+    auto in(Iterator const&, InputData const&) -> InsertReturn override { return {}; }
+    auto out(Iterator const&, InputMetadata const&, Out const&, void*) -> std::optional<Error> override {
+        return Error{Error::Code::NotSupported, "CorruptSnapshotSpace does not support out"};
+    }
+    auto shutdown() -> void override {}
+    auto notify(std::string const&) -> void override {}
 };
 
 class BrokenVisitSpace final : public PathSpaceBase {
@@ -256,6 +293,28 @@ TEST_CASE("PathSpace JSON exporter reports snapshot errors as value_error") {
     auto node = findNode(doc, "/root", "/root");
     CHECK(node.contains("value_error"));
     CHECK(node.at("value_error") == "unknown_error:ValueHandle missing node");
+}
+
+TEST_CASE("PathSpace JSON exporter skips malformed serialized snapshots") {
+    int value = 42;
+    InputData input{value};
+    NodeData  nodeData{input};
+
+    auto rawSize = nodeData.data.rawSize();
+    nodeData.data.frontOffset = rawSize + 1;
+
+    CorruptSnapshotSpace space{std::move(nodeData)};
+
+    PathSpaceJsonOptions options;
+    options.mode       = PathSpaceJsonOptions::Mode::Debug;
+    options.visit.root = "/root";
+
+    auto result = PathSpaceJsonExporter::Export(space, options);
+    REQUIRE(result);
+
+    auto doc  = Json::parse(*result);
+    auto node = findNode(doc, "/root", "/root");
+    CHECK(node.contains("values"));
 }
 
 TEST_CASE("PathSpace JSON exporter propagates visit errors") {
