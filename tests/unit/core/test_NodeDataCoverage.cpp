@@ -3,6 +3,7 @@
 #include "type/InputData.hpp"
 #include "type/InputMetadataT.hpp"
 #include "task/Task.hpp"
+#include "task/TaskPool.hpp"
 #include "task/Executor.hpp"
 #include "PathSpace.hpp"
 
@@ -136,6 +137,58 @@ TEST_SUITE("core.nodedata.coverage") {
         REQUIRE(readErr.has_value());
         CHECK(readErr->code == Error::Code::UnknownError);
         CHECK(readErr->message == std::optional<std::string>{"No executor available for lazy task submission"});
+    }
+
+    TEST_CASE("lazy task submission errors surface during deserialize") {
+        InputMetadataT<int> meta{};
+        RejectingExecutor   exec;
+        auto               task = makeLazyTask();
+        task->setExecutor(&exec);
+
+        InputData input{nullptr, meta};
+        input.task = task;
+
+        NodeData node;
+        auto     err = node.serialize(input);
+        REQUIRE_FALSE(err.has_value());
+
+        int out = 0;
+        auto readErr = node.deserialize(&out, meta);
+        REQUIRE(readErr.has_value());
+        CHECK(readErr->code == Error::Code::UnknownError);
+        CHECK(readErr->message == std::optional<std::string>{"executor rejected task"});
+    }
+
+    TEST_CASE("completed execution results copy and pop when requested") {
+        TaskPool pool(1);
+        InputMetadataT<int> meta{};
+
+        auto task = makeImmediateTask();
+        InputData input{nullptr, meta};
+        input.task = task;
+        input.executor = &pool;
+
+        NodeData node;
+        auto     err = node.serialize(input);
+        REQUIRE_FALSE(err.has_value());
+
+        while (!task->isCompleted()) {
+            std::this_thread::yield();
+        }
+
+        int out = 0;
+        auto readErr = node.deserialize(&out, meta);
+        REQUIRE_FALSE(readErr.has_value());
+        CHECK(out == 7);
+
+        int popOut = 0;
+        auto popErr = node.deserializePop(&popOut, meta);
+        REQUIRE_FALSE(popErr.has_value());
+        CHECK(popOut == 7);
+
+        auto emptyErr = node.deserialize(&out, meta);
+        REQUIRE(emptyErr.has_value());
+        CHECK(emptyErr->code == Error::Code::NoObjectFound);
     }
 
     TEST_CASE("serialize reports missing serialization function") {

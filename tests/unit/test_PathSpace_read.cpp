@@ -18,6 +18,7 @@
 #include <any>
 #include <optional>
 #include <tuple>
+#include <cstdlib>
 #include <typeinfo>
 #include <utility> // for std::pair
 #include <variant>
@@ -140,6 +141,23 @@ TEST_CASE("PathSpace Read") {
     SUBCASE("Read with timeout") {
         auto ret = pspace.read<int>("/timeout", Block(100ms));
         CHECK_FALSE(ret.has_value());
+    }
+
+    SUBCASE("Read with zero timeout clamps to default") {
+        std::optional<std::string> prev;
+        if (const char* prevEnv = std::getenv("PATHSPACE_TEST_TIMEOUT_MS")) {
+            prev = std::string(prevEnv);
+        }
+        setenv("PATHSPACE_TEST_TIMEOUT_MS", "1", 1);
+
+        auto ret = pspace.read<int>("/timeout_zero", Block(0ms));
+        CHECK_FALSE(ret.has_value());
+
+        if (prev) {
+            setenv("PATHSPACE_TEST_TIMEOUT_MS", prev->c_str(), 1);
+        } else {
+            unsetenv("PATHSPACE_TEST_TIMEOUT_MS");
+        }
     }
 
     SUBCASE("PathSpace Read std::string") {
