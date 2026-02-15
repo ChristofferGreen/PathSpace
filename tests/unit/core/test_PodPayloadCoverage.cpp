@@ -456,6 +456,30 @@ TEST_CASE("PodPayload reserveSpan publishSpan and rollbackSpan") {
     CHECK(payload.size() == 2);
 }
 
+TEST_CASE("PodPayload reserve helpers grow capacity") {
+    PodPayload<int> payload;
+
+    auto span = payload.reserveSpan(2048);
+    REQUIRE(span.has_value());
+    auto* data = static_cast<int*>(span->ptr);
+    for (std::size_t i = 0; i < span->count; ++i) {
+        data[i] = static_cast<int>(i);
+    }
+    payload.publishSpan(span->index, span->count);
+
+    auto first = payload.reserveOne();
+    REQUIRE(first.has_value());
+    *static_cast<int*>(first->ptr) = -1;
+    payload.publishOne(first->index);
+
+    auto second = payload.reserveOne();
+    REQUIRE(second.has_value());
+    *static_cast<int*>(second->ptr) = -2;
+    payload.publishOne(second->index);
+
+    CHECK(payload.size() >= span->count + 2);
+}
+
 TEST_CASE("PodPayload reserveSpan returns nullopt when frozen") {
     PodPayload<int> payload;
     CHECK(payload.freezeForUpgrade());
