@@ -53,6 +53,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/test_PathSpace_copy.cpp
   unit/test_PathSpace_internal.cpp
   unit/test_ValueHandleGuards.cpp
+  unit/test_ValueHandleReadInto.cpp
   unit/test_PathSpace_indexed.cpp
   unit/test_PathSpace_pod_fastpath.cpp
   unit/path/test_UnvalidatedPath.cpp
