@@ -636,6 +636,27 @@ TEST_CASE("PathSpace visit stops nested traversal when visitor requests stop") {
     CHECK(std::find(visited.begin(), visited.end(), "/mount/child/grand") == visited.end());
 }
 
+TEST_CASE("PathSpace visit includes nested entries under root traversal") {
+    PathSpace space;
+    auto nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/child", 42).nbrValuesInserted == 1);
+    REQUIRE(space.insert("/mount", std::move(nested)).nbrSpacesInserted == 1);
+
+    std::vector<std::string> visited;
+    VisitOptions options;
+    options.includeNestedSpaces = true;
+
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            visited.push_back(entry.path);
+            return VisitControl::Continue;
+        },
+        options);
+
+    REQUIRE(result);
+    CHECK(std::find(visited.begin(), visited.end(), "/mount/child") != visited.end());
+}
+
 TEST_CASE("PathSpace visit remaps nested entries for deeper roots") {
     PathSpace space;
     auto nested = std::make_unique<PathSpace>();

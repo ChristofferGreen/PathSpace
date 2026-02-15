@@ -8,6 +8,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include "core/Node.hpp"
 #include "core/PathSpaceContext.hpp"
 
 using namespace SP;
@@ -92,6 +93,20 @@ TEST_CASE("ValueHandle defaults are empty and report missing node") {
     auto snapshot = handle.snapshot();
     CHECK_FALSE(snapshot.has_value());
     CHECK(snapshot.error().code == Error::Code::UnknownError);
+}
+
+TEST_CASE("ValueHandle snapshot returns empty data for bare nodes") {
+    BaseStub stub;
+    Node     node;
+
+    auto handle = stub.makeValueHandle(node, "/bare", true);
+    auto snap = handle.snapshot();
+    REQUIRE(snap);
+    CHECK(snap->queueDepth == 0);
+    CHECK(snap->types.empty());
+    CHECK_FALSE(snap->hasExecutionPayload);
+    CHECK_FALSE(snap->hasSerializedPayload);
+    CHECK(snap->rawBufferBytes == 0);
 }
 
 TEST_CASE("PathSpaceBase creates default notification sink without context") {

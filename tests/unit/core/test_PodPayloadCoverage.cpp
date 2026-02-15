@@ -11,9 +11,88 @@ using namespace SP;
 namespace {
 std::atomic<int> gHookCalls{0};
 void incrementHook() { gHookCalls.fetch_add(1, std::memory_order_relaxed); }
+
+struct PinnedBaseStub final : PodPayloadBase {
+    std::type_info const& type() const noexcept override { return typeid(int); }
+    bool matches(std::type_info const& ti) const noexcept override { return ti == typeid(int); }
+    std::size_t size() const noexcept override { return 0; }
+    std::size_t elementSize() const noexcept override { return sizeof(int); }
+    std::size_t headIndex() const noexcept override { return 0; }
+    std::size_t publishedTail() const noexcept override { return 0; }
+    InputMetadata const& podMetadata() const noexcept override { return meta; }
+    bool pushValue(void const*) override { return false; }
+    std::optional<Error> readTo(void*) const override { return std::nullopt; }
+    std::optional<Error> takeTo(void*) override { return std::nullopt; }
+    std::optional<Error> withSpanRaw(std::function<void(void const*, std::size_t)> const& fn) const override {
+        fn(nullptr, 0);
+        return std::nullopt;
+    }
+    std::optional<Error> withSpanMutableRaw(std::function<void(void*, std::size_t)> const& fn) override {
+        fn(nullptr, 0);
+        return std::nullopt;
+    }
+    std::optional<Error> withSpanRawFrom(std::size_t,
+                                         std::function<void(void const*, std::size_t)> const& fn) const override {
+        fn(nullptr, 0);
+        return std::nullopt;
+    }
+    std::optional<Error> withSpanMutableRawFrom(std::size_t,
+                                                std::function<void(void*, std::size_t)> const& fn) override {
+        fn(nullptr, 0);
+        return std::nullopt;
+    }
+    std::optional<Error> popCount(std::size_t) override { return std::nullopt; }
+    bool freezeForUpgrade() override { return false; }
+    std::optional<Reservation> reserveOne() override { return std::nullopt; }
+    void publishOne(std::size_t) override {}
+    void rollbackOne(std::size_t) override {}
+    std::optional<ReservationSpan> reserveSpan(std::size_t) override { return std::nullopt; }
+    void publishSpan(std::size_t, std::size_t) override {}
+    void rollbackSpan(std::size_t, std::size_t) override {}
+    std::optional<std::size_t> packSpanStart() const noexcept override { return std::nullopt; }
+    void markPackSpanStart(std::size_t) noexcept override {}
+
+    InputMetadata meta{InputMetadataT<int>{}};
+};
 } // namespace
 
 TEST_SUITE("core.podpayload.coverage") {
+TEST_CASE("PodPayloadBase pinned helpers default to empty tokens") {
+    PinnedBaseStub stub;
+
+    bool sawRaw = false;
+    auto rawErr = stub.withSpanRawPinned([&](void const*, std::size_t, std::shared_ptr<void> const& token) {
+        sawRaw = true;
+        CHECK(token == nullptr);
+    });
+    CHECK_FALSE(rawErr.has_value());
+    CHECK(sawRaw);
+
+    bool sawMut = false;
+    auto mutErr = stub.withSpanMutableRawPinned([&](void*, std::size_t, std::shared_ptr<void> const& token) {
+        sawMut = true;
+        CHECK(token == nullptr);
+    });
+    CHECK_FALSE(mutErr.has_value());
+    CHECK(sawMut);
+
+    bool sawFrom = false;
+    auto fromErr = stub.withSpanRawFromPinned(0, [&](void const*, std::size_t, std::shared_ptr<void> const& token) {
+        sawFrom = true;
+        CHECK(token == nullptr);
+    });
+    CHECK_FALSE(fromErr.has_value());
+    CHECK(sawFrom);
+
+    bool sawMutFrom = false;
+    auto mutFromErr = stub.withSpanMutableRawFromPinned(0, [&](void*, std::size_t, std::shared_ptr<void> const& token) {
+        sawMutFrom = true;
+        CHECK(token == nullptr);
+    });
+    CHECK_FALSE(mutFromErr.has_value());
+    CHECK(sawMutFrom);
+}
+
 TEST_CASE("PodPayload exercises push/read/take/span paths") {
     PodPayload<int> payload;
 
