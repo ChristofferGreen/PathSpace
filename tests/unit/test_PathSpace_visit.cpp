@@ -1,8 +1,11 @@
 #include "third_party/doctest.h"
 #include "core/NodeData.hpp"
+#include "PathSpaceTestHelper.hpp"
 #include <algorithm>
-#include <vector>
+#include <memory>
+#include <mutex>
 #include <typeinfo>
+#include <vector>
 
 #include <pathspace/PathSpace.hpp>
 
@@ -30,6 +33,99 @@ public:
     }
     auto shutdown() -> void override {}
     auto notify(std::string const&) -> void override {}
+};
+
+class StubPodPayload final : public PodPayloadBase {
+public:
+    StubPodPayload(InputMetadata metadata,
+                   std::vector<int> values,
+                   std::optional<Error> readError,
+                   std::optional<Error> spanError,
+                   bool callSpan)
+        : metadata_(std::move(metadata))
+        , values_(std::move(values))
+        , readError_(std::move(readError))
+        , spanError_(std::move(spanError))
+        , callSpan_(callSpan) {}
+
+    std::type_info const& type() const noexcept override { return typeid(int); }
+    bool matches(std::type_info const& ti) const noexcept override { return ti == typeid(int); }
+    std::size_t size() const noexcept override { return values_.size(); }
+    std::size_t elementSize() const noexcept override { return sizeof(int); }
+    std::size_t headIndex() const noexcept override { return 0; }
+    std::size_t publishedTail() const noexcept override { return values_.size(); }
+    InputMetadata const& podMetadata() const noexcept override { return metadata_; }
+
+    bool pushValue(void const*) override { return false; }
+
+    std::optional<Error> readTo(void* out) const override {
+        if (readError_) {
+            return readError_;
+        }
+        if (values_.empty()) {
+            return Error{Error::Code::NoObjectFound, "No data available"};
+        }
+        *static_cast<int*>(out) = values_.front();
+        return std::nullopt;
+    }
+
+    std::optional<Error> takeTo(void* out) override {
+        return readTo(out);
+    }
+
+    std::optional<Error> withSpanRaw(std::function<void(void const*, std::size_t)> const& fn) const override {
+        if (spanError_) {
+            return spanError_;
+        }
+        if (callSpan_) {
+            fn(values_.data(), values_.size());
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Error> withSpanMutableRaw(std::function<void(void*, std::size_t)> const& fn) override {
+        if (callSpan_) {
+            fn(values_.data(), values_.size());
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Error> withSpanRawFrom(std::size_t startIndex,
+                                         std::function<void(void const*, std::size_t)> const& fn) const override {
+        if (spanError_) {
+            return spanError_;
+        }
+        if (startIndex < values_.size() && callSpan_) {
+            fn(values_.data() + startIndex, values_.size() - startIndex);
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Error> withSpanMutableRawFrom(std::size_t startIndex,
+                                                std::function<void(void*, std::size_t)> const& fn) override {
+        if (startIndex < values_.size() && callSpan_) {
+            fn(values_.data() + startIndex, values_.size() - startIndex);
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Error> popCount(std::size_t) override { return std::nullopt; }
+    bool freezeForUpgrade() override { return false; }
+    std::optional<Reservation> reserveOne() override { return std::nullopt; }
+    void publishOne(std::size_t) override {}
+    void rollbackOne(std::size_t) override {}
+    std::optional<ReservationSpan> reserveSpan(std::size_t) override { return std::nullopt; }
+    void publishSpan(std::size_t, std::size_t) override {}
+    void rollbackSpan(std::size_t, std::size_t) override {}
+    std::optional<std::size_t> packSpanStart() const noexcept override { return std::nullopt; }
+    void markPackSpanStart(std::size_t) noexcept override {}
+
+private:
+    InputMetadata             metadata_;
+    std::vector<int>          values_;
+    std::optional<Error>      readError_;
+    std::optional<Error>      spanError_;
+    bool                      callSpan_ = false;
 };
 
 } // namespace
@@ -546,6 +642,74 @@ TEST_CASE("ValueHandle read handles empty POD queues via snapshot fallback") {
         });
     REQUIRE(visitResult);
     CHECK(visitedPod);
+}
+
+TEST_CASE("ValueHandle readInto falls back to span copy when read fails") {
+    PathSpace space;
+    Node* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+
+    Node& node = root->getOrCreateChild("stub");
+    InputMetadata metadata{InputMetadataT<int>{}};
+    auto payload = std::make_shared<StubPodPayload>(
+        metadata,
+        std::vector<int>{42},
+        Error{Error::Code::UnknownError, "forced read failure"},
+        std::nullopt,
+        true);
+    {
+        std::lock_guard<std::mutex> guard(node.payloadMutex);
+        node.podPayload = std::move(payload);
+    }
+
+    std::optional<Expected<int>> result;
+    auto visitResult = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/stub") {
+                result = handle.read<int>();
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        });
+
+    REQUIRE(visitResult);
+    REQUIRE(result.has_value());
+    CHECK_FALSE(result->has_value());
+    CHECK(result->error().code == Error::Code::UnknownError);
+}
+
+TEST_CASE("ValueHandle readInto surfaces span errors during fallback") {
+    PathSpace space;
+    Node* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+
+    Node& node = root->getOrCreateChild("spanfail");
+    InputMetadata metadata{InputMetadataT<int>{}};
+    auto payload = std::make_shared<StubPodPayload>(
+        metadata,
+        std::vector<int>{7},
+        Error{Error::Code::UnknownError, "forced read failure"},
+        Error{Error::Code::UnknownError, "forced span failure"},
+        false);
+    {
+        std::lock_guard<std::mutex> guard(node.payloadMutex);
+        node.podPayload = std::move(payload);
+    }
+
+    std::optional<Expected<int>> result;
+    auto visitResult = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/spanfail") {
+                result = handle.read<int>();
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        });
+
+    REQUIRE(visitResult);
+    REQUIRE(result.has_value());
+    CHECK_FALSE(result->has_value());
+    CHECK(result->error().code == Error::Code::UnknownError);
 }
 
 TEST_CASE("ValueHandle queueDepth handles data, pod, and empty handles") {
