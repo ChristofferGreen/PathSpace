@@ -148,7 +148,8 @@ auto SnapshotCachedPathSpace::setSnapshotOptions(SnapshotOptions options) -> voi
         this->snapshotState->allowSynchronousRebuild.store(options.allowSynchronousRebuild, std::memory_order_release);
         this->snapshotState->dirty = options.enabled;
         this->snapshotState->rebuildInProgress = false;
-        this->snapshotState->lastMutation = now - this->snapshotState->debounce;
+        // Start debounce window at enable-time so we do not rebuild immediately.
+        this->snapshotState->lastMutation = now;
         this->snapshotState->lastBuild = std::chrono::steady_clock::time_point{};
         this->snapshotState->hitCount.store(0, std::memory_order_release);
         this->snapshotState->missCount.store(0, std::memory_order_release);

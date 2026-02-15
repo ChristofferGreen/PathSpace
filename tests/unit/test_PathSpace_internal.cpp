@@ -110,6 +110,37 @@ TEST_CASE("out short-circuits when clearing is in progress") {
     CHECK(err->code == Error::Code::Timeout);
 }
 
+TEST_CASE("out returns clearing-in-progress once blocking wait begins") {
+    ExposedPathSpace space;
+    auto context = space.sharedContext();
+    REQUIRE(context);
+
+    int value = 0;
+    std::optional<Error> err;
+    std::thread reader([&] {
+        err = space.out(Iterator{"/missing"}, InputMetadataT<int>{}, Block(200ms), &value);
+    });
+
+    bool waiterRegistered = false;
+    for (int i = 0; i < 100 && !waiterRegistered; ++i) {
+        waiterRegistered = context->hasWaiters();
+        if (!waiterRegistered) {
+            std::this_thread::sleep_for(2ms);
+        }
+    }
+    CHECK(waiterRegistered);
+
+    PathSpaceTestHelper::clearing(space).store(true, std::memory_order_relaxed);
+    context->notify("/missing");
+
+    reader.join();
+    PathSpaceTestHelper::clearing(space).store(false, std::memory_order_relaxed);
+
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::Timeout);
+    CHECK(err->message == std::optional<std::string>{"PathSpace clearing in progress"});
+}
+
 TEST_CASE("out clamps timeout using PATHSPACE_TEST_TIMEOUT_MS and respects prefix") {
     setenv("PATHSPACE_TEST_TIMEOUT_MS", "1", 1);
     auto ctx = std::make_shared<PathSpaceContext>();
