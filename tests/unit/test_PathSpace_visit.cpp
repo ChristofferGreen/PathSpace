@@ -292,6 +292,40 @@ TEST_CASE("PathSpace visit validates indexed roots and nested traversal") {
     }
 }
 
+TEST_CASE("PathSpace visit resolves roots through nested spaces when child nodes are missing") {
+    PathSpace space;
+    auto nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/missing/leaf", 5).nbrValuesInserted == 1);
+
+    auto inserted = space.insert("/mount", std::move(nested));
+    REQUIRE(inserted.nbrSpacesInserted == 1);
+
+    VisitOptions opts;
+    opts.includeNestedSpaces = true;
+    opts.root                = "/mount/missing";
+
+    std::vector<std::string> visited;
+    auto ok = space.visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            visited.push_back(entry.path);
+            return VisitControl::Continue;
+        },
+        opts);
+    REQUIRE(ok);
+    CHECK(std::find(visited.begin(), visited.end(), "/mount/missing") != visited.end());
+    CHECK(std::find(visited.begin(), visited.end(), "/mount/missing/leaf") != visited.end());
+
+    VisitOptions disallow;
+    disallow.includeNestedSpaces = false;
+    disallow.root                = "/mount/missing";
+
+    auto missing = space.visit(
+        [&](PathEntry const&, ValueHandle&) { return VisitControl::Continue; },
+        disallow);
+    CHECK_FALSE(missing);
+    CHECK(missing.error().code == Error::Code::NoSuchPath);
+}
+
 TEST_CASE("ValueHandle snapshot reflects POD fast path upgrade to generic") {
     PathSpace space;
     REQUIRE(space.insert("/queue", 1).errors.empty());
