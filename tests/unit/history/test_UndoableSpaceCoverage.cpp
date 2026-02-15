@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <span>
@@ -86,6 +87,27 @@ auto makeDocumentWithEntries(std::string const& root,
     doc.entries    = std::move(entries);
     return doc;
 }
+
+struct ScopedEnvVar {
+    std::string               name;
+    std::optional<std::string> previous;
+
+    ScopedEnvVar(char const* key, std::string value)
+        : name(key) {
+        if (auto* existing = std::getenv(key)) {
+            previous = std::string(existing);
+        }
+        ::setenv(key, value.c_str(), 1);
+    }
+
+    ~ScopedEnvVar() {
+        if (previous) {
+            ::setenv(name.c_str(), previous->c_str(), 1);
+        } else {
+            ::unsetenv(name.c_str());
+        }
+    }
+};
 
 } // namespace
 
@@ -265,6 +287,59 @@ TEST_CASE("UndoableSpace reports corrupt journal persistence data") {
 
     std::error_code ec;
     std::filesystem::remove_all(persistenceRoot, ec);
+}
+
+TEST_CASE("UndoableSpace rejects invalid persistence namespace") {
+    HistoryOptions opts;
+    opts.persistHistory = true;
+    opts.useMutationJournal = true;
+    opts.persistenceNamespace = "bad/namespace";
+
+    auto space = makeUndoableSpace();
+    auto enable = space->enableHistory(ConcretePathStringView{"/doc"}, opts);
+    CHECK_FALSE(enable.has_value());
+    CHECK(enable.error().code == Error::Code::InvalidPermissions);
+}
+
+TEST_CASE("UndoableSpace uses default persistence root when configured") {
+    auto persistenceRoot = tempFile("history_default_root");
+    std::filesystem::create_directories(persistenceRoot);
+    ScopedEnvVar env{"PATHSPACE_HISTORY_ROOT", persistenceRoot.string()};
+
+    HistoryOptions opts;
+    opts.persistHistory = true;
+    opts.useMutationJournal = true;
+
+    auto space = makeUndoableSpace();
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+    CHECK(std::filesystem::exists(persistenceRoot / "history"));
+
+    REQUIRE(space->disableHistory(ConcretePathStringView{"/doc"}).has_value());
+    std::error_code ec;
+    std::filesystem::remove_all(persistenceRoot, ec);
+}
+
+TEST_CASE("UndoableSpace reports persistence root creation failures") {
+    auto persistenceRoot = tempFile("history_file_root");
+    {
+        std::ofstream file(persistenceRoot);
+        REQUIRE(file.good());
+        file << "not a directory";
+    }
+
+    HistoryOptions opts;
+    opts.persistHistory = true;
+    opts.useMutationJournal = true;
+    opts.persistenceRoot = persistenceRoot.string();
+    opts.persistenceNamespace = "file_root";
+
+    auto space = makeUndoableSpace();
+    auto enable = space->enableHistory(ConcretePathStringView{"/doc"}, opts);
+    CHECK_FALSE(enable.has_value());
+    CHECK(enable.error().code == Error::Code::UnknownError);
+
+    std::error_code ec;
+    std::filesystem::remove(persistenceRoot, ec);
 }
 
 TEST_CASE("exportHistorySavefile reports missing history root") {
@@ -563,6 +638,14 @@ TEST_CASE("history bypasses non-root paths") {
 
     auto missingChildren = space->listChildrenCanonical("/missing");
     CHECK(missingChildren.empty());
+}
+
+TEST_CASE("listChildrenCanonical returns empty for invalid paths") {
+    auto space = makeExposedUndoableSpace();
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    auto invalidChildren = space->listChildrenCanonical("/doc/child[bad]");
+    CHECK(invalidChildren.empty());
 }
 
 TEST_SUITE_END();
