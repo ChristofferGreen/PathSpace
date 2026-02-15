@@ -79,6 +79,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/core/test_ExpectedShim.cpp
   unit/core/test_PodPayloadCoverage.cpp
   unit/core/test_PodPayloadFullCoverage.cpp
+  unit/core/test_PodPayloadCorruption.cpp
   unit/path/test_GlobMatch.cpp
   unit/log/test_TaggedLogger.cpp
   unit/layer/test_PathSpaceTrellisCore.cpp
