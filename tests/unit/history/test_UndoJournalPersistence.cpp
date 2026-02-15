@@ -155,6 +155,89 @@ TEST_SUITE("history.journal.persistence") {
         CHECK(result.error().code == SP::Error::Code::MalformedInput);
     }
 
+    TEST_CASE("open rejects truncated header fields") {
+        auto path = tempPath("truncated_header.log");
+
+        SUBCASE("magic truncated") {
+            std::FILE* file = std::fopen(path.string().c_str(), "wb");
+            REQUIRE(file != nullptr);
+            std::uint16_t partial = 0x1234;
+            REQUIRE(std::fwrite(&partial, sizeof(partial), 1, file) == 1);
+            std::fclose(file);
+
+            JournalFileWriter writer(path);
+            auto result = writer.open(false);
+            CHECK_FALSE(result.has_value());
+            CHECK(result.error().code == SP::Error::Code::MalformedInput);
+        }
+
+        SUBCASE("version truncated") {
+            std::FILE* file = std::fopen(path.string().c_str(), "wb");
+            REQUIRE(file != nullptr);
+            std::uint32_t magic = JournalFileMagic;
+            REQUIRE(std::fwrite(&magic, sizeof(magic), 1, file) == 1);
+            std::fclose(file);
+
+            JournalFileWriter writer(path);
+            auto result = writer.open(false);
+            CHECK_FALSE(result.has_value());
+            CHECK(result.error().code == SP::Error::Code::MalformedInput);
+        }
+
+        SUBCASE("reserved truncated") {
+            std::FILE* file = std::fopen(path.string().c_str(), "wb");
+            REQUIRE(file != nullptr);
+            std::uint32_t magic = JournalFileMagic;
+            std::uint16_t version = JournalFileVersion;
+            REQUIRE(std::fwrite(&magic, sizeof(magic), 1, file) == 1);
+            REQUIRE(std::fwrite(&version, sizeof(version), 1, file) == 1);
+            std::fclose(file);
+
+            JournalFileWriter writer(path);
+            auto result = writer.open(false);
+            CHECK_FALSE(result.has_value());
+            CHECK(result.error().code == SP::Error::Code::MalformedInput);
+        }
+    }
+
+    TEST_CASE("open reports errors when parent path is not a directory") {
+        auto parentFile = tempPath("journal_parent_file");
+        {
+            std::ofstream out(parentFile);
+            REQUIRE(out.good());
+        }
+
+        auto childPath = parentFile / "journal.log";
+        JournalFileWriter writer(childPath);
+        auto result = writer.open(false);
+        CHECK_FALSE(result.has_value());
+        CHECK(result.error().code == SP::Error::Code::UnknownError);
+    }
+
+#ifndef _WIN32
+    TEST_CASE("open fails when journal file is not writable") {
+        auto path = tempPath("readonly_journal.log");
+        writeHeader(path, JournalFileMagic, JournalFileVersion);
+
+        auto originalPerms = std::filesystem::status(path).permissions();
+        auto readonlyPerms = originalPerms
+                             & ~std::filesystem::perms::owner_write
+                             & ~std::filesystem::perms::group_write
+                             & ~std::filesystem::perms::others_write;
+        std::error_code ec;
+        std::filesystem::permissions(path, readonlyPerms, ec);
+        REQUIRE_FALSE(ec);
+
+        JournalFileWriter writer(path);
+        auto result = writer.open(false);
+        CHECK_FALSE(result.has_value());
+        CHECK(result.error().code == SP::Error::Code::UnknownError);
+
+        std::filesystem::permissions(path, originalPerms, ec);
+        CHECK_FALSE(ec);
+    }
+#endif
+
     TEST_CASE("replay surfaces missing file and truncated headers") {
         auto missingPath = tempPath("missing.log");
         auto missing = replayJournal(missingPath, [&](JournalEntry&&) -> Expected<void> {
