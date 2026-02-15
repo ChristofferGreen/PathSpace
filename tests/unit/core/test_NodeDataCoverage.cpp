@@ -122,6 +122,22 @@ TEST_SUITE("core.nodedata.coverage") {
         }
     }
 
+    TEST_CASE("lazy tasks report missing executor on deserialize") {
+        InputMetadataT<int> meta{};
+        InputData           input{nullptr, meta};
+        input.task = makeLazyTask();
+
+        NodeData node;
+        auto     err = node.serialize(input);
+        REQUIRE_FALSE(err.has_value());
+
+        int out = 0;
+        auto readErr = node.deserialize(&out, meta);
+        REQUIRE(readErr.has_value());
+        CHECK(readErr->code == Error::Code::UnknownError);
+        CHECK(readErr->message == std::optional<std::string>{"No executor available for lazy task submission"});
+    }
+
     TEST_CASE("serialize reports missing serialization function") {
         InputMetadata meta{};
         meta.dataCategory = DataCategory::SerializedData;
