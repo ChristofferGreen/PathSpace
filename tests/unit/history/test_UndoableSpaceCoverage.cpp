@@ -28,6 +28,18 @@ auto makeUndoableSpace(HistoryOptions opts = {}) -> std::unique_ptr<UndoableSpac
     return std::make_unique<UndoableSpace>(std::move(inner), std::move(opts));
 }
 
+struct ExposedUndoableSpace final : UndoableSpace {
+    using UndoableSpace::UndoableSpace;
+    using UndoableSpace::listChildrenCanonical;
+    using UndoableSpace::notify;
+    using UndoableSpace::shutdown;
+};
+
+auto makeExposedUndoableSpace(HistoryOptions opts = {}) -> std::unique_ptr<ExposedUndoableSpace> {
+    auto inner = std::make_unique<PathSpace>();
+    return std::make_unique<ExposedUndoableSpace>(std::move(inner), std::move(opts));
+}
+
 auto tempFile(std::string_view stem) -> std::filesystem::path {
     auto now  = std::chrono::steady_clock::now().time_since_epoch().count();
     auto name = std::string(stem) + "_" + std::to_string(::getpid()) + "_" + std::to_string(now);
@@ -111,6 +123,30 @@ TEST_CASE("HistoryOptions defaults are populated") {
     CHECK(opts.keepLatestFor.count() == 0);
     CHECK(opts.restoreFromPersistence);
     CHECK_FALSE(opts.sharedStackKey.has_value());
+}
+
+TEST_CASE("UndoableSpace forwards visit, listChildrenCanonical, notify, and shutdown") {
+    auto space = makeExposedUndoableSpace();
+    REQUIRE(space->insert("/root/child", 42).errors.empty());
+
+    bool sawChild = false;
+    auto visitResult = space->visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            if (entry.path == "/root/child") {
+                sawChild = true;
+            }
+            return VisitControl::Continue;
+        },
+        VisitOptions{});
+    CHECK(visitResult.has_value());
+    CHECK(sawChild);
+
+    auto children = space->listChildrenCanonical("/root");
+    REQUIRE(children.size() == 1);
+    CHECK(children.front() == "child");
+
+    space->notify("/root/child");
+    space->shutdown();
 }
 
 TEST_CASE("enableHistory blocks nested roots without allowNestedUndo") {

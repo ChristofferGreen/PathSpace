@@ -19,6 +19,13 @@ using namespace std::chrono_literals;
 TEST_SUITE_BEGIN("task.pool");
 
 TEST_CASE("TaskPool Misc") {
+    SUBCASE("Singleton instance is stable and initialized") {
+        TaskPool& first = TaskPool::Instance();
+        TaskPool& second = TaskPool::Instance();
+        CHECK(&first == &second);
+        CHECK(first.size() >= 1);
+    }
+
     SUBCASE("Basic task execution") {
         TaskPool          pool(2);
         std::atomic<int>  counter{0};
