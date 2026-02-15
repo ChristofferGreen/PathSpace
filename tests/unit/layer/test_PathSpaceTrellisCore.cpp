@@ -218,6 +218,25 @@ TEST_CASE("PathSpaceTrellis rejects nested system command path") {
     CHECK(ret.nbrSpacesInserted == 0);
 }
 
+TEST_CASE("PathSpaceTrellis fan-out read reports NoSuchPath when all sources error") {
+    auto backing = std::make_shared<ScriptedOutPathSpace>();
+    backing->script = {
+        Error{Error::Code::NoSuchPath, "missing"},
+        Error{Error::Code::NoSuchPath, "missing"}
+    };
+
+    PathSpaceTrellis trellis{backing};
+    auto enableA = trellis.in(Iterator{"/_system/enable"}, InputData{std::string{"/a"}});
+    REQUIRE(enableA.errors.empty());
+    auto enableB = trellis.in(Iterator{"/_system/enable"}, InputData{std::string{"/b"}});
+    REQUIRE(enableB.errors.empty());
+
+    int outValue = 0;
+    auto err = trellis.out(Iterator{"/"}, InputMetadataT<int>{}, Out{}, &outValue);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::NoSuchPath);
+}
+
 TEST_CASE("PathSpaceTrellis root read without sources returns NoObjectFound") {
     auto backing = std::make_shared<PathSpace>();
     PathSpaceTrellis trellis{backing};

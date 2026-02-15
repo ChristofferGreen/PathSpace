@@ -86,6 +86,21 @@ TEST_CASE("TaskPool Misc") {
         CHECK(done.load());
     }
 
+    SUBCASE("addTask treats already-started tasks as no-op success") {
+        TaskPool         pool(1);
+        std::atomic<int> counter{0};
+
+        auto task = Task::Create([&counter](Task const&, bool) { counter.fetch_add(1); });
+        CHECK(task->tryStart());
+
+        auto err = pool.addTask(task);
+        CHECK_FALSE(err.has_value());
+
+        // Task should not be enqueued because it was already marked as started.
+        std::this_thread::sleep_for(5ms);
+        CHECK(counter.load() == 0);
+    }
+
     SUBCASE("Trace output writes file") {
         TaskPool         pool(1);
         std::atomic<bool> done{false};
