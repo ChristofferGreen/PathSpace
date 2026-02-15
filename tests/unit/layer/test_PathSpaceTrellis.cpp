@@ -197,6 +197,18 @@ TEST_SUITE("layer.pathspace.trellis") {
         CHECK(result.error().code == Error::Code::Timeout || result.error().code == Error::Code::NoObjectFound);
     }
 
+    TEST_CASE("read reports NoSuchPath when trellis sources have no nodes") {
+        auto space   = std::make_shared<PathSpace>();
+        auto* trellis = mountTrellis(space);
+        (void)trellis;
+
+        space->insert<"/cursor/_system/enable">(std::string{"/data/mouse"});
+
+        auto result = space->read<int>("/cursor");
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().code == Error::Code::NoSuchPath);
+    }
+
     TEST_CASE("shutdown wakes blocked readers") {
         auto space   = std::make_shared<PathSpace>();
         auto* trellis = mountTrellis(space);
