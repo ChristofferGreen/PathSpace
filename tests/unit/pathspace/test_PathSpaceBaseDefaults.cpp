@@ -1,6 +1,8 @@
 #include "third_party/doctest.h"
 
+#define private public
 #include <pathspace/PathSpaceBase.hpp>
+#undef private
 
 #include <array>
 #include <memory>
@@ -196,6 +198,27 @@ TEST_CASE("PathSpaceBase visit reports NotSupported when no root node exists") {
     }, options);
     CHECK_FALSE(result.has_value());
     CHECK(result.error().code == Error::Code::NotSupported);
+}
+
+TEST_CASE("PathSpaceBase span-pack defaults report NotSupported") {
+    BaseStub stub;
+
+    std::array<std::string, 1> paths{"/a"};
+    auto constResult = stub.spanPackConst(
+        std::span<const std::string>(paths),
+        InputMetadata{},
+        Out{},
+        [&](std::span<RawConstSpan const>) { return std::optional<Error>{}; });
+    CHECK_FALSE(constResult);
+    CHECK(constResult.error().code == Error::Code::NotSupported);
+
+    auto mutResult = stub.spanPackMut(
+        std::span<const std::string>(paths),
+        InputMetadata{},
+        Out{},
+        [&](std::span<RawMutSpan const>) { return SpanPackResult{}; });
+    CHECK_FALSE(mutResult);
+    CHECK(mutResult.error().code == Error::Code::NotSupported);
 }
 
 TEST_CASE("PathSpaceBase read rejects invalid concrete child paths") {
