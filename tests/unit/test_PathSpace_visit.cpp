@@ -459,6 +459,37 @@ TEST_CASE("PathSpace visit resolves missing roots through nested spaces at root"
     CHECK(std::find(visited.begin(), visited.end(), "/missing/leaf") != visited.end());
 }
 
+TEST_CASE("PathSpace visit stops nested root traversal when visitor requests Stop") {
+    PathSpace space;
+    auto nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/missing/leaf", 11).nbrValuesInserted == 1);
+    Node* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+    auto rootData = std::make_unique<NodeData>();
+    rootData->appendNested(std::move(nested));
+    {
+        std::lock_guard<std::mutex> guard(root->payloadMutex);
+        root->data = std::move(rootData);
+    }
+
+    VisitOptions opts;
+    opts.includeNestedSpaces = true;
+    opts.root                = "/missing";
+
+    std::vector<std::string> visited;
+    auto ok = space.visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            visited.push_back(entry.path);
+            if (entry.path == "/missing/leaf") {
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        },
+        opts);
+    REQUIRE(ok);
+    CHECK(std::find(visited.begin(), visited.end(), "/missing/leaf") != visited.end());
+}
+
 TEST_CASE("PathSpace visit surfaces errors from nested roots") {
     PathSpace space;
     auto broken = std::make_unique<BrokenVisitSpace>();
