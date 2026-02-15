@@ -96,6 +96,18 @@ TEST_CASE("span-pack insert works without context") {
     CHECK(ret.nbrValuesInserted == 4);
 }
 
+TEST_CASE("mounted space read uses prefixed notifications on immediate success") {
+    PathSpace outer;
+    auto nested = std::make_unique<PathSpace>();
+    auto* nestedPtr = nested.get();
+    REQUIRE(nestedPtr->insert("/value", 8).nbrValuesInserted == 1);
+    REQUIRE(outer.insert("/mount", std::move(nested)).nbrSpacesInserted == 1);
+
+    auto value = nestedPtr->read<int>("/value");
+    REQUIRE(value.has_value());
+    CHECK(*value == 8);
+}
+
 TEST_CASE("VisitDetail accessors handle explicit and empty handles") {
     PathSpace space;
     REQUIRE(space.insert("/alpha", 5).errors.empty());

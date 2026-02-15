@@ -1043,6 +1043,36 @@ TEST_CASE("PathSpace visit skips nested spaces when depth budget is exhausted") 
     CHECK(visited.front() == "/");
 }
 
+TEST_CASE("PathSpace visit skips nested roots when maxDepth is exhausted at root") {
+    PathSpace space;
+    auto nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/inside", 1).errors.empty());
+
+    Node* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+    auto rootData = std::make_unique<NodeData>();
+    rootData->appendNested(std::move(nested));
+    {
+        std::lock_guard<std::mutex> guard(root->payloadMutex);
+        root->data = std::move(rootData);
+    }
+
+    VisitOptions opts;
+    opts.includeNestedSpaces = true;
+    opts.maxDepth            = 0; // root only
+
+    std::vector<std::string> visited;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            visited.push_back(entry.path);
+            return VisitControl::Continue;
+        },
+        opts);
+    REQUIRE(result);
+    CHECK(visited.size() == 1);
+    CHECK(visited.front() == "/");
+}
+
 TEST_CASE("PathSpace visit honors SkipChildren and includeValues=false") {
     PathSpace space;
     REQUIRE(space.insert("/root/child/grand", 9).errors.empty());
