@@ -1,5 +1,6 @@
 #include "PathSpace.hpp"
 #include "core/NodeData.hpp"
+#include "core/PodPayload.hpp"
 #include "core/Error.hpp"
 #include "core/ExecutionCategory.hpp"
 #include "task/Future.hpp"
@@ -18,6 +19,45 @@ struct DummyExecutor final : Executor {
     auto submit(std::weak_ptr<Task>&&) -> std::optional<Error> override { return std::nullopt; }
     auto shutdown() -> void override {}
     [[nodiscard]] auto size() const -> size_t override { return 1; }
+};
+
+struct FailingPodPayload final : PodPayloadBase {
+    std::type_info const& type() const noexcept override { return typeid(int); }
+    bool matches(std::type_info const& ti) const noexcept override { return ti == typeid(int); }
+    std::size_t size() const noexcept override { return 1; }
+    std::size_t elementSize() const noexcept override { return sizeof(int); }
+    std::size_t headIndex() const noexcept override { return 0; }
+    std::size_t publishedTail() const noexcept override { return 1; }
+    InputMetadata const& podMetadata() const noexcept override { return meta; }
+    bool pushValue(void const*) override { return false; }
+    std::optional<Error> readTo(void*) const override { return Error{Error::Code::NoObjectFound, "empty"}; }
+    std::optional<Error> takeTo(void*) override { return Error{Error::Code::NoObjectFound, "empty"}; }
+    std::optional<Error> withSpanRaw(std::function<void(void const*, std::size_t)> const&) const override {
+        return Error{Error::Code::UnknownError, "forced span failure"};
+    }
+    std::optional<Error> withSpanMutableRaw(std::function<void(void*, std::size_t)> const&) override {
+        return Error{Error::Code::UnknownError, "forced span failure"};
+    }
+    std::optional<Error> withSpanRawFrom(std::size_t,
+                                         std::function<void(void const*, std::size_t)> const&) const override {
+        return Error{Error::Code::UnknownError, "forced span failure"};
+    }
+    std::optional<Error> withSpanMutableRawFrom(std::size_t,
+                                                std::function<void(void*, std::size_t)> const&) override {
+        return Error{Error::Code::UnknownError, "forced span failure"};
+    }
+    std::optional<Error> popCount(std::size_t) override { return std::nullopt; }
+    bool freezeForUpgrade() override { return false; }
+    std::optional<Reservation> reserveOne() override { return std::nullopt; }
+    void publishOne(std::size_t) override {}
+    void rollbackOne(std::size_t) override {}
+    std::optional<ReservationSpan> reserveSpan(std::size_t) override { return std::nullopt; }
+    void publishSpan(std::size_t, std::size_t) override {}
+    void rollbackSpan(std::size_t, std::size_t) override {}
+    std::optional<std::size_t> packSpanStart() const noexcept override { return std::nullopt; }
+    void markPackSpanStart(std::size_t) noexcept override {}
+
+    InputMetadata meta{InputMetadataT<int>{}};
 };
 } // namespace
 
@@ -186,6 +226,20 @@ TEST_CASE("copy skips nested when snapshot restore fails to attach") {
     auto valueRead = clone.read<int>("/node", Block{});
     REQUIRE(valueRead.has_value());
     CHECK(valueRead.value() == 17);
+}
+
+TEST_CASE("copy skips pod payloads when span snapshot fails") {
+    PathSpace source;
+    auto* root = PathSpaceTestHelper::root(source);
+    auto& node = root->getOrCreateChild("pod");
+    node.podPayload = std::make_shared<FailingPodPayload>();
+
+    PathSpace::CopyStats stats{};
+    auto clone = source.clone(&stats);
+
+    CHECK(stats.payloadsSkipped >= 1);
+    auto value = clone.read<int>("/pod");
+    CHECK_FALSE(value.has_value());
 }
 
 } // TEST_SUITE
