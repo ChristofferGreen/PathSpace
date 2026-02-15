@@ -119,6 +119,20 @@ TEST_CASE("PathSpaceBase sink ignores notifications after owner destruction") {
     CHECK_NOTHROW(sink->notify("/late"));
 }
 
+TEST_CASE("PathSpaceBase context sink ignores notifications after owner destruction") {
+    std::shared_ptr<NotificationSink> sink;
+    auto ctx = std::make_shared<PathSpaceContext>();
+    {
+        SinkProbe probe;
+        probe.adoptContextAndPrefix(ctx, "/root");
+        auto weak = probe.getNotificationSink();
+        sink = weak.lock();
+        REQUIRE(sink);
+    }
+
+    CHECK_NOTHROW(sink->notify("/late"));
+}
+
 TEST_CASE("PathSpaceBase installs default sink into shared context when needed") {
     SinkProbe probe;
 

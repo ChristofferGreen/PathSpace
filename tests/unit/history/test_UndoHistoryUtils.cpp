@@ -194,6 +194,16 @@ TEST_CASE("writeFileAtomic reports error when parent path is not a directory") {
     CHECK(result.error().code == SP::Error::Code::UnknownError);
 }
 
+TEST_CASE("writeFileAtomic reports error when rename target is a directory") {
+    TempDir tmp("pathspace_undo_utils_rename_dir");
+    auto dirTarget = tmp.path / "target_dir";
+    std::filesystem::create_directories(dirTarget);
+
+    auto result = UndoUtils::writeTextFileAtomic(dirTarget, "payload", false);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == SP::Error::Code::UnknownError);
+}
+
 #ifndef _WIN32
 TEST_CASE("writeFileAtomic reports error when directory is not writable") {
     TempDir tmp("pathspace_undo_utils_ro");
