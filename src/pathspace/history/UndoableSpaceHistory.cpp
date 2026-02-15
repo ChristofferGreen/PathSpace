@@ -688,7 +688,9 @@ auto UndoableSpace::readHistoryStatsValue(HistoryStats const& stats,
 
         std::string_view suffix{relativePath};
         suffix.remove_prefix(UndoPaths::HistoryUnsupportedRecentPrefix.size());
-        auto index = parseIndex(suffix);
+        auto slashPos = suffix.find('/');
+        auto indexView = (slashPos == std::string_view::npos) ? suffix : suffix.substr(0, slashPos);
+        auto index = parseIndex(indexView);
         if (!index || *index >= stats.unsupported.recent.size()) {
             return Error{Error::Code::NoObjectFound, "Unsupported payload index out of range"};
         }

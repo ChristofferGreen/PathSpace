@@ -277,6 +277,68 @@ TEST_CASE("UndoableSpace readHistoryStatsValue reports missing last operation") 
     CHECK(err->code == Error::Code::NoObjectFound);
 }
 
+TEST_CASE("UndoableSpace diagnostics entries expose tag and timing fields") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space.insert("/doc/_history/set_tag", std::string{"paint"}).errors.empty());
+    REQUIRE(space.insert("/doc/value", 1).errors.empty());
+
+    auto tag = space.read<std::string>("/diagnostics/history/_doc/entries/0/tag");
+    REQUIRE(tag.has_value());
+    CHECK(*tag == "paint");
+
+    auto timestamp = space.read<std::uint64_t>("/diagnostics/history/_doc/entries/0/timestampMs");
+    CHECK(timestamp.has_value());
+
+    auto monotonic = space.read<std::uint64_t>("/diagnostics/history/_doc/entries/0/monotonicNs");
+    CHECK(monotonic.has_value());
+
+    auto sequence = space.read<std::uint64_t>("/diagnostics/history/_doc/entries/0/sequence");
+    CHECK(sequence.has_value());
+
+    auto barrier = space.read<bool>("/diagnostics/history/_doc/entries/0/barrier");
+    CHECK(barrier.has_value());
+
+    auto inverseBytes = space.read<std::size_t>("/diagnostics/history/_doc/entries/0/inverseBytes");
+    CHECK(inverseBytes.has_value());
+
+    auto hasInverse = space.read<bool>("/diagnostics/history/_doc/entries/0/hasInverse");
+    CHECK(hasInverse.has_value());
+
+    auto badType = space.read<std::string>("/diagnostics/history/_doc/entries/0/timestampMs");
+    CHECK_FALSE(badType.has_value());
+    CHECK(badType.error().code == Error::Code::InvalidType);
+}
+
+TEST_CASE("UndoableSpace history stats surface unsupported recent records") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto stateIt = space.journalRoots.find("/doc");
+    REQUIRE(stateIt != space.journalRoots.end());
+    space.recordJournalUnsupportedPayload(*stateIt->second, "/doc/bad", "unsupported");
+
+    auto path = space.read<std::string>("/doc/_history/unsupported/recent/0/path");
+    REQUIRE(path.has_value());
+    CHECK(*path == "/doc/bad");
+
+    auto reason = space.read<std::string>("/doc/_history/unsupported/recent/0/reason");
+    REQUIRE(reason.has_value());
+    CHECK(*reason == "unsupported");
+
+    auto occurrences = space.read<std::size_t>("/doc/_history/unsupported/recent/0/occurrences");
+    REQUIRE(occurrences.has_value());
+    CHECK(*occurrences == 1);
+
+    auto timestamp = space.read<std::uint64_t>("/doc/_history/unsupported/recent/0/timestampMs");
+    CHECK(timestamp.has_value());
+}
+
 TEST_CASE("UndoableSpace persistence setup validates tokens") {
     UndoableSpace space{std::make_unique<PathSpace>(), {}};
     UndoJournalRootState state;
