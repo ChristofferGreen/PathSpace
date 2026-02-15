@@ -27,19 +27,7 @@ fi
 cmake --build "${BUILD}" -j "${JOBS}"
 
 # Clean stale gcda files to avoid mismatched counter warnings.
-python3 - <<'PY'
-import os
-import pathlib
-
-build = os.environ.get("BUILD")
-if build:
-    root = pathlib.Path(build)
-    for gcda in root.rglob("*.gcda"):
-        try:
-            gcda.unlink()
-        except FileNotFoundError:
-            pass
-PY
+find "${BUILD}" -name '*.gcda' -delete
 
 ctest --test-dir "${BUILD}" --output-on-failure -j "${JOBS}" --timeout "${TIMEOUT}"
 
@@ -52,7 +40,9 @@ filter_args=(
   --exclude "${ROOT}/src/third_party"
 )
 
-gcovr_flags=()
+gcovr_flags=(
+  --gcov-ignore-errors=no_working_dir_found
+)
 if [ -n "${GCOVR_FLAGS:-}" ]; then
   # Split extra gcovr flags on whitespace when provided.
   read -r -a gcovr_flags <<< "${GCOVR_FLAGS}"
