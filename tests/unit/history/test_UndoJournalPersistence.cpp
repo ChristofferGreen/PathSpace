@@ -9,6 +9,7 @@
 #include <fstream>
 #include <unistd.h>
 #include <string>
+#include <system_error>
 #include <vector>
 
 using namespace SP::History::UndoJournal;
@@ -178,6 +179,35 @@ TEST_SUITE("history.journal.persistence") {
         CHECK(truncated.error().code == SP::Error::Code::MalformedInput);
     }
 
+    TEST_CASE("replay returns error when path is a directory") {
+        auto dirPath = tempPath("replay_dir");
+        std::filesystem::create_directories(dirPath);
+
+        auto replay = replayJournal(dirPath, [&](JournalEntry&&) -> Expected<void> {
+            return {};
+        });
+        CHECK_FALSE(replay.has_value());
+        CHECK(replay.error().code == SP::Error::Code::UnknownError);
+    }
+
+    TEST_CASE("replay detects truncated reserved header") {
+        auto path = tempPath("reserved_truncated.log");
+
+        std::FILE* file = std::fopen(path.string().c_str(), "wb");
+        REQUIRE(file != nullptr);
+        std::uint32_t magic = JournalFileMagic;
+        std::uint16_t version = JournalFileVersion;
+        REQUIRE(std::fwrite(&magic, sizeof(magic), 1, file) == 1);
+        REQUIRE(std::fwrite(&version, sizeof(version), 1, file) == 1);
+        std::fclose(file);
+
+        auto replay = replayJournal(path, [&](JournalEntry&&) -> Expected<void> {
+            return {};
+        });
+        CHECK_FALSE(replay.has_value());
+        CHECK(replay.error().code == SP::Error::Code::MalformedInput);
+    }
+
     TEST_CASE("compact journal fsync path produces a validated log") {
         auto path = tempPath("journal_fsync.log");
 
@@ -195,5 +225,47 @@ TEST_SUITE("history.journal.persistence") {
         });
         REQUIRE(replay.has_value());
         CHECK(sequences == std::vector<std::uint64_t>{5, 6});
+    }
+
+#ifndef _WIN32
+    TEST_CASE("compact journal reports failure when temp file cannot be created") {
+        auto root = tempPath("compact_ro_root");
+        std::filesystem::create_directories(root);
+        auto roDir = root / "readonly";
+        std::filesystem::create_directories(roDir);
+
+        auto originalPerms = std::filesystem::status(roDir).permissions();
+        auto readonlyPerms = originalPerms
+                             & ~std::filesystem::perms::owner_write
+                             & ~std::filesystem::perms::group_write
+                             & ~std::filesystem::perms::others_write;
+        std::error_code ec;
+        std::filesystem::permissions(roDir, readonlyPerms, ec);
+        REQUIRE_FALSE(ec);
+
+        auto target = roDir / "journal.log";
+        std::vector<JournalEntry> entries;
+        entries.push_back(makeEntry(1));
+
+        auto compact = compactJournal(target, entries, false);
+        CHECK_FALSE(compact.has_value());
+        CHECK(compact.error().code == SP::Error::Code::UnknownError);
+
+        std::filesystem::permissions(roDir, originalPerms, ec);
+        CHECK_FALSE(ec);
+        std::filesystem::remove_all(root, ec);
+    }
+#endif
+
+    TEST_CASE("compact journal reports failure when rename target is a directory") {
+        auto path = tempPath("journal_as_dir");
+        std::filesystem::create_directories(path);
+
+        std::vector<JournalEntry> entries;
+        entries.push_back(makeEntry(7));
+
+        auto compact = compactJournal(path, entries, false);
+        CHECK_FALSE(compact.has_value());
+        CHECK(compact.error().code == SP::Error::Code::UnknownError);
     }
 }
