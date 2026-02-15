@@ -1,5 +1,7 @@
-#include "PathSpace.hpp"
+#define private public
 #include "core/NodeData.hpp"
+#undef private
+#include "PathSpace.hpp"
 #include "core/PodPayload.hpp"
 #include "core/Error.hpp"
 #include "core/ExecutionCategory.hpp"
@@ -104,6 +106,15 @@ struct BadMetadataPodPayload final : PodPayloadBase {
 
     InputMetadata meta{};
     int           value = 42;
+};
+
+struct DummyNestedSpace final : PathSpaceBase {
+    auto in(Iterator const&, InputData const&) -> InsertReturn override { return {}; }
+    auto out(Iterator const&, InputMetadata const&, Out const&, void*) -> std::optional<Error> override {
+        return Error{Error::Code::NoObjectFound, "dummy nested space"};
+    }
+    auto shutdown() -> void override {}
+    auto notify(std::string const&) -> void override {}
 };
 } // namespace
 
@@ -300,6 +311,38 @@ TEST_CASE("copy skips pod payloads with invalid metadata") {
     CHECK(stats.payloadsSkipped >= 1);
     auto value = clone.read<int>("/badmeta");
     CHECK_FALSE(value.has_value());
+}
+
+TEST_CASE("copy handles missing snapshots with mixed nested slots") {
+    PathSpace source;
+    auto      nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/value", 9).nbrValuesInserted == 1);
+    REQUIRE(source.insert("/ns", std::move(nested)).nbrSpacesInserted == 1);
+
+    auto* root = PathSpaceTestHelper::root(source);
+    REQUIRE(root != nullptr);
+    auto* node = root->getChild("ns");
+    REQUIRE(node != nullptr);
+    REQUIRE(node->data);
+
+    node->data->nestedSlots.push_back(nullptr);
+    auto dummySlot = std::make_shared<NodeData::NestedSlot>();
+    dummySlot->ptr = std::make_unique<DummyNestedSpace>();
+    dummySlot->self = dummySlot;
+    node->data->nestedSlots.push_back(dummySlot);
+
+    node->data->types.clear();
+
+    PathSpace::CopyStats stats{};
+    auto clone = source.clone(&stats);
+
+    CHECK(stats.payloadsSkipped >= 1);
+    CHECK(stats.nestedSpacesCopied >= 1);
+    CHECK(stats.nestedSpacesSkipped >= 2);
+
+    auto value = clone.read<int>("/ns/value");
+    REQUIRE(value.has_value());
+    CHECK(value.value() == 9);
 }
 
 } // TEST_SUITE
