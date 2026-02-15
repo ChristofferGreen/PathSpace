@@ -87,4 +87,28 @@ TEST_CASE("Leaf spanPackConst rejects unsupported options and metadata") {
     CHECK(metaResult.error().code == Error::Code::NotSupported);
 }
 
+TEST_CASE("Leaf spanPackConst validates concrete paths") {
+    Leaf leaf;
+    InsertReturn ret;
+
+    InputMetadata podMeta{InputMetadataT<int>{}};
+    auto const callback = [](std::span<RawConstSpan const>) -> std::optional<Error> {
+        return std::nullopt;
+    };
+
+    std::array<std::string, 1> badPaths{"alpha"};
+    auto badResult = leaf.spanPackConst(std::span<const std::string>{badPaths}, podMeta, Out{}, callback);
+    REQUIRE_FALSE(badResult.has_value());
+    CHECK(badResult.error().code == Error::Code::InvalidPath);
+
+    int value = 7;
+    leaf.in(Iterator{"/a"}, InputData{value}, ret);
+    REQUIRE(ret.errors.empty());
+
+    std::array<std::string, 1> skippedPaths{"/a//b"};
+    auto skippedResult = leaf.spanPackConst(std::span<const std::string>{skippedPaths}, podMeta, Out{}, callback);
+    REQUIRE_FALSE(skippedResult.has_value());
+    CHECK(skippedResult.error().code == Error::Code::NoSuchPath);
+}
+
 TEST_SUITE_END();

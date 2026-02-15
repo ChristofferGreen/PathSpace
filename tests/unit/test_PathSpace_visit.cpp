@@ -549,6 +549,39 @@ TEST_CASE("PathSpace visit caps nested traversal at maxDepth") {
     CHECK(std::find(visited.begin(), visited.end(), "/mount/deep") == visited.end());
 }
 
+TEST_CASE("PathSpace visit stops nested traversal when visitor requests Stop in nested space") {
+    PathSpace space;
+    REQUIRE(space.insert("/zchild", 3).errors.empty());
+
+    auto nestedA = std::make_unique<PathSpace>();
+    REQUIRE(nestedA->insert("/stop", 1).errors.empty());
+    auto nestedB = std::make_unique<PathSpace>();
+    REQUIRE(nestedB->insert("/keep", 2).errors.empty());
+
+    REQUIRE(space.insert("/mount", std::move(nestedA)).nbrSpacesInserted == 1);
+    REQUIRE(space.insert("/mount", std::move(nestedB)).nbrSpacesInserted == 1);
+
+    VisitOptions opts;
+    opts.includeNestedSpaces = true;
+
+    std::vector<std::string> visited;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            visited.push_back(entry.path);
+            if (entry.path.find("stop") != std::string::npos) {
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        },
+        opts);
+    REQUIRE(result);
+
+    CHECK(std::find(visited.begin(), visited.end(), "/mount/stop") != visited.end());
+    CHECK(std::find(visited.begin(), visited.end(), "/zchild") == visited.end());
+    CHECK(std::find(visited.begin(), visited.end(), "/mount[1]") == visited.end());
+    CHECK(std::find(visited.begin(), visited.end(), "/mount[1]/keep") == visited.end());
+}
+
 TEST_CASE("PathSpace visit stops traversal when visitor requests Stop") {
     PathSpace space;
     REQUIRE(space.insert("/alpha", 1).errors.empty());
