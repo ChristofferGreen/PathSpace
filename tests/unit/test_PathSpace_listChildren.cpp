@@ -11,6 +11,15 @@ TEST_SUITE_BEGIN("pathspace.list");
 TEST_CASE("PathSpace listChildren enumerates child names") {
     PathSpace space;
 
+    struct FailingChildrenSpace final : PathSpaceBase {
+        auto in(Iterator const&, InputData const&) -> InsertReturn override { return {}; }
+        auto out(Iterator const&, InputMetadata const&, Out const&, void*) -> std::optional<Error> override {
+            return Error{Error::Code::UnknownError, "Failed to read children"};
+        }
+        auto shutdown() -> void override {}
+        auto notify(std::string const&) -> void override {}
+    };
+
     SUBCASE("Root children are sorted and deduplicated") {
         REQUIRE(space.insert("/beta", 1).nbrValuesInserted == 1);
         REQUIRE(space.insert("/alpha/value", 2).nbrValuesInserted == 1);
@@ -45,6 +54,15 @@ TEST_CASE("PathSpace listChildren enumerates child names") {
         auto nestedBranch = space.read<Children>(ConcretePathStringView{"/mount/group"});
         REQUIRE(nestedBranch.has_value());
         CHECK(nestedBranch->names == std::vector<std::string>{"childB"});
+    }
+
+    SUBCASE("Nested spaces that fail to list children are skipped") {
+        REQUIRE(space.insert("/mount/local", 1).nbrValuesInserted == 1);
+        REQUIRE(space.insert("/mount", std::make_unique<FailingChildrenSpace>()).nbrSpacesInserted == 1);
+
+        auto names = space.read<Children>(ConcretePathStringView{"/mount"});
+        REQUIRE(names.has_value());
+        CHECK(names->names == std::vector<std::string>{"local"});
     }
 
     SUBCASE("Indexed nested mounts surface suffixes") {
