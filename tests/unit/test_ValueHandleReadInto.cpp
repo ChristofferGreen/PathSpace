@@ -5,6 +5,7 @@
 #include "third_party/doctest.h"
 
 #include <pathspace/PathSpace.hpp>
+#include "PathSpaceTestHelper.hpp"
 
 using namespace SP;
 
@@ -29,6 +30,38 @@ TEST_CASE("ValueHandle readInto returns NotSupported when values are disabled") 
             auto err = handle.readInto(&out, meta);
             REQUIRE(err.has_value());
             CHECK(err->code == Error::Code::NotSupported);
+            return VisitControl::Stop;
+        },
+        opts);
+    REQUIRE(result);
+    CHECK(sawValue);
+}
+
+TEST_CASE("ValueHandle readInto snapshots POD payload when type info is missing") {
+    PathSpace space;
+    REQUIRE(space.insert("/value", 7).nbrValuesInserted == 1);
+
+    Node* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+    Node* node = root->getChild("value");
+    REQUIRE(node != nullptr);
+    REQUIRE(node->podPayload);
+
+    VisitOptions opts;
+    opts.includeValues = true;
+
+    bool sawValue = false;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path != "/value") {
+                return VisitControl::Continue;
+            }
+            sawValue = true;
+            int out = 0;
+            InputMetadata meta{}; // typeInfo intentionally null
+            auto err = handle.readInto(&out, meta);
+            REQUIRE(err.has_value());
+            CHECK(err->code == Error::Code::UnserializableType);
             return VisitControl::Stop;
         },
         opts);
