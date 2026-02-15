@@ -207,6 +207,23 @@ TEST_CASE("decode detects truncated savefile payloads") {
     CHECK(decoded.error().code == Error::Code::MalformedInput);
 }
 
+TEST_CASE("decode rejects truncated entry size fields") {
+    auto document = makeMinimalDocument();
+    document.entries.push_back(makeEntry("/history/root/alpha", "tag", Journal::OperationKind::Insert, "payload"));
+
+    auto encoded = Savefile::encode(document);
+    REQUIRE(encoded);
+
+    auto offset = entryCountOffset(*encoded);
+    auto entrySizeOffset = offset + sizeof(std::uint64_t);
+    REQUIRE(encoded->size() > entrySizeOffset);
+    encoded->resize(entrySizeOffset + 1);
+
+    auto decoded = Savefile::decode(std::span<const std::byte>(*encoded));
+    CHECK_FALSE(decoded);
+    CHECK(decoded.error().code == Error::Code::MalformedInput);
+}
+
 TEST_CASE("decode rejects entry count exceeding platform limits") {
     auto document = makeMinimalDocument();
     auto encoded  = Savefile::encode(document);

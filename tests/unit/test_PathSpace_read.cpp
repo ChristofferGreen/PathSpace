@@ -75,6 +75,17 @@ TEST_CASE("PathSpace Read") {
         CHECK(front.value() == 0);
     }
 
+    SUBCASE("Minimal read uses fast path and surfaces missing paths") {
+        CHECK(pspace.insert("/minimal/value", 123).errors.empty());
+        auto value = pspace.read<int>("/minimal/value", Minimal{});
+        REQUIRE(value.has_value());
+        CHECK(value.value() == 123);
+
+        auto missing = pspace.read<int>("/minimal/missing", Minimal{});
+        CHECK_FALSE(missing.has_value());
+        CHECK(missing.error().code == Error::Code::NoSuchPath);
+    }
+
     SUBCASE("Simple PathSpace Read Function Pointer Execution") {
         using TestFuncPtr = int (*)();
         TestFuncPtr f     = []() -> int { return 58; };
