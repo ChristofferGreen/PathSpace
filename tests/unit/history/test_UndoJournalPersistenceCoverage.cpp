@@ -123,6 +123,15 @@ TEST_SUITE("history.journal.persistence.coverage") {
         CHECK(result.error().code == SP::Error::Code::NotFound);
     }
 
+    TEST_CASE("replayJournal reports open errors for directories") {
+        auto path = tempPath("replay_dir");
+        std::filesystem::create_directories(path);
+
+        auto result = replayJournal(path, [](JournalEntry&&) -> Expected<void> { return {}; });
+        CHECK_FALSE(result.has_value());
+        CHECK(result.error().code == SP::Error::Code::UnknownError);
+    }
+
     TEST_CASE("replayJournal rejects invalid header magic") {
         auto path = tempPath("bad_magic.log");
         writeHeader(path, JournalFileMagic + 1u, JournalFileVersion);
@@ -175,5 +184,26 @@ TEST_SUITE("history.journal.persistence.coverage") {
         CHECK_FALSE(result.has_value());
         CHECK(result.error().code == SP::Error::Code::MalformedInput);
         CHECK(result.error().message->find("magic mismatch") != std::string::npos);
+    }
+
+    TEST_CASE("JournalFileWriter open reports write failures for readonly directories") {
+        auto dir = tempPath("readonly_dir");
+        std::filesystem::create_directories(dir);
+        std::filesystem::permissions(dir,
+                                     std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec,
+                                     std::filesystem::perm_options::replace);
+
+        auto path = dir / "journal.log";
+        JournalFileWriter writer(path);
+        auto result = writer.open(false);
+        CHECK_FALSE(result.has_value());
+        CHECK(result.error().code == SP::Error::Code::UnknownError);
+        CHECK(result.error().message->find("Failed to create journal file") != std::string::npos);
+
+        std::filesystem::permissions(dir,
+                                     std::filesystem::perms::owner_all,
+                                     std::filesystem::perm_options::replace);
+        std::error_code ec;
+        std::filesystem::remove_all(dir, ec);
     }
 }
