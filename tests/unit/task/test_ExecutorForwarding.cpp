@@ -55,6 +55,16 @@ TEST_CASE("base-class submit(shared_ptr) dispatches to weak overload") {
     CHECK(locked == task);
 }
 
+TEST_CASE("Executor shared_ptr overload is invocable via member pointer") {
+    RecordingExecutor exec;
+    auto task = Task::Create([](Task&, bool) {});
+
+    auto submitPtr = static_cast<std::optional<Error>(Executor::*)(std::shared_ptr<Task> const&)>(&Executor::submit);
+    auto err = (exec.*submitPtr)(task);
+    CHECK_FALSE(err.has_value());
+    CHECK(exec.weakCalls == 1);
+}
+
 TEST_CASE("Executor destructor runs via base pointer") {
     struct DerivedExecutor : RecordingExecutor {
         bool* destroyed = nullptr;
