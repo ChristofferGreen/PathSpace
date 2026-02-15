@@ -1,5 +1,7 @@
 #include "third_party/doctest.h"
 #include <pathspace/PathSpace.hpp>
+#include "core/NotificationSink.hpp"
+#include "core/PathSpaceContext.hpp"
 
 // Standard library containers
 #include <array>
@@ -16,9 +18,12 @@
 
 // Standard library utility types
 #include <any>
+#include <atomic>
 #include <optional>
 #include <tuple>
 #include <cstdlib>
+#include <mutex>
+#include <thread>
 #include <typeinfo>
 #include <utility> // for std::pair
 #include <variant>
@@ -158,6 +163,60 @@ TEST_CASE("PathSpace Read") {
         } else {
             unsetenv("PATHSPACE_TEST_TIMEOUT_MS");
         }
+    }
+
+    SUBCASE("Read notifies with mount prefix after blocking wait") {
+        struct RecordingSink : NotificationSink {
+            void notify(std::string const& notificationPath) override {
+                std::lock_guard<std::mutex> lock(mutex);
+                notifications.push_back(notificationPath);
+            }
+
+            std::mutex mutex;
+            std::vector<std::string> notifications;
+        };
+
+        auto context = std::make_shared<PathSpaceContext>();
+        auto sink = std::make_shared<RecordingSink>();
+        context->setSink(sink);
+
+        PathSpace prefixed{context, "/mount"};
+
+        std::optional<int> value;
+        std::thread reader([&] {
+            auto result = prefixed.read<int>("/key", Block(200ms));
+            if (result.has_value()) {
+                value = result.value();
+            }
+        });
+
+        bool waiterRegistered = false;
+        for (int i = 0; i < 100 && !waiterRegistered; ++i) {
+            waiterRegistered = context->hasWaiters();
+            if (!waiterRegistered) {
+                std::this_thread::sleep_for(2ms);
+            }
+        }
+
+        CHECK(waiterRegistered);
+        CHECK(prefixed.insert("/key", 42).nbrValuesInserted == 1);
+
+        reader.join();
+
+        REQUIRE(value.has_value());
+        CHECK(*value == 42);
+
+        bool sawPrefixed = false;
+        {
+            std::lock_guard<std::mutex> lock(sink->mutex);
+            for (auto const& path : sink->notifications) {
+                if (path == "/mount/key") {
+                    sawPrefixed = true;
+                    break;
+                }
+            }
+        }
+        CHECK(sawPrefixed);
     }
 
     SUBCASE("PathSpace Read std::string") {
