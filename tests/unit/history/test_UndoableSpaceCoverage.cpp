@@ -618,6 +618,26 @@ TEST_CASE("diagnostics history entry out of range surfaces error") {
     CHECK(missing.error().code == Error::Code::NoObjectFound);
 }
 
+TEST_CASE("diagnostics history entry paths report missing field and invalid sequence") {
+    auto space = makeUndoableSpace();
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+    REQUIRE(space->insert("/doc/value", std::string{"alpha"}).errors.empty());
+
+    auto missingField = space->read<std::string>("/diagnostics/history/_doc/entries/0");
+    CHECK_FALSE(missingField.has_value());
+    CHECK(missingField.error().code == Error::Code::NoObjectFound);
+
+    auto invalidSeq = space->read<std::string>("/diagnostics/history/_doc/entries/not_a_number/path");
+    CHECK_FALSE(invalidSeq.has_value());
+    CHECK(invalidSeq.error().code == Error::Code::InvalidPath);
+
+    auto unknownField = space->read<std::string>("/diagnostics/history/_doc/entries/0/unknown");
+    CHECK_FALSE(unknownField.has_value());
+    CHECK(unknownField.error().code == Error::Code::NoObjectFound);
+}
+
 TEST_CASE("diagnostics history prefix without root returns not found") {
     auto space = makeUndoableSpace();
     REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
@@ -629,12 +649,30 @@ TEST_CASE("diagnostics history prefix without root returns not found") {
     CHECK_FALSE(missingKey.has_value());
 }
 
+TEST_CASE("history take rejects diagnostics and command paths") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+    REQUIRE(space->insert("/doc/value", std::string{"alpha"}).errors.empty());
+
+    auto diagTake = space->take<std::string>("/diagnostics/history/_doc/entries/0/path");
+    CHECK_FALSE(diagTake.has_value());
+    CHECK(diagTake.error().code == Error::Code::InvalidPermissions);
+
+    auto commandTake = space->take<std::string>("/doc/_history/undo");
+    CHECK_FALSE(commandTake.has_value());
+    CHECK(commandTake.error().code == Error::Code::InvalidPermissions);
+}
+
 TEST_CASE("history bypasses non-root paths") {
     auto space = makeExposedUndoableSpace();
     REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
 
     auto insertResult = space->insert("/other/value", 7);
     CHECK(insertResult.errors.empty());
+
+    auto popped = space->take<int>("/other/value");
+    REQUIRE(popped.has_value());
+    CHECK(*popped == 7);
 
     auto missingChildren = space->listChildrenCanonical("/missing");
     CHECK(missingChildren.empty());
