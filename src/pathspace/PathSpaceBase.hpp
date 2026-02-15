@@ -27,6 +27,7 @@
 #include <tuple>
 #include <utility>
 #include <limits>
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <span>
@@ -372,7 +373,14 @@ using PathVisitor = std::function<VisitControl(PathEntry const&, ValueHandle&)>;
 class PathSpaceBase {
 public:
     // ---------- Public API ----------
-    virtual ~PathSpaceBase() = default;
+    virtual ~PathSpaceBase() {
+        if (this->aliveFlag) {
+            this->aliveFlag->store(false, std::memory_order_release);
+        }
+        if (this->context) {
+            this->context->invalidateSink();
+        }
+    }
 
     // Insert a typed value or execution at a path (globs allowed for insert to fan-out to existing nodes).
     template <typename DataType, StringConvertible S>
@@ -720,23 +728,46 @@ protected:
             auto w = this->context->getSink();
             if (!w.lock()) {
                 struct DefaultNotificationSinkImpl : NotificationSink {
-                    explicit DefaultNotificationSinkImpl(PathSpaceBase* owner) : owner(owner) {}
-                    void notify(const std::string& notificationPath) override { owner->notify(notificationPath); }
-                    PathSpaceBase* owner;
+                    DefaultNotificationSinkImpl(PathSpaceBase* ownerIn,
+                                                std::weak_ptr<std::atomic<bool>> aliveIn)
+                        : owner(ownerIn)
+                        , alive(std::move(aliveIn)) {}
+                    void notify(const std::string& notificationPath) override {
+                        auto flag = alive.lock();
+                        if (!flag || !flag->load(std::memory_order_acquire)) {
+                            return;
+                        }
+                        owner->notify(notificationPath);
+                    }
+                    PathSpaceBase* owner = nullptr;
+                    std::weak_ptr<std::atomic<bool>> alive;
                 };
-                auto sink = std::shared_ptr<NotificationSink>(new DefaultNotificationSinkImpl(const_cast<PathSpaceBase*>(this)));
+                auto sink = std::shared_ptr<NotificationSink>(
+                    new DefaultNotificationSinkImpl(const_cast<PathSpaceBase*>(this), this->aliveFlag));
                 this->context->setSink(sink);
                 return std::weak_ptr<NotificationSink>(sink);
             }
             return w;
         }
+
         if (!this->notificationSinkPtr) {
             struct DefaultNotificationSinkImpl : NotificationSink {
-                explicit DefaultNotificationSinkImpl(PathSpaceBase* owner) : owner(owner) {}
-                void notify(const std::string& notificationPath) override { owner->notify(notificationPath); }
-                PathSpaceBase* owner;
+                DefaultNotificationSinkImpl(PathSpaceBase* ownerIn,
+                                            std::weak_ptr<std::atomic<bool>> aliveIn)
+                    : owner(ownerIn)
+                    , alive(std::move(aliveIn)) {}
+                void notify(const std::string& notificationPath) override {
+                    auto flag = alive.lock();
+                    if (!flag || !flag->load(std::memory_order_acquire)) {
+                        return;
+                    }
+                    owner->notify(notificationPath);
+                }
+                PathSpaceBase* owner = nullptr;
+                std::weak_ptr<std::atomic<bool>> alive;
             };
-            this->notificationSinkPtr = std::shared_ptr<NotificationSink>(new DefaultNotificationSinkImpl(const_cast<PathSpaceBase*>(this)));
+            this->notificationSinkPtr = std::shared_ptr<NotificationSink>(
+                new DefaultNotificationSinkImpl(const_cast<PathSpaceBase*>(this), this->aliveFlag));
         }
         return std::weak_ptr<NotificationSink>(this->notificationSinkPtr);
     }
@@ -888,6 +919,7 @@ private:
     // ---------- Private state and virtual hooks ----------
     mutable std::shared_ptr<NotificationSink> notificationSinkPtr;
     std::shared_ptr<PathSpaceContext>         context;
+    std::shared_ptr<std::atomic<bool>>       aliveFlag = std::make_shared<std::atomic<bool>>(true);
     Executor*                                 executorPtr = nullptr;
 
     auto makeValueHandle(Node const& node, std::string path, bool includeValues) const -> ValueHandle;
