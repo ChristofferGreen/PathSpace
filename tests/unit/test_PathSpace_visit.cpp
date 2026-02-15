@@ -192,6 +192,29 @@ TEST_CASE("ValueHandle reports empty snapshot and queue depth for empty nodes") 
     CHECK(sawRoot);
 }
 
+TEST_CASE("PathSpace visit maps nested roots and skips nested root entries") {
+    PathSpace space;
+    auto nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/inner/value", 13).nbrValuesInserted == 1);
+    REQUIRE(space.insert("/mount", std::move(nested)).nbrSpacesInserted == 1);
+
+    VisitOptions options;
+    options.root = "/mount/inner";
+    options.includeNestedSpaces = true;
+
+    std::vector<std::string> paths;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            paths.push_back(entry.path);
+            return VisitControl::Continue;
+        },
+        options);
+
+    CHECK(result.has_value());
+    CHECK(std::find(paths.begin(), paths.end(), "/mount/inner") != paths.end());
+    CHECK(std::find(paths.begin(), paths.end(), "/mount/inner/value") != paths.end());
+}
+
 TEST_CASE("ValueHandle can read POD fast-path payloads during visit") {
     PathSpace space;
     REQUIRE(space.insert("/pod", 10).errors.empty());

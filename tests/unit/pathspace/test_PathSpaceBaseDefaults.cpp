@@ -194,6 +194,20 @@ TEST_CASE("PathSpaceBase visit rejects empty visitors") {
     CHECK(result.error().code == Error::Code::InvalidType);
 }
 
+TEST_CASE("PathSpaceBase span pack defaults report not supported") {
+    BaseStub stub;
+
+    auto readResult = stub.read<"alpha", "beta">("/root",
+                                                 [](std::span<const int>, std::span<const int>) {});
+    CHECK_FALSE(readResult.has_value());
+    CHECK(readResult.error().code == Error::Code::NotSupported);
+
+    auto takeResult = stub.take<"alpha", "beta">("/root",
+                                                 [](std::span<int>, std::span<int>) {});
+    CHECK_FALSE(takeResult.has_value());
+    CHECK(takeResult.error().code == Error::Code::NotSupported);
+}
+
 TEST_CASE("VisitOptions child limit helpers reflect settings") {
     VisitOptions defaults;
     CHECK(defaults.childLimitEnabled());
