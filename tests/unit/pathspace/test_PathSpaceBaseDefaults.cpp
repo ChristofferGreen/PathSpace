@@ -194,6 +194,24 @@ TEST_CASE("PathSpaceBase span-pack insert validates base path and component name
     CHECK_FALSE(badName.errors.empty());
 }
 
+TEST_CASE("PathSpaceBase span-pack insert returns NotSupported by default") {
+    BaseStub stub;
+    std::array<int, 2> a{1, 2};
+    std::array<int, 2> b{3, 4};
+
+    auto result = stub.insert<"a", "b">("/root", std::span<const int>(a), std::span<const int>(b));
+    CHECK_FALSE(result.errors.empty());
+    CHECK(result.errors.front().code == Error::Code::NotSupported);
+}
+
+TEST_CASE("PathSpaceBase pack insert returns NotSupported by default") {
+    BaseStub stub;
+
+    auto result = stub.insert<"/alpha", "/beta">(1, 2);
+    CHECK_FALSE(result.errors.empty());
+    CHECK(result.errors.front().code == Error::Code::NotSupported);
+}
+
 TEST_CASE("PathSpaceBase span-pack read validates paths and reports unsupported spans") {
     BaseStub stub;
 
@@ -227,6 +245,13 @@ TEST_CASE("PathSpaceBase span-pack take validates paths and reports unsupported 
     auto unsupported = stub.take<"a", "b">("/root", [](std::span<int>, std::span<int>) {});
     CHECK_FALSE(unsupported.has_value());
     CHECK(unsupported.error().code == Error::Code::NotSupported);
+}
+
+TEST_CASE("PathSpaceBase take<T> rejects invalid paths") {
+    BaseStub stub;
+
+    auto invalid = stub.take<int>("relative");
+    CHECK_FALSE(invalid.has_value());
 }
 
 TEST_CASE("PathSpaceBase span take validates single paths") {
