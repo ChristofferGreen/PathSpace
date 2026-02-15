@@ -200,6 +200,32 @@ TEST_CASE("PathSpaceBase visit reports NotSupported when no root node exists") {
     CHECK(result.error().code == Error::Code::NotSupported);
 }
 
+TEST_CASE("PathSpaceBase span pack defaults report NotSupported") {
+    BaseStub stub;
+
+    InputMetadata meta{InputMetadataT<int>{}};
+    std::array<std::string, 1> paths{"/alpha"};
+    Out options;
+
+    auto constResult = stub.spanPackConst(std::span<const std::string>(paths.data(), paths.size()),
+                                          meta,
+                                          options,
+                                          [](std::span<RawConstSpan const>) -> std::optional<Error> {
+                                              return std::nullopt;
+                                          });
+    CHECK_FALSE(constResult.has_value());
+    CHECK(constResult.error().code == Error::Code::NotSupported);
+
+    auto mutResult = stub.spanPackMut(std::span<const std::string>(paths.data(), paths.size()),
+                                      meta,
+                                      options,
+                                      [](std::span<RawMutSpan const>) -> SpanPackResult {
+                                          return SpanPackResult{.error = std::nullopt, .shouldPop = false};
+                                      });
+    CHECK_FALSE(mutResult.has_value());
+    CHECK(mutResult.error().code == Error::Code::NotSupported);
+}
+
 TEST_CASE("PathSpaceBase span-pack defaults report NotSupported") {
     BaseStub stub;
 

@@ -796,4 +796,24 @@ TEST_CASE("PathSpaceTrellis visit preserves paths with empty mount prefix") {
     CHECK(std::find(paths.begin(), paths.end(), "/sensor") != paths.end());
     CHECK(std::find(paths.begin(), paths.end(), "/sensor/inner") != paths.end());
 }
+
+TEST_CASE("PathSpaceTrellis visit remaps mount root to slash") {
+    auto backing = std::make_shared<PathSpace>();
+    PathSpaceTrellis trellis{backing};
+
+    REQUIRE(backing->insert("/root/child", 17).nbrValuesInserted == 1);
+
+    auto ctx = backing->sharedContext();
+    REQUIRE(ctx);
+    trellis.adoptContextAndPrefix(ctx, "/root");
+
+    std::vector<std::string> paths;
+    auto result = trellis.visit([&](PathEntry const& entry, ValueHandle&) {
+        paths.push_back(entry.path);
+        return VisitControl::Continue;
+    });
+    REQUIRE(result);
+    CHECK(std::find(paths.begin(), paths.end(), "/") != paths.end());
+    CHECK(std::find(paths.begin(), paths.end(), "/child") != paths.end());
+}
 }
