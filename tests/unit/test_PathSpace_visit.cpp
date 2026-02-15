@@ -430,6 +430,74 @@ TEST_CASE("PathSpace visit resolves roots through nested spaces when child nodes
     CHECK(missing.error().code == Error::Code::NoSuchPath);
 }
 
+TEST_CASE("PathSpace visit resolves missing roots through nested spaces at root") {
+    PathSpace space;
+    auto nested = std::make_unique<PathSpace>();
+    REQUIRE(nested->insert("/missing/leaf", 11).nbrValuesInserted == 1);
+    Node* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+    auto rootData = std::make_unique<NodeData>();
+    rootData->appendNested(std::move(nested));
+    {
+        std::lock_guard<std::mutex> guard(root->payloadMutex);
+        root->data = std::move(rootData);
+    }
+
+    VisitOptions opts;
+    opts.includeNestedSpaces = true;
+    opts.root                = "/missing";
+
+    std::vector<std::string> visited;
+    auto ok = space.visit(
+        [&](PathEntry const& entry, ValueHandle&) {
+            visited.push_back(entry.path);
+            return VisitControl::Continue;
+        },
+        opts);
+    REQUIRE(ok);
+    CHECK(std::find(visited.begin(), visited.end(), "/missing") != visited.end());
+    CHECK(std::find(visited.begin(), visited.end(), "/missing/leaf") != visited.end());
+}
+
+TEST_CASE("PathSpace visit surfaces errors from nested roots") {
+    PathSpace space;
+    auto broken = std::make_unique<BrokenVisitSpace>();
+    Node* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+    auto rootData = std::make_unique<NodeData>();
+    rootData->appendNested(std::move(broken));
+    {
+        std::lock_guard<std::mutex> guard(root->payloadMutex);
+        root->data = std::move(rootData);
+    }
+
+    VisitOptions opts;
+    opts.includeNestedSpaces = true;
+    opts.root                = "/ghost";
+
+    auto result = space.visit(
+        [&](PathEntry const&, ValueHandle&) { return VisitControl::Continue; },
+        opts);
+    CHECK_FALSE(result);
+    CHECK(result.error().code == Error::Code::NotSupported);
+}
+
+TEST_CASE("PathSpace visit reports nested traversal errors for intermediate roots") {
+    PathSpace space;
+    auto broken = std::make_unique<BrokenVisitSpace>();
+    REQUIRE(space.insert("/mount", std::move(broken)).nbrSpacesInserted == 1);
+
+    VisitOptions opts;
+    opts.includeNestedSpaces = true;
+    opts.root                = "/mount/child";
+
+    auto result = space.visit(
+        [&](PathEntry const&, ValueHandle&) { return VisitControl::Continue; },
+        opts);
+    CHECK_FALSE(result);
+    CHECK(result.error().code == Error::Code::NotSupported);
+}
+
 TEST_CASE("ValueHandle snapshot reflects POD fast path upgrade to generic") {
     PathSpace space;
     REQUIRE(space.insert("/queue", 1).errors.empty());
@@ -652,6 +720,30 @@ TEST_CASE("ValueHandle read handles empty POD queues via snapshot fallback") {
     CHECK(visitedPod);
 }
 
+TEST_CASE("VisitDetail Access SerializeNodeData drops POD snapshot on serialization errors") {
+    PathSpace space;
+    Node* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+
+    InputMetadata metadata{};
+    metadata.typeInfo     = &typeid(int);
+    metadata.dataCategory = DataCategory::Fundamental;
+    auto payload = std::make_shared<StubPodPayload>(
+        metadata,
+        std::vector<int>{7},
+        std::nullopt,
+        std::nullopt,
+        true);
+    {
+        std::lock_guard<std::mutex> guard(root->payloadMutex);
+        root->podPayload = std::move(payload);
+    }
+
+    auto handle   = VisitDetail::Access::MakeHandle(space, *root, "/", true);
+    auto snapshot = VisitDetail::Access::SerializeNodeData(handle);
+    CHECK_FALSE(snapshot.has_value());
+}
+
 TEST_CASE("ValueHandle readInto falls back to span copy when read fails") {
     PathSpace space;
     Node* root = PathSpaceTestHelper::root(space);
@@ -756,6 +848,41 @@ TEST_CASE("ValueHandle readInto reports deserialize failure after span fallback"
     REQUIRE(result.has_value());
     CHECK_FALSE(result->has_value());
     CHECK(result->error().code == Error::Code::NoObjectFound);
+}
+
+TEST_CASE("ValueHandle readInto succeeds via snapshot fallback after read errors") {
+    PathSpace space;
+    Node* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+
+    Node& node = root->getOrCreateChild("snapfallback");
+    InputMetadata metadata{InputMetadataT<int>{}};
+    auto payload = std::make_shared<StubPodPayload>(
+        metadata,
+        std::vector<int>{42},
+        Error{Error::Code::UnknownError, "forced read failure"},
+        std::nullopt,
+        false,
+        std::vector<std::size_t>{0, 1});
+    {
+        std::lock_guard<std::mutex> guard(node.payloadMutex);
+        node.podPayload = std::move(payload);
+    }
+
+    std::optional<Expected<int>> result;
+    auto visitResult = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/snapfallback") {
+                result = handle.read<int>();
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        });
+
+    REQUIRE(visitResult);
+    REQUIRE(result.has_value());
+    REQUIRE(result->has_value());
+    CHECK(result->value() == 42);
 }
 
 TEST_CASE("ValueHandle queueDepth handles data, pod, and empty handles") {
