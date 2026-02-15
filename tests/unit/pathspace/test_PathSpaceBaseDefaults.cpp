@@ -24,6 +24,18 @@ public:
 
     auto exposeRoot() -> Node* { return getRootNode(); }
     auto exposeRootConst() const -> Node* { return getRootNode(); }
+    auto callSpanPackConst(std::span<const std::string> paths,
+                           InputMetadata const& metadata,
+                           Out const& options) const -> Expected<void> {
+        return spanPackConst(paths, metadata, options, [](std::span<RawConstSpan const>) { return std::nullopt; });
+    }
+    auto callSpanPackMut(std::span<const std::string> paths,
+                         InputMetadata const& metadata,
+                         Out const& options) const -> Expected<void> {
+        return spanPackMut(paths, metadata, options, [](std::span<RawMutSpan const>) {
+            return SpanPackResult{.error = std::nullopt, .shouldPop = false};
+        });
+    }
 
 private:
     auto in(Iterator const&, InputData const&) -> InsertReturn override { return {}; }
@@ -206,6 +218,20 @@ TEST_CASE("PathSpaceBase span pack defaults report not supported") {
                                                  [](std::span<int>, std::span<int>) {});
     CHECK_FALSE(takeResult.has_value());
     CHECK(takeResult.error().code == Error::Code::NotSupported);
+
+    std::array<std::string, 2> paths{"/root/alpha", "/root/beta"};
+    InputMetadata metadata{InputMetadataT<int>{}};
+    auto directRead = stub.callSpanPackConst(std::span<const std::string>(paths.data(), paths.size()),
+                                             metadata,
+                                             Out{});
+    CHECK_FALSE(directRead.has_value());
+    CHECK(directRead.error().code == Error::Code::NotSupported);
+
+    auto directTake = stub.callSpanPackMut(std::span<const std::string>(paths.data(), paths.size()),
+                                           metadata,
+                                           Out{});
+    CHECK_FALSE(directTake.has_value());
+    CHECK(directTake.error().code == Error::Code::NotSupported);
 }
 
 TEST_CASE("VisitOptions child limit helpers reflect settings") {

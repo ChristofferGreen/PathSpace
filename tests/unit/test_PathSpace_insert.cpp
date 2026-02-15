@@ -1,7 +1,17 @@
 #include "third_party/doctest.h"
 #include <pathspace/PathSpace.hpp>
+#include "core/PathSpaceContext.hpp"
+#include "task/Executor.hpp"
 
 using namespace SP;
+
+namespace {
+struct DummyExecutor final : Executor {
+    auto submit(std::weak_ptr<Task>&&) -> std::optional<Error> override { return std::nullopt; }
+    auto shutdown() -> void override {}
+    [[nodiscard]] auto size() const -> size_t override { return 1; }
+};
+} // namespace
 
 TEST_SUITE_BEGIN("pathspace.insert");
 
@@ -34,6 +44,21 @@ TEST_CASE("PathSpace Insert") {
 
         auto ret = pspace.insert("/waiter/child", 4);
         CHECK(ret.nbrValuesSuppressed == 1);
+        CHECK(ret.nbrValuesInserted == 0);
+    }
+
+    SUBCASE("Suppressed task insert adjusts counts without waiters") {
+        DummyExecutor exec;
+        auto ctx = std::make_shared<PathSpaceContext>(&exec);
+        PathSpace contextSpace{ctx, ""};
+
+        CHECK(contextSpace.insert("/parent", 1).nbrValuesInserted == 1);
+
+        auto ret = contextSpace.insert("/parent/child",
+                                       []() { return 5; },
+                                       In{.executionCategory = ExecutionCategory::Lazy});
+        CHECK(ret.nbrTasksInserted == 1);
+        CHECK(ret.nbrValuesSuppressed == 0);
         CHECK(ret.nbrValuesInserted == 0);
     }
 
