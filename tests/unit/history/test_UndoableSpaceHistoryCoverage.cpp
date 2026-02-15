@@ -277,6 +277,80 @@ TEST_CASE("UndoableSpace readHistoryStatsValue reports missing last operation") 
     CHECK(err->code == Error::Code::NoObjectFound);
 }
 
+TEST_CASE("UndoableSpace readDiagnosticsHistoryValue reports missing state and null output") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    InputMetadata metaU64{InputMetadataT<std::uint64_t>{}};
+
+    UndoableSpace::MatchedJournalRoot missing{
+        std::shared_ptr<UndoJournalRootState>{},
+        "",
+        "",
+        true,
+        false};
+
+    std::uint64_t value = 0;
+    auto missingErr = space.readDiagnosticsHistoryValue(
+        missing,
+        std::string(UndoPaths::HistoryDiagnosticsHeadSequence),
+        metaU64,
+        &value);
+    REQUIRE(missingErr.has_value());
+    CHECK(missingErr->code == Error::Code::UnknownError);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+    auto stateIt = space.journalRoots.find("/doc");
+    REQUIRE(stateIt != space.journalRoots.end());
+
+    UndoableSpace::MatchedJournalRoot withState{
+        stateIt->second,
+        "/doc",
+        std::string(UndoPaths::HistoryDiagnosticsHeadSequence),
+        true,
+        false};
+
+    auto nullOut = space.readDiagnosticsHistoryValue(
+        withState,
+        std::string(UndoPaths::HistoryDiagnosticsHeadSequence),
+        metaU64,
+        nullptr);
+    REQUIRE(nullOut.has_value());
+    CHECK(nullOut->code == Error::Code::MalformedInput);
+}
+
+TEST_CASE("UndoableSpace readJournalHistoryValue reports missing state") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    InputMetadata metaSize{InputMetadataT<std::size_t>{}};
+
+    UndoableSpace::MatchedJournalRoot missing{
+        std::shared_ptr<UndoJournalRootState>{},
+        "",
+        "",
+        false,
+        false};
+
+    std::size_t value = 0;
+    auto err = space.readJournalHistoryValue(
+        missing,
+        std::string(UndoPaths::HistoryStatsUndoCount),
+        metaSize,
+        &value);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::UnknownError);
+}
+
+TEST_CASE("UndoableSpace insert rejects diagnostics paths") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto result = space.insert("/diagnostics/history/_doc/entries/0/path", std::string{"bad"});
+    CHECK_FALSE(result.errors.empty());
+    CHECK(result.errors.front().code == Error::Code::InvalidPermissions);
+}
+
 TEST_CASE("UndoableSpace diagnostics entries expose tag and timing fields") {
     UndoableSpace space{std::make_unique<PathSpace>(), {}};
     HistoryOptions opts;
