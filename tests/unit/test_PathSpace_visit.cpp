@@ -41,12 +41,14 @@ public:
                    std::vector<int> values,
                    std::optional<Error> readError,
                    std::optional<Error> spanError,
-                   bool callSpan)
+                   bool callSpan,
+                   std::vector<std::size_t> spanCounts = {})
         : metadata_(std::move(metadata))
         , values_(std::move(values))
         , readError_(std::move(readError))
         , spanError_(std::move(spanError))
-        , callSpan_(callSpan) {}
+        , callSpan_(callSpan)
+        , spanCounts_(std::move(spanCounts)) {}
 
     std::type_info const& type() const noexcept override { return typeid(int); }
     bool matches(std::type_info const& ti) const noexcept override { return ti == typeid(int); }
@@ -77,7 +79,11 @@ public:
         if (spanError_) {
             return spanError_;
         }
-        if (callSpan_) {
+        if (!spanCounts_.empty()) {
+            auto index = std::min(spanCallIndex_, spanCounts_.size() - 1);
+            fn(values_.data(), spanCounts_[index]);
+            ++spanCallIndex_;
+        } else if (callSpan_) {
             fn(values_.data(), values_.size());
         }
         return std::nullopt;
@@ -126,6 +132,8 @@ private:
     std::optional<Error>      readError_;
     std::optional<Error>      spanError_;
     bool                      callSpan_ = false;
+    std::vector<std::size_t>  spanCounts_;
+    mutable std::size_t       spanCallIndex_ = 0;
 };
 
 } // namespace
@@ -710,6 +718,44 @@ TEST_CASE("ValueHandle readInto surfaces span errors during fallback") {
     REQUIRE(result.has_value());
     CHECK_FALSE(result->has_value());
     CHECK(result->error().code == Error::Code::UnknownError);
+}
+
+TEST_CASE("ValueHandle readInto reports deserialize failure after span fallback") {
+    PathSpace space;
+    Node* root = PathSpaceTestHelper::root(space);
+    REQUIRE(root != nullptr);
+
+    Node& node = root->getOrCreateChild("spanempty");
+    InputMetadata metadata{};
+    metadata.typeInfo     = &typeid(int);
+    metadata.dataCategory = DataCategory::Fundamental;
+
+    auto payload = std::make_shared<StubPodPayload>(
+        metadata,
+        std::vector<int>{9},
+        Error{Error::Code::UnknownError, "forced read failure"},
+        std::nullopt,
+        false,
+        std::vector<std::size_t>{0, 1});
+    {
+        std::lock_guard<std::mutex> guard(node.payloadMutex);
+        node.podPayload = std::move(payload);
+    }
+
+    std::optional<Expected<int>> result;
+    auto visitResult = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/spanempty") {
+                result = handle.read<int>();
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        });
+
+    REQUIRE(visitResult);
+    REQUIRE(result.has_value());
+    CHECK_FALSE(result->has_value());
+    CHECK(result->error().code == Error::Code::NoObjectFound);
 }
 
 TEST_CASE("ValueHandle queueDepth handles data, pod, and empty handles") {
