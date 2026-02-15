@@ -9,6 +9,7 @@
 #include "type/InputMetadataT.hpp"
 
 #include <chrono>
+#include <filesystem>
 #include <string>
 #include <thread>
 
@@ -211,5 +212,49 @@ TEST_CASE("recordJournalMutation reports inverse payload encoding failures") {
     CHECK(state.telemetry.unsupportedLog.front().reason.find("serialize")
           != std::string::npos);
 }
+
+#ifndef _WIN32
+TEST_CASE("commitJournalTransaction reports persistence open failures") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    UndoJournalRootState state;
+
+    auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+    auto tempRoot = std::filesystem::temp_directory_path()
+                    / (std::string("pathspace_undo_tx_open_fail_") + std::to_string(now));
+    std::filesystem::create_directories(tempRoot);
+    auto roDir = tempRoot / "readonly";
+    std::filesystem::create_directories(roDir);
+
+    auto originalPerms = std::filesystem::status(roDir).permissions();
+    auto readonlyPerms = originalPerms
+                         & ~std::filesystem::perms::owner_write
+                         & ~std::filesystem::perms::group_write
+                         & ~std::filesystem::perms::others_write;
+    std::error_code ec;
+    std::filesystem::permissions(roDir, readonlyPerms, ec);
+    REQUIRE_FALSE(ec);
+
+    state.persistenceEnabled = true;
+    state.journalPath = roDir / "journal.bin";
+    state.options.manualGarbageCollect = false;
+
+    UndoJournal::JournalEntry entry;
+    entry.path = "/doc/value";
+    state.activeTransaction = UndoJournalRootState::TransactionState{
+        .owner          = std::this_thread::get_id(),
+        .depth          = 1,
+        .dirty          = true,
+        .pendingEntries = {entry},
+    };
+
+    auto result = space.commitJournalTransaction(state);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::UnknownError);
+
+    std::filesystem::permissions(roDir, originalPerms, ec);
+    CHECK_FALSE(ec);
+    std::filesystem::remove_all(tempRoot, ec);
+}
+#endif
 
 TEST_SUITE_END();
