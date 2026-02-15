@@ -207,6 +207,41 @@ TEST_CASE("PodPayload pinned spans respect start indices") {
     CHECK(emptyCount == 0);
 }
 
+TEST_CASE("PodPayload pinned span helpers expose buffer tokens") {
+    PodPayload<int> payload;
+    CHECK(payload.push(4));
+    CHECK(payload.push(5));
+
+    std::size_t count = 0;
+    int first = -1;
+    std::shared_ptr<void> token;
+    auto err = payload.withSpanRawPinned(
+        [&](void const* data, std::size_t c, std::shared_ptr<void> const& buf) {
+            count = c;
+            token = buf;
+            if (c > 0) {
+                first = static_cast<int const*>(data)[0];
+            }
+        });
+    CHECK_FALSE(err.has_value());
+    CHECK(count == 2);
+    CHECK(first == 4);
+    CHECK(token != nullptr);
+
+    auto mutErr = payload.withSpanMutableRawPinned(
+        [&](void* data, std::size_t c, std::shared_ptr<void> const& buf) {
+            CHECK(buf != nullptr);
+            if (c > 0) {
+                static_cast<int*>(data)[0] = 99;
+            }
+        });
+    CHECK_FALSE(mutErr.has_value());
+
+    int out = 0;
+    CHECK_FALSE(payload.read(&out));
+    CHECK(out == 99);
+}
+
 TEST_CASE("PodPayload pack span marker advances past popped elements and only grows") {
     PodPayload<int> payload;
     CHECK(payload.push(1));
