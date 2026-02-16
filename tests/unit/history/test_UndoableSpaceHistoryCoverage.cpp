@@ -1087,6 +1087,23 @@ TEST_CASE("UndoableSpace insert skips unsupported errors without messages") {
     CHECK(state->telemetry.unsupportedTotal == 0);
 }
 
+TEST_CASE("UndoableSpace computeJournalLiveBytes sums subtree payloads") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space.insert("/doc/value", 42).errors.empty());
+    REQUIRE(space.insert("/doc/child", 84).errors.empty());
+
+    auto stateIt = space.journalRoots.find("/doc");
+    REQUIRE(stateIt != space.journalRoots.end());
+    REQUIRE(stateIt->second);
+
+    auto bytes = space.computeJournalLiveBytes(*stateIt->second);
+    CHECK(bytes > 0);
+}
+
 TEST_CASE("UndoableSpace garbage collect rejects active transactions") {
     UndoableSpace space{std::make_unique<PathSpace>(), {}};
     HistoryOptions opts;
