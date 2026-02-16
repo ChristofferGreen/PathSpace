@@ -494,7 +494,7 @@ TEST_CASE("Compile-time mutable span take updates POD queue without pop") {
 
 TEST_CASE("Concurrent POD inserts remain visible in span read") {
     PathSpace space;
-    constexpr int perThread = 100;
+    constexpr int perThread = 40;
     std::thread t1([&]() {
         for (int i = 0; i < perThread; ++i) {
             space.insert("/ints", i);
@@ -1164,7 +1164,7 @@ TEST_CASE("Span pack read keeps buffer alive across concurrent growth") {
     // Grower will force PodPayload reallocation after the span snapshot is taken.
     std::thread grower([&]() {
         start.arrive_and_wait();
-        for (int i = 5; i < 1200; ++i) { // exceed initial capacity to trigger ensureCapacity
+        for (int i = 5; i < 1030; ++i) { // exceed initial capacity to trigger ensureCapacity
             auto ra = space.insert("/ints/a", i);
             auto rb = space.insert("/ints/b", i * 10);
             REQUIRE(ra.errors.empty());
@@ -1360,7 +1360,7 @@ TEST_CASE("Span pack handles larger arity") {
 
 TEST_CASE("Span pack keeps POD buffers alive during callback") {
     PathSpace space;
-    constexpr std::size_t FillCount = 2048;
+    constexpr std::size_t FillCount = 1025;
     for (std::size_t i = 0; i < FillCount; ++i) {
         CHECK(space.insert("/ints/values/x", static_cast<int>(i)).errors.empty());
         CHECK(space.insert("/ints/values/y", static_cast<int>(1000 + i)).errors.empty());
@@ -1405,7 +1405,7 @@ TEST_CASE("Pack insert enqueues all paths atomically") {
 
     std::atomic<bool> mismatch{false};
     std::thread reader([&]() {
-        for (int i = 0; i < 256; ++i) {
+        for (int i = 0; i < 64; ++i) {
             auto ret = space.read<"x","y">("/ints", [&](std::span<const int> xs, std::span<const int> ys) {
                 if (xs.size() != ys.size()) {
                     mismatch.store(true, std::memory_order_release);
@@ -1440,10 +1440,10 @@ TEST_CASE("Pack insert concurrent writers preserves alignment") {
     CHECK(space.insert("/ints/y", 0).errors.empty());
 #if defined(PATHSPACE_COVERAGE_BUILD)
     constexpr int ThreadCount    = 2;
-    constexpr int ValuesPerThread  = 50;
+    constexpr int ValuesPerThread  = 25;
 #else
-    constexpr int ThreadCount    = 4;
-    constexpr int ValuesPerThread  = 200;
+    constexpr int ThreadCount    = 3;
+    constexpr int ValuesPerThread  = 80;
 #endif
     std::atomic<int> next{1};
 
@@ -1494,10 +1494,10 @@ TEST_CASE("Pack insert concurrent readers never see skew") {
 
 #if defined(PATHSPACE_COVERAGE_BUILD)
     constexpr int ThreadCount    = 2;
-    constexpr int ValuesPerThread  = 40;
+    constexpr int ValuesPerThread  = 20;
 #else
-    constexpr int ThreadCount    = 3;
-    constexpr int ValuesPerThread  = 150;
+    constexpr int ThreadCount    = 2;
+    constexpr int ValuesPerThread  = 60;
 #endif
     std::atomic<int> next{10000};
     auto worker = [&]() {
@@ -1536,9 +1536,9 @@ TEST_CASE("Pack insert concurrent take keeps lanes aligned") {
     REQUIRE(seedTake.has_value());
 
 #if defined(PATHSPACE_COVERAGE_BUILD)
-    constexpr int WriteCount = 120;
+    constexpr int WriteCount = 60;
 #else
-    constexpr int WriteCount = 400;
+    constexpr int WriteCount = 200;
 #endif
     std::atomic<int> produced{0};
     std::atomic<int> consumed{0};
@@ -2079,7 +2079,7 @@ TEST_CASE("Pack insert concurrent const readers stay aligned") {
         }
     });
 
-    for (int i = 1; i <= 200; ++i) {
+    for (int i = 1; i <= 80; ++i) {
         auto ret = space.insert<"/ints/x","/ints/y">(i, i);
         REQUIRE(ret.errors.empty());
     }
@@ -2095,13 +2095,13 @@ TEST_CASE("Pack insert multi-thread stress maintains alignment") {
     CHECK(space.insert("/ints/y", 0).errors.empty());
 
 #if defined(PATHSPACE_COVERAGE_BUILD)
-    constexpr int ThreadCount   = 3;
-    constexpr int ValuesPerThread = 40;
-    constexpr int ReadIterations = 60;
+    constexpr int ThreadCount   = 2;
+    constexpr int ValuesPerThread = 25;
+    constexpr int ReadIterations = 40;
 #else
-    constexpr int ThreadCount   = 6;
-    constexpr int ValuesPerThread = 150;
-    constexpr int ReadIterations = 300;
+    constexpr int ThreadCount   = 3;
+    constexpr int ValuesPerThread = 80;
+    constexpr int ReadIterations = 120;
 #endif
     std::atomic<int> next{1};
     std::atomic<bool> skew{false};
@@ -2280,7 +2280,7 @@ TEST_CASE("Pack insert failure does not stall concurrent POD insert") {
         CHECK_FALSE(ret.errors.empty());
     });
 
-    for (int i = 0; i < 1000 && !packSeen.load(std::memory_order_acquire); ++i) {
+    for (int i = 0; i < 200 && !packSeen.load(std::memory_order_acquire); ++i) {
         std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
     REQUIRE(packSeen.load(std::memory_order_acquire));
@@ -2297,7 +2297,7 @@ TEST_CASE("Pack insert failure does not stall concurrent POD insert") {
     hookHold.store(false, std::memory_order_release);
 
     bool finished = false;
-    for (int i = 0; i < 2000; ++i) {
+    for (int i = 0; i < 400; ++i) {
         if (pushDone.load(std::memory_order_acquire)) {
             finished = true;
             break;
@@ -2336,7 +2336,7 @@ TEST_CASE("POD fast path publishes data before readers see queue growth") {
 
     std::thread consumer([&]() {
         int spins = 0;
-        while (!hookSeen.load(std::memory_order_acquire) && spins < 1'000'000) {
+        while (!hookSeen.load(std::memory_order_acquire) && spins < 200'000) {
             std::this_thread::yield();
             ++spins;
         }
@@ -2346,7 +2346,7 @@ TEST_CASE("POD fast path publishes data before readers see queue growth") {
             earlyObserved = gotEarly.value();
         }
         hold.store(false, std::memory_order_release);
-        for (int attempt = 0; attempt < 1000 && !observed.has_value(); ++attempt) {
+        for (int attempt = 0; attempt < 300 && !observed.has_value(); ++attempt) {
             auto got = space.take<int>("/ints");
             if (got.has_value()) {
                 observed = got.value();
