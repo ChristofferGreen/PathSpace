@@ -29,6 +29,8 @@ struct RecordingSink : NotificationSink {
 };
 
 struct CountingExecutor final : Executor {
+    using Executor::submit;
+
     std::optional<Error> submit(std::weak_ptr<Task>&& task) override {
         ++submitCalls;
         lastTask = task;
@@ -85,6 +87,19 @@ TEST_CASE("Executor shared_ptr submit forwards to weak submit") {
     auto locked = exec.lastTask.lock();
     REQUIRE(locked);
     CHECK(locked == task);
+}
+
+TEST_CASE("Executor shared_ptr submit hits base overload") {
+    CountingExecutor exec;
+    auto task = Task::Create(std::weak_ptr<NotificationSink>{},
+                             "/executor/shared/overload",
+                             [] { return 2; },
+                             ExecutionCategory::Immediate);
+    REQUIRE(task);
+
+    auto err = exec.submit(task);
+    CHECK_FALSE(err.has_value());
+    CHECK(exec.submitCalls == 1);
 }
 
 TEST_CASE("TaskT notifies sink on completion") {

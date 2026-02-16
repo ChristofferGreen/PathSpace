@@ -736,4 +736,35 @@ TEST_CASE("UndoableSpace importHistorySavefile propagates persistence failures")
     CHECK(result.error().code == Error::Code::UnknownError);
 }
 
+TEST_CASE("UndoableSpace enableHistory reports invalid existing roots") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    auto invalidState = std::make_shared<UndoJournalRootState>();
+    space.journalRoots.emplace("/bad/../root", invalidState);
+
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    auto result = space.enableHistory(ConcretePathStringView{"/doc"}, opts);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::InvalidPathSubcomponent);
+}
+
+TEST_CASE("UndoableSpace findJournalRootByPath rejects malformed paths") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    auto matched = space.findJournalRootByPath("/bad/../path");
+    CHECK_FALSE(matched.has_value());
+}
+
+TEST_CASE("UndoableSpace findJournalRootByPath finds nearest history root") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto matched = space.findJournalRootByPath("/doc/value");
+    REQUIRE(matched.has_value());
+    CHECK(matched->key == "/doc");
+    CHECK(matched->relativePath == "value");
+    CHECK_FALSE(matched->diagnostics);
+}
+
 TEST_SUITE_END();
