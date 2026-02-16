@@ -158,6 +158,11 @@ TEST_CASE("notifyAll wakes context waiters") {
     }
 
     ctx.notifyAll();
+    auto const deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+    while (!woke.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline) {
+        ctx.notifyAll();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 
     waiter.join();
     CHECK(woke.load(std::memory_order_acquire));

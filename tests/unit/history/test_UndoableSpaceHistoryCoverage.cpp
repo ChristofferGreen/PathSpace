@@ -944,6 +944,68 @@ TEST_CASE("UndoableSpace take rejects diagnostics and history command paths") {
     CHECK(command.error().code == Error::Code::InvalidPermissions);
 }
 
+TEST_CASE("UndoableSpace insert rejects mismatched journal components") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto stateIt = space.journalRoots.find("/doc");
+    REQUIRE(stateIt != space.journalRoots.end());
+    REQUIRE(stateIt->second);
+    stateIt->second->components = {"other"};
+
+    auto result = space.insert("/doc/value", 1);
+    CHECK_FALSE(result.errors.empty());
+    CHECK(result.errors.front().code == Error::Code::InvalidPermissions);
+}
+
+TEST_CASE("UndoableSpace take rejects mismatched journal components") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto stateIt = space.journalRoots.find("/doc");
+    REQUIRE(stateIt != space.journalRoots.end());
+    REQUIRE(stateIt->second);
+    stateIt->second->components = {"other"};
+
+    auto result = space.take<int>("/doc/value");
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::InvalidPermissions);
+}
+
+TEST_CASE("UndoableSpace insert reports nested payload capture errors") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto nested = std::make_unique<PathSpace>();
+    auto seed = space.insert("/doc/nested", std::move(nested));
+    CHECK(seed.nbrSpacesInserted == 1);
+
+    auto result = space.insert("/doc/nested", 1);
+    CHECK_FALSE(result.errors.empty());
+    CHECK(result.errors.front().code == Error::Code::UnknownError);
+}
+
+TEST_CASE("UndoableSpace take reports nested payload capture errors") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto nested = std::make_unique<PathSpace>();
+    auto seed = space.insert("/doc/nested", std::move(nested));
+    CHECK(seed.nbrSpacesInserted == 1);
+
+    auto result = space.take<int>("/doc/nested");
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::UnknownError);
+}
+
 TEST_CASE("UndoableSpace garbage collect rejects active transactions") {
     UndoableSpace space{std::make_unique<PathSpace>(), {}};
     HistoryOptions opts;
