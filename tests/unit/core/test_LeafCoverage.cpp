@@ -148,4 +148,44 @@ TEST_CASE("Leaf pod insert reports missing input pointer") {
     CHECK(ret.errors.front().message == std::optional<std::string>{"Input pointer missing"});
 }
 
+TEST_CASE("Leaf insertSerialized ignores empty payloads") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    NodeData emptyPayload;
+    leaf.insertSerialized(Iterator{"/root"}, emptyPayload, ret);
+    CHECK(ret.errors.empty());
+    CHECK(ret.nbrValuesInserted == 0);
+}
+
+TEST_CASE("Leaf insertSerialized reports invalid paths") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    int value = 21;
+    InputMetadata meta{InputMetadataT<int>{}};
+    NodeData payload;
+    REQUIRE_FALSE(payload.serialize(InputData{&value, meta}).has_value());
+
+    leaf.insertSerialized(Iterator{"/bad//path"}, payload, ret);
+    REQUIRE_FALSE(ret.errors.empty());
+    CHECK(ret.errors.front().code == Error::Code::InvalidPath);
+    CHECK(ret.nbrValuesInserted == 0);
+}
+
+TEST_CASE("Leaf insertSerialized rejects root path") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    int value = 34;
+    InputMetadata meta{InputMetadataT<int>{}};
+    NodeData payload;
+    REQUIRE_FALSE(payload.serialize(InputData{&value, meta}).has_value());
+
+    leaf.insertSerialized(Iterator{"/"}, payload, ret);
+    REQUIRE_FALSE(ret.errors.empty());
+    CHECK(ret.errors.front().code == Error::Code::InvalidPath);
+    CHECK(ret.nbrValuesInserted == 0);
+}
+
 TEST_SUITE_END();
