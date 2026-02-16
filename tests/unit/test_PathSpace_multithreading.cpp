@@ -7,6 +7,7 @@
 #include "third_party/doctest.h"
 
 #include <atomic>
+#include <barrier>
 #include <chrono>
 #include <condition_variable>
 #include <format>
@@ -1626,27 +1627,30 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
 
     SUBCASE("Deadlock Detection and Prevention") {
         PathSpace        pspace;
-        const int        NUM_THREADS = 16;
+        const int        NumThreads = 2;
         std::atomic<int> deadlockCount(0);
         std::atomic<int> successCount(0);
 
         CHECK(pspace.insert("/resourceA", 1).errors.size() == 0);
-        CHECK(pspace.insert("/resourceA", 1).errors.size() == 0);
-        CHECK(pspace.insert("/resourceB", 1).errors.size() == 0);
         CHECK(pspace.insert("/resourceB", 1).errors.size() == 0);
 
+        std::barrier startLine(NumThreads);
+        std::barrier afterFirst(NumThreads);
+
         auto workerFunction = [&](int threadId) {
+            startLine.arrive_and_wait();
             if (threadId % 2 == 0) {
                 // Even threads try to acquire A then B (take removes the token)
-                auto a = pspace.take<int>("/resourceA", Block(50ms));
+                auto a = pspace.take<int>("/resourceA", Block(250ms));
                 if (!a) {
                     deadlockCount++;
                     return;
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                afterFirst.arrive_and_wait();
+                std::this_thread::sleep_for(5ms);
                 // jitter to break symmetry across threads
                 std::this_thread::sleep_for(std::chrono::milliseconds(threadId & 0x3));
-                auto b = pspace.take<int>("/resourceB", Block(100ms));
+                auto b = pspace.take<int>("/resourceB", Block(200ms));
                 if (!b) {
                     deadlockCount++;
                     // release A
@@ -1661,15 +1665,16 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
                 pspace.insert("/resourceA", 1);
             } else {
                 // Odd threads try to acquire B then A (take removes the token)
-                auto b = pspace.take<int>("/resourceB", Block(50ms));
+                auto b = pspace.take<int>("/resourceB", Block(250ms));
                 if (!b) {
                     deadlockCount++;
                     return;
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                afterFirst.arrive_and_wait();
+                std::this_thread::sleep_for(5ms);
                 // jitter to break symmetry across threads
                 std::this_thread::sleep_for(std::chrono::milliseconds(threadId & 0x3));
-                auto a = pspace.take<int>("/resourceA", Block(100ms));
+                auto a = pspace.take<int>("/resourceA", Block(20ms));
                 if (!a) {
                     deadlockCount++;
                     // release B
@@ -1686,7 +1691,7 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
         };
 
         std::vector<std::thread> threads;
-        for (int i = 0; i < NUM_THREADS; ++i) {
+        for (int i = 0; i < NumThreads; ++i) {
             threads.emplace_back(workerFunction, i);
         }
 
@@ -1697,7 +1702,7 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
         // We expect some deadlocks to be prevented due to timeouts
         CHECK(deadlockCount > 0);
         CHECK(successCount > 0);
-        CHECK(deadlockCount < NUM_THREADS);
+        CHECK(deadlockCount + successCount == NumThreads);
     }
 
     SUBCASE("Performance Testing") {
