@@ -900,4 +900,40 @@ TEST_CASE("UndoableSpace findJournalRootByPath finds nearest history root") {
     CHECK_FALSE(matched->diagnostics);
 }
 
+TEST_CASE("UndoableSpace undo and redo reject missing history roots") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+
+    auto undoResult = space.undo(ConcretePathStringView{"/missing"});
+    CHECK_FALSE(undoResult.has_value());
+    CHECK(undoResult.error().code == Error::Code::NotFound);
+
+    auto redoResult = space.redo(ConcretePathStringView{"/missing"});
+    CHECK_FALSE(redoResult.has_value());
+    CHECK(redoResult.error().code == Error::Code::NotFound);
+}
+
+TEST_CASE("UndoableSpace trimHistory reports unsupported status") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+
+    auto result = space.trimHistory(ConcretePathStringView{"/doc"},
+                                    [](std::size_t) { return true; });
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::NotSupported);
+}
+
+TEST_CASE("UndoableSpace take rejects diagnostics and history command paths") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto diagnostics = space.take<std::uint64_t>("/diagnostics/history/_doc/head/sequence");
+    CHECK_FALSE(diagnostics.has_value());
+    CHECK(diagnostics.error().code == Error::Code::InvalidPermissions);
+
+    auto command = space.take<std::string>("/doc/_history/undo");
+    CHECK_FALSE(command.has_value());
+    CHECK(command.error().code == Error::Code::InvalidPermissions);
+}
+
 TEST_SUITE_END();
