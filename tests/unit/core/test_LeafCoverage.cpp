@@ -188,4 +188,44 @@ TEST_CASE("Leaf insertSerialized rejects root path") {
     CHECK(ret.nbrValuesInserted == 0);
 }
 
+TEST_CASE("Leaf spanPackConst reports missing paths") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    int value = 55;
+    leaf.in(Iterator{"/present"}, InputData{value}, ret);
+    REQUIRE(ret.errors.empty());
+
+    std::array<std::string, 2> paths{"/present", "/missing"};
+    InputMetadata meta{InputMetadataT<int>{}};
+    auto const callback = [](std::span<RawConstSpan const>) -> std::optional<Error> {
+        return std::nullopt;
+    };
+
+    auto result = leaf.spanPackConst(std::span<const std::string>{paths}, meta, Out{}, callback);
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::NoSuchPath);
+    CHECK(result.error().message == std::optional<std::string>{"Path not found"});
+}
+
+TEST_CASE("Leaf spanPackMut minimal requires POD payload") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    std::string value = "payload";
+    leaf.in(Iterator{"/node"}, InputData{value}, ret);
+    REQUIRE(ret.errors.empty());
+
+    std::array<std::string, 1> paths{"/node"};
+    InputMetadata meta{InputMetadataT<int>{}};
+    auto const callback = [](std::span<RawMutSpan const>) -> SpanPackResult {
+        return SpanPackResult{.error = std::nullopt, .shouldPop = false};
+    };
+
+    auto result = leaf.spanPackMut(std::span<const std::string>{paths}, meta, Out{} & Minimal{}, callback);
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::InvalidType);
+    CHECK(result.error().message == std::optional<std::string>{"POD fast path unavailable"});
+}
+
 TEST_SUITE_END();
