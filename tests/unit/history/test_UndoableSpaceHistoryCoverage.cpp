@@ -126,6 +126,17 @@ private:
     std::string repeatedMessage = "forced failure";
 };
 
+struct SilentFailingPathSpace final : PathSpace {
+protected:
+    auto in(Iterator const&, InputData const&) -> InsertReturn override {
+        InsertReturn ret;
+        Error err{Error::Code::UnknownError, ""};
+        err.message.reset();
+        ret.errors.push_back(std::move(err));
+        return ret;
+    }
+};
+
 } // namespace
 
 TEST_SUITE_BEGIN("history.undoable.history.coverage");
@@ -1057,6 +1068,23 @@ TEST_CASE("UndoableSpace insert logs unsupported errors and trims history log") 
     CHECK(state->telemetry.unsupportedTotal
           == static_cast<std::uint64_t>(UndoUtilsAlias::MaxUnsupportedLogEntries + 3));
     CHECK(state->telemetry.unsupportedLog.size() == UndoUtilsAlias::MaxUnsupportedLogEntries);
+}
+
+TEST_CASE("UndoableSpace insert skips unsupported errors without messages") {
+    UndoableSpace space{std::make_unique<SilentFailingPathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto stateIt = space.journalRoots.find("/doc");
+    REQUIRE(stateIt != space.journalRoots.end());
+    REQUIRE(stateIt->second);
+    auto state = stateIt->second;
+
+    auto result = space.insert("/doc/value", 1);
+    CHECK_FALSE(result.errors.empty());
+    CHECK(state->telemetry.unsupportedLog.empty());
+    CHECK(state->telemetry.unsupportedTotal == 0);
 }
 
 TEST_CASE("UndoableSpace garbage collect rejects active transactions") {
