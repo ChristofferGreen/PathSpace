@@ -11,6 +11,7 @@
 #include "type/InputData.hpp"
 #include "type/InputMetadataT.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <cstdint>
@@ -104,6 +105,26 @@ auto makeSavefileEntry(std::string path) -> UndoJournal::JournalEntry {
     entry.sequence = 1;
     return entry;
 }
+
+struct FailingPathSpace final : PathSpace {
+    FailingPathSpace() = default;
+
+protected:
+    auto in(Iterator const&, InputData const&) -> InsertReturn override {
+        InsertReturn ret;
+        std::string message = (counter < repeatCount)
+            ? repeatedMessage
+            : repeatedMessage + " " + std::to_string(counter);
+        ++counter;
+        ret.errors.push_back(Error{Error::Code::UnknownError, message});
+        return ret;
+    }
+
+private:
+    int         counter = 0;
+    int         repeatCount = 2;
+    std::string repeatedMessage = "forced failure";
+};
 
 } // namespace
 
@@ -1004,6 +1025,38 @@ TEST_CASE("UndoableSpace take reports nested payload capture errors") {
     auto result = space.take<int>("/doc/nested");
     CHECK_FALSE(result.has_value());
     CHECK(result.error().code == Error::Code::UnknownError);
+}
+
+TEST_CASE("UndoableSpace insert logs unsupported errors and trims history log") {
+    UndoableSpace space{std::make_unique<FailingPathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto stateIt = space.journalRoots.find("/doc");
+    REQUIRE(stateIt != space.journalRoots.end());
+    REQUIRE(stateIt->second);
+    auto state = stateIt->second;
+
+    auto first = space.insert("/doc/value", 1);
+    CHECK_FALSE(first.errors.empty());
+    auto second = space.insert("/doc/value", 2);
+    CHECK_FALSE(second.errors.empty());
+
+    auto repeated = std::find_if(state->telemetry.unsupportedLog.begin(),
+                                 state->telemetry.unsupportedLog.end(),
+                                 [](auto const& entry) { return entry.reason == "forced failure"; });
+    REQUIRE(repeated != state->telemetry.unsupportedLog.end());
+    CHECK(repeated->occurrences == 2);
+
+    for (std::size_t i = 0; i < UndoUtilsAlias::MaxUnsupportedLogEntries + 1; ++i) {
+        auto result = space.insert("/doc/value", static_cast<int>(i));
+        CHECK_FALSE(result.errors.empty());
+    }
+
+    CHECK(state->telemetry.unsupportedTotal
+          == static_cast<std::uint64_t>(UndoUtilsAlias::MaxUnsupportedLogEntries + 3));
+    CHECK(state->telemetry.unsupportedLog.size() == UndoUtilsAlias::MaxUnsupportedLogEntries);
 }
 
 TEST_CASE("UndoableSpace garbage collect rejects active transactions") {
