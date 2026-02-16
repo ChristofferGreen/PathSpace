@@ -190,6 +190,44 @@ TEST_CASE("commitJournalTransaction handles zero depth and updates timestamps") 
     CHECK(stored.sequence == 0);
 }
 
+TEST_CASE("commitJournalTransaction compacts persisted journal after trimming") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+
+    UndoJournalRootState state;
+    state.persistenceEnabled = true;
+    state.options.manualGarbageCollect = false;
+
+    auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+    auto tempRoot = std::filesystem::temp_directory_path()
+                    / (std::string("pathspace_undo_tx_compact_") + std::to_string(now));
+    std::filesystem::create_directories(tempRoot);
+    state.journalPath = tempRoot / "journal.log";
+
+    UndoJournal::JournalState::RetentionPolicy retention{};
+    retention.maxEntries = 1;
+    state.journal.setRetentionPolicy(retention);
+
+    UndoJournal::JournalEntry entryA;
+    entryA.path = "/doc/first";
+    UndoJournal::JournalEntry entryB;
+    entryB.path = "/doc/second";
+
+    state.activeTransaction = UndoJournalRootState::TransactionState{
+        .owner          = std::this_thread::get_id(),
+        .depth          = 1,
+        .dirty          = true,
+        .pendingEntries = {entryA, entryB},
+    };
+
+    auto result = space.commitJournalTransaction(state);
+    CHECK(result.has_value());
+    CHECK(state.journal.size() == 1);
+    CHECK(state.telemetry.trimOperations >= 1);
+
+    std::error_code ec;
+    std::filesystem::remove_all(tempRoot, ec);
+}
+
 TEST_CASE("recordJournalMutation reports inverse payload encoding failures") {
     UndoableSpace space{std::make_unique<PathSpace>(), {}};
 
@@ -214,6 +252,49 @@ TEST_CASE("recordJournalMutation reports inverse payload encoding failures") {
 }
 
 #ifndef _WIN32
+TEST_CASE("commitJournalTransaction reports append failures") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    UndoJournalRootState state;
+
+    auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+    auto tempRoot = std::filesystem::temp_directory_path()
+                    / (std::string("pathspace_undo_tx_append_fail_") + std::to_string(now));
+    std::filesystem::create_directories(tempRoot);
+    auto roDir = tempRoot / "readonly";
+    std::filesystem::create_directories(roDir);
+
+    auto originalPerms = std::filesystem::status(roDir).permissions();
+    auto readonlyPerms = originalPerms
+                         & ~std::filesystem::perms::owner_write
+                         & ~std::filesystem::perms::group_write
+                         & ~std::filesystem::perms::others_write;
+    std::error_code ec;
+    std::filesystem::permissions(roDir, readonlyPerms, ec);
+    REQUIRE_FALSE(ec);
+
+    state.persistenceEnabled = true;
+    state.journalPath = roDir / "journal.bin";
+    state.options.manualGarbageCollect = false;
+    state.persistenceWriter = std::make_unique<UndoJournal::JournalFileWriter>(state.journalPath);
+
+    UndoJournal::JournalEntry entry;
+    entry.path = "/doc/value";
+    state.activeTransaction = UndoJournalRootState::TransactionState{
+        .owner          = std::this_thread::get_id(),
+        .depth          = 1,
+        .dirty          = true,
+        .pendingEntries = {entry},
+    };
+
+    auto result = space.commitJournalTransaction(state);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::UnknownError);
+
+    std::filesystem::permissions(roDir, originalPerms, ec);
+    CHECK_FALSE(ec);
+    std::filesystem::remove_all(tempRoot, ec);
+}
+
 TEST_CASE("commitJournalTransaction reports persistence open failures") {
     UndoableSpace space{std::make_unique<PathSpace>(), {}};
     UndoJournalRootState state;
