@@ -519,6 +519,125 @@ TEST_CASE("Leaf out glob ignores empty matches") {
     CHECK(err->code == Error::Code::NoSuchPath);
 }
 
+TEST_CASE("Leaf out glob reports type mismatch when no match succeeds") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    int value = 7;
+    leaf.in(Iterator{"/alpha"}, InputData{value}, ret);
+    leaf.in(Iterator{"/beta"}, InputData{value}, ret);
+    REQUIRE(ret.errors.empty());
+
+    double outValue = 0.0;
+    InputMetadata meta{InputMetadataT<double>{}};
+
+    auto err = leaf.out(Iterator{"/a*"}, meta, &outValue, false);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::InvalidType);
+}
+
+TEST_CASE("Leaf out span reader uses POD payload") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    leaf.in(Iterator{"/node"}, InputData{1}, ret);
+    leaf.in(Iterator{"/node"}, InputData{2}, ret);
+    REQUIRE(ret.errors.empty());
+
+    std::size_t count = 0;
+    int         sum   = 0;
+    InputMetadata meta{InputMetadataT<int>{}};
+    meta.spanReader = [&](void const* data, std::size_t n) {
+        count = n;
+        auto ints = static_cast<int const*>(data);
+        if (n >= 2) {
+            sum = ints[0] + ints[1];
+        } else if (n == 1) {
+            sum = ints[0];
+        }
+    };
+
+    auto err = leaf.out(Iterator{"/node"}, meta, nullptr, false);
+    CHECK_FALSE(err.has_value());
+    CHECK(count == 2);
+    CHECK(sum == 3);
+}
+
+TEST_CASE("Leaf out span mutator edits POD payload") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    leaf.in(Iterator{"/node"}, InputData{3}, ret);
+    leaf.in(Iterator{"/node"}, InputData{4}, ret);
+    REQUIRE(ret.errors.empty());
+
+    InputMetadata meta{InputMetadataT<int>{}};
+    meta.spanMutator = [&](void* data, std::size_t n) {
+        auto ints = static_cast<int*>(data);
+        if (n > 0) {
+            ints[0] = 30;
+        }
+        if (n > 1) {
+            ints[1] = 40;
+        }
+    };
+
+    auto err = leaf.out(Iterator{"/node"}, meta, nullptr, false);
+    CHECK_FALSE(err.has_value());
+
+    int outValue = 0;
+    InputMetadata readMeta{InputMetadataT<int>{}};
+    auto first = leaf.out(Iterator{"/node"}, readMeta, &outValue, true);
+    CHECK_FALSE(first.has_value());
+    CHECK(outValue == 30);
+    auto second = leaf.out(Iterator{"/node"}, readMeta, &outValue, true);
+    CHECK_FALSE(second.has_value());
+    CHECK(outValue == 40);
+}
+
+TEST_CASE("Leaf out indexed upgrades POD payload to NodeData") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    leaf.in(Iterator{"/node"}, InputData{9}, ret);
+    leaf.in(Iterator{"/node"}, InputData{11}, ret);
+    REQUIRE(ret.errors.empty());
+
+    int outValue = 0;
+    InputMetadata meta{InputMetadataT<int>{}};
+    auto err = leaf.out(Iterator{"/node[0]"}, meta, &outValue, false);
+    CHECK_FALSE(err.has_value());
+    CHECK(outValue == 9);
+
+    Node* child = leaf.rootNode().getChild("node");
+    REQUIRE(child != nullptr);
+    std::lock_guard<std::mutex> guard(child->payloadMutex);
+    CHECK(child->podPayload == nullptr);
+    CHECK(child->data != nullptr);
+}
+
+TEST_CASE("Leaf replaceExistingPayload clears generic payload") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    std::string first = "alpha";
+    leaf.in(Iterator{"/node"}, InputData{first}, ret);
+    REQUIRE(ret.errors.empty());
+
+    std::string second = "beta";
+    InputData replace{second};
+    replace.replaceExistingPayload = true;
+    InsertReturn replaceRet;
+    leaf.in(Iterator{"/node"}, replace, replaceRet);
+    REQUIRE(replaceRet.errors.empty());
+
+    InputMetadata meta{InputMetadataT<std::string>{}};
+    std::string out;
+    auto err = leaf.out(Iterator{"/node"}, meta, &out, true);
+    CHECK_FALSE(err.has_value());
+    CHECK(out == "beta");
+}
+
 TEST_CASE("Leaf in reports missing nested index during traversal") {
     Leaf         leaf;
     InsertReturn ret;
