@@ -267,6 +267,19 @@ TEST_CASE("shutdown clears queued tasks when no workers are active") {
     CHECK(pool.tasks.empty());
 }
 
+TEST_CASE("workerFunction resizes metadata for high indices") {
+    TaskPool pool(1);
+    pool.shutdown();
+
+    pool.workerThreadIds.clear();
+    pool.activeWorkers.store(1, std::memory_order_relaxed);
+
+    std::thread worker([&] { pool.workerFunction(5); });
+    worker.join();
+
+    CHECK(pool.workerThreadIds.size() >= 6);
+}
+
 TEST_CASE("traceCounter records counter events when tracing is enabled") {
     TaskPool pool(1);
     pool.enableTrace("trace_unused.json");
