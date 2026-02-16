@@ -194,8 +194,33 @@ TEST_CASE("UndoableSpace interpretSteps normalizes step counts") {
     InputMetadata metaI64{InputMetadataT<std::int64_t>{}};
     CHECK(space.interpretSteps(InputData{&neg, metaI64}) == 1);
 
+    unsigned int stepsUnsigned = 6;
+    InputMetadata metaUnsigned{InputMetadataT<unsigned int>{}};
+    CHECK(space.interpretSteps(InputData{&stepsUnsigned, metaUnsigned}) == 6);
+
+    double unknownType = 2.5;
+    InputMetadata metaDouble{InputMetadataT<double>{}};
+    CHECK(space.interpretSteps(InputData{&unknownType, metaDouble}) == 1);
+
     InputMetadata emptyMeta;
     CHECK(space.interpretSteps(InputData{nullptr, emptyMeta}) == 1);
+}
+
+TEST_CASE("UndoableSpace applyJournalSteps validates state and step count") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+
+    auto missing = space.applyJournalSteps({}, 1, true);
+    CHECK_FALSE(missing.has_value());
+    CHECK(missing.error().code == Error::Code::NotFound);
+
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}).has_value());
+    REQUIRE(space.insert("/doc/value", 1).errors.empty());
+
+    auto stateIt = space.journalRoots.find("/doc");
+    REQUIRE(stateIt != space.journalRoots.end());
+
+    auto result = space.applyJournalSteps(stateIt->second, 0, true);
+    CHECK(result.has_value());
 }
 
 TEST_CASE("UndoableSpace computeJournalLiveBytes returns zero without backend") {
@@ -203,6 +228,18 @@ TEST_CASE("UndoableSpace computeJournalLiveBytes returns zero without backend") 
     UndoJournalRootState state;
     state.components = {"root"};
     CHECK(space.computeJournalLiveBytes(state) == 0);
+}
+
+TEST_CASE("UndoableSpace captureJournalNodeData returns empty for missing nodes") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    auto stateIt = space.journalRoots.find("/doc");
+    REQUIRE(stateIt != space.journalRoots.end());
+
+    auto result = space.captureJournalNodeData(*stateIt->second, {"missing"});
+    REQUIRE(result.has_value());
+    CHECK_FALSE(result.value().has_value());
 }
 
 TEST_CASE("UndoableSpace captureJournalNodeData reports missing backend") {
@@ -230,6 +267,62 @@ TEST_CASE("UndoableSpace computeJournalLiveBytes reports subtree payloads") {
     UndoJournalRootState missing;
     missing.components = {"missing"};
     CHECK(space.computeJournalLiveBytes(missing) == 0);
+}
+
+TEST_CASE("UndoableSpace performJournalStep reports path and payload errors") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+
+    UndoJournalRootState state;
+    state.rootPath = "/root";
+    state.components = {"root"};
+
+    UndoJournal::JournalEntry badPath = makeSavefileEntry("/other");
+    state.journal.append(badPath, false);
+
+    auto badPathResult = space.performJournalStep(state, true, "undo", "Nothing to undo");
+    CHECK_FALSE(badPathResult.has_value());
+    CHECK(badPathResult.error().code == Error::Code::InvalidPermissions);
+
+    state.journal.clear();
+
+    UndoJournal::JournalEntry badPayload = makeSavefileEntry("/root/child");
+    badPayload.inverseValue.present = true;
+    badPayload.inverseValue.bytes = {std::byte{0x00}};
+    state.journal.append(badPayload, false);
+
+    auto badPayloadResult = space.performJournalStep(state, true, "undo", "Nothing to undo");
+    CHECK_FALSE(badPayloadResult.has_value());
+    CHECK(badPayloadResult.error().code == Error::Code::MalformedInput);
+}
+
+TEST_CASE("UndoableSpace performJournalStep surfaces apply failures") {
+    UndoableSpace space{std::unique_ptr<PathSpaceBase>{}, {}};
+
+    UndoJournalRootState state;
+    state.rootPath = "/root";
+    state.components = {"root"};
+
+    UndoJournal::JournalEntry entry = makeSavefileEntry("/root/child");
+    entry.value.present = false;
+    entry.inverseValue.present = false;
+    state.journal.append(entry, false);
+
+    auto result = space.performJournalStep(state, true, "undo", "Nothing to undo");
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::UnknownError);
+}
+
+TEST_CASE("UndoableSpace handleJournalControlInsert reports missing state") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    UndoableSpace::MatchedJournalRoot matched;
+    matched.state = nullptr;
+
+    InputMetadata meta;
+    auto ret = space.handleJournalControlInsert(matched,
+                                                std::string(UndoPaths::CommandUndo),
+                                                InputData{nullptr, meta});
+    CHECK_FALSE(ret.errors.empty());
+    CHECK(ret.errors.front().code == Error::Code::UnknownError);
 }
 
 TEST_CASE("UndoableSpace readHistoryStatsValue handles last operation and unsupported entries") {
