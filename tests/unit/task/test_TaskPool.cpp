@@ -101,6 +101,30 @@ TEST_CASE("TaskPool Misc") {
         CHECK(counter.load() == 0);
     }
 
+    SUBCASE("addTask reports expired tasks") {
+        TaskPool pool(1);
+
+        std::weak_ptr<Task> expired;
+        {
+            auto task = Task::Create([](Task const&, bool) {});
+            expired = task;
+        }
+
+        auto err = pool.addTask(std::move(expired));
+        CHECK(err.has_value());
+        CHECK(err->code == Error::Code::UnknownError);
+    }
+
+    SUBCASE("addTask refuses when shutting down") {
+        TaskPool pool(1);
+        pool.shutdown();
+
+        auto task = Task::Create([](Task const&, bool) {});
+        auto err = pool.addTask(task);
+        CHECK(err.has_value());
+        CHECK(err->code == Error::Code::UnknownError);
+    }
+
     SUBCASE("Trace output writes file") {
         TaskPool         pool(1);
         std::atomic<bool> done{false};
