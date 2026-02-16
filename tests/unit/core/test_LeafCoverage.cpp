@@ -98,6 +98,55 @@ struct FailingPodPayload final : PodPayloadBase {
     InputMetadata meta;
 };
 
+struct RejectingPodPayload final : PodPayloadBase {
+    std::type_info const& type() const noexcept override { return typeid(int); }
+    bool matches(std::type_info const& ti) const noexcept override { return ti == typeid(int); }
+    std::size_t size() const noexcept override { return 0U; }
+    std::size_t elementSize() const noexcept override { return sizeof(int); }
+    std::size_t headIndex() const noexcept override { return 0U; }
+    std::size_t publishedTail() const noexcept override { return 0U; }
+    InputMetadata const& podMetadata() const noexcept override { return meta; }
+    bool pushValue(void const*) override {
+        pushCalled = true;
+        return false;
+    }
+    std::optional<Error> readTo(void*) const override { return std::nullopt; }
+    std::optional<Error> takeTo(void*) override {
+        return Error{Error::Code::NoObjectFound, "No data available"};
+    }
+    std::optional<Error> withSpanRaw(std::function<void(void const*, std::size_t)> const& fn) const override {
+        fn(nullptr, 0);
+        return std::nullopt;
+    }
+    std::optional<Error> withSpanMutableRaw(std::function<void(void*, std::size_t)> const& fn) override {
+        fn(nullptr, 0);
+        return std::nullopt;
+    }
+    std::optional<Error> withSpanRawFrom(std::size_t,
+                                         std::function<void(void const*, std::size_t)> const& fn) const override {
+        fn(nullptr, 0);
+        return std::nullopt;
+    }
+    std::optional<Error> withSpanMutableRawFrom(std::size_t,
+                                                std::function<void(void*, std::size_t)> const& fn) override {
+        fn(nullptr, 0);
+        return std::nullopt;
+    }
+    std::optional<Error> popCount(std::size_t) override { return std::nullopt; }
+    bool freezeForUpgrade() override { return true; }
+    std::optional<Reservation> reserveOne() override { return std::nullopt; }
+    void publishOne(std::size_t) override {}
+    void rollbackOne(std::size_t) override {}
+    std::optional<ReservationSpan> reserveSpan(std::size_t) override { return std::nullopt; }
+    void publishSpan(std::size_t, std::size_t) override {}
+    void rollbackSpan(std::size_t, std::size_t) override {}
+    std::optional<std::size_t> packSpanStart() const noexcept override { return std::nullopt; }
+    void markPackSpanStart(std::size_t) noexcept override {}
+
+    bool pushCalled = false;
+    InputMetadata meta{InputMetadataT<int>{}};
+};
+
 struct RetargetSpace final : PathSpaceBase {
     RetargetSpace() {
         ret.retargets.push_back(InsertReturn::RetargetRequest{this, "/child"});
@@ -392,6 +441,107 @@ TEST_CASE("Leaf in rejects podPreferred metadata without factory") {
     CHECK(ret.errors.front().code == Error::Code::InvalidType);
     CHECK(ret.errors.front().message ==
           std::optional<std::string>{"POD fast path unavailable for this node"});
+}
+
+TEST_CASE("Leaf in reports POD migration failure on type mismatch") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    auto& child = leaf.rootNode().getOrCreateChild("node");
+    child.podPayload = std::make_shared<FailingPodPayload>(MigrationFailureMode::TakeError);
+
+    double value = 1.0;
+    leaf.in(Iterator{"/node"}, InputData{value}, ret);
+    REQUIRE_FALSE(ret.errors.empty());
+    bool sawUpgradeError = false;
+    bool sawTakeError = false;
+    for (auto const& err : ret.errors) {
+        sawUpgradeError = sawUpgradeError || (err.code == Error::Code::InvalidType);
+        sawTakeError = sawTakeError || (err.code == Error::Code::UnknownError);
+    }
+    CHECK(sawUpgradeError);
+    CHECK(sawTakeError);
+}
+
+TEST_CASE("Leaf in falls back when POD payload rejects push") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    auto payload = std::make_shared<RejectingPodPayload>();
+    auto& child = leaf.rootNode().getOrCreateChild("node");
+    child.podPayload = payload;
+
+    int value = 7;
+    leaf.in(Iterator{"/node"}, InputData{value}, ret);
+    CHECK(ret.errors.empty());
+    CHECK(ret.nbrValuesInserted == 1);
+    CHECK(payload->pushCalled);
+
+    std::lock_guard<std::mutex> guard(child.payloadMutex);
+    CHECK(child.data != nullptr);
+    CHECK(child.podPayload == nullptr);
+}
+
+TEST_CASE("Leaf out reports POD type mismatch") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    int value = 4;
+    leaf.in(Iterator{"/node"}, InputData{value}, ret);
+    REQUIRE(ret.errors.empty());
+
+    double outValue = 0.0;
+    InputMetadata mismatchMeta{InputMetadataT<double>{}};
+    auto err = leaf.out(Iterator{"/node"}, mismatchMeta, &outValue, false);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::InvalidType);
+}
+
+TEST_CASE("Leaf out glob reports no matches") {
+    Leaf         leaf;
+    int          outValue = 0;
+    InputMetadata meta{InputMetadataT<int>{}};
+
+    auto err = leaf.out(Iterator{"/missing*"}, meta, &outValue, false);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::NoSuchPath);
+}
+
+TEST_CASE("Leaf out glob ignores empty matches") {
+    Leaf         leaf;
+    int          outValue = 0;
+    InputMetadata meta{InputMetadataT<int>{}};
+
+    leaf.rootNode().getOrCreateChild("empty");
+
+    auto err = leaf.out(Iterator{"/empty*"}, meta, &outValue, false);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::NoSuchPath);
+}
+
+TEST_CASE("Leaf in reports missing nested index during traversal") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    int value = 3;
+    leaf.in(Iterator{"/parent"}, InputData{value}, ret);
+    REQUIRE(ret.errors.empty());
+
+    InsertReturn nestedRet;
+    leaf.in(Iterator{"/parent[1]/child"}, InputData{value}, nestedRet);
+    REQUIRE_FALSE(nestedRet.errors.empty());
+    CHECK(nestedRet.errors.front().code == Error::Code::NoSuchPath);
+}
+
+TEST_CASE("Leaf span out reports missing child") {
+    Leaf         leaf;
+    InputMetadata meta{InputMetadataT<int>{}};
+    meta.spanReader = [](void const*, std::size_t) {};
+
+    int outValue = 0;
+    auto err = leaf.out(Iterator{"/missing"}, meta, &outValue, false);
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::NoSuchPath);
 }
 
 TEST_CASE("Leaf indexed nested inserts are rejected") {
