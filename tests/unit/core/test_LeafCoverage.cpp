@@ -2,6 +2,7 @@
 
 #include "core/Leaf.hpp"
 #include "core/InsertReturn.hpp"
+#include "core/NodeData.hpp"
 #include "path/Iterator.hpp"
 #include "type/InputData.hpp"
 #include "type/InputMetadataT.hpp"
@@ -109,6 +110,42 @@ TEST_CASE("Leaf spanPackConst validates concrete paths") {
     auto skippedResult = leaf.spanPackConst(std::span<const std::string>{skippedPaths}, podMeta, Out{}, callback);
     REQUIRE_FALSE(skippedResult.has_value());
     CHECK(skippedResult.error().code == Error::Code::NoSuchPath);
+}
+
+TEST_CASE("Leaf insertSerialized rejects when POD payload already exists") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    int value = 8;
+    leaf.in(Iterator{"/root"}, InputData{value}, ret);
+    REQUIRE(ret.errors.empty());
+    CHECK(ret.nbrValuesInserted == 1);
+
+    InputMetadata meta{InputMetadataT<int>{}};
+    NodeData payload;
+    REQUIRE_FALSE(payload.serialize(InputData{&value, meta}).has_value());
+
+    InsertReturn serializedRet;
+    leaf.insertSerialized(Iterator{"/root"}, payload, serializedRet);
+    REQUIRE_FALSE(serializedRet.errors.empty());
+    CHECK(serializedRet.errors.front().code == Error::Code::InvalidType);
+    CHECK(serializedRet.errors.front().message ==
+          std::optional<std::string>{"Node already holds POD fast-path payload"});
+    CHECK(serializedRet.nbrValuesInserted == 0);
+}
+
+TEST_CASE("Leaf pod insert reports missing input pointer") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    int value = 13;
+    InputData input{value};
+    input.obj = nullptr;
+
+    leaf.in(Iterator{"/root"}, input, ret);
+    REQUIRE_FALSE(ret.errors.empty());
+    CHECK(ret.errors.front().code == Error::Code::InvalidType);
+    CHECK(ret.errors.front().message == std::optional<std::string>{"Input pointer missing"});
 }
 
 TEST_SUITE_END();
