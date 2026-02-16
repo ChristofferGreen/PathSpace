@@ -17,6 +17,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
 using namespace SP;
 using namespace SP::History;
@@ -59,6 +60,14 @@ struct EnvVarGuard {
     std::string                    name;
     std::optional<std::string>     previous;
 };
+
+auto makeTempJournalPath(std::string_view label) -> std::filesystem::path {
+    auto suffix = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    auto dir = std::filesystem::temp_directory_path()
+               / (std::string("journal_") + std::string(label) + "_" + suffix);
+    std::filesystem::create_directories(dir);
+    return dir / "journal.log";
+}
 
 } // namespace
 
@@ -463,10 +472,7 @@ TEST_CASE("UndoableSpace loadJournalPersistence replays valid entries") {
     state.rootPath = "/doc";
     state.components = {"doc"};
 
-    auto suffix = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
-    auto dir = std::filesystem::temp_directory_path() / ("journal_bad_root_" + suffix);
-    std::filesystem::create_directories(dir);
-    state.journalPath = dir / "journal.log";
+    state.journalPath = makeTempJournalPath("replay");
 
     JournalEntry entry;
     entry.path = "/doc/value";
@@ -482,6 +488,76 @@ TEST_CASE("UndoableSpace loadJournalPersistence replays valid entries") {
     CHECK(result.has_value());
     CHECK(state.journal.size() == 1);
     CHECK(state.journal.entryAt(0).path == "/doc/value");
+}
+
+TEST_CASE("UndoableSpace loadJournalPersistence surfaces decode failures") {
+    using namespace SP::History::UndoJournal;
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    UndoJournalRootState state;
+    state.persistenceEnabled = true;
+    state.rootPath = "/doc";
+    state.components = {"doc"};
+    state.journalPath = makeTempJournalPath("bad_payload");
+
+    JournalEntry entry;
+    entry.path = "/doc/value";
+    entry.value.present = true;
+
+    {
+        JournalFileWriter writer(state.journalPath);
+        REQUIRE(writer.open(false).has_value());
+        REQUIRE(writer.append(entry).has_value());
+    }
+
+    auto result = space.loadJournalPersistence(state);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::MalformedInput);
+}
+
+TEST_CASE("UndoableSpace loadJournalPersistence rejects entries outside root") {
+    using namespace SP::History::UndoJournal;
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    UndoJournalRootState state;
+    state.persistenceEnabled = true;
+    state.rootPath = "/doc";
+    state.components = {"doc"};
+    state.journalPath = makeTempJournalPath("bad_root");
+
+    JournalEntry entry;
+    entry.path = "/other/value";
+
+    {
+        JournalFileWriter writer(state.journalPath);
+        REQUIRE(writer.open(false).has_value());
+        REQUIRE(writer.append(entry).has_value());
+    }
+
+    auto result = space.loadJournalPersistence(state);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::InvalidPermissions);
+}
+
+TEST_CASE("UndoableSpace loadJournalPersistence reports missing backend") {
+    using namespace SP::History::UndoJournal;
+    UndoableSpace space{std::unique_ptr<PathSpaceBase>{}, {}};
+    UndoJournalRootState state;
+    state.persistenceEnabled = true;
+    state.rootPath = "/doc";
+    state.components = {"doc"};
+    state.journalPath = makeTempJournalPath("no_backend");
+
+    JournalEntry entry;
+    entry.path = "/doc/value";
+
+    {
+        JournalFileWriter writer(state.journalPath);
+        REQUIRE(writer.open(false).has_value());
+        REQUIRE(writer.append(entry).has_value());
+    }
+
+    auto result = space.loadJournalPersistence(state);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::UnknownError);
 }
 
 TEST_CASE("UndoableSpace updateJournalDiskTelemetry zeros when disabled") {
