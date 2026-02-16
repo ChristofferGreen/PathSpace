@@ -1,7 +1,9 @@
 #include "third_party/doctest.h"
 #include <pathspace/PathSpace.hpp>
 #define private public
+#define protected public
 #include <pathspace/layer/SnapshotCachedPathSpace.hpp>
+#undef protected
 #undef private
 #include <pathspace/type/InputData.hpp>
 #include <algorithm>
@@ -9,6 +11,21 @@
 
 using namespace SP;
 using namespace std::chrono_literals;
+
+namespace {
+struct TrackingSpace final : PathSpace {
+    bool        shutdownCalled = false;
+    std::string lastNotify;
+
+    auto shutdown() -> void override {
+        shutdownCalled = true;
+    }
+
+    auto notify(std::string const& notificationPath) -> void override {
+        lastNotify = notificationPath;
+    }
+};
+} // namespace
 
 TEST_SUITE_BEGIN("pathspace.snapshot_cache");
 
@@ -54,6 +71,62 @@ TEST_CASE("Snapshot cache trySnapshotRead handles empty and relative paths") {
 
     auto after = cached.snapshotMetrics();
     CHECK(after.misses >= before.misses + 2);
+}
+
+TEST_CASE("Snapshot cache trySnapshotRead returns false before configuration") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    InputMetadata meta{InputMetadataT<int>{}};
+    int outValue = 0;
+
+    CHECK_FALSE(cached.trySnapshotRead(Iterator{"/missing"}, meta, Out{}, &outValue));
+    auto metrics = cached.snapshotMetrics();
+    CHECK(metrics.hits == 0);
+    CHECK(metrics.misses == 0);
+}
+
+TEST_CASE("Snapshot cache listChildrenCanonical handles missing backing and invalid paths") {
+    SnapshotCachedPathSpace missing{std::shared_ptr<PathSpaceBase>{}};
+    CHECK(missing.listChildrenCanonical("/anything").empty());
+    CHECK_FALSE(missing.typedPeekFuture("/anything").has_value());
+
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+    CHECK(cached.listChildrenCanonical("relative/path").empty());
+}
+
+TEST_CASE("Snapshot cache shutdown and notify forward to backing") {
+    auto backing = std::make_shared<TrackingSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    cached.notify("/notify");
+    CHECK(backing->lastNotify == "/notify");
+
+    cached.shutdown();
+    CHECK(backing->shutdownCalled);
+}
+
+TEST_CASE("Snapshot cache synchronous rebuild happens on read when enabled") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/value", 5).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 0ms,
+        .maxDirtyRoots = 8,
+        .allowSynchronousRebuild = true,
+    });
+    cached.stopSnapshotWorker();
+
+    InputMetadata meta{InputMetadataT<int>{}};
+    int outValue = 0;
+    CHECK(cached.trySnapshotRead(Iterator{"/value"}, meta, Out{}, &outValue));
+    CHECK(outValue == 5);
+
+    auto metrics = cached.snapshotMetrics();
+    CHECK(metrics.rebuilds >= 1);
 }
 
 TEST_CASE("Snapshot cache markSnapshotDirty widens roots") {
