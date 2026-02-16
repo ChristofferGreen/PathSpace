@@ -112,6 +112,28 @@ TEST_CASE("PathSpace listChildren enumerates child names") {
         CHECK(missingNames->names.empty());
     }
 
+    SUBCASE("Nested spaces that fail listing deeper paths return empty results") {
+        auto failing = std::make_unique<FailingChildrenSpace>();
+        REQUIRE(space.insert("/mount", std::move(failing)).nbrSpacesInserted == 1);
+
+        auto names = space.read<Children>(ConcretePathStringView{"/mount/inner"});
+        REQUIRE(names.has_value());
+        CHECK(names->names.empty());
+    }
+
+    SUBCASE("Indexed nested spaces that fail listing deeper paths return empty results") {
+        auto okNested = std::make_unique<PathSpace>();
+        REQUIRE(okNested->insert("/inner/ok", 1).nbrValuesInserted == 1);
+        auto failing = std::make_unique<FailingChildrenSpace>();
+
+        REQUIRE(space.insert("/mount", std::move(okNested)).nbrSpacesInserted == 1);
+        REQUIRE(space.insert("/mount", std::move(failing)).nbrSpacesInserted == 1);
+
+        auto names = space.read<Children>(ConcretePathStringView{"/mount[1]/inner"});
+        REQUIRE(names.has_value());
+        CHECK(names->names.empty());
+    }
+
     SUBCASE("Children can be read through alias and trellis layers") {
         auto backing = std::make_shared<PathSpace>();
         REQUIRE(backing->insert("/root/a", 1).nbrValuesInserted == 1);

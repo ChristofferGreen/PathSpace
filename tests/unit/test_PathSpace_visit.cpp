@@ -1119,6 +1119,29 @@ TEST_CASE("PathSpace visit stops traversal when visitor requests Stop") {
     CHECK(seen.front() == "/");
 }
 
+TEST_CASE("PathSpace visit snapshot reports empty nodes") {
+    PathSpace space;
+
+    std::optional<ValueSnapshot> snapshot;
+    auto result = space.visit(
+        [&](PathEntry const& entry, ValueHandle& handle) {
+            if (entry.path == "/") {
+                auto snap = handle.snapshot();
+                REQUIRE(snap.has_value());
+                snapshot = snap.value();
+                return VisitControl::Stop;
+            }
+            return VisitControl::Continue;
+        });
+    REQUIRE(result);
+    REQUIRE(snapshot.has_value());
+    CHECK(snapshot->queueDepth == 0);
+    CHECK(snapshot->types.empty());
+    CHECK_FALSE(snapshot->hasExecutionPayload);
+    CHECK_FALSE(snapshot->hasSerializedPayload);
+    CHECK(snapshot->rawBufferBytes == 0);
+}
+
 TEST_CASE("PathSpace visit skips nested spaces when depth budget is exhausted") {
     PathSpace space;
     auto nested = std::make_unique<PathSpace>();

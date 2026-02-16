@@ -159,6 +159,33 @@ TEST_CASE("PathSpace Read") {
         CHECK_FALSE(ret.has_value());
     }
 
+    SUBCASE("Shutdown waits for a blocking read to exit") {
+        struct ShutdownSpace final : PathSpace {
+            using PathSpace::shutdown;
+        };
+
+        ShutdownSpace shutdownSpace;
+        std::atomic<bool> started{false};
+        std::atomic<bool> finished{false};
+
+        std::thread reader([&] {
+            started.store(true, std::memory_order_release);
+            auto result = shutdownSpace.read<int>("/wait/path", Block{200ms});
+            finished.store(true, std::memory_order_release);
+            CHECK_FALSE(result.has_value());
+            CHECK(result.error().code == Error::Code::Timeout);
+        });
+
+        while (!started.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
+        std::this_thread::sleep_for(10ms);
+        shutdownSpace.shutdown();
+
+        reader.join();
+        CHECK(finished.load(std::memory_order_acquire));
+    }
+
     SUBCASE("Read with zero timeout clamps to default") {
         std::optional<std::string> prev;
         if (const char* prevEnv = std::getenv("PATHSPACE_TEST_TIMEOUT_MS")) {
