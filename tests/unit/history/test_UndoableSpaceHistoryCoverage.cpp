@@ -496,6 +496,21 @@ TEST_CASE("UndoableSpace updateJournalDiskTelemetry zeros when disabled") {
     CHECK(state.telemetry.diskEntries == 0);
 }
 
+TEST_CASE("UndoableSpace persistence helpers no-op when disabled") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    UndoJournalRootState state;
+    state.persistenceEnabled = false;
+
+    auto setup = space.ensureJournalPersistenceSetup(state);
+    CHECK(setup.has_value());
+
+    auto load = space.loadJournalPersistence(state);
+    CHECK(load.has_value());
+
+    auto compact = space.compactJournalPersistence(state, false);
+    CHECK(compact.has_value());
+}
+
 TEST_CASE("UndoableSpace persistence root helpers honor env override") {
     UndoableSpace space{std::make_unique<PathSpace>(), {}};
     EnvVarGuard envGuard("PATHSPACE_HISTORY_ROOT");
