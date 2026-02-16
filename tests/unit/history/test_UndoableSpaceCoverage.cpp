@@ -5,6 +5,7 @@
 #include "path/ConcretePath.hpp"
 #include "third_party/doctest.h"
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdlib>
@@ -301,6 +302,18 @@ TEST_CASE("UndoableSpace rejects invalid persistence namespace") {
     CHECK(enable.error().code == Error::Code::InvalidPermissions);
 }
 
+TEST_CASE("UndoableSpace rejects dot persistence namespace tokens") {
+    HistoryOptions opts;
+    opts.persistHistory = true;
+    opts.useMutationJournal = true;
+    opts.persistenceNamespace = ".";
+
+    auto space = makeUndoableSpace();
+    auto enable = space->enableHistory(ConcretePathStringView{"/doc"}, opts);
+    CHECK_FALSE(enable.has_value());
+    CHECK(enable.error().code == Error::Code::InvalidPermissions);
+}
+
 TEST_CASE("UndoableSpace uses default persistence root when configured") {
     auto persistenceRoot = tempFile("history_default_root");
     std::filesystem::create_directories(persistenceRoot);
@@ -367,6 +380,22 @@ TEST_CASE("exportHistorySavefile blocks active transaction") {
     CHECK(tx.commit().has_value());
 }
 
+TEST_CASE("exportHistorySavefile reports write failures") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+    REQUIRE(space->insert("/doc/value", 1).errors.empty());
+
+    auto dirPath = tempFile("export_dir");
+    std::filesystem::create_directories(dirPath);
+
+    auto result = space->exportHistorySavefile(ConcretePathStringView{"/doc"}, dirPath, false);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::UnknownError);
+
+    std::error_code ec;
+    std::filesystem::remove_all(dirPath, ec);
+}
+
 TEST_CASE("importHistorySavefile reports missing history root") {
     Savefile::Document doc;
     doc.rootPath = "/doc";
@@ -380,6 +409,29 @@ TEST_CASE("importHistorySavefile reports missing history root") {
     auto result = space->importHistorySavefile(ConcretePathStringView{"/doc"}, path, true);
     CHECK_FALSE(result.has_value());
     CHECK(result.error().code == Error::Code::NotFound);
+}
+
+TEST_CASE("importHistorySavefile reports missing savefile") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    auto path = tempFile("import_missing_file.bin");
+    auto result = space->importHistorySavefile(ConcretePathStringView{"/doc"}, path, true);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::NotFound);
+}
+
+TEST_CASE("importHistorySavefile rejects malformed savefile data") {
+    auto space = makeUndoableSpace();
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    std::array<std::byte, 3> bytes{std::byte{0x00}, std::byte{0x01}, std::byte{0x02}};
+    auto path = tempFile("import_malformed.bin");
+    writeBytes(path, std::span<const std::byte>(bytes.data(), bytes.size()));
+
+    auto result = space->importHistorySavefile(ConcretePathStringView{"/doc"}, path, true);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::MalformedInput);
 }
 
 TEST_CASE("importHistorySavefile rejects root mismatch") {
@@ -456,6 +508,30 @@ TEST_CASE("importHistorySavefile rejects malformed payloads") {
     auto result = space->importHistorySavefile(ConcretePathStringView{"/doc"}, path, true);
     CHECK_FALSE(result.has_value());
     CHECK(result.error().code == Error::Code::MalformedInput);
+}
+
+TEST_CASE("importHistorySavefile rejects undo counts larger than entry lists") {
+    auto entry = Journal::JournalEntry{};
+    entry.operation            = Journal::OperationKind::Insert;
+    entry.path                 = "/doc/value";
+    entry.value.present        = false;
+    entry.inverseValue.present = false;
+    entry.sequence             = 0;
+
+    auto doc = makeDocumentWithEntries("/doc", {entry}, 2);
+    auto encoded = Savefile::encode(doc);
+    REQUIRE(encoded);
+
+    auto path = tempFile("import_bad_undo_count.bin");
+    writeBytes(path, std::span<const std::byte>(*encoded));
+
+    auto space = makeUndoableSpace();
+    REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+    auto result = space->importHistorySavefile(ConcretePathStringView{"/doc"}, path, true);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::UnknownError);
+    CHECK(result.error().message == std::optional<std::string>{"Undo count exceeds total entries"});
 }
 
 TEST_CASE("importHistorySavefile defaults ram cache when zero") {

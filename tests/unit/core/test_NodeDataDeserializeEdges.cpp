@@ -33,6 +33,17 @@ auto throwingDeserializePop(void*, SlidingBuffer&) -> void {
     throw std::runtime_error("boom-pop");
 }
 
+NodeData* gCorruptNode = nullptr;
+
+auto corruptingDeserializePop(void* obj, SlidingBuffer& buffer) -> void {
+    if (auto pop = InputMetadataT<int>::deserializePop) {
+        pop(obj, buffer);
+    }
+    if (gCorruptNode) {
+        gCorruptNode->valueSizes.clear();
+    }
+}
+
 struct NestedHookGuard {
     explicit NestedHookGuard(std::function<std::optional<Error>()> hook) {
         NodeDataTestHelper::setNestedSerializeHook(std::move(hook));
@@ -195,6 +206,25 @@ TEST_CASE("deserializeIndexed reports exceptions from pop deserializer") {
     CHECK(err->message == std::optional<std::string>{"boom-pop"});
 }
 
+TEST_CASE("deserializeIndexed reports missing length metadata after pop mutation") {
+    NodeData node;
+    REQUIRE_FALSE(node.serialize(InputData{1}).has_value());
+    REQUIRE_FALSE(node.serialize(InputData{2}).has_value());
+
+    InputMetadata meta{InputMetadataT<int>{}};
+    meta.deserializePop = &corruptingDeserializePop;
+    gCorruptNode = &node;
+
+    int out = 0;
+    auto err = node.deserializeIndexed(1, meta, true, &out);
+
+    gCorruptNode = nullptr;
+
+    REQUIRE(err.has_value());
+    CHECK(err->code == Error::Code::MalformedInput);
+    CHECK(err->message == std::optional<std::string>{"Serialized payload missing value length metadata"});
+}
+
 TEST_CASE("deserializeIndexed reads second value without popping") {
     NodeData node;
     REQUIRE_FALSE(node.serialize(InputData{1}).has_value());
@@ -347,6 +377,17 @@ TEST_CASE("retargetTasks rewrites notification prefixes") {
         node.tasks.push_back(task);
         node.retargetTasks({}, nullptr, "/old", "/root");
         CHECK(task->notificationPath == "/root/events/update");
+    }
+
+    {
+        NodeData node;
+        auto task = Task::Create(std::weak_ptr<NotificationSink>{},
+                                 "",
+                                 [] { return 1; },
+                                 ExecutionCategory::Immediate);
+        node.tasks.push_back(task);
+        node.retargetTasks({}, nullptr, "", "/root/");
+        CHECK(task->notificationPath == "/root/");
     }
 
     {
