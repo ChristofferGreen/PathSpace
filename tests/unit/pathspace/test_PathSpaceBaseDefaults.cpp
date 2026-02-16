@@ -10,6 +10,7 @@
 #include <string>
 #include "core/Node.hpp"
 #include "core/PathSpaceContext.hpp"
+#include "type/InputMetadataT.hpp"
 
 using namespace SP;
 
@@ -119,6 +120,21 @@ TEST_CASE("ValueHandle snapshot returns empty data for bare nodes") {
     CHECK_FALSE(snap->hasExecutionPayload);
     CHECK_FALSE(snap->hasSerializedPayload);
     CHECK(snap->rawBufferBytes == 0);
+}
+
+TEST_CASE("PathSpaceBase span pack defaults report not supported") {
+    BaseStub stub;
+    std::array<std::string, 1> paths{"/root"};
+    InputMetadata meta{InputMetadataT<int>{}};
+    Out options;
+
+    auto constResult = stub.callSpanPackConst(paths, meta, options);
+    REQUIRE_FALSE(constResult.has_value());
+    CHECK(constResult.error().code == Error::Code::NotSupported);
+
+    auto mutResult = stub.callSpanPackMut(paths, meta, options);
+    REQUIRE_FALSE(mutResult.has_value());
+    CHECK(mutResult.error().code == Error::Code::NotSupported);
 }
 
 TEST_CASE("PathSpaceBase creates default notification sink without context") {
