@@ -7,17 +7,112 @@
 #include "core/InsertReturn.hpp"
 #include "core/NodeData.hpp"
 #include "path/Iterator.hpp"
+#include "PathSpace.hpp"
 #include "type/DataCategory.hpp"
 #include "type/FunctionCategory.hpp"
 #include "type/InputData.hpp"
 #include "type/InputMetadataT.hpp"
 
 #include <array>
+#include <cstring>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
 
 using namespace SP;
+
+namespace {
+enum class MigrationFailureMode {
+    TakeError,
+    SerializeError
+};
+
+struct FailingPodPayload final : PodPayloadBase {
+    explicit FailingPodPayload(MigrationFailureMode modeIn, int valueIn = 1)
+        : mode(modeIn), value(valueIn), meta(InputMetadataT<int>{}) {
+        if (mode == MigrationFailureMode::SerializeError) {
+            meta.serialize = nullptr;
+        }
+    }
+
+    std::type_info const& type() const noexcept override { return typeid(int); }
+    bool matches(std::type_info const& ti) const noexcept override { return ti == typeid(int); }
+    std::size_t size() const noexcept override { return produced ? 0U : 1U; }
+    std::size_t elementSize() const noexcept override { return sizeof(int); }
+    std::size_t headIndex() const noexcept override { return 0U; }
+    std::size_t publishedTail() const noexcept override { return produced ? 1U : 0U; }
+    InputMetadata const& podMetadata() const noexcept override { return meta; }
+    bool pushValue(void const*) override { return false; }
+    std::optional<Error> readTo(void* out) const override {
+        if (out) {
+            std::memcpy(out, &value, sizeof(int));
+        }
+        return std::nullopt;
+    }
+    std::optional<Error> takeTo(void* out) override {
+        if (mode == MigrationFailureMode::TakeError) {
+            return Error{Error::Code::UnknownError, "PodPayload take failure"};
+        }
+        if (produced) {
+            return Error{Error::Code::NoObjectFound, "No data available"};
+        }
+        if (out) {
+            std::memcpy(out, &value, sizeof(int));
+        }
+        produced = true;
+        return std::nullopt;
+    }
+    std::optional<Error> withSpanRaw(std::function<void(void const*, std::size_t)> const& fn) const override {
+        fn(&value, 1);
+        return std::nullopt;
+    }
+    std::optional<Error> withSpanMutableRaw(std::function<void(void*, std::size_t)> const& fn) override {
+        fn(&value, 1);
+        return std::nullopt;
+    }
+    std::optional<Error> withSpanRawFrom(std::size_t,
+                                         std::function<void(void const*, std::size_t)> const& fn) const override {
+        fn(&value, 1);
+        return std::nullopt;
+    }
+    std::optional<Error> withSpanMutableRawFrom(std::size_t,
+                                                std::function<void(void*, std::size_t)> const& fn) override {
+        fn(&value, 1);
+        return std::nullopt;
+    }
+    std::optional<Error> popCount(std::size_t) override { return std::nullopt; }
+    bool freezeForUpgrade() override { return true; }
+    std::optional<Reservation> reserveOne() override { return std::nullopt; }
+    void publishOne(std::size_t) override {}
+    void rollbackOne(std::size_t) override {}
+    std::optional<ReservationSpan> reserveSpan(std::size_t) override { return std::nullopt; }
+    void publishSpan(std::size_t, std::size_t) override {}
+    void rollbackSpan(std::size_t, std::size_t) override {}
+    std::optional<std::size_t> packSpanStart() const noexcept override { return std::nullopt; }
+    void markPackSpanStart(std::size_t) noexcept override {}
+
+    MigrationFailureMode mode;
+    int value = 0;
+    bool produced = false;
+    InputMetadata meta;
+};
+
+struct RetargetSpace final : PathSpaceBase {
+    RetargetSpace() {
+        ret.retargets.push_back(InsertReturn::RetargetRequest{this, "/child"});
+    }
+
+    auto in(Iterator const&, InputData const&) -> InsertReturn override { return ret; }
+    auto out(Iterator const&, InputMetadata const&, Out const&, void*) -> std::optional<Error> override {
+        return Error{Error::Code::NotSupported, "out not supported"};
+    }
+    auto shutdown() -> void override {}
+    auto notify(std::string const&) -> void override {}
+
+    InsertReturn ret;
+};
+} // namespace
 
 TEST_SUITE_BEGIN("core.leaf.coverage");
 
@@ -297,6 +392,104 @@ TEST_CASE("Leaf in rejects podPreferred metadata without factory") {
     CHECK(ret.errors.front().code == Error::Code::InvalidType);
     CHECK(ret.errors.front().message ==
           std::optional<std::string>{"POD fast path unavailable for this node"});
+}
+
+TEST_CASE("Leaf indexed nested inserts are rejected") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    auto nested = std::make_unique<PathSpace>();
+    leaf.in(Iterator{"/mount[1]"}, InputData{nested}, ret);
+    REQUIRE_FALSE(ret.errors.empty());
+    CHECK(ret.errors.front().code == Error::Code::InvalidPath);
+    CHECK(ret.errors.front().message ==
+          std::optional<std::string>{"Indexed nested inserts are not supported"});
+}
+
+TEST_CASE("Leaf rebaseRetargets rewrites nested mount prefixes") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    std::unique_ptr<PathSpaceBase> mount = std::make_unique<RetargetSpace>();
+    leaf.in(Iterator{"/mount"}, InputData{mount}, ret);
+    REQUIRE(ret.errors.empty());
+
+    int value = 9;
+    InsertReturn nestedRet;
+    leaf.in(Iterator{"/mount/child"}, InputData{value}, nestedRet);
+    REQUIRE(nestedRet.errors.empty());
+    REQUIRE(nestedRet.retargets.size() == 1);
+    CHECK(nestedRet.retargets.front().mountPrefix == "/mount/child");
+}
+
+TEST_CASE("Leaf insertSerialized rejects nested path targets") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    auto nested = std::make_unique<PathSpace>();
+    leaf.in(Iterator{"/mount"}, InputData{nested}, ret);
+    REQUIRE(ret.errors.empty());
+
+    int value = 11;
+    NodeData payload;
+    REQUIRE_FALSE(payload.serialize(InputData{value}).has_value());
+
+    InsertReturn serializedRet;
+    leaf.insertSerialized(Iterator{"/mount/child"}, payload, serializedRet);
+    REQUIRE_FALSE(serializedRet.errors.empty());
+    CHECK(serializedRet.errors.front().code == Error::Code::NotSupported);
+    CHECK(serializedRet.errors.front().message ==
+          std::optional<std::string>{"Serialized inserts cannot target nested PathSpaces yet"});
+}
+
+TEST_CASE("Leaf insertSerialized reports append failures from nested payloads") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    int value = 3;
+    NodeData payload;
+    REQUIRE_FALSE(payload.serialize(InputData{value}).has_value());
+
+    leaf.insertSerialized(Iterator{"/root"}, payload, ret);
+    REQUIRE(ret.errors.empty());
+
+    auto nested = std::make_unique<PathSpace>();
+    InputData nestedInput{nested};
+    NodeData nestedPayload;
+    REQUIRE_FALSE(nestedPayload.serialize(nestedInput).has_value());
+
+    InsertReturn nestedRet;
+    leaf.insertSerialized(Iterator{"/root"}, nestedPayload, nestedRet);
+    REQUIRE_FALSE(nestedRet.errors.empty());
+    CHECK(nestedRet.errors.front().code == Error::Code::NotSupported);
+    CHECK(nestedRet.errors.front().message ==
+          std::optional<std::string>{"Nested PathSpaces cannot be serialized across mounts"});
+}
+
+TEST_CASE("Leaf ensureNodeData reports pod migration take failures") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    leaf.rootNode().podPayload = std::make_shared<FailingPodPayload>(MigrationFailureMode::TakeError);
+
+    int value = 5;
+    auto* data = Leaf::ensureNodeData(leaf.rootNode(), InputData{value}, ret);
+    CHECK(data == nullptr);
+    REQUIRE_FALSE(ret.errors.empty());
+    CHECK(ret.errors.front().code == Error::Code::UnknownError);
+}
+
+TEST_CASE("Leaf ensureNodeData reports pod migration serialization failures") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    leaf.rootNode().podPayload = std::make_shared<FailingPodPayload>(MigrationFailureMode::SerializeError);
+
+    int value = 6;
+    auto* data = Leaf::ensureNodeData(leaf.rootNode(), InputData{value}, ret);
+    CHECK(data == nullptr);
+    REQUIRE_FALSE(ret.errors.empty());
+    CHECK(ret.errors.front().code == Error::Code::SerializationFunctionMissing);
 }
 
 TEST_SUITE_END();
