@@ -142,6 +142,20 @@ TEST_CASE("UndoableSpace records and reorders unsupported payload telemetry") {
     CHECK(state.telemetry.unsupportedLog.back().occurrences == 2);
 }
 
+TEST_CASE("UndoableSpace trims unsupported payload telemetry log") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    UndoJournalRootState state;
+
+    for (std::size_t i = 0; i <= UndoUtilsAlias::MaxUnsupportedLogEntries; ++i) {
+        space.recordJournalUnsupportedPayload(state,
+                                              "/path/" + std::to_string(i),
+                                              "reason");
+    }
+
+    REQUIRE(state.telemetry.unsupportedLog.size() == UndoUtilsAlias::MaxUnsupportedLogEntries);
+    CHECK(state.telemetry.unsupportedLog.front().path == "/path/1");
+}
+
 TEST_CASE("UndoableSpace parseJournalRelativeComponents rejects invalid roots") {
     UndoableSpace space{std::make_unique<PathSpace>(), {}};
     UndoJournalRootState state;
@@ -154,6 +168,16 @@ TEST_CASE("UndoableSpace parseJournalRelativeComponents rejects invalid roots") 
     auto globPath = space.parseJournalRelativeComponents(state, "/root/*");
     CHECK_FALSE(globPath.has_value());
     CHECK(globPath.error().code == Error::Code::InvalidPathSubcomponent);
+}
+
+TEST_CASE("UndoableSpace parseJournalRelativeComponents rejects shorter paths") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    UndoJournalRootState state;
+    state.components = {"root", "child"};
+
+    auto result = space.parseJournalRelativeComponents(state, "/root");
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::InvalidPermissions);
 }
 
 TEST_CASE("UndoableSpace interpretSteps normalizes step counts") {
@@ -172,6 +196,22 @@ TEST_CASE("UndoableSpace interpretSteps normalizes step counts") {
 
     InputMetadata emptyMeta;
     CHECK(space.interpretSteps(InputData{nullptr, emptyMeta}) == 1);
+}
+
+TEST_CASE("UndoableSpace computeJournalLiveBytes returns zero without backend") {
+    UndoableSpace space{std::unique_ptr<PathSpaceBase>{}, {}};
+    UndoJournalRootState state;
+    state.components = {"root"};
+    CHECK(space.computeJournalLiveBytes(state) == 0);
+}
+
+TEST_CASE("UndoableSpace captureJournalNodeData reports missing backend") {
+    UndoableSpace space{std::unique_ptr<PathSpaceBase>{}, {}};
+    UndoJournalRootState state;
+
+    auto result = space.captureJournalNodeData(state, {});
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::UnknownError);
 }
 
 TEST_CASE("UndoableSpace computeJournalLiveBytes reports subtree payloads") {

@@ -1,4 +1,6 @@
+#define private public
 #include "history/UndoJournalPersistence.hpp"
+#undef private
 #include "history/UndoJournalState.hpp"
 
 #include "third_party/doctest.h"
@@ -132,6 +134,33 @@ TEST_SUITE("history.journal.persistence.coverage") {
         CHECK(result.error().code == SP::Error::Code::UnknownError);
     }
 
+#ifndef _WIN32
+    TEST_CASE("replayJournal reports open errors for unreadable files") {
+        auto path = tempPath("replay_unreadable.log");
+        {
+            std::FILE* file = std::fopen(path.string().c_str(), "wb");
+            REQUIRE(file != nullptr);
+            std::fclose(file);
+        }
+
+        auto originalPerms = std::filesystem::status(path).permissions();
+        auto noReadPerms = originalPerms
+                           & ~std::filesystem::perms::owner_read
+                           & ~std::filesystem::perms::group_read
+                           & ~std::filesystem::perms::others_read;
+        std::error_code ec;
+        std::filesystem::permissions(path, noReadPerms, ec);
+        REQUIRE_FALSE(ec);
+
+        auto result = replayJournal(path, [](JournalEntry&&) -> Expected<void> { return {}; });
+        CHECK_FALSE(result.has_value());
+        CHECK(result.error().code == SP::Error::Code::UnknownError);
+
+        std::filesystem::permissions(path, originalPerms, ec);
+        CHECK_FALSE(ec);
+    }
+#endif
+
     TEST_CASE("replayJournal rejects invalid header magic") {
         auto path = tempPath("bad_magic.log");
         writeHeader(path, JournalFileMagic + 1u, JournalFileVersion);
@@ -205,5 +234,21 @@ TEST_SUITE("history.journal.persistence.coverage") {
                                      std::filesystem::perm_options::replace);
         std::error_code ec;
         std::filesystem::remove_all(dir, ec);
+    }
+
+    TEST_CASE("JournalFileWriter append reports write failures on read-only handle") {
+        auto path = tempPath("readonly_handle.log");
+        writeHeader(path, JournalFileMagic, JournalFileVersion);
+
+        JournalFileWriter writer(path);
+        writer.handle = std::fopen(path.string().c_str(), "rb");
+        REQUIRE(writer.handle != nullptr);
+
+        auto result = writer.append(makeEntry(1));
+        CHECK_FALSE(result.has_value());
+        CHECK(result.error().code == SP::Error::Code::UnknownError);
+
+        std::fclose(writer.handle);
+        writer.handle = nullptr;
     }
 }
