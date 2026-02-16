@@ -80,6 +80,14 @@ auto makeTempSavefilePath(std::string_view label) -> std::filesystem::path {
     return dir / "history.save";
 }
 
+auto makeTempHistoryRoot(std::string_view label) -> std::filesystem::path {
+    auto suffix = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    auto dir = std::filesystem::temp_directory_path()
+               / (std::string("history_root_") + std::string(label) + "_" + suffix);
+    std::filesystem::create_directories(dir);
+    return dir;
+}
+
 auto writeSavefile(std::filesystem::path const& path,
                    UndoSavefile::Document const& document) -> void {
     auto encoded = UndoSavefile::encode(document);
@@ -934,6 +942,84 @@ TEST_CASE("UndoableSpace take rejects diagnostics and history command paths") {
     auto command = space.take<std::string>("/doc/_history/undo");
     CHECK_FALSE(command.has_value());
     CHECK(command.error().code == Error::Code::InvalidPermissions);
+}
+
+TEST_CASE("UndoableSpace garbage collect rejects active transactions") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto txExpected = space.beginTransaction(ConcretePathStringView{"/doc"});
+    REQUIRE(txExpected.has_value());
+    auto tx = std::move(txExpected.value());
+
+    auto gc = space.insert("/doc/_history/garbage_collect", true);
+    CHECK_FALSE(gc.errors.empty());
+    CHECK(gc.errors.front().code == Error::Code::InvalidPermissions);
+
+    CHECK(tx.commit().has_value());
+}
+
+TEST_CASE("UndoableSpace garbage collect compacts persistence on trim") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    opts.persistHistory = true;
+    opts.manualGarbageCollect = true;
+    opts.maxEntries = 1;
+    auto root = makeTempHistoryRoot("gc_trim");
+    opts.persistenceRoot = root.string();
+    opts.persistenceNamespace = "gc_trim";
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space.insert("/doc/a", 1).errors.empty());
+    REQUIRE(space.insert("/doc/b", 2).errors.empty());
+
+    auto stateIt = space.journalRoots.find("/doc");
+    REQUIRE(stateIt != space.journalRoots.end());
+    auto state = stateIt->second;
+    REQUIRE(state);
+
+    auto gc = space.insert("/doc/_history/garbage_collect", true);
+    CHECK(gc.errors.empty());
+
+    CHECK_FALSE(state->persistenceDirty);
+    CHECK_FALSE(state->telemetry.persistenceDirty);
+    CHECK(state->telemetry.trimmedEntries > 0);
+
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+}
+
+TEST_CASE("UndoableSpace garbage collect updates persistence telemetry without trim") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    opts.persistHistory = true;
+    opts.manualGarbageCollect = true;
+    opts.maxEntries = 10;
+    auto root = makeTempHistoryRoot("gc_no_trim");
+    opts.persistenceRoot = root.string();
+    opts.persistenceNamespace = "gc_no_trim";
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    REQUIRE(space.insert("/doc/a", 1).errors.empty());
+
+    auto stateIt = space.journalRoots.find("/doc");
+    REQUIRE(stateIt != space.journalRoots.end());
+    auto state = stateIt->second;
+    REQUIRE(state);
+
+    auto gc = space.insert("/doc/_history/garbage_collect", true);
+    CHECK(gc.errors.empty());
+
+    CHECK_FALSE(state->persistenceDirty);
+    CHECK_FALSE(state->telemetry.persistenceDirty);
+    CHECK(state->telemetry.diskEntries == state->journal.stats().totalEntries);
+
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
 }
 
 TEST_SUITE_END();
