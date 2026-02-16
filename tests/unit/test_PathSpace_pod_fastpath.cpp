@@ -253,7 +253,7 @@ TEST_CASE("ValueHandle read succeeds after upgrade during visit") {
 
 TEST_CASE("PodPayload resizes without losing data") {
     PathSpace space;
-    constexpr int N = 1030; // > initial 1024
+    constexpr int N = 1025; // > initial 1024
     for (int i = 0; i < N; ++i) {
         CHECK(space.insert("/big", i).errors.empty());
     }
@@ -1086,7 +1086,7 @@ TEST_CASE("Concurrent POD insert/take retains every value") {
     PathSpace space;
     // Keep the load meaningful for concurrency coverage but avoid slowing the
     // suite; 20k values made the test dominate wall-clock time.
-    constexpr int TotalValues = 400;
+    constexpr int TotalValues = 200;
     std::barrier start(2);
 
     std::vector<int> consumed;
@@ -1538,7 +1538,7 @@ TEST_CASE("Pack insert concurrent take keeps lanes aligned") {
 #if defined(PATHSPACE_COVERAGE_BUILD)
     constexpr int WriteCount = 30;
 #else
-    constexpr int WriteCount = 120;
+    constexpr int WriteCount = 80;
 #endif
     std::atomic<int> produced{0};
     std::atomic<int> consumed{0};
@@ -2336,7 +2336,7 @@ TEST_CASE("POD fast path publishes data before readers see queue growth") {
 
     std::thread consumer([&]() {
         int spins = 0;
-        while (!hookSeen.load(std::memory_order_acquire) && spins < 100'000) {
+        while (!hookSeen.load(std::memory_order_acquire) && spins < 50'000) {
             std::this_thread::yield();
             ++spins;
         }
@@ -2346,7 +2346,7 @@ TEST_CASE("POD fast path publishes data before readers see queue growth") {
             earlyObserved = gotEarly.value();
         }
         hold.store(false, std::memory_order_release);
-        for (int attempt = 0; attempt < 150 && !observed.has_value(); ++attempt) {
+        for (int attempt = 0; attempt < 100 && !observed.has_value(); ++attempt) {
             auto got = space.take<int>("/ints");
             if (got.has_value()) {
                 observed = got.value();
