@@ -1,6 +1,8 @@
 #include "third_party/doctest.h"
 #include <pathspace/PathSpace.hpp>
+#define private public
 #include <pathspace/layer/SnapshotCachedPathSpace.hpp>
+#undef private
 #include <pathspace/type/InputData.hpp>
 #include <algorithm>
 #include <array>
@@ -29,6 +31,96 @@ TEST_CASE("Snapshot cache snapshotEnabled follows configuration") {
         .maxDirtyRoots = 8,
     });
     CHECK_FALSE(cached.snapshotEnabled());
+}
+
+TEST_CASE("Snapshot cache trySnapshotRead handles empty and relative paths") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+    cached.stopSnapshotWorker();
+
+    InputMetadata meta{InputMetadataT<int>{}};
+    int outValue = 0;
+    auto before = cached.snapshotMetrics();
+
+    CHECK_FALSE(cached.trySnapshotRead(Iterator{""}, meta, Out{}, &outValue));
+    CHECK_FALSE(cached.trySnapshotRead(Iterator{"relative"}, meta, Out{}, &outValue));
+
+    auto after = cached.snapshotMetrics();
+    CHECK(after.misses >= before.misses + 2);
+}
+
+TEST_CASE("Snapshot cache markSnapshotDirty widens roots") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/short", 1).nbrValuesInserted == 1);
+    CHECK(cached.insert("/other", 2).nbrValuesInserted == 1);
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+    cached.stopSnapshotWorker();
+
+    auto first = cached.read<int>("/other");
+    REQUIRE(first.has_value());
+
+    cached.markSnapshotDirty("/short");
+    auto mid = cached.snapshotMetrics();
+    auto stillHit = cached.read<int>("/other");
+    REQUIRE(stillHit.has_value());
+    auto afterShort = cached.snapshotMetrics();
+    CHECK(afterShort.hits >= mid.hits + 1);
+
+    cached.markSnapshotDirty("/");
+    auto beforeRoot = cached.snapshotMetrics();
+    auto rootMiss = cached.read<int>("/other");
+    REQUIRE(rootMiss.has_value());
+    auto afterRoot = cached.snapshotMetrics();
+    CHECK(afterRoot.misses >= beforeRoot.misses + 1);
+}
+
+TEST_CASE("Snapshot cache bypasses snapshot for pop, block, and execution") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/item", 1).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+    cached.stopSnapshotWorker();
+
+    auto beforePop = cached.snapshotMetrics();
+    auto popped = cached.take<int>("/item");
+    REQUIRE(popped.has_value());
+    auto afterPop = cached.snapshotMetrics();
+    CHECK(afterPop.hits == beforePop.hits);
+
+    CHECK(cached.insert("/item", 2).nbrValuesInserted == 1);
+    cached.rebuildSnapshotNow();
+    auto beforeBlock = cached.snapshotMetrics();
+    auto blocked = cached.read<int>("/item", Out{} & Block{std::chrono::milliseconds{0}});
+    REQUIRE(blocked.has_value());
+    auto afterBlock = cached.snapshotMetrics();
+    CHECK(afterBlock.hits == beforeBlock.hits);
+
+    InputMetadata execMeta{};
+    execMeta.dataCategory = DataCategory::Execution;
+    execMeta.typeInfo = &typeid(int);
+    int outValue = 0;
+    CHECK_FALSE(cached.trySnapshotRead(Iterator{"/item"}, execMeta, Out{}, &outValue));
 }
 
 TEST_CASE("Snapshot cache hits and dirty fallback") {
