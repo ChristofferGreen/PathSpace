@@ -6,6 +6,7 @@
 #include "core/NodeData.hpp"
 #include "history/UndoHistoryUtils.hpp"
 #include "history/UndoJournalPersistence.hpp"
+#include "history/UndoSavefileCodec.hpp"
 #include "third_party/doctest.h"
 #include "type/InputData.hpp"
 #include "type/InputMetadataT.hpp"
@@ -13,6 +14,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstdint>
+#include <fstream>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -22,6 +24,7 @@
 using namespace SP;
 using namespace SP::History;
 namespace UndoPaths = SP::History::UndoUtils::Paths;
+namespace UndoUtilsAlias = SP::History::UndoUtils;
 
 namespace {
 
@@ -67,6 +70,31 @@ auto makeTempJournalPath(std::string_view label) -> std::filesystem::path {
                / (std::string("journal_") + std::string(label) + "_" + suffix);
     std::filesystem::create_directories(dir);
     return dir / "journal.log";
+}
+
+auto makeTempSavefilePath(std::string_view label) -> std::filesystem::path {
+    auto suffix = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    auto dir = std::filesystem::temp_directory_path()
+               / (std::string("savefile_") + std::string(label) + "_" + suffix);
+    std::filesystem::create_directories(dir);
+    return dir / "history.save";
+}
+
+auto writeSavefile(std::filesystem::path const& path,
+                   UndoSavefile::Document const& document) -> void {
+    auto encoded = UndoSavefile::encode(document);
+    REQUIRE(encoded.has_value());
+    auto span = std::span<const std::byte>(encoded->data(), encoded->size());
+    auto write = UndoUtilsAlias::writeFileAtomic(path, span, false, true);
+    REQUIRE(write.has_value());
+}
+
+auto makeSavefileEntry(std::string path) -> UndoJournal::JournalEntry {
+    UndoJournal::JournalEntry entry;
+    entry.operation = UndoJournal::OperationKind::Insert;
+    entry.path = std::move(path);
+    entry.sequence = 1;
+    return entry;
 }
 
 } // namespace
@@ -610,6 +638,102 @@ TEST_CASE("UndoableSpace encodeRootForPersistence replaces separators") {
     CHECK(space.encodeRootForPersistence("/") == "__root");
     CHECK(space.encodeRootForPersistence("/doc") == "_doc");
     CHECK(space.encodeRootForPersistence("/doc/child") == "_doc_child");
+}
+
+TEST_CASE("UndoableSpace importHistorySavefile applies options and defaults ram cache") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto stateIt = space.journalRoots.find("/doc");
+    REQUIRE(stateIt != space.journalRoots.end());
+    stateIt->second->options.ramCacheEntries = 0;
+
+    UndoSavefile::Document document;
+    document.rootPath = "/doc";
+    document.options.maxEntries = 12;
+    document.options.maxBytesRetained = 256;
+    document.options.maxDiskBytes = 512;
+    document.options.keepLatestForMs = 0;
+    document.options.manualGarbageCollect = true;
+    document.undoCount = 0;
+    document.nextSequence = 0;
+
+    auto savefile = makeTempSavefilePath("apply_options");
+    writeSavefile(savefile, document);
+
+    auto result = space.importHistorySavefile(ConcretePathStringView{"/doc"}, savefile, true);
+    CHECK(result.has_value());
+    CHECK(stateIt->second->options.ramCacheEntries == 8);
+}
+
+TEST_CASE("UndoableSpace importHistorySavefile propagates decode undo-count errors") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    UndoSavefile::Document document;
+    document.rootPath = "/doc";
+    document.entries.push_back(makeSavefileEntry("/doc/value"));
+    document.undoCount = 2;
+
+    auto savefile = makeTempSavefilePath("undo_count");
+    writeSavefile(savefile, document);
+
+    auto result = space.importHistorySavefile(ConcretePathStringView{"/doc"}, savefile, false);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::UnknownError);
+}
+
+TEST_CASE("UndoableSpace importHistorySavefile reports missing backend on apply") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    UndoSavefile::Document document;
+    document.rootPath = "/doc";
+    document.entries.push_back(makeSavefileEntry("/doc/value"));
+    document.undoCount = 1;
+
+    auto savefile = makeTempSavefilePath("missing_backend");
+    writeSavefile(savefile, document);
+
+    space.inner.reset();
+    auto result = space.importHistorySavefile(ConcretePathStringView{"/doc"}, savefile, false);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::UnknownError);
+}
+
+TEST_CASE("UndoableSpace importHistorySavefile propagates persistence failures") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    opts.persistHistory = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto stateIt = space.journalRoots.find("/doc");
+    REQUIRE(stateIt != space.journalRoots.end());
+    stateIt->second->persistenceEnabled = true;
+
+    auto parentFile = makeTempSavefilePath("persist_parent");
+    {
+        std::ofstream stream(parentFile);
+        REQUIRE(stream.good());
+    }
+    stateIt->second->journalPath = parentFile / "journal.log";
+
+    UndoSavefile::Document document;
+    document.rootPath = "/doc";
+
+    auto savefile = makeTempSavefilePath("persist_error");
+    writeSavefile(savefile, document);
+
+    auto result = space.importHistorySavefile(ConcretePathStringView{"/doc"}, savefile, false);
+    CHECK_FALSE(result.has_value());
+    CHECK(result.error().code == Error::Code::UnknownError);
 }
 
 TEST_SUITE_END();
