@@ -1214,6 +1214,10 @@ auto Leaf::spanPackMut(std::span<const std::string> paths,
     std::optional<Error> lastError;
 
     for (int attempt = 0; attempt < MaxAttempts; ++attempt) {
+        std::unique_lock<std::mutex> packLock;
+        if (options.isMinimal) {
+            packLock = std::unique_lock<std::mutex>(this->packInsertMutex);
+        }
         std::vector<RawMutSpan>            spans(paths.size());
         std::vector<std::shared_ptr<void>> keepers(paths.size());
         std::vector<std::size_t>           heads(paths.size());
@@ -1273,6 +1277,9 @@ auto Leaf::spanPackMut(std::span<const std::string> paths,
                 return std::unexpected(Error{Error::Code::NoObjectFound, "No data available"});
             }
 
+            if (packLock.owns_lock()) {
+                packLock.unlock();
+            }
             auto result = fn(std::span<RawMutSpan const>(spans.data(), spans.size()));
             if (result.error) {
                 return std::unexpected(*result.error);

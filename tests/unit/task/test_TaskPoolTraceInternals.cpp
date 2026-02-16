@@ -247,6 +247,26 @@ TEST_CASE("recordTrace helpers exit early when tracing is disabled") {
     CHECK(pool.traceNamedThreads.empty());
 }
 
+TEST_CASE("shutdown clears queued tasks when no workers are active") {
+    TaskPool pool(1);
+    pool.shutdown();
+
+    // Reset to exercise the shutdown queue drain path without active workers.
+    pool.shuttingDown.store(false, std::memory_order_relaxed);
+    CHECK(pool.workers.empty());
+
+    auto task = Task::Create([](Task const&, bool) {});
+    {
+        std::lock_guard<std::mutex> lock(pool.mutex);
+        pool.tasks.push(task);
+    }
+
+    pool.shutdown();
+
+    std::lock_guard<std::mutex> lock(pool.mutex);
+    CHECK(pool.tasks.empty());
+}
+
 TEST_CASE("traceCounter records counter events when tracing is enabled") {
     TaskPool pool(1);
     pool.enableTrace("trace_unused.json");
