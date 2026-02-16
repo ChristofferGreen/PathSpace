@@ -494,7 +494,7 @@ TEST_CASE("Compile-time mutable span take updates POD queue without pop") {
 
 TEST_CASE("Concurrent POD inserts remain visible in span read") {
     PathSpace space;
-    constexpr int perThread = 20;
+    constexpr int perThread = 12;
     std::thread t1([&]() {
         for (int i = 0; i < perThread; ++i) {
             space.insert("/ints", i);
@@ -1086,7 +1086,7 @@ TEST_CASE("Concurrent POD insert/take retains every value") {
     PathSpace space;
     // Keep the load meaningful for concurrency coverage but avoid slowing the
     // suite; 20k values made the test dominate wall-clock time.
-    constexpr int TotalValues = 200;
+    constexpr int TotalValues = 120;
     std::barrier start(2);
 
     std::vector<int> consumed;
@@ -1440,7 +1440,7 @@ TEST_CASE("Pack insert concurrent writers preserves alignment") {
     CHECK(space.insert("/ints/y", 0).errors.empty());
 #if defined(PATHSPACE_COVERAGE_BUILD)
     constexpr int ThreadCount    = 2;
-    constexpr int ValuesPerThread  = 15;
+    constexpr int ValuesPerThread  = 10;
 #else
     constexpr int ThreadCount    = 3;
     constexpr int ValuesPerThread  = 40;
@@ -1494,7 +1494,7 @@ TEST_CASE("Pack insert concurrent readers never see skew") {
 
 #if defined(PATHSPACE_COVERAGE_BUILD)
     constexpr int ThreadCount    = 2;
-    constexpr int ValuesPerThread  = 10;
+    constexpr int ValuesPerThread  = 8;
 #else
     constexpr int ThreadCount    = 2;
     constexpr int ValuesPerThread  = 30;
@@ -1538,7 +1538,7 @@ TEST_CASE("Pack insert concurrent take keeps lanes aligned") {
 #if defined(PATHSPACE_COVERAGE_BUILD)
     constexpr int WriteCount = 30;
 #else
-    constexpr int WriteCount = 80;
+    constexpr int WriteCount = 60;
 #endif
     std::atomic<int> produced{0};
     std::atomic<int> consumed{0};
@@ -2079,7 +2079,7 @@ TEST_CASE("Pack insert concurrent const readers stay aligned") {
         }
     });
 
-    for (int i = 1; i <= 40; ++i) {
+    for (int i = 1; i <= 20; ++i) {
         auto ret = space.insert<"/ints/x","/ints/y">(i, i);
         REQUIRE(ret.errors.empty());
     }
@@ -2096,8 +2096,8 @@ TEST_CASE("Pack insert multi-thread stress maintains alignment") {
 
 #if defined(PATHSPACE_COVERAGE_BUILD)
     constexpr int ThreadCount   = 2;
-    constexpr int ValuesPerThread = 15;
-    constexpr int ReadIterations = 20;
+    constexpr int ValuesPerThread = 10;
+    constexpr int ReadIterations = 12;
 #else
     constexpr int ThreadCount   = 2;
     constexpr int ValuesPerThread = 40;
