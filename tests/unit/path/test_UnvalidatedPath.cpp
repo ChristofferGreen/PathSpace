@@ -83,6 +83,9 @@ TEST_CASE("contains_relative_tokens detects dot segments") {
     UnvalidatedPathView trailingSlash{"/alpha/beta/"};
     CHECK(trailingSlash.contains_relative_tokens());
 
+    UnvalidatedPathView relativeTrailing{"alpha/beta/"};
+    CHECK(relativeTrailing.contains_relative_tokens());
+
     UnvalidatedPathView root{"/"};
     CHECK(root.contains_relative_tokens());
 }
