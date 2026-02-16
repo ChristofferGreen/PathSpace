@@ -247,6 +247,29 @@ TEST_CASE("recordTrace helpers exit early when tracing is disabled") {
     CHECK(pool.traceNamedThreads.empty());
 }
 
+TEST_CASE("shutdown joins workers when already marked shutting down") {
+    TaskPool pool(1);
+    while (pool.activeWorkers.load(std::memory_order_acquire) == 0) {
+        std::this_thread::yield();
+    }
+
+    pool.shuttingDown.store(true, std::memory_order_release);
+    pool.taskCV.notify_all();
+
+    auto deadline = std::chrono::steady_clock::now() + 200ms;
+    while (pool.activeWorkers.load(std::memory_order_acquire) != 0
+           && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::yield();
+    }
+    REQUIRE(pool.activeWorkers.load(std::memory_order_acquire) == 0);
+
+    pool.shutdown();
+
+    for (auto& worker : pool.workers) {
+        CHECK_FALSE(worker.joinable());
+    }
+}
+
 TEST_CASE("shutdown clears queued tasks when no workers are active") {
     TaskPool pool(1);
     pool.shutdown();

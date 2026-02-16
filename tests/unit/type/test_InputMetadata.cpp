@@ -166,6 +166,12 @@ TEST_CASE("String-like metadata serialize/deserialize") {
         CHECK_THROWS_AS(StringSerializationHelper<std::string>::Deserialize(&out, bytes), std::runtime_error);
     }
 
+    SUBCASE("std::string deserialize throws when buffer lacks size header") {
+        SlidingBuffer bytes;
+        std::string out;
+        CHECK_THROWS_AS(StringSerializationHelper<std::string>::Deserialize(&out, bytes), std::runtime_error);
+    }
+
     SUBCASE("string_view deserialize rejects non-string targets") {
         SlidingBuffer bytes;
         std::string   payload{"view-only"};
