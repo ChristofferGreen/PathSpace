@@ -146,6 +146,34 @@ TEST_CASE("Snapshot cache markSnapshotDirty is ignored when disabled") {
     CHECK(after.misses == before.misses);
 }
 
+TEST_CASE("Snapshot cache retains shorter non-prefix dirty roots") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/b", 1).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 1h,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+    cached.stopSnapshotWorker();
+
+    cached.markSnapshotDirty("/b");
+    InputMetadata meta{InputMetadataT<int>{}};
+    int outValue = 0;
+    auto before = cached.snapshotMetrics();
+    CHECK_FALSE(cached.trySnapshotRead(Iterator{"/b"}, meta, Out{}, &outValue));
+    auto afterFirst = cached.snapshotMetrics();
+    CHECK(afterFirst.misses >= before.misses + 1);
+
+    cached.markSnapshotDirty("/alpha/beta");
+    auto beforeSecond = cached.snapshotMetrics();
+    CHECK_FALSE(cached.trySnapshotRead(Iterator{"/b"}, meta, Out{}, &outValue));
+    auto afterSecond = cached.snapshotMetrics();
+    CHECK(afterSecond.misses >= beforeSecond.misses + 1);
+}
+
 TEST_CASE("Snapshot cache keeps dirty roots for invalid canonical paths") {
     auto backing = std::make_shared<PathSpace>();
     SnapshotCachedPathSpace cached{backing};
@@ -201,6 +229,59 @@ TEST_CASE("Snapshot cache trySnapshotRead returns false before configuration") {
     auto metrics = cached.snapshotMetrics();
     CHECK(metrics.hits == 0);
     CHECK(metrics.misses == 0);
+}
+
+TEST_CASE("Snapshot cache rebuild returns when disabled while waiting") {
+    auto backing = std::make_shared<BlockingVisitSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 0ms,
+        .maxDirtyRoots = 8,
+    });
+    cached.stopSnapshotWorker();
+
+    std::thread first([&]() { cached.rebuildSnapshotNow(); });
+    backing->waitForVisits(1);
+
+    std::atomic<bool> secondStarted{false};
+    std::thread second([&]() {
+        secondStarted.store(true, std::memory_order_release);
+        cached.rebuildSnapshotNow();
+    });
+
+    while (!secondStarted.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = false,
+        .rebuildDebounce = 0ms,
+        .maxDirtyRoots = 8,
+    });
+    backing->releaseVisits(1);
+
+    first.join();
+    second.join();
+}
+
+TEST_CASE("Snapshot cache trySnapshotRead reports deserialize failure") {
+    auto backing = std::make_shared<PathSpace>();
+    SnapshotCachedPathSpace cached{backing};
+
+    CHECK(cached.insert("/value", 7).nbrValuesInserted == 1);
+    cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
+        .enabled = true,
+        .rebuildDebounce = 0ms,
+        .maxDirtyRoots = 8,
+    });
+    cached.rebuildSnapshotNow();
+    cached.stopSnapshotWorker();
+
+    InputMetadata meta{InputMetadataT<float>{}};
+    float outValue = 0.0f;
+    CHECK_FALSE(cached.trySnapshotRead(Iterator{"/value"}, meta, Out{}, &outValue));
 }
 
 TEST_CASE("Snapshot cache rebuild waits for in-progress rebuild") {
