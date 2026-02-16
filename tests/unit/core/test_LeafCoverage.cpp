@@ -1,9 +1,14 @@
 #include "third_party/doctest.h"
 
+#define private public
 #include "core/Leaf.hpp"
+#undef private
+
 #include "core/InsertReturn.hpp"
 #include "core/NodeData.hpp"
 #include "path/Iterator.hpp"
+#include "type/DataCategory.hpp"
+#include "type/FunctionCategory.hpp"
 #include "type/InputData.hpp"
 #include "type/InputMetadataT.hpp"
 
@@ -226,6 +231,72 @@ TEST_CASE("Leaf spanPackMut minimal requires POD payload") {
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error().code == Error::Code::InvalidType);
     CHECK(result.error().message == std::optional<std::string>{"POD fast path unavailable"});
+}
+
+TEST_CASE("Leaf mergeInsertReturn aggregates retargets and errors") {
+    InsertReturn into;
+    InsertReturn from;
+
+    from.nbrValuesInserted   = 2;
+    from.nbrSpacesInserted   = 1;
+    from.nbrTasksInserted    = 3;
+    from.nbrValuesSuppressed = 4;
+    from.retargets.push_back(InsertReturn::RetargetRequest{nullptr, "/mount"});
+    from.errors.emplace_back(Error{Error::Code::InvalidPath, "bad"});
+
+    Leaf::mergeInsertReturn(into, from);
+
+    CHECK(into.nbrValuesInserted == 2);
+    CHECK(into.nbrSpacesInserted == 1);
+    CHECK(into.nbrTasksInserted == 3);
+    CHECK(into.nbrValuesSuppressed == 4);
+    CHECK(into.retargets.size() == 1);
+    CHECK(into.retargets.front().mountPrefix == "/mount");
+    CHECK(into.errors.size() == 1);
+    CHECK(into.errors.front().code == Error::Code::InvalidPath);
+}
+
+TEST_CASE("Leaf in reports serialization missing for existing node data") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    std::string payload = "alpha";
+    leaf.in(Iterator{"/node"}, InputData{payload}, ret);
+    REQUIRE(ret.errors.empty());
+
+    InputMetadata badMeta{};
+    badMeta.dataCategory     = DataCategory::Fundamental;
+    badMeta.functionCategory = FunctionCategory::None;
+    badMeta.typeInfo         = &typeid(int);
+    badMeta.serialize        = nullptr;
+    badMeta.deserialize      = nullptr;
+    badMeta.deserializePop   = nullptr;
+    badMeta.podPreferred     = false;
+
+    int value = 7;
+    InsertReturn badRet;
+    leaf.in(Iterator{"/node"}, InputData{&value, badMeta}, badRet);
+    REQUIRE_FALSE(badRet.errors.empty());
+    CHECK(badRet.errors.front().code == Error::Code::SerializationFunctionMissing);
+}
+
+TEST_CASE("Leaf in rejects podPreferred metadata without factory") {
+    Leaf         leaf;
+    InsertReturn ret;
+
+    InputMetadata meta{};
+    meta.dataCategory     = DataCategory::Fundamental;
+    meta.functionCategory = FunctionCategory::None;
+    meta.typeInfo         = &typeid(int);
+    meta.podPreferred     = true;
+    meta.createPodPayload = nullptr;
+
+    int value = 9;
+    leaf.in(Iterator{"/pod"}, InputData{&value, meta}, ret);
+    REQUIRE_FALSE(ret.errors.empty());
+    CHECK(ret.errors.front().code == Error::Code::InvalidType);
+    CHECK(ret.errors.front().message ==
+          std::optional<std::string>{"POD fast path unavailable for this node"});
 }
 
 TEST_SUITE_END();
