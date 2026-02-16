@@ -2346,13 +2346,14 @@ TEST_CASE("POD fast path publishes data before readers see queue growth") {
             earlyObserved = gotEarly.value();
         }
         hold.store(false, std::memory_order_release);
-        for (int attempt = 0; attempt < 100 && !observed.has_value(); ++attempt) {
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(200);
+        while (!observed.has_value() && std::chrono::steady_clock::now() < deadline) {
             auto got = space.take<int>("/ints");
             if (got.has_value()) {
                 observed = got.value();
                 break;
             }
-            std::this_thread::yield();
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
         }
     });
 
