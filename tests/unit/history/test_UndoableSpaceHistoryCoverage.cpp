@@ -1022,4 +1022,40 @@ TEST_CASE("UndoableSpace garbage collect updates persistence telemetry without t
     std::filesystem::remove_all(root, ec);
 }
 
+TEST_CASE("UndoableSpace history commands reject active transactions") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto txExpected = space.beginTransaction(ConcretePathStringView{"/doc"});
+    REQUIRE(txExpected.has_value());
+    auto tx = std::move(txExpected.value());
+
+    auto undo = space.insert("/doc/_history/undo", 1);
+    CHECK_FALSE(undo.errors.empty());
+    CHECK(undo.errors.front().code == Error::Code::InvalidPermissions);
+
+    auto redo = space.insert("/doc/_history/redo", 1);
+    CHECK_FALSE(redo.errors.empty());
+    CHECK(redo.errors.front().code == Error::Code::InvalidPermissions);
+
+    CHECK(tx.commit().has_value());
+}
+
+TEST_CASE("UndoableSpace history command insert validates payload and command name") {
+    UndoableSpace space{std::make_unique<PathSpace>(), {}};
+    HistoryOptions opts;
+    opts.useMutationJournal = true;
+    REQUIRE(space.enableHistory(ConcretePathStringView{"/doc"}, opts).has_value());
+
+    auto badTag = space.insert("/doc/_history/set_tag", 5);
+    CHECK_FALSE(badTag.errors.empty());
+    CHECK(badTag.errors.front().code == Error::Code::InvalidType);
+
+    auto unknown = space.insert("/doc/_history/unknown_command", true);
+    CHECK_FALSE(unknown.errors.empty());
+    CHECK(unknown.errors.front().code == Error::Code::UnknownError);
+}
+
 TEST_SUITE_END();
