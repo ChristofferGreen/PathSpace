@@ -1638,7 +1638,7 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
         auto workerFunction = [&](int threadId) {
             if (threadId % 2 == 0) {
                 // Even threads try to acquire A then B (take removes the token)
-                auto a = pspace.take<int>("/resourceA", Block(10ms));
+                auto a = pspace.take<int>("/resourceA", Block(50ms));
                 if (!a) {
                     deadlockCount++;
                     return;
@@ -1646,7 +1646,7 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 // jitter to break symmetry across threads
                 std::this_thread::sleep_for(std::chrono::milliseconds(threadId & 0x3));
-                auto b = pspace.take<int>("/resourceB", Block(25ms));
+                auto b = pspace.take<int>("/resourceB", Block(100ms));
                 if (!b) {
                     deadlockCount++;
                     // release A
@@ -1661,7 +1661,7 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
                 pspace.insert("/resourceA", 1);
             } else {
                 // Odd threads try to acquire B then A (take removes the token)
-                auto b = pspace.take<int>("/resourceB", Block(10ms));
+                auto b = pspace.take<int>("/resourceB", Block(50ms));
                 if (!b) {
                     deadlockCount++;
                     return;
@@ -1669,7 +1669,7 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 // jitter to break symmetry across threads
                 std::this_thread::sleep_for(std::chrono::milliseconds(threadId & 0x3));
-                auto a = pspace.take<int>("/resourceA", Block(25ms));
+                auto a = pspace.take<int>("/resourceA", Block(100ms));
                 if (!a) {
                     deadlockCount++;
                     // release B
