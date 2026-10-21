@@ -3,12 +3,12 @@
 This guide collects the conventions and scripts used when pairing with the PathSpace maintainer. Treat it as the quick-start you consult before touching the repository.
 
 ## Quick Checklist
-- Confirm the assignment scope and skim `docs/AI_Architecture.md`, `docs/Plan_Overview.md`, plus any relevant plan documents under `docs/` (renderer, distributed PathSpace, inspector, web server).
+- Confirm the assignment scope and skim `docs/AI_Architecture.md`, `docs/Plan_Overview.md`, plus any relevant plan documents under `docs/` (e.g. distributed PathSpace).
 - Keep changes ASCII unless the file already uses Unicode.
 - Run the full test suite with the mandated loop/timeout before requesting review.
 - Git pushes are gated by the local `pre-push` hook (`scripts/git-hooks/pre-push.local.sh`).
-  - By default it runs `./scripts/compile.sh --clean --test --loop=5 --release` (UI enabled) and then builds & smoke-tests `minimal_button_example`.
-  - Set `SKIP_LOOP_TESTS=1` or `SKIP_EXAMPLE=1` in the environment if you have explicit maintainer approval to skip those steps.
+  - By default it runs `./scripts/compile.sh --clean --test --loop=5 --release`.
+  - Set `SKIP_LOOP_TESTS=1` in the environment if you have explicit maintainer approval to skip the loop.
 
 ## Build Setup
 - Configure a `build/` tree before running tests:
@@ -21,7 +21,7 @@ This guide collects the conventions and scripts used when pairing with the PathS
 ## Repository Map
 - `src/` — production sources.
 - `tests/`, `Testing/` — unit/functional tests managed by CTest.
-- `docs/` — architecture notes, renderer plan, path semantics; start with `docs/AI_Architecture.md`.
+- `docs/` — architecture notes, path semantics; start with `docs/AI_Architecture.md`.
 - `scripts/` — automation (`create_pr.sh`, `compile.sh`, tooling helpers).
 - `bench/` — benchmark apps (PathSpace hierarchy perf harness).
 
@@ -51,15 +51,14 @@ This guide collects the conventions and scripts used when pairing with the PathS
 - **Error handling/logging:** Return `Error`/`Expected` instead of bools where context matters; populate codes + messages. Log through `log/TaggedLogger` or existing logger instances—no ad-hoc `std::cout`.
 - **Testing hooks:** When adding features, mirror telemetry/paths into `tests/` (doctest) and align with the five-loop harness. Update docs alongside code (plans, schemas, debugging playbook) whenever contracts or diagnostics change.
 - **Test naming:** Group doctest cases under dot-delimited suites (use `TEST_SUITE`/`TEST_SUITE_BEGIN` like `TEST_SUITE("core.nodedata.nested")`) and keep per-case titles concise but descriptive.
-- **Resources/UI:** Declarative UI code must resolve themes via the runtime (no hard-coded palettes); keep renderer/HTML adapters aligned with snapshot schemas and update SceneGraph plan files when contracts move.
 
 ## Architecture Snapshot
 - **Core space** — `PathSpace` owns a trie of `Node` objects keyed by path component. Each node holds serialized values plus queued `Task` executions; insert/read/take manage the front element without global locks. Node payloads marshal through `NodeData` (contiguous byte/storage lanes with companion type metadata) using Alpaca today and migrating to C++26 serialization when available (`docs/AI_Architecture.md`).
 - **Paths** — type-safe `ConcretePath`/`GlobPath` wrappers provide component iterators and globbing (`*`, `**`, ranges). Pattern matching is component-wise for predictable performance (`src/pathspace/path/`).
 - **Concurrency & notifications** — children are kept in a sharded concurrent map, while per-node mutexes guard payload updates. Waiters register in concrete and glob registries; notifications flow through a `NotificationSink` token so late completions drop safely during shutdown ("Wait/notify" in `docs/AI_Architecture.md`).
 - **Executions** — inserts accept callables and scheduling metadata (`In`, `Execution`, `Block`). Tasks can execute immediately or lazily; completion can trigger reinsertions or wake waiters ("Operations" → insert/read/take in `docs/AI_Architecture.md`).
-- **Layers & views** — `src/pathspace/layer/` hosts permission-checked views (`PathView`), path rewriting mounts (`PathAlias`), and OS/event bridges via PathIO adapters. Enable the macOS backends with `-DENABLE_PATHIO_MACOS=ON` (see `README.md` build options) and review the PathIO backend notes in `docs/AI_Architecture.md` when touching input/presenter code; follow the renderer plan for present/publish semantics (`docs/finished/Plan_SceneGraph_Renderer_Finished.md`).
-- **Canonical namespaces** — `docs/AI_Paths.md` defines standard system, renderer, and scene subtrees. Keep code/docs in sync when touching surface/target/path conventions.
+- **Layers & views** — `src/pathspace/layer/` hosts permission-checked views (`PathView`), path rewriting mounts (`PathAlias`), and OS/event bridges via PathIO adapters. Enable the macOS backends with `-DENABLE_PATHIO_MACOS=ON` (see `README.md` build options) and review the PathIO backend notes in `docs/AI_Architecture.md` when touching input/presenter code.
+- **Canonical namespaces** — `docs/AI_Paths.md` defines standard system and app subtrees. Keep code/docs in sync when touching path conventions.
 
 ## Day-to-day Flow
 1. **Understand the task** – read the relevant docs and existing code; prefer `rg` for searching.

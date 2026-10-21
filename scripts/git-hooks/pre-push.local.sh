@@ -226,25 +226,6 @@ if [[ -z "${PATHSPACE_TEST_ARTIFACT_DIR:-}" ]]; then
   export PATHSPACE_TEST_ARTIFACT_DIR="$ROOT/build/test-logs/pre-push_artifacts"
 fi
 mkdir -p "$PATHSPACE_TEST_ARTIFACT_DIR"
-FONT_ATLAS_ARTIFACT="$PATHSPACE_TEST_ARTIFACT_DIR/widget_gallery_font_assets.bin"
-# When skipping the main test loop, leave any provided artifact in place (or
-# seed an empty placeholder) so the later guard does not fail unnecessarily.
-if [[ "${SKIP_LOOP_TESTS:-0}" == "1" ]]; then
-  : >"$FONT_ATLAS_ARTIFACT"
-else
-  rm -f "$FONT_ATLAS_ARTIFACT"
-fi
-
-if [[ -z "${PATHSPACE_LEGACY_WIDGET_BUILDERS:-}" ]]; then
-  export PATHSPACE_LEGACY_WIDGET_BUILDERS="error"
-fi
-if [[ -z "${PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT:-}" ]]; then
-  export PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT="$ROOT/build/prepush_legacy_builders.jsonl"
-fi
-LEGACY_REPORT_DIR="$(dirname "$PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT")"
-mkdir -p "$LEGACY_REPORT_DIR"
-: >"$PATHSPACE_LEGACY_WIDGET_BUILDERS_REPORT"
-
 JOBS="${JOBS:-$(cpu_jobs)}"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 BUILD_TYPE_LOWER="$(printf '%s' "$BUILD_TYPE" | tr '[:upper:]' '[:lower:]')"

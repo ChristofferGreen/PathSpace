@@ -15,11 +15,6 @@ Links:
 - docs/AI_Paths.md (canonical namespace/layout conventions)
 - docs/Plan_Overview.md (index of active plan documents and priorities)
 - docs/Plan_Distributed_PathSpace.md (distributed mounting/network plan)
-- docs/WidgetDeclarativeAPI.md (workflow for the declarative widget runtime; required reading for UI work)
-- docs/WidgetDeclarativeFeatureParity.md (migration tracker comparing legacy and declarative widgets)
-- docs/WidgetDeclarativeMigrationTracker.md (live status board for inspector/web/consumer adoption of the declarative runtime)
-- docs/finished/Plan_PathSpace_Inspector_Finished.md (live PathSpace inspector roadmap; historical record)
-- examples/minimal_button_example.cpp (canonical declarative demo; the only example built when `BUILD_PATHSPACE_EXAMPLES=ON`)
 - build/docs/html/index.html (Doxygen API Reference)
 
 ## Architecture at a Glance
@@ -27,8 +22,7 @@ Links:
 - **Paths & globbing** — Strongly-typed `ConcretePath`/`GlobPath` wrappers provide component iterators, pattern matching (`*`, `**`, ranges), and validation (`src/pathspace/path/`).
 - **Wait/notify** — Blocking reads register waiters in concrete/glob registries and wake via a `NotificationSink` token; timeouts surface as `Error::Timeout` (`Wait/notify` + `Blocking` in the architecture doc).
 - **Layers & PathIO** — Permission-checked views (`PathView`), alias mounts (`PathAlias`), and OS/event bridges live in `src/pathspace/layer/`. Enable macOS backends with `-DENABLE_PATHIO_MACOS=ON` and review the PathIO guidance near the end of `docs/AI_Architecture.md`.
-- **Declarative widget runtime** — Declarative helpers in `include/pathspace/ui/declarative/**` mount widgets entirely through PathSpace state. `SP::System::LaunchStandard`, `App::Create`, `Window::Create`, and `Scene::Create` bootstrap the runtime; widgets use `Button::Create`, `List::Create`, etc., instead of hand-built buckets. Legacy imperative builders are compatibility-only and will be removed once downstream consumers migrate (see `docs/WidgetDeclarativeAPI.md`).
-- **Canonical namespaces** — `docs/AI_Paths.md` defines system/app/render targets; renderer and presenter plans live in `docs/finished/Plan_SceneGraph_Renderer_Finished.md`.
+- **Canonical namespaces** — `docs/AI_Paths.md` defines system and app targets.
 
 ## Quick start
 
@@ -41,12 +35,7 @@ Links:
 ```bash
 git clone <this-repo>
 cd PathSpace
-# Enable UI/presenter stack (software renderer on all platforms, Metal presenter on macOS)
-cmake -S . -B build \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DPATHSPACE_ENABLE_UI=ON \
-  -DPATHSPACE_UI_SOFTWARE=ON \
-  -DPATHSPACE_UI_METAL=ON   # OFF on non-Apple hosts
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
@@ -67,80 +56,16 @@ or use the helper that wraps the loop/timeout policy from `docs/AI_Architecture.
 ```
 
 Build options:
-- PATHSPACE_ENABLE_UI=ON|OFF (UI/renderers/windows; defaults OFF for headless builds)
-- PATHSPACE_UI_SOFTWARE=ON|OFF (software renderer/surfaces; enable when PATHSPACE_ENABLE_UI=ON)
-- PATHSPACE_UI_METAL=ON|OFF (Metal presenter; Apple-only, defaults ON on macOS)
-- ENABLE_ADDRESS_SANITIZER=ON|OFF
+- ENABLE_ADDRESS_SANITIZER=ON|OFF (defaults ON, except OFF for Release builds)
 - ENABLE_THREAD_SANITIZER=ON|OFF
 - ENABLE_UNDEFINED_SANITIZER=ON|OFF
 - ENABLE_PATHIO_MACOS=ON|OFF (compile-time defines for experimental macOS PathIO)
-- BUILD_PATHSPACE_EXAMPLES=ON|OFF
 
 Tip: Enable sanitizers when debugging concurrency/path issues, and pair `ENABLE_PATHIO_MACOS=ON` with the PathIO section in `docs/AI_Architecture.md` if you need native device backends.
 
 Scripts:
 - ./scripts/compile.sh
 - ./scripts/update_compile_commands.sh (keeps compile_commands.json in repo root)
-- ./build/pathspace_serve_html [--seed-demo] (standalone ServeHtml binary for ops/CI; see docs/serve_html/README.md for the module map and docs/finished/Plan_WebServer_Adapter_Finished.md for deployment details.)
-- ./build/minimal_button_example [--screenshot <png> --dump_json --screenshot_exit] (canonical UI smoke; runs the declarative runtime, renders two buttons, and can capture a headless screenshot before exiting.)
-
-## Embeddable HTML server
-
-`PathSpaceHtmlServer<Space>` embeds ServeHtml directly inside an app so you can mirror a native
-window to `/apps/<app>/<view>` without spawning the standalone binary. Minimal wiring:
-
-```cpp
-#include <pathspace/web/PathSpaceHtmlServer.hpp>
-
-ServeHtml::HtmlMirrorBootstrap mirror{
-    .app_root = app_root,        // SP::App::AppRootPath
-    .window   = window_path,     // SP::UI::Runtime::WindowPath
-    .scene    = scene_path,      // SP::UI::Runtime::ScenePath
-    .mirror_config = {.renderer_name = "html",
-                      .target_name   = "paint_web",
-                      .view_name     = "web"},
-    .present_on_start = true,
-};
-
-auto html_server = ServeHtml::PathSpaceHtmlServer<ServeHtml::ServeHtmlSpace>::Builder{space}
-    .serve_html_options({.host = "127.0.0.1", .port = 0}) // port=0 → random
-    .html_mirror(mirror)
-    .seed_demo_credentials(true)
-    .attach_default_targets(true)
-    .build();
-
-auto started = html_server.start();
-if (!started) {
-    // handle describeError(started.error())
-}
-// ... run your app ...
-html_server.stop(); // joins before PathSpace teardown
-```
-
-- Use `html_server.options().serve_html.port` to log the chosen port when `port=0`.
-- Legacy demo binaries (`paint_example`, `widgets_example`, `html_replay_example`, `devices_example`, `pixel_noise_example`) have been retired in favor of the single `minimal_button_example`. The ServeHtml workflow remains available for embedders via `pathspace_serve_html` but no longer ships bundled UI demos.
-
-## Inspector quick start
-
-Once you have built the tree, you can launch the bundled inspector server against any running PathSpace (local or distributed mount) and open it in a browser:
-
-```bash
-./build/pathspace_inspector_server \
-  --host 0.0.0.0 \
-  --port 0 \
-  --root /app \
-  --max-depth 3 \
-  --max-children 64 \
-  --diagnostics-root /diagnostics/ui/minimal_button_example \
-  --ui-root out/inspector-ui \
-  --no-demo
-```
-
-- Point `--root` (or the embedded `InspectorHttpServer::Options::snapshot.root`) at the subtree you want to expose.
-- When your process already embeds `InspectorHttpServer`, just set the options, call `start()`, and visit `http://<host>:<port>/`—the SPA is served from the same binary.
-- Distributed deployments should add the remote mount aliases to `InspectorHttpServer::Options::remote_mounts` (or the CLI equivalent) so the SPA’s remote picker lists each mounted PathSpace together with its live health metrics.
-
-See `docs/finished/Plan_PathSpace_Inspector_Finished.md` for the full endpoint catalog (tree, node, stream, metrics, watchlists, actions) and `docs/AI_Debugging_Playbook.md` §8 for the day-to-day inspector workflow.
 
 ## Documentation (Doxygen)
 You can generate HTML API documentation into build/docs/html:
@@ -411,9 +336,8 @@ target_link_libraries(your_app PRIVATE PathSpace)
 ```
 
 Options:
-- ENABLE_ADDRESS_SANITIZER, ENABLE_THREAD_SANITIZER, ENABLE_UNDEFINED_SANITIZER (default OFF)
+- ENABLE_ADDRESS_SANITIZER (default ON; OFF for Release), ENABLE_THREAD_SANITIZER, ENABLE_UNDEFINED_SANITIZER (default OFF)
 - ENABLE_PATHIO_MACOS (default OFF)
-- BUILD_PATHSPACE_EXAMPLES (default OFF)
 
 ## Troubleshooting
 
