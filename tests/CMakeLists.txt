@@ -45,9 +45,14 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/task/test_TaskPoolTraceInternals.cpp
   unit/trace/test_PathSpaceTrace.cpp
   unit/test_PathSpace_read.cpp
-  unit/test_PathSpace_nesting.cpp
+  unit/test_PathSpace_nesting_basic.cpp
+  unit/test_PathSpace_nesting_indexed.cpp
+  unit/test_PathSpace_nesting_lifecycle.cpp
+  unit/test_PathSpace_nesting_concurrent.cpp
   unit/test_PathSpace_extract.cpp
   unit/test_PathSpace_listChildren.cpp
+  unit/test_PathSpace_visit_value_handle.cpp
+  unit/test_PathSpace_visit_nested.cpp
   unit/test_PathSpace_visit.cpp
   unit/test_PathSpace_insert.cpp
   unit/test_PathSpace_retarget.cpp
@@ -58,7 +63,11 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/test_ValueHandleGuards.cpp
   unit/test_ValueHandleReadInto.cpp
   unit/test_PathSpace_indexed.cpp
-  unit/test_PathSpace_pod_fastpath.cpp
+  unit/test_PathSpace_pod_fastpath_layers.cpp
+  unit/test_PathSpace_pod_fastpath_concurrency.cpp
+  unit/test_PathSpace_pod_fastpath_pack_insert.cpp
+  unit/test_PathSpace_pod_fastpath_span_pack.cpp
+  unit/test_PathSpace_pod_fastpath_core.cpp
   unit/path/test_UnvalidatedPath.cpp
   unit/history/test_UndoJournal.cpp
   unit/history/test_UndoJournalState.cpp
@@ -66,12 +75,25 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/history/test_UndoJournalEntry.cpp
   unit/history/test_UndoHistoryUtils.cpp
   unit/history/test_UndoSavefileCodec.cpp
-  unit/history/test_UndoableSpace.cpp
+  unit/history/test_UndoableSpaceCore.cpp
+  unit/history/test_UndoableSpaceRetention.cpp
+  unit/history/test_UndoableSpaceMetrics.cpp
+  unit/history/test_UndoableSpaceValidation.cpp
+  unit/history/test_UndoableSpacePersistence.cpp
+  unit/history/test_UndoableSpaceConcurrency.cpp
   unit/history/test_UndoJournalPersistenceCoverage.cpp
   unit/history/test_UndoableSpaceCoverage.cpp
-  unit/history/test_UndoableSpaceHistoryCoverage.cpp
+  unit/history/test_UndoableSpaceHistoryTelemetryCoverage.cpp
+  unit/history/test_UndoableSpaceHistoryPersistenceCoverage.cpp
+  unit/history/test_UndoableSpaceHistoryJournalCoverage.cpp
+  unit/history/test_UndoableSpaceHistoryGuardsCoverage.cpp
   unit/history/test_UndoableSpaceTransactionsCoverage.cpp
-  unit/pathspace/test_PathSpaceJsonExporter.cpp
+  unit/pathspace/test_PathSpaceJsonExporterFlatPaths.cpp
+  unit/pathspace/test_PathSpaceJsonExporterLimits.cpp
+  unit/pathspace/test_PathSpaceJsonExporterPlaceholders.cpp
+  unit/pathspace/test_PathSpaceJsonExporterErrors.cpp
+  unit/pathspace/test_PathSpaceJsonExporterModes.cpp
+  unit/pathspace/test_PathSpaceJsonExporterBasics.cpp
   unit/pathspace/test_PathSpaceJsonConverters.cpp
   unit/pathspace/test_PathSpaceHeader.cpp
   unit/pathspace/test_PathSpaceBaseDefaults.cpp
@@ -87,7 +109,12 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/layer/test_PathSpaceTrellisCore.cpp
   unit/layer/test_PathSpaceTrellisBlocking.cpp
   unit/layer/test_PathAliasCoverage.cpp
-  unit/layer/test_SnapshotCachedPathSpace.cpp
+  unit/layer/test_SnapshotCacheLifecycle.cpp
+  unit/layer/test_SnapshotCacheReadPaths.cpp
+  unit/layer/test_SnapshotCacheMetrics.cpp
+  unit/layer/test_SnapshotCacheRebuild.cpp
+  unit/layer/test_SnapshotCacheDirtyRoots.cpp
+  unit/layer/test_SnapshotCacheMutationTracking.cpp
   unit/path/test_PathViewCoverage.cpp
   unit/path/test_validation.cpp
   unit/task/test_FutureCoverage.cpp
