@@ -9,7 +9,7 @@
 
 using namespace SP;
 
-TEST_SUITE("pathspace.valuehandle") {
+TEST_SUITE("pathspace.value_handle") {
 
 TEST_CASE("ValueHandle readInto returns NotSupported when values are disabled") {
     PathSpace space;

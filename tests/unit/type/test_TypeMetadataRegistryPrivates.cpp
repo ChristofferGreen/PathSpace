@@ -8,7 +8,7 @@
 
 using namespace SP;
 
-TEST_SUITE("type.typemetadata.privates") {
+TEST_SUITE("type.type_metadata.privates") {
 TEST_CASE("make_view returns nullopt for missing entry") {
     CHECK_FALSE(TypeMetadataRegistry::make_view(nullptr).has_value());
 }

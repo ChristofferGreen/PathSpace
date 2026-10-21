@@ -4,7 +4,7 @@
 
 using namespace SP;
 
-TEST_SUITE_BEGIN("pathspace.valuehandle.guards");
+TEST_SUITE_BEGIN("pathspace.value_handle.guards");
 
 TEST_CASE("default ValueHandle reports missing data gracefully") {
     ValueHandle handle{};

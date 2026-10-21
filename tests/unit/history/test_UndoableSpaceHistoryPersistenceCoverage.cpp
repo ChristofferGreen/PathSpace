@@ -73,7 +73,7 @@ auto writeSavefile(std::filesystem::path const& path,
 
 } // namespace
 
-TEST_SUITE_BEGIN("history.undoable.history.coverage.persistence");
+TEST_SUITE_BEGIN("history.undoable.coverage.persistence");
 
 TEST_CASE("UndoableSpace persistence setup validates tokens") {
     UndoableSpace space{std::make_unique<PathSpace>(), {}};

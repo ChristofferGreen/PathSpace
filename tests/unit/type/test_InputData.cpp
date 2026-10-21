@@ -8,7 +8,7 @@
 
 using namespace SP;
 
-TEST_SUITE_BEGIN("type.inputdata");
+TEST_SUITE_BEGIN("type.input_data");
 
 TEST_CASE("Pod preferred types wire POD factory and point to object") {
     int value = 5;

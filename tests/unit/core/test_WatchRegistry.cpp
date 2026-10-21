@@ -8,7 +8,7 @@
 
 using namespace std::chrono_literals;
 
-TEST_SUITE_BEGIN("core.watchregistry");
+TEST_SUITE_BEGIN("core.watch_registry");
 
 TEST_CASE("waiters wake and counts drop after notify") {
     SP::WatchRegistry registry;

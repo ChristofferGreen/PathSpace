@@ -6,7 +6,7 @@
 
 using namespace SP;
 
-TEST_SUITE_BEGIN("pathspace.list");
+TEST_SUITE_BEGIN("pathspace.list_children");
 
 TEST_CASE("PathSpace listChildren enumerates child names") {
     PathSpace space;

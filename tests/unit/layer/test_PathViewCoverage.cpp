@@ -23,7 +23,7 @@
 
 using namespace SP;
 
-TEST_SUITE("path.view.coverage") {
+TEST_SUITE("layer.path_view.coverage") {
 TEST_CASE("ConcreteName and GlobName basics") {
     ConcreteName cname{"alpha"};
     CHECK(cname == "alpha");

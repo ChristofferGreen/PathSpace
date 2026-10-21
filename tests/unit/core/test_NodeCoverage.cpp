@@ -4,7 +4,7 @@
 
 using namespace SP;
 
-TEST_SUITE_BEGIN("core.node");
+TEST_SUITE_BEGIN("core.node.coverage");
 
 TEST_CASE("Node getOrCreateChild returns stable child") {
     Node root;

@@ -59,7 +59,7 @@ struct RecordingSink : NotificationSink {
 };
 }
 
-TEST_SUITE("pathspace.internal.coverage") {
+TEST_SUITE("pathspace.internal") {
 
 TEST_CASE("span-pack take returns invalid type for non-POD nodes") {
     PathSpace space;

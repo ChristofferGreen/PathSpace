@@ -20,7 +20,7 @@
 
 using namespace SP;
 
-TEST_SUITE("layer.pathalias.coverage") {
+TEST_SUITE("layer.path_alias.coverage") {
 TEST_CASE("PathAlias rewrites inserts and reads via target prefix") {
     auto upstream = std::make_shared<PathSpace>();
     PathAlias alias{upstream, "/upstream"};

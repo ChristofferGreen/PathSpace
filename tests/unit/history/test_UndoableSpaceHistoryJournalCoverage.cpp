@@ -1,6 +1,6 @@
 #include "UndoableSpaceHistoryCoverageTestSupport.hpp"
 
-TEST_SUITE_BEGIN("history.undoable.history.coverage.journal");
+TEST_SUITE_BEGIN("history.undoable.coverage.journal");
 
 TEST_CASE("UndoableSpace payloadBytes clamps empty buffers") {
     NodeData empty;

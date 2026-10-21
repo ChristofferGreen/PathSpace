@@ -9,7 +9,7 @@
 
 using namespace SP;
 
-TEST_SUITE_BEGIN("type.inputdata");
+TEST_SUITE_BEGIN("type.input_data.coverage");
 
 TEST_CASE("InputData attaches pod payload factory for podPreferred types") {
     int value = 7;

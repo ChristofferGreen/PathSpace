@@ -54,7 +54,7 @@ struct DummyPayload final : PodPayloadBase {
 };
 } // namespace
 
-TEST_SUITE("core.podpayload.corruption") {
+TEST_SUITE("core.pod_payload.corruption") {
 TEST_CASE("PodPayloadBase pinned wrappers call through raw spans") {
     DummyPayload payload;
 

@@ -45,7 +45,7 @@ struct CountingExecutor final : Executor {
 
 } // namespace
 
-TEST_SUITE("task.taskt") {
+TEST_SUITE("task.task_t") {
 TEST_CASE("TaskT schedules work and fulfills future without notifier") {
     TaskPool pool(1);
 

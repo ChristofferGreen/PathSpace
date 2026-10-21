@@ -17,7 +17,7 @@ struct DummySpace final : PathSpaceBase {
 };
 } // namespace
 
-TEST_SUITE("pathspace.base.spanpack") {
+TEST_SUITE("pathspace.base.span_pack") {
 TEST_CASE("read span pack returns NotSupported by default") {
     DummySpace space;
     auto result = space.read<"alpha", "beta">(

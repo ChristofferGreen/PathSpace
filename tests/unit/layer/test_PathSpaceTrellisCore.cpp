@@ -20,7 +20,7 @@
 
 using namespace SP;
 
-TEST_SUITE("layer.pathspace.trellis.core") {
+TEST_SUITE("layer.trellis.core") {
 TEST_CASE("PathSpaceTrellis handles missing backing") {
     PathSpaceTrellis trellis{nullptr};
 

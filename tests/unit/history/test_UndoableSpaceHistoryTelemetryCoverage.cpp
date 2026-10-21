@@ -35,7 +35,7 @@ protected:
 
 } // namespace
 
-TEST_SUITE_BEGIN("history.undoable.history.coverage.telemetry");
+TEST_SUITE_BEGIN("history.undoable.coverage.telemetry");
 
 TEST_CASE("UndoableSpace records and reorders unsupported payload telemetry") {
     UndoableSpace space{std::make_unique<PathSpace>(), {}};

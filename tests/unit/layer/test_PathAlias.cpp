@@ -6,7 +6,7 @@
 
 using namespace SP;
 
-TEST_SUITE("layer.pathalias") {
+TEST_SUITE("layer.path_alias") {
 TEST_CASE("PathAlias - Forwarding insert and read to upstream") {
     // Upstream concrete space where data is actually stored
     auto upstream = std::make_shared<PathSpace>();

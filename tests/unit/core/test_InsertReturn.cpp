@@ -2,7 +2,7 @@
 #include "core/Error.hpp"
 #include "third_party/doctest.h"
 
-TEST_SUITE("core.insertreturn") {
+TEST_SUITE("core.insert_return") {
 
 TEST_CASE("InsertReturn defaults to zeroed counters") {
     SP::InsertReturn result{};

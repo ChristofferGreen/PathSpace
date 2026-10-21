@@ -3,7 +3,7 @@
 
 using namespace SP;
 
-TEST_SUITE("task.taskstate.atomic") {
+TEST_SUITE("task.task_state.atomic") {
 TEST_CASE("TaskStateAtomic transitions cover all branches") {
     TaskStateAtomic state;
     CHECK_FALSE(state.hasStarted());

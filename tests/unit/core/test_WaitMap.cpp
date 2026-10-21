@@ -29,7 +29,7 @@ struct WaitMapEnvBootstrap {
 WaitMapEnvBootstrap waitMapEnvBootstrap;
 } // namespace
 
-TEST_SUITE("core.waitmap") {
+TEST_SUITE("core.wait_map") {
 TEST_CASE("notify and clear are safe when no waiters are registered") {
     WaitMap waitMap;
 

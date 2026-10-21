@@ -3,7 +3,7 @@
 
 using namespace SP;
 
-TEST_SUITE("pathspace.visitoptions") {
+TEST_SUITE("pathspace.visit_options") {
 TEST_CASE("VisitOptions helper methods reflect child limits") {
     VisitOptions opts;
     CHECK(opts.childLimitEnabled());

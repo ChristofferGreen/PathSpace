@@ -7,7 +7,7 @@
 
 using namespace SP;
 
-TEST_SUITE("core.podpayload.full") {
+TEST_SUITE("core.pod_payload.full") {
 TEST_CASE("PodPayload pinned spans and raw-from helpers") {
     PodPayload<int> payload;
 

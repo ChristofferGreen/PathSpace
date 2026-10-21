@@ -12,7 +12,7 @@
 
 using namespace SP;
 
-TEST_SUITE("layer.pathspace.trellis.blocking") {
+TEST_SUITE("layer.trellis.blocking") {
 namespace {
 class SlowEmptySpace final : public PathSpaceBase {
 public:

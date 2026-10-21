@@ -1,6 +1,6 @@
 #include "UndoableSpaceTestSupport.hpp"
 
-TEST_SUITE_BEGIN("history.undoable.gc");
+TEST_SUITE_BEGIN("history.undoable.retention");
 
 TEST_CASE("journal telemetry paths expose stats") {
     auto space = makeUndoableSpace();

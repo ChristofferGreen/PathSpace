@@ -21,7 +21,7 @@ struct TestComplexStruct {
     std::vector<TestStruct> structs;
 };
 
-TEST_SUITE_BEGIN("type.slidingbuffer");
+TEST_SUITE_BEGIN("type.sliding_buffer");
 
 TEST_CASE("SlidingBuffer") {
     SUBCASE("Basic Buffer Operations") {

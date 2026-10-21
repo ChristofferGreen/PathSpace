@@ -56,7 +56,7 @@ struct PinnedBaseStub final : PodPayloadBase {
 };
 } // namespace
 
-TEST_SUITE("core.podpayload.coverage") {
+TEST_SUITE("core.pod_payload.coverage") {
 TEST_CASE("PodPayloadBase pinned helpers default to empty tokens") {
     PinnedBaseStub stub;
 

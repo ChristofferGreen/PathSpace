@@ -9,7 +9,7 @@
 
 using namespace SP;
 
-TEST_SUITE_BEGIN("type.input");
+TEST_SUITE_BEGIN("type.input_metadata");
 
 TEST_CASE("Type InputMetadata Fundamental") {
     SUBCASE("Int Serialize and Deserialize") {

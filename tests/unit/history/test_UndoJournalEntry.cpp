@@ -52,7 +52,7 @@ auto computeLayout(std::vector<std::byte> const& buffer) -> PayloadLayout {
 
 } // namespace
 
-TEST_SUITE_BEGIN("history.undojournal.entry");
+TEST_SUITE_BEGIN("history.journal.entry");
 
 TEST_CASE("serializeEntry round-trips journal fields including inverse payload and barrier") {
     JournalEntry entry{};

@@ -140,11 +140,9 @@ set(_pathspace_public_headers
     layer/PathSpaceTrellis.hpp
     layer/SnapshotCachedPathSpace.hpp
 )
-if(PATHSPACE_ENABLE_EXTRA)
-    list(APPEND _pathspace_public_headers
-        layer/PathAlias.hpp
-    )
-endif()
+list(APPEND _pathspace_public_headers
+    layer/PathAlias.hpp
+)
 
 list(JOIN _pathspace_public_headers ";" _pathspace_public_header_string)
 set_target_properties(PathSpace PROPERTIES PUBLIC_HEADER "${_pathspace_public_header_string}")

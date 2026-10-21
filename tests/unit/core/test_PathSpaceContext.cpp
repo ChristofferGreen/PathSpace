@@ -24,7 +24,7 @@ struct RecordingSink : NotificationSink {
 
 } // namespace
 
-TEST_SUITE("core.pathspacecontext") {
+TEST_SUITE("core.pathspace_context") {
 TEST_CASE("guards reentrant sink notifications and exposes executor accessors") {
     struct DummyExecutor : Executor {
         auto submit(std::weak_ptr<Task>&&) -> std::optional<Error> override { return std::nullopt; }

@@ -15,7 +15,7 @@
 #include <pathspace/tools/PathSpaceJsonConverters.hpp>
 #include <pathspace/type/InputData.hpp>
 #include <pathspace/type/DataCategory.hpp>
-#include "../PathSpaceTestHelper.hpp"
+#include "PathSpaceTestHelper.hpp"
 
 using Json = nlohmann::json;
 using namespace SP;

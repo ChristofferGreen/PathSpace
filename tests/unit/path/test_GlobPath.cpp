@@ -7,7 +7,7 @@
 
 using namespace SP;
 
-TEST_SUITE("path.globpath") {
+TEST_SUITE("path.glob_path") {
 TEST_CASE("glob equality supports supermatch segments") {
     GlobPathString    superGlob{"/root/**"};
     ConcretePathString deepPath{"/root/child/grandchild"};

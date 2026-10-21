@@ -34,7 +34,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/core/test_NodeDataCoverage.cpp
   unit/core/test_NodeDataDeserializeEdges.cpp
   unit/core/test_PathSpaceContext.cpp
-  unit/core/test_PathSpaceBaseSpanPack.cpp
+  unit/pathspace/test_PathSpaceBaseSpanPack.cpp
   unit/ext/test_alpaca.cpp
   unit/core/test_ExpectedShimCoverage.cpp
   unit/core/test_ElementType.cpp
@@ -44,32 +44,32 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/task/test_TaskT.cpp
   unit/task/test_TaskPoolTraceInternals.cpp
   unit/trace/test_PathSpaceTrace.cpp
-  unit/test_PathSpace_read.cpp
-  unit/test_PathSpace_nesting_basic.cpp
-  unit/test_PathSpace_nesting_indexed.cpp
-  unit/test_PathSpace_nesting_lifecycle.cpp
-  unit/test_PathSpace_nesting_concurrent.cpp
-  unit/test_PathSpace_extract.cpp
-  unit/test_PathSpace_listChildren.cpp
-  unit/test_PathSpace_visit_value_handle.cpp
-  unit/test_PathSpace_visit_nested.cpp
-  unit/test_PathSpace_visit.cpp
-  unit/test_PathSpace_insert.cpp
-  unit/test_PathSpace_retarget.cpp
-  unit/test_PathSpace_multithreading.cpp
-  unit/test_PathSpace_execution.cpp
-  unit/test_PathSpace_copy.cpp
-  unit/test_PathSpace_internal.cpp
-  unit/test_ValueHandleGuards.cpp
-  unit/test_ValueHandleReadInto.cpp
-  unit/test_PathSpace_indexed.cpp
-  unit/test_PathSpace_pod_fastpath_layers.cpp
-  unit/test_PathSpace_pod_fastpath_concurrency.cpp
-  unit/test_PathSpace_pod_fastpath_pack_insert.cpp
-  unit/test_PathSpace_pod_fastpath_span_pack.cpp
-  unit/test_PathSpace_pod_fastpath_core.cpp
+  unit/pathspace/test_PathSpaceRead.cpp
+  unit/pathspace/test_PathSpaceNestingBasic.cpp
+  unit/pathspace/test_PathSpaceNestingIndexed.cpp
+  unit/pathspace/test_PathSpaceNestingLifecycle.cpp
+  unit/pathspace/test_PathSpaceNestingConcurrent.cpp
+  unit/pathspace/test_PathSpaceExtract.cpp
+  unit/pathspace/test_PathSpaceListChildren.cpp
+  unit/pathspace/test_PathSpaceVisitValueHandle.cpp
+  unit/pathspace/test_PathSpaceVisitNested.cpp
+  unit/pathspace/test_PathSpaceVisit.cpp
+  unit/pathspace/test_PathSpaceInsert.cpp
+  unit/pathspace/test_PathSpaceRetarget.cpp
+  unit/pathspace/test_PathSpaceMultithreading.cpp
+  unit/pathspace/test_PathSpaceExecution.cpp
+  unit/pathspace/test_PathSpaceCopy.cpp
+  unit/pathspace/test_PathSpaceInternal.cpp
+  unit/pathspace/test_ValueHandleGuards.cpp
+  unit/pathspace/test_ValueHandleReadInto.cpp
+  unit/pathspace/test_PathSpaceIndexed.cpp
+  unit/pathspace/test_PathSpacePodFastpathLayers.cpp
+  unit/pathspace/test_PathSpacePodFastpathConcurrency.cpp
+  unit/pathspace/test_PathSpacePodFastpathPackInsert.cpp
+  unit/pathspace/test_PathSpacePodFastpathSpanPack.cpp
+  unit/pathspace/test_PathSpacePodFastpathCore.cpp
   unit/path/test_UnvalidatedPath.cpp
-  unit/history/test_UndoJournal.cpp
+  unit/history/test_UndoJournalRoundTrip.cpp
   unit/history/test_UndoJournalState.cpp
   unit/history/test_UndoJournalPersistence.cpp
   unit/history/test_UndoJournalEntry.cpp
@@ -98,7 +98,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/pathspace/test_PathSpaceHeader.cpp
   unit/pathspace/test_PathSpaceBaseDefaults.cpp
   unit/pathspace/test_VisitOptions.cpp
-  unit/test_BoundedPathSpace.cpp
+  unit/layer/test_BoundedPathSpace.cpp
   unit/core/test_Error.cpp
   unit/core/test_ExpectedShim.cpp
   unit/core/test_PodPayloadCoverage.cpp
@@ -115,32 +115,22 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/layer/test_SnapshotCacheRebuild.cpp
   unit/layer/test_SnapshotCacheDirtyRoots.cpp
   unit/layer/test_SnapshotCacheMutationTracking.cpp
-  unit/path/test_PathViewCoverage.cpp
+  unit/layer/test_PathViewCoverage.cpp
   unit/path/test_validation.cpp
   unit/task/test_FutureCoverage.cpp
   unit/task/test_TaskStateAtomic.cpp
   unit/task/test_IFutureAny.cpp
   unit/task/test_ExecutorForwarding.cpp
   test_main.cpp
+  unit/pathspace/test_SpanCallbackPointers.cpp
+  unit/layer/test_PathView.cpp
+  unit/layer/test_PathAlias.cpp
 )
 
 add_executable(PathSpaceTests ${PATHSPACE_CORE_TEST_SOURCES})
 
-if(PATHSPACE_ENABLE_EXTRA)
-  target_sources(PathSpaceTests PRIVATE
-    unit/layer/test_PathView.cpp
-    unit/layer/test_PathFileSystem.cpp
-    unit/layer/test_PathIO.cpp
-    unit/layer/test_PathIODevices.cpp
-    unit/layer/test_PathIOStdOut.cpp
-    unit/layer/test_PathAlias.cpp
-    unit/layer/test_PathIODeviceDiscovery.cpp
-    unit/layer/test_PathIOPointerMixer.cpp
-    unit/layer/test_PathIOGamepad.cpp
-    unit/layer/test_PointerDefault_Composition.cpp
-    unit/io/test_IoTrellis.cpp
-  )
-endif()
+# Shared test helpers (PathSpaceTestHelper.hpp) live in tests/unit.
+target_include_directories(PathSpaceTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/unit)
 
 # Opt-in debug logging for tests
 option(PATHSPACE_ENABLE_LOG_DEBUG "Enable SP_LOG_DEBUG logging" OFF)

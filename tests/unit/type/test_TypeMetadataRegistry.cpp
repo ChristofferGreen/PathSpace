@@ -43,7 +43,7 @@ struct MissingPayloadType {
 };
 } // namespace
 
-TEST_SUITE("type.typemetadata.registry") {
+TEST_SUITE("type.type_metadata.registry") {
 TEST_CASE("registerType rejects null typeinfo metadata") {
     auto& registry = TypeMetadataRegistry::instance();
     CHECK_FALSE(registry.registerType<NoTypeInfo>(""));

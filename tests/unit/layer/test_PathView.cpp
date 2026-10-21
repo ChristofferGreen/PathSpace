@@ -6,7 +6,7 @@
 using namespace SP;
 using namespace std::chrono_literals;
 
-TEST_SUITE("layer.path.view") {
+TEST_SUITE("layer.path_view") {
 TEST_CASE("PathSpace View") {
     std::shared_ptr<PathSpace> space = std::make_shared<PathSpace>();
     SUBCASE("Capability Types") {

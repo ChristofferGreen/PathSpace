@@ -1,6 +1,6 @@
 #include "UndoableSpaceHistoryCoverageTestSupport.hpp"
 
-TEST_SUITE_BEGIN("history.undoable.history.coverage.guards");
+TEST_SUITE_BEGIN("history.undoable.coverage.guards");
 
 TEST_CASE("UndoableSpace enableHistory reports invalid existing roots") {
     UndoableSpace space{std::make_unique<PathSpace>(), {}};
