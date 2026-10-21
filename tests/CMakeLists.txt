@@ -123,8 +123,6 @@ endif()
 
 set(PATHSPACE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/..")
 target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_SOURCE_DIR="${PATHSPACE_ROOT_DIR}")
-# Treat CI/test builds as coverage-friendly to reduce timing flake sensitivity.
-target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_COVERAGE_BUILD=1)
 if(PATHSPACE_NEEDS_EXPECTED_SHIM)
   target_compile_definitions(PathSpaceTests PRIVATE PATHSPACE_NEEDS_EXPECTED_SHIM=1)
 endif()
