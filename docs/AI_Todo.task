@@ -167,7 +167,7 @@ task {
   status: planned
   priority: P2
   acceptance_criteria: [
-    "A macOS job runs ./scripts/compile.sh --clean --test --loop=5.",
+    "A macOS job runs ./scripts/compile.sh --clean --loop=5.",
     "Branch protection includes both Linux and macOS checks."
   ]
 }

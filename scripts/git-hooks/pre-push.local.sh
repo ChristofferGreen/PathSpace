@@ -258,7 +258,7 @@ if [[ "${SKIP_LOOP_TESTS:-0}" != "1" ]]; then
   say "Building and running tests with loop=5"
   # scripts/compile.sh takes care of configure+build+tests
   # Prefer Apple clang for both C++ and ObjC++ to support ObjC headers/blocks
-  run_with_hard_timeout "compile/test loop" PATHSPACE_CMAKE_ARGS="$PATHSPACE_CMAKE_ARGS" ./scripts/compile.sh --clean --test --loop=5 "$BUILD_TYPE_FLAG" --jobs "$JOBS"
+  run_with_hard_timeout "compile/test loop" PATHSPACE_CMAKE_ARGS="$PATHSPACE_CMAKE_ARGS" ./scripts/compile.sh --clean --loop=5 "$BUILD_TYPE_FLAG" --jobs "$JOBS"
   ok "Test loop completed successfully"
 else
   warn "Skipping test loop (SKIP_LOOP_TESTS=1)"
@@ -287,11 +287,9 @@ if [[ ${#SANITIZER_RUNS[@]} -gt 0 ]]; then
     if [[ "${SANITIZER_CLEAN:-0}" == "1" ]]; then
       sanitize_args+=("--clean")
     fi
-    sanitize_args+=("--build-dir" "build-${sanitizer}")
     sanitize_args+=("--build-type" "${SANITIZER_BUILD_TYPE:-Debug}")
     sanitize_args+=("--jobs" "$JOBS")
-    sanitize_args+=("--disable-metal-tests")
-    sanitize_args+=("--${sanitizer}-test")
+    sanitize_args+=("--${sanitizer}" "--test")
     if [[ -n "$local_loop" ]]; then
       sanitize_args+=("--loop=$local_loop")
     fi

@@ -23,7 +23,7 @@ fi
 
 cmake --build build -j
 
-./scripts/compile.sh --clean --test --loop=5 --release
+./scripts/compile.sh --clean --loop=5 --release
 
 if git diff --quiet && git diff --cached --quiet; then
     echo "error: no changes to commit" >&2

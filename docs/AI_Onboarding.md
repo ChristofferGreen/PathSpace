@@ -25,7 +25,7 @@ This guide bootstraps a new AI assistant so it can work productively in the Path
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
-./scripts/compile.sh --loop=5 --per-test-timeout 20
+./scripts/compile.sh --loop=5 --timeout 20
 ```
 Investigate and resolve failures before starting new development.
 
