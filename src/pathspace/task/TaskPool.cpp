@@ -360,7 +360,8 @@ auto TaskPool::traceNowUs() const -> uint64_t {
     auto ts = now_micros();
     auto base = traceStartMicros.load(std::memory_order_relaxed);
     if (ts < base) return 0;
-    return static_cast<uint64_t>(ts - base);
+    // 0 means "tracing disabled" to callers, so clamp the first microsecond to 1.
+    return std::max<uint64_t>(1, static_cast<uint64_t>(ts - base));
 }
 
 auto TaskPool::flushTrace() -> std::optional<Error> {
