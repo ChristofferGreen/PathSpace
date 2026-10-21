@@ -3,7 +3,7 @@
 This guide collects the conventions and scripts used when pairing with the PathSpace maintainer. Treat it as the quick-start you consult before touching the repository.
 
 ## Quick Checklist
-- Confirm the assignment scope and skim `docs/AI_Architecture.md`, `docs/Plan_Overview.md`, plus any relevant plan documents under `docs/` (e.g. distributed PathSpace).
+- Confirm the assignment scope and skim `docs/AI_Architecture.md`, `docs/Plan_Overview.md`, plus any relevant plan documents under `docs/`.
 - Keep changes ASCII unless the file already uses Unicode.
 - Run the full test suite with the mandated loop/timeout before requesting review.
 - Git pushes are gated by the local `pre-push` hook (`scripts/git-hooks/pre-push.local.sh`).
@@ -47,7 +47,7 @@ This guide collects the conventions and scripts used when pairing with the PathS
 - **Paths:** Use `Iterator`, `ConcretePath`, `GlobPath`, and `validation.hpp` helpers instead of hand-built strings. Keep names canonical and update `docs/AI_Paths.md` plus schemas when adding/renaming nodes.
 - **Storage/serialization:** Route payloads through `NodeData` and typed `InputMetadataT<>`; keep POD fast-paths (`PodPayload`) only when `podPreferred` applies. When migrating POD→generic, preserve error propagation and `InsertReturn` accounting.
 - **Concurrency:** Respect per-node mutex scope; do not hold locks across user callbacks. Queue work on `Task/Executor` and avoid blocking the executor threads. Preserve wait/notify by calling `notify()` after observable mutations and wiring `NotificationSink` correctly.
-- **APIs & layering:** Public PathSpace APIs live in `include/pathspace/*`; internal helpers stay under `src/pathspace/*`. Keep views/adapters isolated (`layer/`, `distributed/`).
+- **APIs & layering:** Public PathSpace APIs and internals both live under `src/pathspace/*` (there is no separate `include/` tree). Keep views/adapters isolated (`layer/`).
 - **Error handling/logging:** Return `Error`/`Expected` instead of bools where context matters; populate codes + messages. Log through `log/TaggedLogger` or existing logger instances—no ad-hoc `std::cout`.
 - **Testing hooks:** When adding features, mirror telemetry/paths into `tests/` (doctest) and align with the five-loop harness. Update docs alongside code (plans, schemas, debugging playbook) whenever contracts or diagnostics change.
 - **Test naming:** Group doctest cases under dot-delimited suites (use `TEST_SUITE`/`TEST_SUITE_BEGIN` like `TEST_SUITE("core.nodedata.nested")`) and keep per-case titles concise but descriptive.
@@ -57,7 +57,7 @@ This guide collects the conventions and scripts used when pairing with the PathS
 - **Paths** — type-safe `ConcretePath`/`GlobPath` wrappers provide component iterators and globbing (`*`, `**`, ranges). Pattern matching is component-wise for predictable performance (`src/pathspace/path/`).
 - **Concurrency & notifications** — children are kept in a sharded concurrent map, while per-node mutexes guard payload updates. Waiters register in concrete and glob registries; notifications flow through a `NotificationSink` token so late completions drop safely during shutdown ("Wait/notify" in `docs/AI_Architecture.md`).
 - **Executions** — inserts accept callables and scheduling metadata (`In`, `Execution`, `Block`). Tasks can execute immediately or lazily; completion can trigger reinsertions or wake waiters ("Operations" → insert/read/take in `docs/AI_Architecture.md`).
-- **Layers & views** — `src/pathspace/layer/` hosts permission-checked views (`PathView`), path rewriting mounts (`PathAlias`), and OS/event bridges via PathIO adapters. Enable the macOS backends with `-DENABLE_PATHIO_MACOS=ON` (see `README.md` build options) and review the PathIO backend notes in `docs/AI_Architecture.md` when touching input/presenter code.
+- **Layers & views** — `src/pathspace/layer/` hosts permission-checked views (`PathView`), path rewriting mounts (`PathAlias`), a bounded-queue wrapper, the fan-in `PathSpaceTrellis`, and `SnapshotCachedPathSpace`.
 - **Canonical namespaces** — `docs/AI_Paths.md` defines standard system and app subtrees. Keep code/docs in sync when touching path conventions.
 
 ## Day-to-day Flow

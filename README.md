@@ -14,14 +14,13 @@ Links:
 - docs/AI_Architecture.md (design and internals)
 - docs/AI_Paths.md (canonical namespace/layout conventions)
 - docs/Plan_Overview.md (index of active plan documents and priorities)
-- docs/Plan_Distributed_PathSpace.md (distributed mounting/network plan)
 - build/docs/html/index.html (Doxygen API Reference)
 
 ## Architecture at a Glance
 - **Trie-backed space** — `PathSpace` stores data in a concurrent trie of `Node` objects. Each node owns serialized `NodeData` payloads plus queued `Task` executions; inserts append, reads copy, and takes pop without global locks. See “Internal Data” in `docs/AI_Architecture.md`.
 - **Paths & globbing** — Strongly-typed `ConcretePath`/`GlobPath` wrappers provide component iterators, pattern matching (`*`, `**`, ranges), and validation (`src/pathspace/path/`).
 - **Wait/notify** — Blocking reads register waiters in concrete/glob registries and wake via a `NotificationSink` token; timeouts surface as `Error::Timeout` (`Wait/notify` + `Blocking` in the architecture doc).
-- **Layers & PathIO** — Permission-checked views (`PathView`), alias mounts (`PathAlias`), and OS/event bridges live in `src/pathspace/layer/`. Enable macOS backends with `-DENABLE_PATHIO_MACOS=ON` and review the PathIO guidance near the end of `docs/AI_Architecture.md`.
+- **Layers & views** — Permission-checked views (`PathView`), alias mounts (`PathAlias`), a bounded-queue wrapper (`BoundedPathSpace`), a fan-in layer (`PathSpaceTrellis`), and a read-optimized cache (`SnapshotCachedPathSpace`) live in `src/pathspace/layer/` (see `docs/AI_Architecture.md`).
 - **Canonical namespaces** — `docs/AI_Paths.md` defines system and app targets.
 
 ## Quick start
@@ -59,9 +58,8 @@ Build options:
 - ENABLE_ADDRESS_SANITIZER=ON|OFF (defaults ON, except OFF for Release builds)
 - ENABLE_THREAD_SANITIZER=ON|OFF
 - ENABLE_UNDEFINED_SANITIZER=ON|OFF
-- ENABLE_PATHIO_MACOS=ON|OFF (compile-time defines for experimental macOS PathIO)
 
-Tip: Enable sanitizers when debugging concurrency/path issues, and pair `ENABLE_PATHIO_MACOS=ON` with the PathIO section in `docs/AI_Architecture.md` if you need native device backends.
+Tip: Enable sanitizers when debugging concurrency/path issues.
 
 Scripts:
 - ./scripts/compile.sh
@@ -85,7 +83,6 @@ You can generate HTML API documentation into build/docs/html:
 
 ## API at a glance
 All operations below are member functions on a PathSpace instance. Assume `PathSpace ps;`.
-
 
 - Insert a typed value or execution:
   - `ps.insert<"/a/b">(42)`
@@ -277,48 +274,6 @@ If you need to take results repeatedly, prefer read (copy) over take (pop). Use 
 
 Tip: For high-throughput patterns, write with Immediate and read<FutureAny> to coordinate downstream consumers.
 
-## Experimental IO providers (PathIO)
-
-The repository includes experimental providers under `src/pathspace/layer/io`. Earlier demo binaries have been retired; use the snippets below (or the helpers in `pathspace/layer/io/*`) as the starting point for bespoke apps. Providers mount path-agnostic IO streams (e.g., mouse, keyboard) into a `PathSpace` tree and serve typed events using the canonical `/system/devices/in/*` namespace; see `docs/finished/Plan_SceneGraph_Renderer_Finished.md` for app/device path conventions.
-
-Sketch:
-```cpp
-#include <pathspace/PathSpace.hpp>
-#include <pathspace/layer/io/PathIOMouse.hpp>
-#include <pathspace/layer/io/PathIOKeyboard.hpp>
-using namespace SP;
-
-int main() {
-    PathSpace ps;
-
-    auto mouse    = std::make_unique<PathIOMouse>(PathIOMouse::BackendMode::Auto);
-    auto keyboard = std::make_unique<PathIOKeyboard>(PathIOKeyboard::BackendMode::Auto);
-
-    // Mount providers at app-chosen paths
-    auto mret = ps.insert<"/system/devices/in/pointer/default">(std::move(mouse));
-    auto kret = ps.insert<"/system/devices/in/text/default">(std::move(keyboard));
-
-    // Read typed events (blocking with timeout)
-    auto me = ps.read<SP::PathIOMouse::Event>("/system/devices/in/pointer/default/events", Block{});
-    auto ke = ps.read<SP::PathIOKeyboard::Event>("/system/devices/in/text/default/events", Block{});
-}
-```
-
-After mounting a provider, opt-in to push delivery (and throttling/telemetry) via the shared config nodes:
-```cpp
-ps.insert("/system/devices/in/pointer/default/config/push/enabled", true);
-ps.insert("/system/devices/in/pointer/default/config/push/rate_limit_hz", static_cast<std::uint32_t>(480));
-ps.insert("/system/devices/in/pointer/default/config/push/subscribers/your_app", true);
-```
-Normalized IO Trellis structs live in `<pathspace/io/IoEvents.hpp>` for consumers that want canonical `PointerEvent`, `ButtonEvent`, or `TextEvent` payloads.
-
-Notes:
-- These providers are evolving; platform-specific backends may require flags (ENABLE_PATHIO_MACOS)
-- The minimal_button_example does not exercise PathIO; bring your own provider wiring when testing inputs.
-
-See:
-- src/pathspace/layer/io/*
-
 ## CMake integration
 
 As a subproject:
@@ -337,7 +292,6 @@ target_link_libraries(your_app PRIVATE PathSpace)
 
 Options:
 - ENABLE_ADDRESS_SANITIZER (default ON; OFF for Release), ENABLE_THREAD_SANITIZER, ENABLE_UNDEFINED_SANITIZER (default OFF)
-- ENABLE_PATHIO_MACOS (default OFF)
 
 ## Troubleshooting
 

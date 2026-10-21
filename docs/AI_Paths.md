@@ -1,348 +1,49 @@
-# Handoff Notice
-
-> **Handoff note (October 19, 2025):** Namespace conventions remain valid, but this file reflects the prior assistant cycle. Cross-check any edits with `docs/AI_Onboarding_Next.md` and record deviations while the new assistant spins up.
-
 # PathSpace — Standard Paths
 
-> **Context update (October 15, 2025):** Path conventions documented here reflect the recently introduced assistant context; translate earlier terminology to the updated vocabulary as needed.
-
-This file gathers the canonical path namespaces and layout conventions referenced across the docs. Paths are grouped by domain and use placeholders in angle brackets. Absolute paths begin with “/”. App-internal paths are app-relative (no leading slash) and must resolve within the app root. Sources: see docs/AI_Architecture.md and docs/finished/Plan_SceneGraph_Renderer_Finished.md. Keep these in sync when path conventions change.
+Reserved path names and conventions used by the code in `src/pathspace/`. Keep this file in sync with `src/pathspace/history/UndoHistoryUtils.hpp` and `src/pathspace/layer/PathSpaceTrellis.cpp` when adding or renaming nodes. Path syntax, globbing, and validation rules are described in `docs/AI_Architecture.md` ("Path System").
 
 Conventions:
-- Placeholders: <app>, <user>, <scene-id>, <renderer-id>, <surface-id>, <view-id>, <target-id>, <revision>, <id>, <rendererName>, <kind>, <name>
-- App-relative: no leading “/”; resolved against the app root
-- Target-id convention: prefer the consumer’s app-local path, e.g. `surfaces/<surface-id>` or `textures/<texture-name>`
+- Paths are absolute (`/a/b`) at the public API; relative forms are only used inside layers that adopt a mount prefix.
+- Names starting with `_` are reserved for built-in control and telemetry surfaces.
+- Application layouts (`/system/applications/<app>` and similar) are caller conventions, not enforced by the core.
 
-## 1) System-wide namespaces (absolute)
+## 1) History (`UndoableSpace`)
 
-- Application roots
-  - `/system/applications/<app>`
-  - `/users/<user>/system/applications/<app>`
+Every history-enabled root `<root>` owns a `_history` subtree (`UndoHistoryUtils::Paths`).
 
-- Device IO
-  - Inputs (event queues):
-    - `/system/devices/in/pointer/default/events`
-    - `/system/devices/in/text/default/events`
-    - `/system/devices/in/gamepad/default/events`
-  - Push configuration (per-device):
-    - `/system/devices/in/<class>/<id>/config/push/enabled` — bool opt-in for Trellis subscribers
-    - `/system/devices/in/<class>/<id>/config/push/rate_limit_hz` — uint32 throttling hint
-    - `/system/devices/in/<class>/<id>/config/push/max_queue` — uint32 queue cap hint
-    - `/system/devices/in/<class>/<id>/config/push/telemetry_enabled` — bool gating device telemetry
-    - `/system/devices/in/<class>/<id>/config/push/subscribers/<name>` — bool registration for downstream pumps
-    - Defaults: `enabled=false`, `telemetry_enabled=false`, `rate_limit_hz=240`, `max_queue=256`. Providers only push once at least one subscriber path is set to `true`; otherwise pumps should use blocking `take` semantics. These nodes are backed by `DevicePushConfigNodes`, so every provider shares the same validation rules and error messages.
-  - Discovery (recommended mount):
-    - `/system/devices/discovery`
-  - Haptics (outputs):
-    - `/system/devices/out/gamepad/<id>/rumble`
-- IO Trellis (normalized queues):
-  - `/system/io/events/pointer`
-  - `/system/io/events/button`
-  - `/system/io/events/text`
-  - `/system/io/events/pose`
-  - Populated by `CreateIOTrellis` (`include/pathspace/io/IoTrellis.hpp`). Each queue stores the normalized structs from `include/pathspace/io/IoEvents.hpp`; downstream pumps must consume through `take` to avoid replaying the same event multiple times.
-  - Metrics (on `/_system/telemetry/io/events_enabled = true`): `/system/io/events/metrics/{pointer_events_total,button_events_total,text_events_total}`.
-- System IO (logs)
-  - `/system/io/stdout`
-  - `/system/io/stderr`
-- Remote mount namespaces
-  - `/remote/<alias>` — placeholder node representing the mounted subtree. The distributed mount manager inserts a stub immediately after `MountOpenResponse` succeeds so the inspector, CLI, and dashboards can see the alias before the first snapshot arrives.
-  - `/remote/<alias>/<path>` — mirrors the remote PathSpace tree (read-only in Phase 0). All absolute paths returned by the remote server are prefixed with `/remote/<alias>` on arrival.
-  - `/inspector/metrics/remotes/<alias>/{server,client}/…` — per-remote health. The server subtree reports export-side sessions/waiters, while the client subtree (new `RemoteMountManager`) exposes `client/connected`, last/avg/max latency, request counters, and `waiters/current` so dashboards can diagnose either side of the link.
-  - `/diagnostics/web/inspector/acl/<timestamp>` — audit log entries for every handshake attempt, capturing alias, principal, auth kind, and result (`accepted`, `denied`, `throttled`).
-- Telemetry + push control (runtime-managed)
-  - `/_system/telemetry/start/queue` / `/_system/telemetry/stop/queue` — accept `TelemetryToggleCommand` payloads to flip telemetry+
-    device mirrors via `CreateTelemetryControl`.
-  - `/_system/telemetry/io/state/running` — bool flag reflecting the telemetry controller lifecycle.
-  - `/_system/telemetry/log/errors/queue` — string queue capturing command failures (bad device paths, invalid payloads, etc.).
-  - `/_system/io/push/subscriptions/queue` — accepts `DevicePushCommand` payloads; the controller toggles `config/push/enabled`,
-    `config/push/subscribers/<name>`, and optional telemetry overrides for the targeted devices.
-  - `/_system/io/push/throttle/queue` — accepts `DeviceThrottleCommand` payloads; updates `/config/push/{rate_limit_hz,max_queue}` for each matched device.
-- Telemetry toggles
-  - `/_system/telemetry/io/events_enabled` — bool gate for IO Trellis metrics/publication, default `false`.
-- Declarative runtime (global services)
-  - `/system/widgets/runtime/input/state/running` — bool flag toggled by `SP::System::LaunchStandard`/`ShutdownDeclarativeRuntime`.
-  - `/system/widgets/runtime/input/metrics/{widgets_processed_total,widgets_with_work_total,actions_published_total,last_pump_ns}`
-  - `/system/widgets/runtime/input/metrics/{handlers_invoked_total,handler_failures_total,handler_missing_total,last_handler_ns}` — handler-dispatch telemetry produced by `CreateInputTask`.
-  - `/system/widgets/runtime/input/metrics/{events_enqueued_total,events_dropped_total}` — mirrors how many widget events were mirrored into the canonical queues vs. dropped due to storage errors.
-  - `/system/widgets/runtime/input/metrics/{actions_latency_ns,ops_backlog}` — loop duration (nanoseconds) and the count of actions drained during the last pump iteration; use these gauges to flag backlog growth before handler failures appear.
-  - `/system/widgets/runtime/input/windows/<token>/metrics/{widgets_processed_total,actions_published_total,manual_pumps_total,last_manual_pump_ns}` — per-window counters incremented whenever `PumpWindowWidgetsOnce` drains a specific window/view outside the background worker.
-  - `/system/widgets/runtime/input/apps/<app>/metrics/{widgets_processed_total,actions_published_total,manual_pumps_total,last_manual_pump_ns}` — application-level mirrors of the manual pump counters so dashboards/tests can reason about aggregate progress without parsing every window token.
-  - `widgets/<id>/metrics/handlers/{invoked_total,failures_total,missing_total}` — per-widget handler telemetry updated by `CreateInputTask`, allowing debugging of missing bindings or flaky callbacks without scraping the shared logs.
-- `widgets/<id>/space/metrics/history_binding/{state,state_timestamp_ns,buttons_enabled,buttons_enabled_last_change_ns,undo_total,undo_failures_total,redo_total,redo_failures_total,last_error_context,last_error_message,last_error_code,last_error_timestamp_ns,card}` — paint surfaces (and any widget that wires an `UndoableSpace`) expose their binding readiness, button toggles, undo/redo counters, and latest failure metadata here so inspectors/tests can flag regressions without scraping logs. `card` stores the serialized `HistoryBindingTelemetryCard` summary that the inspector renders directly (state, counters, last error, button enablement).
-  - `/system/widgets/runtime/schema/metrics/{loads_total,failures_total,last_load_ns}` — descriptor/schema load counters plus the most recent load duration.
-  - `/system/widgets/runtime/schema/log/events` — textual records of descriptor load failures (widget path, kind, error).
-  - Declarative fragments carry handler specs and `Widgets::Mount` rebinds them under the destination widget path, while instrumentation layers can call `Widgets::Handlers::{Read,Replace,Wrap,Restore}` to observe or override handlers without rewriting the raw `events/<event>/handler` node.
-  - `/system/widgets/runtime/input/log/errors/queue` — string queue capturing reducer/pump failures.
-  - Launch controls:
-    - `LaunchOptions::start_input_runtime` (default `true`) decides whether `CreateInputTask` launches automatically when `LaunchStandard` runs.
-    - `InputTaskOptions::poll_interval` (default 4 ms, minimum 1 ms) controls how often the runtime scans every `widgets/` subtree.
-    - `InputTaskOptions::max_actions_per_widget` (default 64) bounds reducer work per widget each pass so watchdogs can predict latency.
-    - `LaunchOptions::start_io_pump` (default `true`) controls whether `CreateIOPump` starts automatically; `LaunchOptions::io_pump_options` selects the windows root (`/system/widgets/runtime/windows`), per-window event root, metrics root, and worker timeouts.
-  - `/system/widgets/runtime/io/state/running` — bool flag set by `CreateIOPump`.
-  - `/system/widgets/runtime/input/metrics/{pointer_events_total,button_events_total,text_events_total,events_dropped_total,last_pump_ns}` — IO pump telemetry mirroring the InputTask counters.
-  - `/system/widgets/runtime/windows/<token>` — runtime registration for each window; `window` stores the absolute window path and `subscriptions/{pointer,button,text}/devices` contains the device paths claimed by that window (strings such as `/system/devices/in/pointer/default`). Tokens default to `MakeRuntimeWindowToken(window_path)` (path string with `/` → `_`).
-  - `/system/widgets/runtime/events/<token>/{pointer,button,text}/queue` — per-window event queues generated by the IO pump.
-  - `/system/widgets/runtime/events/global/{pointer,button,text}/queue` — unmatched events (no window subscription) land here for diagnostics/tooling.
-  - `/system/widgets/runtime/events/state/running` — bool flag toggled by `CreateWidgetEventTrellis` / `ShutdownWidgetEventTrellis`.
-  - `/system/widgets/runtime/events/metrics/{pointer_events_total,button_events_total,widget_ops_total,hit_test_failures_total,last_dispatch_ns}` — routing telemetry for the WidgetEventTrellis worker.
-  - `CreateWidgetEventTrellis` emits `WidgetOp`s for buttons, toggles, sliders, lists, trees, text inputs, stack panels (`StackSelect`), and paint surfaces (`PaintStrokeBegin/Update/Commit`).
-  - **New (Nov 18, 2025):** Before each enqueue the trellis mutates `widgets/<id>/state/*` (hover, pressed, value, selection, expansion) and flips `widgets/<id>/render/dirty`, guaranteeing that declarative widgets visually react to input even when user handlers are no-ops.
-  - **New (Nov 19, 2025):** Focused sliders, lists, and trees now consume keyboard arrows plus gamepad shoulders/D-pad inputs directly from the trellis (no bespoke app loops): sliders emit `SliderUpdate/Commit` for each step, lists mirror `ListHover/Select` and fire `ListActivate` on Enter/A, trees handle expand/collapse/selection, and input fields synthesize `TextDelete`, `TextMoveCursor`, and `TextSubmit` events so handler wiring stays identical to pointer flows.
-  - `/system/widgets/runtime/events/log/errors/queue` — string queue capturing hit-test and routing failures.
-  - `/system/widgets/runtime/paint_gpu/state/running` — bool flag managed by the declarative paint-surface uploader worker responsible for keeping `assets/texture` in sync.
-  - `/system/widgets/runtime/paint_gpu/metrics/{uploads_total,partial_uploads_total,full_uploads_total,failures_total,widgets_pending,last_upload_ns}` — telemetry describing staged texture uploads and queue depth.
-  - `/system/widgets/runtime/paint_gpu/log/errors/queue` — string queue capturing rasterization or upload failures before the runtime falls back to CPU stroke buckets.
-- Legacy builder diagnostics
-  - `/_system/diagnostics/legacy_widget_builders/status/{phase,support_window_expires,plan}` — publishes the current enforcement mode (`phase`), the support-window cutoff timestamp, and the authoritative doc link (currently `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md`).
-  - `/_system/diagnostics/legacy_widget_builders/<entry>/{usage_total,last_entry,last_path,last_timestamp_ns}` — per-builder counters mirroring how often each legacy `SP::UI::Builders::*` entry is invoked plus the most recent widget path and timestamp. CI can scrape these nodes to enforce `PATHSPACE_LEGACY_WIDGET_BUILDERS=error` once the repo stays clean; the default mode is `warn`.
+Commands (insert-only control nodes):
 
-## 2) Application subtree layout (app-relative)
+| Path | Effect |
+| --- | --- |
+| `<root>/_history/undo` | Undo the latest entry |
+| `<root>/_history/redo` | Redo the latest undone entry |
+| `<root>/_history/garbage_collect` | Run retention/compaction now |
+| `<root>/_history/set_manual_garbage_collect` | Toggle `HistoryOptions::manualGarbageCollect` |
+| `<root>/_history/set_tag` | `std::string` label stamped on subsequent journal entries |
 
-The following subtrees are standardized within each application root (one of the absolute roots above). See docs/finished/Plan_SceneGraph_Renderer_Finished.md for detailed semantics and responsibilities.
+Telemetry (read-only):
+- `<root>/_history/stats/{undoCount,redoCount,undoBytes,redoBytes,liveBytes,bytesRetained,manualGcEnabled}`
+- `<root>/_history/stats/{trimOperationCount,trimmedEntries,trimmedBytes,lastTrimTimestampMs}`
+- `<root>/_history/stats/compaction/{runs,entries,bytes,lastTimestampMs}`
+- `<root>/_history/stats/limits/{maxEntries,maxBytesRetained,keepLatestForMs,ramCacheEntries,maxDiskBytes,persistHistory,restoreFromPersistence}`
+- `<root>/_history/head/generation`
+- `<root>/_history/lastOperation/{type,timestampMs,durationMs,success,undoCountBefore,undoCountAfter,redoCountBefore,redoCountAfter,bytesBefore,bytesAfter,message,tag}`
+- `<root>/_history/unsupported/{totalCount,recentCount,recent/*}` — nodes skipped because they hold nested spaces, tasks, or unserializable payloads
 
-### Declarative canonical schema
+Diagnostics mirror: `/diagnostics/history/<encoded-root>/` (compatibility copy at `/output/v1/diagnostics/history/<encoded-root>/`) with `head/sequence` and `entries/<n>/{path,tag,operation,timestampMs,monotonicNs,sequence,barrier,valueBytes,inverseBytes,hasValue,hasInverse}`. `<encoded-root>` is the root path with `/` replaced as described in the journal persistence format section of `docs/AI_Architecture.md`.
 
-| Node | Base path | Required highlights | Notes |
-| --- | --- | --- | --- |
-| **Application** | `/system/applications/<app>` | `state/title`, `windows/<windowId>`, `scenes/<sceneId>`, `themes/<name>`, `events/lifecycle/handler` | Created by `SP::App::Create`; also seeds renderer + theme defaults referenced by declarative helpers. |
-| **Window** | `<app>/windows/<windowId>` | `state/title`, `state/visible`, `style/theme`, `views/<viewId>/{scene,surface,renderer,present}`, `widgets/<widgetName>`, `events/{close,focus}/handler`, `render/dirty` | `SP::Window::Create` mounts this subtree, registers `/system/widgets/runtime/windows/<token>` subscriptions, and becomes the parent for declarative widget roots. |
-| **Scene** | `<app>/scenes/<sceneId>` | `structure/window/<windowId>/{focus,current,metrics/dpi}`, `views/<viewId>/dirty`, `snapshot/<rev>`, `metrics/*`, `events/present/handler`, `state/attached`, `render/dirty`, `current_revision`, `current_revision_desc` | `SP::Scene::Create` spawns the lifecycle worker and wires the window view bindings; `SceneLifecycle::PumpSceneOnce` lives under this namespace. Renderer snapshots live in-process (`RendererSnapshotStore`); PathSpace no longer mirrors renderer buckets or `builds/<rev>` trees. |
-| **Theme** | `<app>/themes/<name>` | `colors/<token>`, `typography/<token>`, `spacing/<token>`, `style/inherits`, optional compiled mirror at `config/theme/<name>/value` | Declarative widgets inherit `style/theme` from the widget → parent → window → application (`themes/default`) chain. Defaults now omit the compiled mirror; it is written only when callers persist overrides. |
-| **Widget root** | `<app>/windows/<windowId>/widgets/<widgetId>` | `/space/{meta,state,render,focus,events,panels}`, `children/*`, `layout/*`, `ops/{inbox,actions}/queue`, `metrics/*`, `log/events` | All widget metadata/state/render/focus/event bindings live under `/space`; structural children live at the flattened `/children/<id>` map. Runtime reads/writes the flattened map and treats `/space/children` or nested `children/children` capsules as compatibility-only; housekeeping (`log/metrics/runtime/space`) no longer occupies the child map. See `docs/Widget_Schema_Reference.md` for the `/space` contract and handler binding layout. |
+See `docs/History_Journal_Wiring.md` for how these nodes are wired.
 
-Keep this table in sync with `docs/finished/Plan_WidgetDeclarativeAPI_Finished.md` (“Canonical Path Schema”) and `docs/Widget_Schema_Reference.md`. Whenever you add or retire leaves under any of these anchors, update all three references in the same change so authors never have to reconcile conflicting schemas.
+## 2) Trellis (`PathSpaceTrellis`)
 
-- Scenes
-  - `scenes/<scene-id>/`
-    - `src/...` — authoring tree (mutable)
-    - `builds/<revision>/...` — immutable snapshots per revision
-    - `current_revision` — single-value pointer to latest published build
-    - `diagnostics/`
-      - `errors/live` — latest `PathSpaceError` for the scene
-      - `errors/history/<id>` — optional immutable historical errors
-      - `log/ring/<segment>` — structured log segments (JSON/CBOR blobs)
-      - `metrics/live` — rolling scene metrics (optional)
-      - `overlays/<kind>` — optional debugging overlays (e.g., bounds violations)
-      - `frame_profiler/node/<drawable-id>` — drawable-specific annotations
-      - `frame_profiler/summary` — scene-level diagnostics counters and timestamps
-      - `dirty/state` — latest `Scene::DirtyState` (sequence, pending mask, timestamp)
-      - `dirty/queue` — `Scene::DirtyEvent` items enqueued by `SP::UI::Declarative::SceneLifecycle::MarkDirty` (legacy `SP::UI::Builders::Scene::MarkDirty` now forwards here)
+`PathSpaceTrellis` fans several source paths into one readable path. Its control surface lives under `/_system`:
+- `/_system/enable` and `/_system/disable` accept a `std::string` source path payload.
+- `/_system/*` is not readable; any other command name returns `InvalidPath`.
 
-- Renderers
-  - `renderers/<renderer-id>/`
-    - `caps`
-    - `targets/`
-      - `<target-id>/`
-        - `scene` — app-relative path to the scene to render
-        - `desc` — target descriptor (size/format/etc.)
-        - `desc/active` — optional mirror written by renderer
-        - `status/*` — e.g. `reconfiguring`, `device_lost`, `message`
-        - `settings` — single `RenderSettingsV1` value (atomic whole-object replace)
-        - `render` — execution: render one frame for this target
-        - `output/`
-          - `v1/`
-            - `common/`
-              - `frameIndex`
-              - `revision`
-              - `renderMs`
-              - `lastError`
-            - `software/framebuffer` — pixels + stride
-            - `metal/texture` — opaque GPU handle + metadata
-            - `vulkan/image` — opaque GPU handle + metadata
-            - `html/dom`
-            - `html/commands`
-            - `html/assets/*`
-    - `diagnostics/`
-      - `errors/live` — latest `PathSpaceError` for the renderer
-      - `errors/history/<id>` — optional immutable error records
-      - `log/ring/<segment>` — structured log segments
-      - `metrics/live` — rolling averages and counters for recent frames
-      - `overlays/<kind>` — debug overlay payloads (e.g., errors, overdraw)
-      - `frame_profiler/live` — latest frame sample (struct payload)
-      - `frame_profiler/ring` — immutable ring buffer chunks for timeline data
-      - `frame_profiler/capture/`
-        - `inbox` — capture requests inserted by external profilers
-        - `active` — renderer acknowledgement + status metadata
-        - `dump/*` — optional blobs captured for that request (framebuffers, GPU counters)
-- Widgets (details in `docs/Widget_Schema_Reference.md`)
-  - `widgets/<widget-id>/` — canonical widget roots; the appendix tracks every `state/*`, `meta/*`, `layout/*`, `events/*`, and `render/*` leaf so this file can stay focused on high-level namespace placement.
-  - `widgets/<widget-id>/events/inbox/queue` — runtime-populated stream of `WidgetAction` payloads emitted whenever the trellis reduces ops for that widget; consumers can also watch `events/<event>/queue` for filtered views (press, toggle, change, child_event, node_event, submit).
-- Stack previews expose `stack/panel/<panel-id>` targets; `StackSelect` ops flow through the widget inbox and bubble to `events/panel_select/queue` before invoking the optional handler.
-- Stack widgets persist `layout/style`, `layout/children`, and `layout/computed` alongside `panels/<id>/{order,target,visible}` so descriptor synthesis can reuse the measured layout and highlight whichever panel the runtime marks visible.
-- Paint surfaces emit `PaintStrokeBegin/Update/Commit` ops with pointer-local coordinates; the runtime mirrors those ops into `events/draw/queue`, persists stroke metadata under `state/history/<id>/{meta,points,version}`, bumps `render/buffer/revision`, and rebuilds stroke buckets so reducers/handlers can react without touching widget state directly. The per-stroke `version` counter increments after every write so descriptors retry reads until they see a consistent snapshot.
-- Declarative paint descriptors now draw a `render/buffer/viewport` background quad before replaying accumulated strokes, which keeps SceneLifecycle busy even when the canvas has no history and mirrors buffered dimensions into the synthesized bucket.
-  - `widgets/focus/current` and `widgets/<id>/focus/{current,order}` — app-level and per-widget focus mirrors maintained by the focus controller.
-  - `widgets/<id>/metrics/focus/{acquired_total,lost_total}` — counters incremented whenever declarative focus transfers to/from a widget, enabling dashboards to spot thrashing focus targets.
-  - `widgets/<id>/log/events` — per-widget log queue capturing handler failures, reducer errors, and slow-handler warnings emitted by the InputTask for that widget.
-  - `scenes/widgets/<widget-id>/` — widget snapshot subtrees (`states/*`, `current_revision`, `meta/*`) consumed by renderer targets.
+## 3) Layers
 
-### Declarative widget API summary
+- `PathView` filters access with a permission callback and may prepend a mount prefix.
+- `PathAlias` rewrites paths with a configurable `targetPrefix` and forwards `in`/`out`/`notify` upstream.
+- `BoundedPathSpace` caps the queue length per path (dropping the oldest same-type entries); `SnapshotCachedPathSpace` adds a read-optimized snapshot cache. Neither changes the path layout.
 
-For schema tables, handler metadata, theme resolution rules, and per-widget specifics refer to `docs/Widget_Schema_Reference.md` (source of truth for `include/pathspace/ui/declarative/Schema.hpp`). This document only records the system-level plumbing so the namespace map stays concise:
-
-- Runtime bootstrap — `SP::System::LaunchStandard`, `SP::App::Create`, `SP::Window::Create`, and `SP::Scene::Create` seed the application, window, and scene nodes listed above (visibility flags, view bindings, `structure/window/<window>/*`) before any widgets mount.
-- Lifecycle worker — every declarative scene owns an in-memory `PathSpaceTrellis` that drains `widgets/.../render/events/dirty`, rebuilds buckets, and reports metrics under `runtime/lifecycle/metrics/*` (metrics gated by `PATHSPACE_UI_DEBUG_TREE`). Control messages live under `runtime/lifecycle/control` so `SP::Scene::Shutdown` can stop the worker and the theme runtime can broadcast invalidations (`:invalidate_theme`). Metrics include `widgets_registered_total`, `sources_active_total`, `events_processed_total`, `widgets_with_buckets`, `last_revision`, `last_published_widget`, `last_published_ms`, `pending_publish`, `last_error`, plus timing/comparison gauges (`dirty_batch_ns`, `last_dirty_widget`, `publish_ns`, `legacy_parity_ok`, `legacy_diff_percent`). `runtime/lifecycle/trellis` nodes are no longer written into PathSpace; the trellis runs against the backing space without mirroring state.
-- Focus telemetry — `scene/runtime/focus/metrics/{transitions_total,wraps_total,disabled_skips_total,last_transition_ms}` mirrors declarative focus events per scene, while `scene/runtime/focus/log/events` records the most recent transitions (window component, from/to widgets, wrap indicator) for debug tooling.
-- Snapshot feeds — widget buckets stay in the lifecycle worker’s in-memory cache and are published directly into `RendererSnapshotStore` via `SceneSnapshotBuilder`; PathSpace does not mirror `scene/structure/widgets/<widget>/render/bucket` or `/builds/<revision>/bucket/*` binaries.
-
-- Surfaces (offscreen targets)
-  - `surfaces/<surface-id>/`
-    - `renderer` — app-relative, e.g. `renderers/2d`
-    - `scene` — app-relative, e.g. `scenes/main`
-    - `render` — execution that coordinates with the renderer target
-    - `diagnostics/`
-      - `errors/live`
-      - `errors/history/<id>`
-      - `log/ring/<segment>`
-      - `metrics/live` — optional surface-level counters (e.g., presents, latency)
-
-- Windows (presenters)
-  - `windows/<window-id>/`
-    - `window` — platform-native window shell
-    - `views/<view-id>/`
-      - `scene` — app-relative pointer to the bound scene (`scenes/...`)
-      - `surface` — app-relative reference to a surface (renderer binding is derived from the surface target)
-      - `htmlTarget` — app-relative reference to an HTML renderer target (only present when attached)
-      - `present` — execution to present the surface to the window (opt-in; absent by default)
-      - `present/policy` — optional string selector (`AlwaysFresh`, `PreferLatestCompleteWithBudget`, `AlwaysLatestComplete`)
-      - `present/params/` — optional tuning overrides
-        - `staleness_budget_ms` — float, default 8.0
-        - `frame_timeout_ms` — float, default 20.0
-        - `max_age_frames` — uint, default 1
-        - `auto_render_on_present` — bool, default true
-        - `vsync_align` — bool, default true
-    - `diagnostics/`
-      - `errors/live`
-      - `errors/history/<id>`
-      - `log/ring/<segment>`
-      - `metrics/live` — optional presentation metrics (latency, dropped frames)
-
-- Resources
-- `resources/fonts/<family>/<style>/`
-    - `meta/family` — canonical family identifier registered for this font
-    - `meta/style` — style identifier (e.g., Regular, SemiBold)
-    - `meta/weight` — CSS-like weight string (e.g., "400", "600")
-    - `meta/fallbacks` — string array of fallback families, ordered by preference
-    - `meta/active_revision` — `uint64_t` of the adopted atlas revision
-    - `meta/atlas/softBytes` — soft residency budget in bytes for persisted glyph atlases
-    - `meta/atlas/hardBytes` — hard residency budget in bytes for persisted glyph atlases
-    - `meta/atlas/shapedRunApproxBytes` — approx bytes consumed per shaped run to scale cache capacity
-    - `meta/atlas/hasColor` — boolean flag (stored as `0/1`) indicating whether `atlas_color.bin` is present
-    - `meta/atlas/preferredFormat` — string (`alpha8` or `rgba8`) hinting which atlas lane the text pipeline should default to
-    - `builds/<revision>/atlas.bin` — persisted atlas payload for the revision (Alpha8/MSDF)
-    - `builds/<revision>/atlas_color.bin` — optional RGBA atlas page for multi-color glyphs (emoji, COLR/CPAL)
-    - `builds/<revision>/meta/*` — optional per-revision metadata (features, language coverage, pxRange, etc.)
-    - `diagnostics/errors` — `PathSpaceError` entries from loader/shaping failures
-    - `diagnostics/metrics/*` — cache residency, queue depth, and bake/upload timings
-    - `inbox` — staging area for loader jobs and background ingestion
-- `resources/images/<name>/`
-    - `meta/name` — canonical identifier for the image
-    - `meta/source` — optional original filename or URI (app-relative)
-    - `meta/format` — encoded container (e.g., `png`, `jpeg`, `webp`)
-    - `meta/color_space` — `srgb`, `linear-srgb`, or other supported space
-    - `meta/hash` — content fingerprint of the encoded bytes
-    - `meta/active_revision` — `uint64_t` of the adopted image build
-    - `builds/<revision>/image.bin` — encoded image payload (original format preserved)
-    - `builds/<revision>/meta.json` — width/height/mime/hash metadata for the revision
-    - `diagnostics/errors` — loader/decode errors with `PathSpaceError` payloads
-    - `diagnostics/metrics/*` — queue depth, decode ms, cache hits/evictions
-    - `inbox/queue` — loader job queue; writers enqueue new assets here
-    - `prefetch/<fingerprint>` — optional hint for renderer/adapters to stage a revision
-- `resources/shaders/<name>/`
-    - `src/source` — UTF-8 shader source (combined or stage-tagged)
-    - `src/entry/{vertex,fragment,compute}` — entry-point symbols per stage
-    - `src/defines/*` — macro definitions and specialization constants
-    - `meta/active_revision` — `uint64_t` of the adopted compiled binary
-    - `builds/<revision>/meta.json` — backend (`metal`, `spirv`, etc.), options, and source hash
-    - `builds/<revision>/<backend>.bin` — compiled shader library/object for the backend
-    - `cache/<backend>/<fingerprint>` — persistent cache keyed by (source hash, options, backend)
-    - `diagnostics/errors` — compiler/validation errors surfaced as `PathSpaceError`
-    - `diagnostics/metrics/*` — compile ms, cache hits, validation counts
-    - `inbox/queue` — compilation requests from authoring tools or build steps
-    - `prefetch/<fingerprint>` — optional hint to warm a backend-specific binary
-- `config/theme/`
-    - `active` — string canonical name of the active widget theme
-    - `theme/<name>/value` — stored `WidgetTheme` struct describing colors, typography, and widget styles (omitted by default; written when callers persist themes)
-    - `theme/<name>/style/inherits` — optional canonical parent name; theme resolver walks up to 16 ancestors, errors on cycles, and treats an empty or missing node as “no parent”
-- `/system/applications/<app>/themes/<name>/`
-    - `colors/<token>` — RGBA arrays written by `Theme::SetColor` (`button/background`, `slider/thumb`, `text_field/caret`, `palette/text_on_light`, `palette/text_on_dark`, etc.)
-    - `style/inherits` — human-edited inheritance chain mirrored into `config/theme/<name>/style/inherits`
-    - Declarative helpers compile these editable leaves back into `config/theme/<name>/value` when persistence is requested so descriptors can hydrate styles without reading user-authored blobs directly.
-- `config/renderer/default` — app-relative renderer root (e.g., `renderers/widgets_declarative_renderer`), written by `SP::App::Create`.
-
-- IO logging (app-local)
-  - `io/log/error` — authoritative error log (UTF-8, newline-delimited)
-  - `io/log/warn` — authoritative warnings log
-  - `io/log/info` — authoritative info log
-  - `io/log/debug` — authoritative debug log (may not tee globally)
-  - `io/stdout` — read-only mirror of info and debug (system tee)
-  - `io/stderr` — read-only mirror of warn and error (system tee)
-
-- IO logging (app-local)
-  - `io/log/error` — authoritative error log (UTF-8, newline-delimited)
-  - `io/log/warn` — authoritative warnings log
-  - `io/log/info` — authoritative info log
-  - `io/log/debug` — authoritative debug log (may not tee globally)
-  - `io/stdout` — read-only mirror of info and debug (system tee)
-  - `io/stderr` — read-only mirror of warn and error (system tee)
-
-## 3) Renderer target keys (final)
-
-Target base (app-relative; fully-qualified form prefixes with the app root, e.g. `<app-root>/renderers/...` where `<app-root>` is `/system/applications/<app>` or `/users/<user>/system/applications/<app>`):
-- `renderers/<rendererName>/targets/<kind>/<name>`
-- `kind ∈ { surfaces, textures, windows, html }`
-
-Keys under a target:
-- `scene`
-- `desc`
-- `desc/active`
-- `status/*`
-- `settings`
-- `render`
-- `output/v1/...` (see section 2)
-- `events/renderRequested/queue` — `AutoRenderRequestEvent` items enqueued by hit tests or dirty-marker scheduling
-- `hints/dirtyRects` — optional array of dirty rectangles (float min/max) that renderers merge into their damage regions
-
-## 4) Scene build and publish protocol
-
-- Staging and publish:
-  - `scenes/<scene-id>/builds/<revision>.staging/...` — write here first
-  - Atomically rename to `scenes/<scene-id>/builds/<revision>`
-  - Atomically replace `scenes/<scene-id>/current_revision` with `<revision>`
-
-- Renderer adoption (per frame):
-  - Read `scenes/<scene-id>/current_revision`
-  - Traverse `scenes/<scene-id>/builds/<revision>/...`
-  - Write outputs under the target’s `output/v1/...`
-
-## 5) Output versioning
-
-- Target outputs are versioned at the path level:
-  - `output/v1/...` (current)
-  - Future incompatible changes should add `output/v2/...` and keep `output/v1` during a deprecation window.
-
-## 6) Fully-qualified examples
-
-- `/system/applications/notepad/scenes/main/current_revision`
-- `/system/applications/notepad/scenes/main/builds/42/...`
-- `/system/applications/notepad/renderers/2d/targets/surfaces/editor/settings`
-- `/system/applications/notepad/renderers/2d/targets/surfaces/editor/output/v1/common/frameIndex`
-- `/system/applications/notepad/io/log/error`
-- `/system/applications/notepad/io/log/warn`
-- `/system/applications/notepad/io/log/info`
-- `/system/applications/notepad/io/log/debug`
-- `/system/applications/notepad/io/stdout`
-- `/system/applications/notepad/io/stderr`
-- `/system/io/stdout`
-- `/system/io/stderr`
-- `/system/devices/in/pointer/default/events`
-- `/system/devices/out/gamepad/1/rumble`
-
-## 7) Glossary
-
-- App root: `/system/applications/<app>` or `/users/<user>/system/applications/<app>`
-- App-relative path: a path string without leading slash, resolved within the app root
-- Renderer target: a per-consumer subtree under `renderers/<id>/targets/<kind>/<name>`
-- Snapshot (scene): immutable render-ready representation under `scenes/<scene-id>/builds/<revision>`
-- Revision: monotonically increasing identifier referenced by `current_revision`
+Details for each layer are in `docs/AI_Architecture.md` ("Views", "Snapshot Cache Layer").
