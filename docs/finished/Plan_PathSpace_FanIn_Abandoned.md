@@ -185,7 +185,7 @@ All other inserts/read/take requests pass through to the backing `PathSpace` unc
 - ✅ **Multi-waiter/shutdown stress regression (completed November 13, 2025).** Added `Internal runtime multi-waiter shutdown clears waiters`, ensured `max_waiters` is populated on enable, and fixed the waiter scope guard so mirrored snapshots drain on shutdown with the feature flag enabled and disabled.
 - ✅ **Feature-flag perf sampling.** Captured 15× loop timings with `PATHSPACE_TRELLIS_INTERNAL_RUNTIME={1,0}` (see `build/trellis_flag_bench.json`). The delta between modes is <0.3 % (avg iteration cost 17.73 s with mirrors vs. 17.68 s without).
 - ✅ **Phase D migration.** Legacy ready-queue, waiter, cursor, shutdown, trace, and latest-snapshot bookkeeping moved into the runtime descriptor; `PATHSPACE_TRELLIS_INTERNAL_RUNTIME=0` now emits a warning but keeps mirrors enabled.
-- ✅ **Documentation/tooling sync (completed November 14, 2025).** `AI_ARCHITECTURE.md`, `AI_Debugging_Playbook.md`, `Plan_Overview.md`, and this plan now describe descriptor-driven helpers, warn-only flag behaviour, and the buffered fan-in roadmap.
+- ✅ **Documentation/tooling sync (completed November 14, 2025).** `AI_Architecture.md`, `AI_Debugging_Playbook.md`, `Plan_Overview.md`, and this plan now describe descriptor-driven helpers, warn-only flag behaviour, and the buffered fan-in roadmap.
 - ✅ **Buffered fan-in roadmap (completed November 14, 2025).** Descriptor-backed milestones (BF-1 → BF-4) captured with schema updates, validation cadence, and tooling expectations.
 - ✅ **Back-pressure regression.** `Back-pressure limit caps simultaneous waiters per source` is back to green after the waiter snapshot fixes; feature-flag loops exercised both flag states without triggering the timeout.
 

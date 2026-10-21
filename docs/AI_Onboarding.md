@@ -33,7 +33,7 @@ Investigate and resolve failures before starting new development.
 - Keep edits ASCII unless the file already uses Unicode.
 - Run the full compile loop after code changes (docs-only edits may skip).
 - Update documentation alongside code when behavior or contracts change.
-- When you notice a missing or thin test, land the coverage or record the follow-up in `docs/AI_TODO.task`.
+- When you notice a missing or thin test, land the coverage or record the follow-up in `docs/AI_Todo.task`.
 
 ## 6. Rapid Context Refresh
 ```bash

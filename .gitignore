@@ -14,3 +14,4 @@ test-logs/
 node_modules/
 tests/inspector/playwright/.npm-cache/
 tests/inspector/playwright/.ms-playwright/
+docs/doxygen/html/
