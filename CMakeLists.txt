@@ -38,7 +38,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Add options for sanitizers
 option(ENABLE_THREAD_SANITIZER "Enable Thread Sanitizer" OFF)
-option(ENABLE_ADDRESS_SANITIZER "Enable Address Sanitizer" ON)
+# ASan is on by default for non-Release builds; Release builds default to off
+# (pass -DENABLE_ADDRESS_SANITIZER=ON to override).
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(PATHSPACE_ASAN_DEFAULT OFF)
+else()
+    set(PATHSPACE_ASAN_DEFAULT ON)
+endif()
+option(ENABLE_ADDRESS_SANITIZER "Enable Address Sanitizer" ${PATHSPACE_ASAN_DEFAULT})
 option(ENABLE_UNDEFINED_SANITIZER "Enable Undefined Behavior Sanitizer" OFF)
 option(ENABLE_CODE_COVERAGE "Enable coverage instrumentation (gcov/llvm-cov)" OFF)
 
