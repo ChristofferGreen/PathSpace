@@ -9,6 +9,13 @@
 
 using namespace SP;
 
+namespace {
+// Deserializers report decode failures through their return value.
+auto reportsError(std::optional<Error> const& error, Error::Code code) -> bool {
+    return error.has_value() && error->code == code;
+}
+} // namespace
+
 TEST_SUITE_BEGIN("type.input_metadata");
 
 TEST_CASE("Type InputMetadata Fundamental") {
@@ -77,10 +84,10 @@ TEST_CASE("Type InputMetadata Fundamental") {
         REQUIRE_EQ(sss, s2);
         REQUIRE_EQ(bytes.size(), 0);
     }
-    SUBCASE("Fundamental deserialize throws on short buffer") {
+    SUBCASE("Fundamental deserialize reports an error on short buffer") {
         SlidingBuffer bytes;
         int           out = 0;
-        CHECK_THROWS_AS(ValueSerializationHelper<int>::Deserialize(&out, bytes), std::runtime_error);
+        CHECK(reportsError(ValueSerializationHelper<int>::Deserialize(&out, bytes), Error::Code::MalformedInput));
     }
     SUBCASE("Function Pointer") {
         using TestFuncPtr      = void (*)(int);
@@ -163,13 +170,13 @@ TEST_CASE("String-like metadata serialize/deserialize") {
         uint32_t size = 5;
         bytes.append(reinterpret_cast<uint8_t*>(&size), sizeof(size));
         std::string out;
-        CHECK_THROWS_AS(StringSerializationHelper<std::string>::Deserialize(&out, bytes), std::runtime_error);
+        CHECK(reportsError(StringSerializationHelper<std::string>::Deserialize(&out, bytes), Error::Code::MalformedInput));
     }
 
-    SUBCASE("std::string deserialize throws when buffer lacks size header") {
+    SUBCASE("std::string deserialize reports an error when buffer lacks size header") {
         SlidingBuffer bytes;
         std::string out;
-        CHECK_THROWS_AS(StringSerializationHelper<std::string>::Deserialize(&out, bytes), std::runtime_error);
+        CHECK(reportsError(StringSerializationHelper<std::string>::Deserialize(&out, bytes), Error::Code::MalformedInput));
     }
 
     SUBCASE("string_view deserialize rejects non-string targets") {
@@ -179,7 +186,7 @@ TEST_CASE("String-like metadata serialize/deserialize") {
         StringSerializationHelper<std::string>::Serialize(&payload, bytes);
 
         std::string_view out;
-        CHECK_THROWS_AS(StringSerializationHelper<std::string_view>::Deserialize(&out, bytes), std::runtime_error);
+        CHECK(reportsError(StringSerializationHelper<std::string_view>::Deserialize(&out, bytes), Error::Code::UnserializableType));
     }
 }
 
@@ -262,7 +269,7 @@ TEST_CASE("ValueSerializationHelper fundamental paths serialize and reject under
 
     SlidingBuffer small;
     small.append(reinterpret_cast<uint8_t*>(&value), sizeof(int) - 1); // too small
-    CHECK_THROWS_AS(ValueSerializationHelper<int>::Deserialize(&out, small), std::runtime_error);
+    CHECK(reportsError(ValueSerializationHelper<int>::Deserialize(&out, small), Error::Code::MalformedInput));
 }
 
 TEST_CASE("StringSerializationHelper detects truncated payloads") {
@@ -271,7 +278,7 @@ TEST_CASE("StringSerializationHelper detects truncated payloads") {
     bytes.append(reinterpret_cast<uint8_t*>(&size), sizeof(size)); // omit payload
 
     std::string out;
-    CHECK_THROWS_AS(StringSerializationHelper<std::string>::Deserialize(&out, bytes), std::runtime_error);
+    CHECK(reportsError(StringSerializationHelper<std::string>::Deserialize(&out, bytes), Error::Code::MalformedInput));
 }
 
 TEST_CASE("InputMetadata execution and pointer categories") {
@@ -441,27 +448,27 @@ TEST_CASE("InputMetadata Alpaca-compatible containers serialize/deserialize") {
 }
 
 TEST_CASE("InputMetadata handles errors and alpaca-compatible types") {
-    SUBCASE("Fundamental deserialization throws on short buffer") {
+    SUBCASE("Fundamental deserialization reports an error on short buffer") {
         SlidingBuffer bytes;
         int           out = 0;
-        CHECK_THROWS_AS((ValueSerializationHelper<int>::Deserialize(&out, bytes)), std::runtime_error);
+        CHECK(reportsError(ValueSerializationHelper<int>::Deserialize(&out, bytes), Error::Code::MalformedInput));
     }
 
     SUBCASE("String helper catches truncated buffers and wrong target type") {
         SlidingBuffer empty;
         std::string   out;
-        CHECK_THROWS_AS(StringSerializationHelper<std::string>::Deserialize(&out, empty), std::runtime_error);
+        CHECK(reportsError(StringSerializationHelper<std::string>::Deserialize(&out, empty), Error::Code::MalformedInput));
 
         SlidingBuffer sizeOnly;
         uint32_t      sz = 3;
         sizeOnly.append(reinterpret_cast<uint8_t*>(&sz), sizeof(sz));
-        CHECK_THROWS_AS(StringSerializationHelper<std::string>::Deserialize(&out, sizeOnly), std::runtime_error);
+        CHECK(reportsError(StringSerializationHelper<std::string>::Deserialize(&out, sizeOnly), Error::Code::MalformedInput));
 
         SlidingBuffer literalBuf;
         literalBuf.append(reinterpret_cast<uint8_t*>(&sz), sizeof(sz));
         literalBuf.append(reinterpret_cast<uint8_t const*>("abc"), 3);
         char storage[4]{};
-        CHECK_THROWS_AS((StringSerializationHelper<char[4]>::Deserialize(storage, literalBuf)), std::runtime_error);
+        CHECK(reportsError(StringSerializationHelper<char[4]>::Deserialize(storage, literalBuf), Error::Code::UnserializableType));
     }
 
     SUBCASE("Alpaca-compatible struct round-trips and uses pop variant") {
@@ -479,15 +486,35 @@ TEST_CASE("InputMetadata handles errors and alpaca-compatible types") {
         REQUIRE(meta.serialize != nullptr);
         REQUIRE(meta.deserialize != nullptr);
         meta.serialize(&src, bytes);
-        meta.deserialize(&dst, bytes);
+        CHECK_FALSE(meta.deserialize(&dst, bytes).has_value());
         CHECK(dst == src);
 
         // Exercise deserializePop to clear the buffer.
         bytes = SlidingBuffer{};
         meta.serialize(&src, bytes);
-        meta.deserializePop(&dst, bytes);
+        CHECK_FALSE(meta.deserializePop(&dst, bytes).has_value());
         CHECK(bytes.size() == 0);
         CHECK(dst == src);
+    }
+
+    SUBCASE("Alpaca-compatible deserialize reports corrupt input instead of succeeding silently") {
+        struct Point {
+            int x{0};
+            int y{0};
+        };
+
+        InputMetadata meta(InputMetadataT<Point>{});
+        Point         dst{3, 4};
+        SlidingBuffer corrupt;
+        uint32_t      claimedSize = 64; // header promises more bytes than the buffer holds
+        corrupt.append(reinterpret_cast<uint8_t*>(&claimedSize), sizeof(claimedSize));
+
+        REQUIRE(meta.deserialize != nullptr);
+        auto error = meta.deserialize(&dst, corrupt);
+        CHECK(error.has_value());
+        // The destination is left untouched when decoding fails.
+        CHECK(dst.x == 3);
+        CHECK(dst.y == 4);
     }
 }
 

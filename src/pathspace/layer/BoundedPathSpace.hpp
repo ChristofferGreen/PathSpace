@@ -54,7 +54,9 @@ public:
 
         // Restore caller's value before inserting (it may have been clobbered by pop loop).
         if (data.metadata.deserialize && !originalBytes.empty()) {
-            data.metadata.deserialize(data.obj, originalBytes);
+            if (auto error = data.metadata.deserialize(data.obj, originalBytes)) {
+                return {.errors = {*error}};
+            }
         }
 
         auto ret = this->backing->in(path, data);

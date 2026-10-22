@@ -1,4 +1,5 @@
 #pragma once
+#include "core/Error.hpp"
 #include "log/TaggedLogger.hpp"
 #include "type/DataCategory.hpp"
 #include "type/FunctionCategory.hpp"
@@ -10,7 +11,7 @@
 #include <cstring>
 #include <functional>
 #include <memory>
-#include <stdexcept>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -91,31 +92,43 @@ struct ValueSerializationHelper {
         }
     }
 
-    static auto Deserialize(void* objPtr, SP::SlidingBuffer const& bytes) -> void {
+    static auto Deserialize(void* objPtr, SP::SlidingBuffer const& bytes) -> std::optional<Error> {
         if constexpr (FundamentalType<T>) {
             if (bytes.size() < sizeof(T)) {
-                throw std::runtime_error("Buffer too small");
+                return Error{Error::Code::MalformedInput, "Buffer too small"};
             }
             std::memcpy(objPtr, bytes.data(), sizeof(T));
+            return std::nullopt;
         } else if constexpr (AlpacaCompatible<T>) {
             auto expected = SP::deserialize<T>(bytes);
-            if (expected.has_value())
-                *static_cast<T*>(objPtr) = std::move(expected.value());
-            else
+            if (!expected.has_value()) {
                 sp_log("Deserialization failed: " + expected.error().message.value_or(""), "ERROR");
+                return expected.error();
+            }
+            *static_cast<T*>(objPtr) = std::move(expected.value());
+            return std::nullopt;
+        } else {
+            return Error{Error::Code::UnserializableType, "Type cannot be deserialized"};
         }
     }
 
-    static auto DeserializePop(void* objPtr, SP::SlidingBuffer& bytes) -> void {
+    static auto DeserializePop(void* objPtr, SP::SlidingBuffer& bytes) -> std::optional<Error> {
         if constexpr (FundamentalType<T>) {
-            ValueSerializationHelper<T>::Deserialize(objPtr, bytes);
+            if (auto error = ValueSerializationHelper<T>::Deserialize(objPtr, bytes)) {
+                return error;
+            }
             bytes.advance(sizeof(T));
+            return std::nullopt;
         } else if constexpr (AlpacaCompatible<T>) {
             auto expected = SP::deserialize_pop<T>(bytes);
-            if (expected.has_value())
-                *static_cast<T*>(objPtr) = std::move(expected.value());
-            else
+            if (!expected.has_value()) {
                 sp_log("Deserialization failed: " + expected.error().message.value_or(""), "ERROR");
+                return expected.error();
+            }
+            *static_cast<T*>(objPtr) = std::move(expected.value());
+            return std::nullopt;
+        } else {
+            return Error{Error::Code::UnserializableType, "Type cannot be deserialized"};
         }
     }
 };
@@ -134,29 +147,35 @@ struct StringSerializationHelper {
         bytes.append(reinterpret_cast<const uint8_t*>(str.data()), size);
     }
 
-    static auto Deserialize(void* objPtr, SP::SlidingBuffer const& bytes) -> void {
+    static auto Deserialize(void* objPtr, SP::SlidingBuffer const& bytes) -> std::optional<Error> {
         if (bytes.size() < sizeof(uint32_t)) {
-            throw std::runtime_error("Buffer too small for string size");
+            return Error{Error::Code::MalformedInput, "Buffer too small for string size"};
         }
 
-        uint32_t size;
+        uint32_t size = 0;
         std::memcpy(&size, bytes.data(), sizeof(size));
 
-        if (bytes.size() < sizeof(size) + size) {
-            throw std::runtime_error("Buffer too small for string data");
+        if (bytes.size() < sizeof(size) + static_cast<std::size_t>(size)) {
+            return Error{Error::Code::MalformedInput, "Buffer too small for string data"};
         }
 
         if constexpr (std::is_same_v<T, std::string>) {
             auto& str = *static_cast<std::string*>(objPtr);
             str.assign(reinterpret_cast<const char*>(bytes.data() + sizeof(size)), size);
+            return std::nullopt;
         } else {
-            throw std::runtime_error("Can only deserialize to std::string");
+            return Error{Error::Code::UnserializableType, "Can only deserialize to std::string"};
         }
     }
 
-    static auto DeserializePop(void* objPtr, SP::SlidingBuffer& bytes) -> void {
-        StringSerializationHelper<T>::Deserialize(objPtr, bytes);
-        bytes.advance(sizeof(uint32_t) + *reinterpret_cast<const uint32_t*>(bytes.data()));
+    static auto DeserializePop(void* objPtr, SP::SlidingBuffer& bytes) -> std::optional<Error> {
+        if (auto error = StringSerializationHelper<T>::Deserialize(objPtr, bytes)) {
+            return error;
+        }
+        uint32_t size = 0;
+        std::memcpy(&size, bytes.data(), sizeof(size));
+        bytes.advance(sizeof(uint32_t) + static_cast<std::size_t>(size));
+        return std::nullopt;
     }
 };
 
@@ -212,7 +231,7 @@ struct AlpacaSerializationTraits {
             return nullptr;
     }();
 
-    static constexpr auto deserialize = []() -> void (*)(void* obj, SP::SlidingBuffer const&) {
+    static constexpr auto deserialize = []() -> std::optional<Error> (*)(void* obj, SP::SlidingBuffer const&) {
         if constexpr (Execution<T> || is_unique_ptr<T>::value)
             return nullptr;
         else if constexpr (std::is_same_v<T, std::string>) // Only allow deserialization to std::string

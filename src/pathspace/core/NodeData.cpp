@@ -264,22 +264,15 @@ FOUND_TARGET:
         if (!inputMetadata.deserialize) {
             return Error{Error::Code::UnserializableType, "No deserialization function provided"};
         }
-        try {
-            inputMetadata.deserialize(obj, tmp);
-        } catch (std::exception const& ex) {
-            return Error{Error::Code::MalformedInput, ex.what()};
-        }
-        return std::nullopt;
+        return inputMetadata.deserialize(obj, tmp);
     }
 
     // Pop path: deserialize first, then surgically remove the target from queues/buffer.
     if (!inputMetadata.deserializePop) {
         return Error{Error::Code::UnserializableType, "No pop deserialization function provided"};
     }
-    try {
-        inputMetadata.deserializePop(obj, tmp);
-    } catch (std::exception const& ex) {
-        return Error{Error::Code::MalformedInput, ex.what()};
+    if (auto error = inputMetadata.deserializePop(obj, tmp)) {
+        return error;
     }
 
     // Remove the payload bytes from the sliding buffer.
@@ -521,25 +514,22 @@ auto NodeData::deserializeData(void* obj, const InputMetadata& inputMetadata, bo
         return Error{Error::Code::MalformedInput, "Serialized payload exceeds buffer"};
     }
 
-    try {
-        if (doPop) {
-            if (!inputMetadata.deserializePop)
-                return Error{Error::Code::UnserializableType, "No pop deserialization function provided"};
-            inputMetadata.deserializePop(obj, data);
-            if (!valueSizes.empty()) {
-                valueSizes.pop_front();
-            }
-            sp_log("After pop, buffer size: " + std::to_string(data.size()), "NodeData");
-            popType();
-        } else {
-            if (!inputMetadata.deserialize)
-                return Error{Error::Code::UnserializableType, "No deserialization function provided"};
-            inputMetadata.deserialize(obj, data);
+    if (doPop) {
+        if (!inputMetadata.deserializePop)
+            return Error{Error::Code::UnserializableType, "No pop deserialization function provided"};
+        if (auto error = inputMetadata.deserializePop(obj, data)) {
+            return error;
         }
-    } catch (std::exception const& ex) {
-        return Error{Error::Code::MalformedInput, ex.what()};
+        if (!valueSizes.empty()) {
+            valueSizes.pop_front();
+        }
+        sp_log("After pop, buffer size: " + std::to_string(data.size()), "NodeData");
+        popType();
+        return std::nullopt;
     }
-    return std::nullopt;
+    if (!inputMetadata.deserialize)
+        return Error{Error::Code::UnserializableType, "No deserialization function provided"};
+    return inputMetadata.deserialize(obj, data);
 }
 
 auto NodeData::empty() const -> bool {

@@ -1,9 +1,11 @@
 #pragma once
 #include <functional>
 #include <memory>
+#include <optional>
 #include <type_traits>
 #include <typeinfo>
 
+#include "core/Error.hpp"
 #include "type/DataCategory.hpp"
 #include "type/FunctionCategory.hpp"
 #include "type/InputMetadataT.hpp"
@@ -28,8 +30,10 @@ struct InputMetadata {
     FunctionCategory      functionCategory;
     std::type_info const* typeInfo                           = nullptr;
     void (*serialize)(void const* obj, SP::SlidingBuffer&)   = nullptr;
-    void (*deserialize)(void* obj, SP::SlidingBuffer const&) = nullptr;
-    void (*deserializePop)(void* obj, SP::SlidingBuffer&)    = nullptr;
+    // Decode failures (truncated or corrupt bytes) are reported through the returned Error;
+    // std::nullopt means `obj` was fully written.
+    std::optional<Error> (*deserialize)(void* obj, SP::SlidingBuffer const&) = nullptr;
+    std::optional<Error> (*deserializePop)(void* obj, SP::SlidingBuffer&)    = nullptr;
     bool podPreferred                                        = false;
     // Factory to create a PodPayload for this metadata type when podPreferred is true.
     std::shared_ptr<PodPayloadBase> (*createPodPayload)()    = nullptr;

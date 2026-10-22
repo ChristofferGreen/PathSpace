@@ -25,23 +25,26 @@ auto makeImmediateTask() -> std::shared_ptr<Task> {
                         ExecutionCategory::Immediate);
 }
 
-auto throwingDeserialize(void*, SlidingBuffer const&) -> void {
-    throw std::runtime_error("boom");
+auto failingDeserialize(void*, SlidingBuffer const&) -> std::optional<Error> {
+    return Error{Error::Code::MalformedInput, "boom"};
 }
 
-auto throwingDeserializePop(void*, SlidingBuffer&) -> void {
-    throw std::runtime_error("boom-pop");
+auto failingDeserializePop(void*, SlidingBuffer&) -> std::optional<Error> {
+    return Error{Error::Code::MalformedInput, "boom-pop"};
 }
 
 NodeData* gCorruptNode = nullptr;
 
-auto corruptingDeserializePop(void* obj, SlidingBuffer& buffer) -> void {
+auto corruptingDeserializePop(void* obj, SlidingBuffer& buffer) -> std::optional<Error> {
     if (auto pop = InputMetadataT<int>::deserializePop) {
-        pop(obj, buffer);
+        if (auto error = pop(obj, buffer)) {
+            return error;
+        }
     }
     if (gCorruptNode) {
         gCorruptNode->valueSizes.clear();
     }
+    return std::nullopt;
 }
 
 struct NestedHookGuard {
@@ -102,14 +105,14 @@ TEST_CASE("deserialize reports buffer shorter than declared length") {
     CHECK(err->message == std::optional<std::string>{"Serialized payload exceeds buffer"});
 }
 
-TEST_CASE("deserialize reports exceptions from deserializer") {
+TEST_CASE("deserialize propagates deserializer errors") {
     int value = 5;
     InputData input{value};
     NodeData  node;
     REQUIRE_FALSE(node.serialize(input).has_value());
 
     InputMetadata meta{InputMetadataT<int>{}};
-    meta.deserialize = &throwingDeserialize;
+    meta.deserialize = &failingDeserialize;
 
     int out = 0;
     auto err = node.deserialize(&out, meta);
@@ -176,13 +179,13 @@ TEST_CASE("deserializeIndexed reports missing pop deserializer") {
     CHECK(err->message == std::optional<std::string>{"No pop deserialization function provided"});
 }
 
-TEST_CASE("deserializeIndexed reports exceptions from deserializer") {
+TEST_CASE("deserializeIndexed propagates deserializer errors") {
     NodeData node;
     REQUIRE_FALSE(node.serialize(InputData{1}).has_value());
     REQUIRE_FALSE(node.serialize(InputData{2}).has_value());
 
     InputMetadata meta{InputMetadataT<int>{}};
-    meta.deserialize = &throwingDeserialize;
+    meta.deserialize = &failingDeserialize;
 
     int out = 0;
     auto err = node.deserializeIndexed(1, meta, false, &out);
@@ -191,13 +194,13 @@ TEST_CASE("deserializeIndexed reports exceptions from deserializer") {
     CHECK(err->message == std::optional<std::string>{"boom"});
 }
 
-TEST_CASE("deserializeIndexed reports exceptions from pop deserializer") {
+TEST_CASE("deserializeIndexed propagates pop deserializer errors") {
     NodeData node;
     REQUIRE_FALSE(node.serialize(InputData{1}).has_value());
     REQUIRE_FALSE(node.serialize(InputData{2}).has_value());
 
     InputMetadata meta{InputMetadataT<int>{}};
-    meta.deserializePop = &throwingDeserializePop;
+    meta.deserializePop = &failingDeserializePop;
 
     int out = 0;
     auto err = node.deserializeIndexed(1, meta, true, &out);
