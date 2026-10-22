@@ -37,7 +37,6 @@ TEST_CASE("FutureAny wait_until and invalid states") {
     auto any = fut.to_any();
 
     // wait_for should time out while not ready.
-    auto before = std::chrono::steady_clock::now();
     CHECK_FALSE(any.wait_for(std::chrono::milliseconds{1}));
     promise.set_value(3);
     int value = 0;

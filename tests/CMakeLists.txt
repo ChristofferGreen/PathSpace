@@ -131,6 +131,9 @@ add_executable(PathSpaceTests ${PATHSPACE_CORE_TEST_SOURCES})
 
 # Shared test helpers (PathSpaceTestHelper.hpp) live in tests/unit.
 target_include_directories(PathSpaceTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/unit)
+pathspace_enable_warnings(PathSpaceTests)
+# Some tests deliberately use `#define private public` and self-assignment/self-move.
+target_compile_options(PathSpaceTests PRIVATE -Wno-keyword-macro -Wno-self-assign-overloaded -Wno-self-move)
 
 # Opt-in debug logging for tests
 option(PATHSPACE_ENABLE_LOG_DEBUG "Enable SP_LOG_DEBUG logging" OFF)
@@ -180,12 +183,15 @@ else()
   set(_PATHSPACE_HAVE_TEST_RUNNER FALSE)
 endif()
 
+# Wall-clock limit for the whole test binary (sanitizer builds need much more than 120s).
+set(PATHSPACE_TEST_RUNNER_TIMEOUT 120 CACHE STRING "Seconds the test runner waits for PathSpaceTests")
+
 if(_PATHSPACE_HAVE_TEST_RUNNER)
   add_test(NAME PathSpaceTests
     COMMAND "${PATHSPACE_TEST_RUNNER}"
             --label PathSpaceTests
             --log-dir "${PATHSPACE_TEST_LOG_DIR}"
-            --timeout 120
+            --timeout ${PATHSPACE_TEST_RUNNER_TIMEOUT}
             --env PATHSPACE_LOG=1
             --env PATHSPACE_TEST_TIMEOUT=1
             --env MallocNanoZone=0

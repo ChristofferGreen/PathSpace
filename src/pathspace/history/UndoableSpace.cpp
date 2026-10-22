@@ -40,8 +40,8 @@ namespace SP::History {
 using SP::ConcretePathStringView;
 
 UndoableSpace::UndoableSpace(std::unique_ptr<PathSpaceBase> inner, HistoryOptions defaults)
-    : inner(std::move(inner))
-    , defaultOptions(defaults)
+    : defaultOptions(defaults)
+    , inner(std::move(inner))
     , spaceUuid(UndoUtilsAlias::generateSpaceUuid()) {}
 
 auto UndoableSpace::visit(PathVisitor const& visitor, VisitOptions const& options) -> Expected<void> {

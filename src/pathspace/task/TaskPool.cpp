@@ -27,7 +27,7 @@ auto now_micros() -> int64_t {
         .count();
 }
 
-auto execution_category_label(ExecutionCategory category) -> std::string_view {
+[[maybe_unused]] auto execution_category_label(ExecutionCategory category) -> std::string_view {
     switch (category) {
         case ExecutionCategory::Immediate:
             return "Immediate";

@@ -5,7 +5,7 @@
 
 namespace SP {
 
-class Task;
+struct Task;
 
 /**
  * Future — lightweight handle to a Task's eventual result.

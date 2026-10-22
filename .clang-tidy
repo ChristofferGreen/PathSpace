@@ -1,0 +1,28 @@
+# clang-tidy configuration. Run with: ./scripts/compile.sh --tidy
+# Checks focus on likely bugs and avoidable cost; style is left to clang-format.
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-exception-escape,
+  -bugprone-reserved-identifier,
+  performance-*,
+  -performance-enum-size,
+  -performance-no-int-to-ptr,
+  misc-redundant-expression,
+  misc-unused-using-decls,
+  misc-unused-alias-decls,
+  modernize-use-nodiscard,
+  modernize-use-override,
+  modernize-use-noexcept,
+  modernize-use-emplace,
+  readability-container-size-empty,
+  readability-redundant-control-flow,
+  readability-redundant-smartptr-get,
+  readability-redundant-string-init,
+  cppcoreguidelines-slicing,
+  cppcoreguidelines-missing-std-forward,
+  cppcoreguidelines-rvalue-reference-param-not-moved
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*/src/pathspace/.*'
+FormatStyle: file

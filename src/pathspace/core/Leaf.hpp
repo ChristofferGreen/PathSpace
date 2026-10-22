@@ -25,7 +25,7 @@ inline PackInsertReservationHook GetPackInsertReservationHook() {
 }
 } // namespace testing
 struct Error;
-struct Iterator;
+class Iterator;
 struct InsertReturn;
 struct InputMetadata;
 struct InputData;

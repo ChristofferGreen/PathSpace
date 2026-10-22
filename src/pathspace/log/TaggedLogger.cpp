@@ -29,7 +29,7 @@ std::mutex TaggedLogger::coutMutex;
 
 auto logger() -> TaggedLogger& { static TaggedLogger instance; return instance; }
 
-TaggedLogger::TaggedLogger() : running(true), nextThreadNumber(0), loggingEnabled(false) {
+TaggedLogger::TaggedLogger() : running(true), loggingEnabled(false), nextThreadNumber(0) {
     // Configure defaults from environment
     auto truthy = [](std::string_view v) {
         return v == "1" || v == "true" || v == "TRUE" || v == "on" || v == "ON" || v == "yes" || v == "YES";

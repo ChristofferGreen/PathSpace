@@ -1,0 +1,29 @@
+name: ThreadSanitizer
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  tsan:
+    runs-on: macos-latest
+    # Known races are tracked in docs/AI_Todo.task; remove continue-on-error once they are fixed.
+    continue-on-error: true
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install cmake ninja || true
+
+      - name: Build and test under ThreadSanitizer
+        run: ./scripts/compile.sh --clean --tsan --test
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsan-logs
+          path: build-tsan/test-logs

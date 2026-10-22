@@ -20,7 +20,7 @@
 #include <alpaca/alpaca.h>
 
 namespace SP {
-struct PathSpace;
+class PathSpace;
 
 // ########### Type Detection Concepts ###########
 

@@ -15,3 +15,7 @@ node_modules/
 tests/inspector/playwright/.npm-cache/
 tests/inspector/playwright/.ms-playwright/
 docs/doxygen/html/
+build-asan/
+build-tsan/
+build-ubsan/
+build-tidy/

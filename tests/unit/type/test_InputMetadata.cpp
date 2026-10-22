@@ -84,7 +84,7 @@ TEST_CASE("Type InputMetadata Fundamental") {
     }
     SUBCASE("Function Pointer") {
         using TestFuncPtr      = void (*)(int);
-        TestFuncPtr   testFunc = [](int x) {};
+        [[maybe_unused]] TestFuncPtr testFunc = [](int) {};
         InputMetadata im(InputMetadataT<TestFuncPtr>{});
 
         REQUIRE(im.dataCategory == DataCategory::FunctionPointer);
@@ -186,7 +186,7 @@ TEST_CASE("String-like metadata serialize/deserialize") {
 TEST_CASE("InputMetadata covers typeInfo mapping and std::invoke_result deductions") {
     struct Callable {
         int operator()() const { return 3; }
-    } callable;
+    };
 
     InputMetadata callableMeta(InputMetadataT<Callable>{});
     CHECK(callableMeta.typeInfo == &typeid(int));
@@ -372,7 +372,6 @@ TEST_CASE("InputMetadata covers additional literals, optionals, unique_ptr, and 
 
 
 TEST_CASE("InputMetadata treats raw and shared pointers as non-serializable") {
-    int value = 3;
     InputMetadata rawMeta(InputMetadataT<int*>{});
     CHECK(rawMeta.dataCategory == DataCategory::None);
     CHECK_FALSE(rawMeta.podPreferred);

@@ -533,7 +533,6 @@ TEST_CASE("ValueHandle readInto surfaces permission and missing-node errors") {
 
     VisitOptions opts;
     opts.includeValues = false;
-    int dest = 0;
     auto visitResult = space.visit(
         [&](PathEntry const& entry, ValueHandle& handle) {
             if (entry.path == "/root/value") {

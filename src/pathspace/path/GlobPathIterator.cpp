@@ -17,9 +17,9 @@ auto GlobPathIterator<T>::operator++() -> GlobPathIterator<T>& {
 
 template<typename T>
 auto GlobPathIterator<T>::operator++(int) -> GlobPathIterator<T> {
-    GlobPathIterator<T> current = *this;
+    GlobPathIterator<T> previous = *this;
     this->operator++();
-    return current;
+    return previous;
 }
 
 template<typename T>

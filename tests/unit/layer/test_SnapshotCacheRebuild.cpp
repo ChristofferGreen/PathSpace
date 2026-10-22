@@ -6,6 +6,9 @@ struct BlockingVisitSpace final : PathSpace {
     using PathSpace::PathSpace;
 
     auto visit(PathVisitor const& visitor, VisitOptions const& options) -> Expected<void> override {
+        if (!armed.load(std::memory_order_acquire)) {
+            return PathSpace::visit(visitor, options);
+        }
         {
             std::unique_lock<std::mutex> lock(mutex);
             ++entered;
@@ -14,6 +17,12 @@ struct BlockingVisitSpace final : PathSpace {
             --releases;
         }
         return PathSpace::visit(visitor, options);
+    }
+
+    // Visits pass straight through until armed, so a background snapshot worker that
+    // starts before the test stops it cannot get stuck in a blocked visit.
+    void arm() {
+        armed.store(true, std::memory_order_release);
     }
 
     void waitForVisits(int count) {
@@ -27,6 +36,7 @@ struct BlockingVisitSpace final : PathSpace {
         cv.notify_all();
     }
 
+    std::atomic<bool>       armed{false};
     std::mutex              mutex;
     std::condition_variable cv;
     int                     entered = 0;
@@ -47,6 +57,7 @@ TEST_CASE("Snapshot cache rebuild returns when disabled while waiting") {
         .maxDirtyRoots = 8,
     });
     cached.stopSnapshotWorker();
+    backing->arm();
 
     std::thread first([&]() { cached.rebuildSnapshotNow(); });
     backing->waitForVisits(1);
@@ -82,6 +93,7 @@ TEST_CASE("Snapshot cache rebuild waits for in-progress rebuild") {
         .maxDirtyRoots = 8,
     });
     cached.stopSnapshotWorker();
+    backing->arm();
 
     std::thread first([&]() { cached.rebuildSnapshotNow(); });
     backing->waitForVisits(1);
@@ -116,6 +128,7 @@ TEST_CASE("Snapshot cache rebuild aborts if disabled mid-visit") {
         .maxDirtyRoots = 8,
     });
     cached.stopSnapshotWorker();
+    backing->arm();
 
     std::thread rebuild([&]() { cached.rebuildSnapshotNow(); });
     backing->waitForVisits(1);
@@ -143,6 +156,7 @@ TEST_CASE("Snapshot cache stays dirty when mutation happens mid-rebuild") {
         .maxDirtyRoots = 8,
     });
     cached.stopSnapshotWorker();
+    backing->arm();
 
     std::thread rebuild([&]() { cached.rebuildSnapshotNow(); });
     backing->waitForVisits(1);
@@ -170,6 +184,7 @@ TEST_CASE("Snapshot cache trySnapshotRead returns false when disabled mid-rebuil
         .allowSynchronousRebuild = true,
     });
     cached.stopSnapshotWorker();
+    backing->arm();
     cached.markSnapshotDirty("/value");
 
     InputMetadata meta{InputMetadataT<int>{}};

@@ -7,6 +7,8 @@ target_link_libraries(PathSpaceBench
     PathSpace
 )
 
+pathspace_enable_warnings(PathSpaceBench)
+
 # Keep includes aligned with main library usage
 
 target_include_directories(PathSpaceBench

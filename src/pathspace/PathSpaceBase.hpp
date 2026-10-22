@@ -327,12 +327,12 @@ private:
     template <std::size_t... Is>
     static constexpr auto checkAll(std::index_sequence<Is...>) {
         using First = std::tuple_element_t<0, ArgsTuple>;
-        using FirstTraits = SpanArgTraits<std::remove_cvref_t<First>>;
+        using FirstArgTraits = SpanArgTraits<std::remove_cvref_t<First>>;
         constexpr bool allSpan    = (SpanArgTraits<std::remove_cvref_t<std::tuple_element_t<Is, ArgsTuple>>>::isSpan && ...);
         constexpr bool allConst   = (SpanArgTraits<std::remove_cvref_t<std::tuple_element_t<Is, ArgsTuple>>>::isConstSpan && ...);
         constexpr bool allMutable = ((!SpanArgTraits<std::remove_cvref_t<std::tuple_element_t<Is, ArgsTuple>>>::isConstSpan) && ...);
         constexpr bool allSame    = ((std::is_same_v<typename SpanArgTraits<std::remove_cvref_t<std::tuple_element_t<Is, ArgsTuple>>>::Value, typename SpanArgTraits<std::remove_cvref_t<First>>::Value>) && ...);
-        return std::tuple<FirstTraits, std::bool_constant<allSpan>, std::bool_constant<allConst>, std::bool_constant<allMutable>, std::bool_constant<allSame>>{};
+        return std::tuple<FirstArgTraits, std::bool_constant<allSpan>, std::bool_constant<allConst>, std::bool_constant<allMutable>, std::bool_constant<allSame>>{};
     }
 
     using Checks = decltype(checkAll(std::make_index_sequence<Arity>{}));
@@ -543,7 +543,7 @@ public:
 
     template <typename DataType>
         requires(std::is_same_v<std::remove_cvref_t<DataType>, Children>)
-    auto read(ConcretePathStringView const& pathIn, Out const& options = {}) const -> Expected<DataType> {
+    auto read(ConcretePathStringView const& pathIn, Out const& /*options*/ = {}) const -> Expected<DataType> {
         auto canonical = pathIn.canonicalized();
         if (!canonical) {
             return std::unexpected(canonical.error());
@@ -794,8 +794,8 @@ protected:
     //   later operations can call ctx->notify(prefix) or ctx->notify(prefix + "/...") rather than notifyAll().
     // - Avoid blocking work or spawning threads here; this hook should be lightweight.
     // - Treat the prefix as read-only and stable for the lifetime of the mount unless explicitly retargeted.
-    virtual void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string /*prefix*/) {
-        this->context = std::move(context);
+    virtual void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> newContext, std::string /*prefix*/) {
+        this->context = std::move(newContext);
         if (this->context && this->context->executor()) {
             this->executorPtr = this->context->executor();
         }
@@ -926,7 +926,7 @@ private:
 
     friend struct VisitDetail::Access;
     friend class TaskPool;
-    friend class PathView;
+    friend struct PathView;
     friend class PathFileSystem;
     friend class PathSpace;
     friend class Leaf;

@@ -18,12 +18,13 @@ BUILD_TYPE="Debug"
 SANITIZER=""
 JOBS=""
 TARGET=""
-TIMEOUT=20
+TIMEOUT=
 LOOP=1
 CLEAN=0
 TEST=0
 COVERAGE=0
 DOCS=0
+TIDY=0
 
 usage() {
   cat <<EOF
@@ -37,10 +38,11 @@ Usage: $0 [options]
   -t, --target NAME    Build only this target
       --test           Run the tests after building
       --loop[=N]       Repeat the tests up to N times, stopping at the first failure (implies --test; default 5)
-      --timeout SECS   Per-run test timeout (default: 20)
+      --timeout SECS   Per-run test timeout (default: 20; 1800 with a sanitizer)
       --asan|--tsan|--ubsan  Build with a sanitizer
       --coverage       Build with coverage instrumentation
       --docs           Build the Doxygen docs (configures with -DENABLE_DOXYGEN=ON)
+      --tidy           Build the library with clang-tidy (build dir: build-tidy; needs clang-tidy)
   -h, --help           Show this help
 EOF
 }
@@ -66,12 +68,16 @@ while [[ $# -gt 0 ]]; do
     --ubsan|--usan) SANITIZER="UNDEFINED" ;;
     --coverage) COVERAGE=1 ;;
     --docs) DOCS=1 ;;
+    --tidy) TIDY=1 ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "unknown option: $1" ;;
   esac
   shift
 done
 
+if [[ -z "$TIMEOUT" ]]; then
+  if [[ -n "$SANITIZER" ]]; then TIMEOUT=1800; else TIMEOUT=20; fi
+fi
 for n in "$LOOP" "$TIMEOUT" ${JOBS:+"$JOBS"}; do
   case "$n" in ''|*[!0-9]*) die "expected a positive integer, got '$n'" ;; esac
 done
@@ -84,6 +90,7 @@ if [[ -z "$BUILD_DIR" ]]; then
     UNDEFINED) BUILD_DIR="$ROOT_DIR/build-ubsan" ;;
     *) BUILD_DIR="$ROOT_DIR/build" ;;
   esac
+  [[ "$TIDY" -eq 0 ]] || BUILD_DIR="$ROOT_DIR/build-tidy"
 fi
 
 CMAKE_ARGS=(-S "$ROOT_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE="$BUILD_TYPE")
@@ -94,7 +101,10 @@ if [[ -n "$SANITIZER" ]]; then
   done
 fi
 [[ "$COVERAGE" -eq 0 ]] || CMAKE_ARGS+=(-DENABLE_CODE_COVERAGE=ON)
+# Sanitizer builds run several times slower; keep the test runner's own limit above ctest's.
+[[ -z "$SANITIZER" ]] || CMAKE_ARGS+=(-DPATHSPACE_TEST_RUNNER_TIMEOUT="$TIMEOUT")
 [[ "$DOCS" -eq 0 ]] || CMAKE_ARGS+=(-DENABLE_DOXYGEN=ON)
+[[ "$TIDY" -eq 0 ]] || CMAKE_ARGS+=(-DPATHSPACE_CLANG_TIDY=ON)
 
 if [[ "$CLEAN" -eq 1 ]]; then rm -rf "$BUILD_DIR"; fi
 # Pick Ninja for new build directories only; existing ones keep their generator.
@@ -108,5 +118,6 @@ if [[ "$DOCS" -eq 1 ]]; then BUILD_ARGS+=(--target docs); elif [[ -n "$TARGET" ]
 cmake "${BUILD_ARGS[@]}"
 
 if [[ "$TEST" -eq 1 ]]; then
+  [[ "$SANITIZER" != THREAD ]] || export TSAN_OPTIONS="${TSAN_OPTIONS:-halt_on_error=0:report_thread_leaks=0}"
   ctest --test-dir "$BUILD_DIR" --output-on-failure --timeout "$TIMEOUT" --repeat-until-fail "$LOOP"
 fi

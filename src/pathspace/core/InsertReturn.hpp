@@ -6,7 +6,7 @@
 
 namespace SP {
 
-struct PathSpaceBase;
+class PathSpaceBase;
 
 struct InsertReturn {
     uint32_t           nbrValuesInserted = 0;

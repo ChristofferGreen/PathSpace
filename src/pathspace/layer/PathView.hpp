@@ -13,7 +13,7 @@ struct Permission {
 
 struct PathView : public PathSpaceBase {
     PathView(std::shared_ptr<PathSpaceBase> const& space, std::function<Permission(Iterator const&)> permission, std::string root = "")
-        : space(space), permission(permission), root(root) {}
+        : root(root), permission(permission), space(space) {}
     virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn override;
     virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override;
     virtual auto shutdown() -> void override;

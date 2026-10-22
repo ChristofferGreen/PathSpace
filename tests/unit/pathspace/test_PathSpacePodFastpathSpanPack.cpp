@@ -429,7 +429,7 @@ TEST_CASE("Span pack keeps POD buffers alive during callback") {
 }
 
 TEST_CASE("Span pack traits reject arity mismatch at compile time") {
-    using BadFn = decltype([](std::span<const float> x, std::span<const float> y, int) {});
+    using BadFn = decltype([](std::span<const float>, std::span<const float>, int) {});
     static_assert(!SP::Detail::SpanPackTraits<BadFn>::isSpanPack);
 }
 

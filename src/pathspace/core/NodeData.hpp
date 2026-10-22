@@ -20,13 +20,13 @@
 #include <string>
 
 namespace SP {
-class InsertReturn;
-class InputMetadata;
-class InputData;
-class Task;
+struct InsertReturn;
+struct InputMetadata;
+struct InputData;
+struct Task;
 class PathSpaceBase;
-class NotificationSink;
-class Executor;
+struct NotificationSink;
+struct Executor;
 struct NodeDataTestHelper;
 
 struct NodeData {

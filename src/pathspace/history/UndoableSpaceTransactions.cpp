@@ -211,8 +211,8 @@ void UndoableSpace::recordJournalOperation(UndoJournalRootState& state,
                                            bool success,
                                            UndoJournal::JournalState::Stats const& beforeStats,
                                            std::size_t beforeLiveBytes,
-                                           HistoryTelemetry const& beforeTelemetry,
-                                           HistoryTelemetry const& afterTelemetry,
+                                           [[maybe_unused]] HistoryTelemetry const& beforeTelemetry,
+                                           [[maybe_unused]] HistoryTelemetry const& afterTelemetry,
                                            std::string_view tag,
                                            std::string message) {
     auto afterStats = state.journal.stats();

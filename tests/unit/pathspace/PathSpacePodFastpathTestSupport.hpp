@@ -29,7 +29,7 @@ using namespace SP;
 
 namespace {
 
-static Node* lookup(Node* root, std::initializer_list<std::string_view> components) {
+[[maybe_unused]] static Node* lookup(Node* root, std::initializer_list<std::string_view> components) {
     Node* cur = root;
     for (auto c : components) {
         if (!cur) return nullptr;

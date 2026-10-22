@@ -14,7 +14,7 @@
 #include <thread>
 
 namespace SP {
-struct PathSpaceBase;
+class PathSpaceBase;
 
 struct Task {
     template <typename FunctionType>
@@ -100,8 +100,8 @@ struct Task {
         this->executor = exec;
     }
 
-    auto setLabel(std::string label) -> void {
-        this->label = std::move(label);
+    auto setLabel(std::string newLabel) -> void {
+        this->label = std::move(newLabel);
     }
 
     auto getLabel() const -> std::string const& {

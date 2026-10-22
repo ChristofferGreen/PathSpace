@@ -352,7 +352,7 @@ auto walkSubtree(VisitStart const& start, VisitState& state) -> Expected<void> {
     return {};
 }
 
-auto resolveStart(PathSpaceBase& space,
+auto resolveStart([[maybe_unused]] PathSpaceBase& space,
                   Node& rootNode,
                   std::string const& canonicalRoot,
                   std::vector<std::string> const& components,
@@ -588,7 +588,7 @@ auto PathSpaceBase::visit(PathVisitor const& visitor, VisitOptions const& option
         return std::unexpected(components.error());
     }
 
-    VisitState state{*this, visitor, options, depthForPath(canonicalRoot)};
+    VisitState state{*this, visitor, options, depthForPath(canonicalRoot), std::nullopt, false};
     if (!components->empty()) {
         auto parsedRoot   = parse_indexed_component(components->back());
         if (parsedRoot.malformed) {

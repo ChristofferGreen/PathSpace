@@ -21,20 +21,6 @@
 namespace SP {
 
 // Forward declarations of internal helpers (defined below)
-static auto ensureNodeData(Node& n, InputData const& inputData, InsertReturn& ret) -> NodeData*;
-static void mergeInsertReturn(InsertReturn& into, InsertReturn const& from);
-static auto inAtNode(Node& node,
-                     Iterator const& iter,
-                     InputData const& inputData,
-                     InsertReturn& ret,
-                     std::string const& resolvedPath) -> void;
-static auto outAtNode(Node& node,
-                      Iterator const& iter,
-                      InputMetadata const& inputMetadata,
-                      void* obj,
-                      bool const doExtract,
-                      Node* parent,
-                      std::string_view keyInParent) -> std::optional<Error>;
 static auto extractNestedSpace(Node& node,
                               InputMetadata const& inputMetadata,
                               void* obj,
@@ -84,6 +70,18 @@ void Leaf::mergeInsertReturn(InsertReturn& into, InsertReturn const& from) {
 }
 
 namespace {
+
+// Node::podPayload is assigned and reset under Node::payloadMutex, so every read
+// from outside a locked scope must go through these helpers.
+auto loadPodPayload(Node const& node) -> std::shared_ptr<PodPayloadBase> {
+    std::lock_guard<std::mutex> guard(node.payloadMutex);
+    return node.podPayload;
+}
+
+auto hasPodPayload(Node const& node) -> bool {
+    std::lock_guard<std::mutex> guard(node.payloadMutex);
+    return static_cast<bool>(node.podPayload);
+}
 
 auto appendPayload(Node& node, NodeData const& payload, InsertReturn& ret) -> bool {
     std::lock_guard<std::mutex> guard(node.payloadMutex);
@@ -210,7 +208,7 @@ static auto tryPodRead(Node& node, InputMetadata const& inputMetadata, void* obj
     if (!inputMetadata.podPreferred || inputMetadata.dataCategory == DataCategory::UniquePtr) {
         return Error{Error::Code::NotSupported, "POD fast path not applicable"};
     }
-    auto payload = node.podPayload;
+    auto payload = loadPodPayload(node);
     if (!payload) {
         return Error{Error::Code::InvalidType, "POD fast path unavailable"};
     }
@@ -225,7 +223,7 @@ static auto tryPodSpan(Node const& node, InputMetadata const& inputMetadata, Fn&
     if (!inputMetadata.podPreferred) {
         return Error{Error::Code::NotSupported, "POD span not applicable"};
     }
-    auto payload = node.podPayload;
+    auto payload = loadPodPayload(node);
     if (!payload) {
         return Error{Error::Code::InvalidType, "POD fast path unavailable"};
     }
@@ -240,7 +238,7 @@ static auto tryPodSpanMutable(Node& node, InputMetadata const& inputMetadata, Fn
     if (!inputMetadata.podPreferred) {
         return Error{Error::Code::NotSupported, "POD span not applicable"};
     }
-    auto payload = node.podPayload;
+    auto payload = loadPodPayload(node);
     if (!payload) {
         return Error{Error::Code::InvalidType, "POD fast path unavailable"};
     }
@@ -255,7 +253,7 @@ static auto tryPodSpanMutableFrom(Node& node, InputMetadata const& inputMetadata
     if (!inputMetadata.podPreferred) {
         return Error{Error::Code::NotSupported, "POD span not applicable"};
     }
-    auto payload = node.podPayload;
+    auto payload = loadPodPayload(node);
     if (!payload) {
         return Error{Error::Code::InvalidType, "POD fast path unavailable"};
     }
@@ -270,7 +268,7 @@ static auto tryPodSpanPinned(Node const& node, InputMetadata const& inputMetadat
     if (!inputMetadata.podPreferred) {
         return Error{Error::Code::NotSupported, "POD span not applicable"};
     }
-    auto payload = node.podPayload;
+    auto payload = loadPodPayload(node);
     if (!payload) {
         return Error{Error::Code::InvalidType, "POD fast path unavailable"};
     }
@@ -287,7 +285,7 @@ static auto tryPodSpanMutableFromPinned(Node& node, InputMetadata const& inputMe
     if (!inputMetadata.podPreferred) {
         return Error{Error::Code::NotSupported, "POD span not applicable"};
     }
-    auto payload = node.podPayload;
+    auto payload = loadPodPayload(node);
     if (!payload) {
         return Error{Error::Code::InvalidType, "POD fast path unavailable"};
     }
@@ -333,7 +331,7 @@ auto migratePodToNodeData(Node& node, InsertReturn& ret) -> bool {
     if (!node.podPayload) {
         return true;
     }
-    auto payload = node.podPayload;
+    auto payload = node.podPayload; // payloadMutex is already held
     payload->freezeForUpgrade();
     auto const& meta      = payload->podMetadata();
     auto        elemBytes = payload->elementSize();
@@ -693,8 +691,8 @@ auto Leaf::outAtNode(Node& node,
                      InputMetadata const& inputMetadata,
                      void* obj,
                      bool const doExtract,
-                     Node* parent,
-                     std::string_view keyInParent) -> std::optional<Error> {
+                     [[maybe_unused]] Node* parent,
+                     [[maybe_unused]] std::string_view keyInParent) -> std::optional<Error> {
     auto name = iter.currentComponent();
     auto parsed = parse_indexed_component(name);
     if (parsed.malformed) {
@@ -715,7 +713,7 @@ auto Leaf::outAtNode(Node& node,
             if (!inputMetadata.podPreferred) {
                 return Error{Error::Code::NotSupported, "Span supported only on POD fast path"};
             }
-            if (!child->podPayload) {
+            if (!hasPodPayload(*child)) {
                 return Error{Error::Code::NotSupported, "POD fast path unavailable"};
             }
             if (inputMetadata.spanReader) {
@@ -749,7 +747,7 @@ auto Leaf::outAtNode(Node& node,
                     continue;
                 std::optional<Error> res;
                 bool attempted = false;
-                if (childTry->podPayload && inputMetadata.podPreferred) {
+                if (inputMetadata.podPreferred && hasPodPayload(*childTry)) {
                     foundAny  = true;
                     attempted = true;
                     res       = tryPodRead(*childTry, inputMetadata, obj, doExtract);
@@ -802,7 +800,7 @@ auto Leaf::outAtNode(Node& node,
         }
 
         if (parsed.index.has_value()) {
-            if (child->podPayload) {
+            if (hasPodPayload(*child)) {
                 InsertReturn upgradeRet;
                 if (!migratePodToNodeData(*child, upgradeRet)) {
                     if (!upgradeRet.errors.empty()) {
@@ -824,11 +822,11 @@ auto Leaf::outAtNode(Node& node,
             return res;
         }
 
-        if (child->podPayload && !inputMetadata.podPreferred) {
+        if (!inputMetadata.podPreferred && hasPodPayload(*child)) {
             return Error{Error::Code::InvalidType, "Type mismatch during deserialization"};
         }
 
-        if (child->podPayload && inputMetadata.podPreferred) {
+        if (inputMetadata.podPreferred && hasPodPayload(*child)) {
             auto res = tryPodRead(*child, inputMetadata, obj, doExtract);
             if (res.has_value()) {
                 sp_log("Leaf::outAtNode(final) POD deserialize failed code=" + std::to_string(static_cast<int>(res->code)) + " msg=" + res->message.value_or(""), "Leaf");
@@ -1203,7 +1201,7 @@ auto Leaf::spanPackMut(std::span<const std::string> paths,
         }
         nodes.push_back(nodeExpected.value());
         if (options.isMinimal) {
-            auto payload = nodeExpected.value()->podPayload;
+            auto payload = loadPodPayload(*nodeExpected.value());
             if (!payload) {
                 return std::unexpected(Error{Error::Code::InvalidType, "POD fast path unavailable"});
             }
@@ -1230,7 +1228,7 @@ auto Leaf::spanPackMut(std::span<const std::string> paths,
             std::optional<Error> captureErr;
             std::size_t          startIndex = 0;
             std::size_t          headIndex  = 0;
-            if (auto payload = node->podPayload) {
+            if (auto payload = loadPodPayload(*node)) {
                 headIndex = payload->headIndex();
                 if (options.isMinimal) {
                     auto packStart = payload->packSpanStart();
@@ -1293,7 +1291,7 @@ auto Leaf::spanPackMut(std::span<const std::string> paths,
                     }
                 }
                 for (std::size_t idx = 0; idx < nodes.size(); ++idx) {
-                    auto payload = nodes[idx]->podPayload;
+                    auto payload = loadPodPayload(*nodes[idx]);
                     if (!payload) {
                         return std::unexpected(Error{Error::Code::InvalidType, "POD fast path unavailable"});
                     }

@@ -73,9 +73,9 @@ WaitMap::Guard::Guard(WaitMap& waitMap,
                       bool countImmediately)
     : waitMap(waitMap),
       path(path),
+      counted(countImmediately),
       awaitedVersion(initialVersion),
-      versionInitialized(true),
-      counted(countImmediately) {
+      versionInitialized(true) {
     if (countImmediately) {
         waitMap.activeWaiterCount.fetch_add(1, std::memory_order_acq_rel);
     }
@@ -213,7 +213,7 @@ auto WaitMap::notify(std::string_view path) -> void {
     auto const lockAttempt = std::chrono::steady_clock::now();
     std::unique_lock<std::timed_mutex> registryLock(registryMutex, std::defer_lock);
     if (!registryLock.try_lock_for(NotifyLockWatchdog)) {
-        auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(
+        [[maybe_unused]] auto waited = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - lockAttempt);
         sp_log("WaitMap notify lock waited " + std::to_string(waited.count()) + "ms for path " + std::string(path),
                "WaitMap");

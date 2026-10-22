@@ -697,7 +697,7 @@ TEST_CASE("PathSpace Multithreading - Core Suite") {
                     const int        MAX_TIMEOUTS   = 10;
 
                     // Extract all values from this path
-                    while (seqNums.size() < expectedValues) {
+                    while (seqNums.size() < static_cast<std::size_t>(expectedValues)) {
                         auto value = pspace.take<int>(path, Block(1000ms));
 
                         if (!value.has_value()) {
@@ -1024,7 +1024,7 @@ TEST_CASE("PathSpace Multithreading - Core Suite") {
         // Phase 3: Verify and cleanup any remaining items
         sp_log("Phase 3: Verification and cleanup", "INFO");
         {
-            int                      remainingItems = 0;
+            [[maybe_unused]] int     remainingItems = 0;
             std::vector<std::string> remainingPaths;
 
             // First pass: Try to extract any remaining items
@@ -1044,7 +1044,7 @@ TEST_CASE("PathSpace Multithreading - Core Suite") {
 
             if (!remainingPaths.empty()) {
                 sp_log("Found remaining items:", "INFO");
-                for (const auto& path : remainingPaths) {
+                for ([[maybe_unused]] const auto& path : remainingPaths) {
                     sp_log(std::format("  {}", path), "INFO");
                 }
 
@@ -1133,7 +1133,7 @@ TEST_CASE("PathSpace Multithreading - Core Suite") {
 
                 // Launch worker threads
                 for (int t = 0; t < NUM_THREADS; ++t) {
-                    threads.emplace_back([&, t]() {
+                    threads.emplace_back([&]() {
                         for (int i = 0; i < OPS_PER_THREAD && !has_error.load(); ++i) {
                             try {
                                 // Use just a few paths to increase contention
@@ -1219,7 +1219,7 @@ TEST_CASE("PathSpace Multithreading - Task Execution Suite") {
         // Insert initial value
         REQUIRE(space.insert("/shared/task", 42).nbrValuesInserted == 1);
 
-        auto reader_func = [&](int reader_id) {
+        auto reader_func = [&]([[maybe_unused]] int reader_id) {
             try {
                 for (int j = 0; j < ITERATIONS && !has_error; j++) {
                     auto result = space.read<int>("/shared/task", Block(10ms));
@@ -1476,9 +1476,9 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
         std::atomic<int>  completedThreads(0);
 
         // Add more detailed error tracking
-        std::atomic<int> insertTimeouts(0);
-        std::atomic<int> readTimeouts(0);
-        std::atomic<int> extractTimeouts(0);
+        [[maybe_unused]] std::atomic<int> insertTimeouts(0);
+        [[maybe_unused]] std::atomic<int> readTimeouts(0);
+        [[maybe_unused]] std::atomic<int> extractTimeouts(0);
 
         auto workerFunction = [&](int threadId) {
             try {
@@ -1563,10 +1563,10 @@ TEST_CASE("PathSpace Multithreading - Advanced & Performance Suite") {
 
                 // Log detailed status every second
                 int completed  = completedThreads.load(std::memory_order_acquire);
-                int successful = successfulOperations.load(std::memory_order_relaxed);
-                int failed_i   = failedInserts.load(std::memory_order_relaxed);
-                int failed_r   = failedReads.load(std::memory_order_relaxed);
-                int failed_e   = failedExtracts.load(std::memory_order_relaxed);
+                [[maybe_unused]] int successful = successfulOperations.load(std::memory_order_relaxed);
+                [[maybe_unused]] int failed_i   = failedInserts.load(std::memory_order_relaxed);
+                [[maybe_unused]] int failed_r   = failedReads.load(std::memory_order_relaxed);
+                [[maybe_unused]] int failed_e   = failedExtracts.load(std::memory_order_relaxed);
 
                 sp_log("Status at " + std::to_string(i) + "s:", "INFO");
                 sp_log("- Completed threads: " + std::to_string(completed) + "/" + std::to_string(NUM_THREADS), "INFO");

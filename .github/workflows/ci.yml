@@ -27,7 +27,10 @@ jobs:
             brew install cmake ninja || true
           fi
 
+      # Warnings are errors on macOS (Apple clang, the compiler the code is kept clean with).
       - name: Build & test
+        env:
+          PATHSPACE_CMAKE_ARGS: ${{ runner.os == 'macOS' && '-DPATHSPACE_WERROR=ON' || '' }}
         run: ./scripts/compile.sh --clean --release --test
 
   loop-stability:

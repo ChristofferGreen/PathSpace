@@ -23,7 +23,7 @@
 
 namespace SP {
 
-struct TaskPool;
+class TaskPool;
 class PathSpaceContext;
 struct PathSpaceTestHelper; // test-only access to private helpers
 class PathSpace : public PathSpaceBase {

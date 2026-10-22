@@ -111,8 +111,6 @@ auto ConcretePath<T>::operator==(std::string_view const &otherView) const -> boo
         return false;
     auto iterA = this->begin();
     auto iterB = other.begin();
-    bool a = iterA != this->end();
-    bool b = iterB != other.end();
     while(iterA != this->end() && iterB != other.end()) {
         if(*iterA != *iterB)
             return false;

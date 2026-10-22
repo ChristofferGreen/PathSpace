@@ -130,74 +130,6 @@ auto baseComponentsFromCanonical(std::string const& canonicalPath) -> Expected<s
 
 namespace {
 
-struct SubtreeEndpoints {
-    Node* parent = nullptr;
-    std::string leaf;
-};
-
-auto make_error(Error::Code code, std::string message) -> Error {
-    return Error{code, std::move(message)};
-}
-
-auto split_components(std::string const& canonicalPath)
-    -> Expected<std::vector<std::string>> {
-    ConcretePathStringView view{canonicalPath};
-    auto components = view.components();
-    if (!components) {
-        return std::unexpected(make_error(Error::Code::InvalidPath,
-                                          "failed to parse path components"));
-    }
-    if (components->empty()) {
-        return std::unexpected(make_error(Error::Code::InvalidPath,
-                                          "root path cannot be relocated"));
-    }
-    return *components;
-}
-
-auto locate_parent(Node& root,
-                   std::vector<std::string> const& components,
-                   bool allow_children_creation)
-    -> Expected<SubtreeEndpoints> {
-    if (components.size() < 1) {
-        return std::unexpected(make_error(Error::Code::InvalidPath,
-                                          "path requires at least one component"));
-    }
-    Node* current = &root;
-    for (std::size_t idx = 0; idx + 1 < components.size(); ++idx) {
-        auto const& component = components[idx];
-        Node* child = current->getChild(component);
-        if (!child) {
-            if (allow_children_creation && component == "children") {
-                child = &current->getOrCreateChild(component);
-            } else {
-                return std::unexpected(make_error(Error::Code::NoSuchPath,
-                                                  "missing component: " + component));
-            }
-        }
-        std::lock_guard<std::mutex> guard(child->payloadMutex);
-        if (child->data && child->data->hasNestedSpaces()) {
-            return std::unexpected(make_error(Error::Code::NotSupported,
-                                              "relocation across nested spaces is not supported"));
-        }
-        current = child;
-    }
-
-    return SubtreeEndpoints{.parent = current, .leaf = components.back()};
-}
-
-auto canonicalize(std::string_view path) -> Expected<std::string> {
-    ConcretePathString raw{std::string(path)};
-    auto canonical = raw.canonicalized();
-    if (!canonical) {
-        return std::unexpected(canonical.error());
-    }
-    return canonical->getPath();
-}
-
-} // namespace
-
-namespace {
-
 auto appendComponent(std::string const& base, std::string_view component) -> std::string {
     if (base.empty() || base == "/") {
         return std::string{"/"}.append(component);
@@ -220,15 +152,6 @@ auto makeMountPrefix(std::string const& spacePrefix, std::string const& path) ->
     std::string result = spacePrefix;
     result.append(path);
     return result;
-}
-
-auto accumulate(PathSpace::CopyStats& into, PathSpace::CopyStats const& from) -> void {
-    into.nodesVisited += from.nodesVisited;
-    into.payloadsCopied += from.payloadsCopied;
-    into.payloadsSkipped += from.payloadsSkipped;
-    into.valuesCopied += from.valuesCopied;
-    into.nestedSpacesCopied += from.nestedSpacesCopied;
-    into.nestedSpacesSkipped += from.nestedSpacesSkipped;
 }
 
 auto countCategory(std::deque<ElementType> const& types, DataCategory category) -> std::size_t {
@@ -349,11 +272,11 @@ auto PathSpace::clone(CopyStats* stats) const -> PathSpace {
     return copy;
 }
 
-void PathSpace::adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix) {
+void PathSpace::adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> newContext, std::string newPrefix) {
     sp_log("PathSpace::adoptContextAndPrefix", "Function Called");
     auto previousPrefix = this->prefix;
-    this->context = std::move(context);
-    this->prefix = std::move(prefix);
+    this->context = std::move(newContext);
+    this->prefix = std::move(newPrefix);
     if (this->context && this->context->executor()) {
         this->setExecutor(this->context->executor());
     }
@@ -681,7 +604,7 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
 
         // Wait in short slices; never call leaf.out while holding the WatchRegistry lock
         {
-            auto guard  = contextPtr->wait(waitPath);
+            auto waitGuard = contextPtr->wait(waitPath);
             auto now2   = std::chrono::system_clock::now();
             auto remain = deadline - now2;
             if (remain <= std::chrono::milliseconds(0)) {
@@ -695,10 +618,10 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
             if (remain < slice)
                 slice = std::chrono::duration_cast<std::chrono::milliseconds>(remain);
             sp_log(std::string("PathSpace::out wait slice(ms)=") + std::to_string(slice.count()), "PathSpace");
-            auto __wait_start = std::chrono::system_clock::now();
-            guard.wait_until(__wait_start + slice);
-            auto __wait_end = std::chrono::system_clock::now();
-            sp_log(std::string("PathSpace::out woke after(ms)=") + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(__wait_end - __wait_start).count()), "PathSpace");
+            auto waitStart = std::chrono::system_clock::now();
+            waitGuard.wait_until(waitStart + slice);
+            [[maybe_unused]] auto waitEnd = std::chrono::system_clock::now();
+            sp_log(std::string("PathSpace::out woke after(ms)=") + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(waitEnd - waitStart).count()), "PathSpace");
             // Exponential backoff for next slice (reset on success below)
             waitSlice = std::min(cap, waitSlice * 2);
         }
@@ -1013,8 +936,8 @@ void PathSpace::copyFrom(PathSpace const& other, CopyStats* stats) {
                 if (auto nestedPathSpace = dynamic_cast<PathSpace const*>(nestedShared.get())) {
                     auto indexedPath = append_index_suffix(currentPath, idx);
                     auto mountPrefix = makeMountPrefix(dstSpace->prefix, indexedPath);
-                    auto* pool = nestedPathSpace->pool ? nestedPathSpace->pool : &TaskPool::Instance();
-                    auto nestedPtr = std::make_unique<PathSpace>(pool);
+                    auto* nestedPool = nestedPathSpace->pool ? nestedPathSpace->pool : &TaskPool::Instance();
+                    auto nestedPtr = std::make_unique<PathSpace>(nestedPool);
                     nestedPtr->adoptContextAndPrefix(dstSpace->context, mountPrefix);
                     PathSpace* nestedRaw = nestedPtr.get();
                     if (!dst.data) {

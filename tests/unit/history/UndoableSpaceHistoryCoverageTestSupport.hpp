@@ -29,7 +29,7 @@ namespace UndoUtilsAlias = SP::History::UndoUtils;
 
 namespace {
 
-auto makeSavefileEntry(std::string path) -> UndoJournal::JournalEntry {
+[[maybe_unused]] auto makeSavefileEntry(std::string path) -> UndoJournal::JournalEntry {
     UndoJournal::JournalEntry entry;
     entry.operation = UndoJournal::OperationKind::Insert;
     entry.path = std::move(path);

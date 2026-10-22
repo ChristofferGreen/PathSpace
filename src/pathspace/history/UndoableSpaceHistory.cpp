@@ -276,7 +276,6 @@ auto UndoableSpace::interpretSteps(InputData const& data) const -> std::size_t {
     }
 
     auto interpretUnsigned = [&](auto ptr) -> std::size_t {
-        using T = std::remove_pointer_t<decltype(ptr)>;
         if (*ptr <= 0) {
             return 1;
         }

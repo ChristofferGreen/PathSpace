@@ -103,12 +103,29 @@ if(PATHSPACE_NEEDS_EXPECTED_SHIM)
 endif()
 
 target_compile_options(PathSpace PUBLIC "-Wno-deprecated")
+pathspace_enable_warnings(PathSpace SHADOW)
+
+if(PATHSPACE_CLANG_TIDY)
+    find_program(PATHSPACE_CLANG_TIDY_EXE NAMES clang-tidy
+        HINTS /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin)
+    if(PATHSPACE_CLANG_TIDY_EXE)
+        # Checks come from the repository's .clang-tidy file.
+        set_target_properties(PathSpace PROPERTIES CXX_CLANG_TIDY "${PATHSPACE_CLANG_TIDY_EXE}")
+    else()
+        message(WARNING "PATHSPACE_CLANG_TIDY=ON but clang-tidy was not found; install LLVM (brew install llvm)")
+    endif()
+endif()
 
 target_include_directories(PathSpace
     PUBLIC
     ${PROJECT_SOURCE_DIR}/src/pathspace
     ${PROJECT_SOURCE_DIR}/src/
     ${PROJECT_SOURCE_DIR}/include
+)
+
+# Third-party headers are SYSTEM so their warnings do not surface in our builds.
+target_include_directories(PathSpace SYSTEM
+    PUBLIC
     ${parallelhashmap_SOURCE_DIR}
     ${nlohmann_SOURCE_DIR}/include
     ${cereal_SOURCE_DIR}/include

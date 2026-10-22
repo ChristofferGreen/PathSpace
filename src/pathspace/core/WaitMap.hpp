@@ -38,10 +38,10 @@ struct WaitMap {
         auto wait_until(std::chrono::time_point<std::chrono::system_clock> timeout) -> std::cv_status;
         template <typename Pred>
         bool wait_until(std::chrono::time_point<std::chrono::system_clock> timeout, Pred pred) {
-            auto* entry = ensure_entry();
+            auto* waiterEntry = ensure_entry();
             auto const lockWaitStart = std::chrono::steady_clock::now();
             if (!waitLock.owns_lock()) {
-                waitLock = std::unique_lock<std::mutex>(entry->mutex);
+                waitLock = std::unique_lock<std::mutex>(waiterEntry->mutex);
             }
             auto const lockWaitMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - lockWaitStart);
@@ -53,7 +53,7 @@ struct WaitMap {
             }
 
             auto const waitStart = std::chrono::steady_clock::now();
-            auto const result = entry->cv.wait_until(waitLock, timeout, std::move(pred));
+            auto const result = waiterEntry->cv.wait_until(waitLock, timeout, std::move(pred));
             auto const waitMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - waitStart);
 

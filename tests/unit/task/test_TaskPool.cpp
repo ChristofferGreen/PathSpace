@@ -631,7 +631,7 @@ TEST_CASE("TaskPool Misc") {
             };
             auto state = std::make_shared<TestState>();
 
-            auto task = Task::Create([state](Task const& task, bool) {
+            auto task = Task::Create([state](Task const&, bool) {
                 try {
                     {
                         std::lock_guard<std::mutex> lock(state->mutex);

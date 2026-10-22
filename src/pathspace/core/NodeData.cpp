@@ -416,12 +416,12 @@ auto NodeData::validateInputs(const InputMetadata& inputMetadata) -> std::option
     return std::nullopt;
 }
 
-auto NodeData::deserializeExecution(void* obj, const InputMetadata& inputMetadata, bool doPop) -> std::optional<Error> {
+auto NodeData::deserializeExecution(void* obj, [[maybe_unused]] const InputMetadata& inputMetadata, bool doPop) -> std::optional<Error> {
     sp_log("NodeData::deserializeExecution entry", "NodeData");
     sp_log(" - tasks.size()=" + std::to_string(this->tasks.size())
            + " futures.size()=" + std::to_string(this->futures.size()), "NodeData");
     if (!this->types.empty()) {
-        auto have = this->types.front().typeInfo ? this->types.front().typeInfo->name() : "nullptr";
+        [[maybe_unused]] auto have = this->types.front().typeInfo ? this->types.front().typeInfo->name() : "nullptr";
         sp_log(std::string(" - front type category=")
                    + std::to_string(static_cast<int>(this->types.front().category))
                    + " type=" + have,
@@ -912,11 +912,11 @@ std::optional<NodeData> NodeData::deserializeSnapshot(std::span<const std::byte>
 
     std::vector<std::size_t> restoredValueSizes;
     if (hasValueSizes) {
-        auto countOpt = readScalar<std::uint32_t>(bytes);
-        if (!countOpt.has_value())
+        auto valueSizeCountOpt = readScalar<std::uint32_t>(bytes);
+        if (!valueSizeCountOpt.has_value())
             return std::nullopt;
-        restoredValueSizes.resize(*countOpt);
-        for (std::uint32_t i = 0; i < *countOpt; ++i) {
+        restoredValueSizes.resize(*valueSizeCountOpt);
+        for (std::uint32_t i = 0; i < *valueSizeCountOpt; ++i) {
             auto lengthOpt = readScalar<std::uint32_t>(bytes);
             if (!lengthOpt.has_value())
                 return std::nullopt;
