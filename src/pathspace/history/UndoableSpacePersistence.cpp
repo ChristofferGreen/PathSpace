@@ -115,12 +115,28 @@ auto UndoableSpace::loadJournalPersistence(UndoJournalRootState& state) -> Expec
     }
 
     std::vector<UndoJournal::JournalEntry> entries;
-    auto replay = UndoJournal::replayJournal(
+    // A crash in the middle of an append leaves a partial last record. That record was never
+    // acknowledged as durable, so recover the entries before it instead of losing the history.
+    UndoJournal::JournalReplayReport report;
+    auto                             replay = UndoJournal::replayJournal(
         state.journalPath,
         [&](UndoJournal::JournalEntry&& entry) -> Expected<void> {
             entries.push_back(std::move(entry));
             return Expected<void>{};
-        });
+        },
+        UndoJournal::JournalReplayOptions{.tolerateTornTail = true},
+        &report);
+    if (replay && report.tornTail) {
+        // Cut the partial record off, otherwise the next append would be framed after garbage and
+        // the journal could never be replayed again.
+        std::error_code resizeError;
+        std::filesystem::resize_file(state.journalPath, report.validBytes, resizeError);
+        if (resizeError) {
+            return std::unexpected(Error{Error::Code::UnknownError,
+                                         "Failed to truncate torn journal tail: " + resizeError.message()});
+        }
+        sp_log("loadJournalPersistence dropped a partial trailing journal record", "UndoableSpace");
+    }
 
     if (!replay) {
         if (replay.error().code == Error::Code::NotFound) {

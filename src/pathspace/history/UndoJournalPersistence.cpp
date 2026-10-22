@@ -2,6 +2,7 @@
 
 #include "history/UndoHistoryUtils.hpp"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -212,7 +213,13 @@ auto JournalFileWriter::validateHeader() -> Expected<void> {
 
 auto replayJournal(
     std::filesystem::path const& path,
-    std::function<Expected<void>(JournalEntry&&)> const& onEntry) -> Expected<void> {
+    std::function<Expected<void>(JournalEntry&&)> const& onEntry,
+    JournalReplayOptions const& options,
+    JournalReplayReport* report) -> Expected<void> {
+    JournalReplayReport localReport;
+    JournalReplayReport& outcome = report ? *report : localReport;
+    outcome                      = JournalReplayReport{};
+
     std::FILE* file = std::fopen(path.string().c_str(), "rb");
     if (!file) {
         if (errno == ENOENT)
@@ -239,13 +246,49 @@ auto replayJournal(
         return readReserved;
     (void)reserved;
 
+    std::error_code sizeError;
+    auto const      fileSize = std::filesystem::file_size(path, sizeError);
+    if (sizeError) {
+        return std::unexpected(
+            makeError(Error::Code::UnknownError, "Failed to stat journal file: " + sizeError.message()));
+    }
+
+    auto const tellOffset = [&]() -> std::uint64_t {
+        auto const position = std::ftell(file);
+        return position < 0 ? 0 : static_cast<std::uint64_t>(position);
+    };
+    outcome.validBytes = tellOffset();
+
+    // Handles an incomplete trailing record: an error unless the caller opted into recovery.
+    auto const tornTail = [&]() -> Expected<void> {
+        outcome.tornTail = true;
+        if (options.tolerateTornTail) {
+            return {};
+        }
+        return std::unexpected(makeError(Error::Code::MalformedInput, "Truncated journal entry payload"));
+    };
+
     while (true) {
-        std::uint32_t length = 0;
-        auto readLength = std::fread(&length, sizeof(length), 1, file);
+        std::uint64_t const recordStart = tellOffset();
+        std::uint32_t       length      = 0;
+        auto                readLength  = std::fread(&length, sizeof(length), 1, file);
         if (readLength != 1) {
-            if (std::feof(file))
+            if (std::feof(file)) {
+                // Clean end of file, or a few bytes of a length field written before a crash.
+                if (tellOffset() > recordStart) {
+                    outcome.tornTail = true;
+                }
                 break;
+            }
             return std::unexpected(errnoMessage("Failed to read journal entry length"));
+        }
+
+        // The length comes from the file: do not allocate for more bytes than the file holds.
+        if (static_cast<std::uint64_t>(length) > fileSize - std::min<std::uint64_t>(fileSize, tellOffset())) {
+            if (auto result = tornTail(); !result) {
+                return result;
+            }
+            break;
         }
 
         std::vector<std::byte> buffer;
@@ -253,7 +296,10 @@ auto replayJournal(
         if (length > 0) {
             if (std::fread(buffer.data(), 1, length, file) != length) {
                 if (std::feof(file)) {
-                    return std::unexpected(makeError(Error::Code::MalformedInput, "Truncated journal entry payload"));
+                    if (auto result = tornTail(); !result) {
+                        return result;
+                    }
+                    break;
                 }
                 return std::unexpected(errnoMessage("Failed to read journal entry payload"));
             }
@@ -265,6 +311,7 @@ auto replayJournal(
 
         if (auto callbackResult = onEntry(std::move(decoded.value())); !callbackResult)
             return callbackResult;
+        outcome.validBytes = tellOffset();
     }
 
     return {};

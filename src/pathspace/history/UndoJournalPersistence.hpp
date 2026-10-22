@@ -37,9 +37,28 @@ private:
     std::FILE*            handle = nullptr;
 };
 
+struct JournalReplayOptions {
+    // An append-only journal whose writer crashed mid-record ends in a partial record. When set,
+    // replay stops at that record and succeeds with the entries before it instead of failing; see
+    // JournalReplayReport for how much of the file was good.
+    bool tolerateTornTail = false;
+};
+
+struct JournalReplayReport {
+    // Bytes from the start of the file up to the end of the last complete record.
+    std::uint64_t validBytes = 0;
+    // The file ended inside a record (partial length field or payload).
+    bool tornTail = false;
+};
+
+// Replays every complete record in order. Without tolerateTornTail an incomplete trailing record
+// is an error (MalformedInput); a record length larger than the rest of the file is rejected
+// before any memory is allocated for it.
 [[nodiscard]] auto replayJournal(
     std::filesystem::path const& path,
-    std::function<Expected<void>(JournalEntry&&)> const& onEntry) -> Expected<void>;
+    std::function<Expected<void>(JournalEntry&&)> const& onEntry,
+    JournalReplayOptions const& options = {},
+    JournalReplayReport* report = nullptr) -> Expected<void>;
 
 [[nodiscard]] auto compactJournal(
     std::filesystem::path const& path,
