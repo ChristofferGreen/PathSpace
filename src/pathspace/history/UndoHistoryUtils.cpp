@@ -69,7 +69,7 @@ auto fsyncDirectory(std::filesystem::path const& dir) -> Expected<void> {
 auto writeFileAtomic(std::filesystem::path const& path,
                      std::span<const std::byte> data,
                      bool fsyncData,
-                     bool binary) -> Expected<void> {
+                     [[maybe_unused]] bool binary) -> Expected<void> {
     std::error_code ec;
     auto            parent = path.parent_path();
     if (!parent.empty()) {
@@ -86,7 +86,7 @@ auto writeFileAtomic(std::filesystem::path const& path,
     int flags = _O_CREAT | _O_TRUNC | _O_WRONLY | (binary ? _O_BINARY : 0);
     int fd    = _open(tmpPath.string().c_str(), flags, _S_IREAD | _S_IWRITE);
 #else
-    int flags = O_CREAT | O_TRUNC | O_WRONLY | (binary ? 0 : 0);
+    int flags = O_CREAT | O_TRUNC | O_WRONLY; // POSIX has no text/binary distinction
     int fd    = ::open(tmpPath.c_str(), flags, 0644);
 #endif
     if (fd < 0) {

@@ -1,4 +1,11 @@
-# clang-tidy configuration. Run with: ./scripts/compile.sh --tidy
+# clang-tidy configuration.
+# Disabled on purpose: bugprone-branch-clone (branches that differ only by log macros that compile
+# out, and constexpr factory ladders), bugprone-forwarding-reference-overload and
+# cppcoreguidelines-missing-std-forward (InputData(T&&) and the callback templates take forwarding
+# references intentionally). performance-inefficient-string-concatenation is off because it only
+# fires in log-message construction.
+# Do not put comments inside the Checks block: it is a YAML string.
+# Run with: ./scripts/compile.sh --tidy
 # Checks focus on likely bugs and avoidable cost; style is left to clang-format.
 Checks: >
   -*,
@@ -6,9 +13,13 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -bugprone-exception-escape,
   -bugprone-reserved-identifier,
+  -bugprone-branch-clone,
+  -bugprone-forwarding-reference-overload,
+  -cppcoreguidelines-missing-std-forward,
   performance-*,
   -performance-enum-size,
   -performance-no-int-to-ptr,
+  -performance-inefficient-string-concatenation,
   misc-redundant-expression,
   misc-unused-using-decls,
   misc-unused-alias-decls,
@@ -21,7 +32,6 @@ Checks: >
   readability-redundant-smartptr-get,
   readability-redundant-string-init,
   cppcoreguidelines-slicing,
-  cppcoreguidelines-missing-std-forward,
   cppcoreguidelines-rvalue-reference-param-not-moved
 WarningsAsErrors: ''
 HeaderFilterRegex: '.*/src/pathspace/.*'

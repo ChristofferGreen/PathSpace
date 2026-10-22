@@ -88,8 +88,8 @@ auto json_escape(std::string_view input) -> std::string {
                 if (uch < 0x20) {
                     constexpr char HexDigits[] = "0123456789abcdef";
                     escaped += "\\u00";
-                    escaped.push_back(HexDigits[(uch >> 4) & 0xF]);
-                    escaped.push_back(HexDigits[uch & 0xF]);
+                    escaped.push_back(HexDigits[static_cast<unsigned>(uch) >> 4u]);
+                    escaped.push_back(HexDigits[static_cast<unsigned>(uch) & 0xFu]);
                 } else {
                     escaped.push_back(ch);
                 }
@@ -340,11 +340,11 @@ auto TaskPool::traceCounter(std::string name, double value) -> void {
     }
 }
 
-auto TaskPool::traceSpan(std::string name,
-                         std::string category,
-                         std::string path,
-                         uint64_t startUs,
-                         uint64_t durUs,
+auto TaskPool::traceSpan(const std::string&      name,
+                         const std::string&      category,
+                         const std::string&      path,
+                         uint64_t                startUs,
+                         uint64_t                durUs,
                          std::optional<uint64_t> threadId) -> void {
     if (!traceEnabled.load(std::memory_order_acquire)) {
         return;

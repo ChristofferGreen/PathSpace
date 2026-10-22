@@ -72,7 +72,7 @@ public:
      */
     [[nodiscard]] auto clone(CopyStats* stats = nullptr) const -> PathSpace;
 
-    ~PathSpace();
+    ~PathSpace() override;
 
     virtual auto clear() -> void;
 
@@ -102,10 +102,10 @@ protected:
     }
 
 protected:
-    virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn override;
-    virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override;
-    virtual auto shutdown() -> void override;
-    virtual auto notify(std::string const& notificationPath) -> void override;
+    auto in(Iterator const& path, InputData const& data) -> InsertReturn override;
+    auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override;
+    auto shutdown() -> void override;
+    auto notify(std::string const& notificationPath) -> void override;
     auto spanPackConst(std::span<const std::string> paths,
                        InputMetadata const& metadata,
                        Out const& options,

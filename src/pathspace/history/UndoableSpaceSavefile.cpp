@@ -13,8 +13,6 @@ namespace {
 
 using SP::Error;
 using SP::Expected;
-namespace UndoJournal    = SP::History::UndoJournal;
-namespace UndoSavefile   = SP::History::UndoSavefile;
 namespace UndoUtilsAlias = SP::History::UndoUtils;
 
 } // namespace

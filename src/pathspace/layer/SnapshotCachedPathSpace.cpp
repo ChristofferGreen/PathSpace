@@ -86,7 +86,7 @@ auto dirtyRootsContainPrefix(DirtyRootSet const& roots, std::string_view path) -
         if (next == std::string_view::npos) {
             return roots.find(path) != roots.end();
         }
-        auto prefix = std::string_view(path.data(), next);
+        auto prefix = std::string_view(path.data(), next); // NOLINT(bugprone-suspicious-stringview-data-usage)
         if (roots.find(prefix) != roots.end()) {
             return true;
         }

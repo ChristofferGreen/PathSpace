@@ -39,7 +39,7 @@ public:
     virtual void wait() const = 0;
 
     // Block until deadline; return true if ready() is true at return.
-    virtual bool wait_until(std::chrono::time_point<std::chrono::steady_clock> deadline) const = 0;
+    [[nodiscard]] virtual bool wait_until(std::chrono::time_point<std::chrono::steady_clock> deadline) const = 0;
 
     // The concrete C++ type stored in this shared state.
     [[nodiscard]] virtual const std::type_info& type() const = 0;
@@ -153,7 +153,7 @@ public:
                           + std::chrono::duration_cast<std::chrono::steady_clock::duration>(d));
     }
 
-    bool wait_until(std::chrono::time_point<std::chrono::steady_clock> deadline) const {
+    [[nodiscard]] bool wait_until(std::chrono::time_point<std::chrono::steady_clock> deadline) const {
         return this->state ? this->state->wait_until(deadline) : true;
     }
 
@@ -174,7 +174,9 @@ public:
         return this->state->copy_to(dest);
     }
 
-    std::shared_ptr<ISharedState> shared_state() const { return this->state; }
+    [[nodiscard]] std::shared_ptr<ISharedState> shared_state() const {
+        return this->state;
+    }
 
 private:
     std::shared_ptr<ISharedState> state;
@@ -203,7 +205,7 @@ public:
                           + std::chrono::duration_cast<std::chrono::steady_clock::duration>(d));
     }
 
-    bool wait_until(std::chrono::time_point<std::chrono::steady_clock> deadline) const {
+    [[nodiscard]] bool wait_until(std::chrono::time_point<std::chrono::steady_clock> deadline) const {
         return this->state ? this->state->wait_until(deadline) : true;
     }
 

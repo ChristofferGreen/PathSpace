@@ -2,6 +2,7 @@
 #include "PathSpace.hpp"
 
 #include <optional>
+#include <utility>
 
 namespace SP {
 
@@ -13,11 +14,11 @@ struct Permission {
 
 struct PathView : public PathSpaceBase {
     PathView(std::shared_ptr<PathSpaceBase> const& space, std::function<Permission(Iterator const&)> permission, std::string root = "")
-        : root(root), permission(permission), space(space) {}
-    virtual auto in(Iterator const& path, InputData const& data) -> InsertReturn override;
-    virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override;
-    virtual auto shutdown() -> void override;
-    virtual auto notify(std::string const& notificationPath) -> void override;
+        : root(std::move(root)), permission(std::move(permission)), space(space) {}
+    auto in(Iterator const& path, InputData const& data) -> InsertReturn override;
+    auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override;
+    auto shutdown() -> void override;
+    auto notify(std::string const& notificationPath) -> void override;
     auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void> override;
 
 protected:

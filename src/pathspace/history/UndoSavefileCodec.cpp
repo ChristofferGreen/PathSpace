@@ -12,7 +12,6 @@ namespace {
 
 using SP::Error;
 using SP::Expected;
-using SP::History::UndoJournal::JournalEntry;
 
 template <typename T>
 void appendScalar(std::vector<std::byte>& buffer, T value) {

@@ -86,7 +86,7 @@ auto hasPodPayload(Node const& node) -> bool {
 auto appendPayload(Node& node, NodeData const& payload, InsertReturn& ret) -> bool {
     std::lock_guard<std::mutex> guard(node.payloadMutex);
     if (node.podPayload) {
-        ret.errors.emplace_back(Error{Error::Code::InvalidType, "Node already holds POD fast-path payload"});
+        ret.errors.emplace_back(Error::Code::InvalidType, "Node already holds POD fast-path payload");
         return false;
     }
     if (!node.data) {
@@ -497,7 +497,7 @@ auto Leaf::inAtNode(Node& node,
     auto const name = iter.currentComponent();
     auto const parsed = parse_indexed_component(name);
     if (parsed.malformed) {
-        ret.errors.emplace_back(Error{Error::Code::InvalidPath, "Malformed indexed path component"});
+        ret.errors.emplace_back(Error::Code::InvalidPath, "Malformed indexed path component");
         return;
     }
     auto const baseNameView = parsed.base;
@@ -540,8 +540,8 @@ auto Leaf::inAtNode(Node& node,
         }
 
         if (parsed.index.has_value() && inputData.metadata.dataCategory != DataCategory::UniquePtr) {
-            ret.errors.emplace_back(Error{Error::Code::InvalidPath,
-                                          "Indexed components require nested PathSpace payloads"});
+            ret.errors.emplace_back(Error::Code::InvalidPath,
+                                    "Indexed components require nested PathSpace payloads");
             return;
         }
 
@@ -558,8 +558,8 @@ auto Leaf::inAtNode(Node& node,
         }
         if (inputData.metadata.dataCategory == DataCategory::UniquePtr) {
             if (parsed.index.has_value()) {
-                ret.errors.emplace_back(Error{Error::Code::InvalidPath,
-                                              "Indexed nested inserts are not supported"});
+                ret.errors.emplace_back(Error::Code::InvalidPath,
+                                        "Indexed nested inserts are not supported");
                 return;
             }
             // Move nested PathSpaceBase into the payload queue
@@ -670,7 +670,7 @@ auto Leaf::inAtNode(Node& node,
             rebaseRetargets(nestedRet, mountBase);
             mergeInsertReturn(ret, nestedRet);
         } else if (parsed.index.has_value()) {
-            ret.errors.emplace_back(Error{Error::Code::NoSuchPath, "Nested PathSpace index not found"});
+            ret.errors.emplace_back(Error::Code::NoSuchPath, "Nested PathSpace index not found");
             return;
         } else {
             auto nextResolved = buildResolvedPath(resolvedPath, baseNameView);
@@ -1349,11 +1349,11 @@ auto Leaf::packInsert(std::span<const std::string> paths,
     InsertReturn ret;
     if (!inputMetadata.podPreferred || inputMetadata.dataCategory == DataCategory::UniquePtr
         || inputMetadata.dataCategory == DataCategory::Execution) {
-        ret.errors.emplace_back(Error{Error::Code::NotSupported, "Pack insert requires POD fast path"});
+        ret.errors.emplace_back(Error::Code::NotSupported, "Pack insert requires POD fast path");
         return ret;
     }
     if (paths.size() != values.size()) {
-        ret.errors.emplace_back(Error{Error::Code::InvalidType, "Pack insert arity mismatch"});
+        ret.errors.emplace_back(Error::Code::InvalidType, "Pack insert arity mismatch");
         return ret;
     }
 
@@ -1380,7 +1380,7 @@ auto Leaf::packInsert(std::span<const std::string> paths,
         InputData inputData{values[i], inputMetadata};
         auto payload = ensurePodPayload(*nodes[i], inputData);
         if (!payload) {
-            ret.errors.emplace_back(Error{Error::Code::InvalidType, "POD fast path unavailable for pack insert"});
+            ret.errors.emplace_back(Error::Code::InvalidType, "POD fast path unavailable for pack insert");
             // Roll back earlier reservations if any
             for (std::size_t j = 0; j < reservations.size(); ++j) {
                 payloads[j]->rollbackOne(reservations[j].index);
@@ -1391,7 +1391,7 @@ auto Leaf::packInsert(std::span<const std::string> paths,
 
         auto reservation = payload->reserveOne();
         if (!reservation) {
-            ret.errors.emplace_back(Error{Error::Code::NotSupported, "Pack insert reservation failed"});
+            ret.errors.emplace_back(Error::Code::NotSupported, "Pack insert reservation failed");
             for (std::size_t j = 0; j < reservations.size(); ++j) {
                 payloads[j]->rollbackOne(reservations[j].index);
             }
@@ -1434,7 +1434,7 @@ auto Leaf::packInsertSpans(std::span<const std::string> paths,
     InsertReturn ret;
 
     if (paths.size() != specs.size()) {
-        ret.errors.emplace_back(Error{Error::Code::InvalidType, "Span pack insert arity mismatch"});
+        ret.errors.emplace_back(Error::Code::InvalidType, "Span pack insert arity mismatch");
         return ret;
     }
     if (specs.empty()) {
@@ -1445,7 +1445,7 @@ auto Leaf::packInsertSpans(std::span<const std::string> paths,
         if (!spec.metadata.podPreferred
             || spec.metadata.dataCategory == DataCategory::UniquePtr
             || spec.metadata.dataCategory == DataCategory::Execution) {
-            ret.errors.emplace_back(Error{Error::Code::NotSupported, "Span pack insert requires POD fast path"});
+            ret.errors.emplace_back(Error::Code::NotSupported, "Span pack insert requires POD fast path");
             return ret;
         }
     }
@@ -1466,7 +1466,7 @@ auto Leaf::packInsertSpans(std::span<const std::string> paths,
         if (!expectedCount) {
             expectedCount = spec.span.count;
         } else if (*expectedCount != spec.span.count) {
-            ret.errors.emplace_back(Error{Error::Code::InvalidType, "Span lengths mismatch"});
+            ret.errors.emplace_back(Error::Code::InvalidType, "Span lengths mismatch");
             return ret;
         }
     }
@@ -1475,13 +1475,13 @@ auto Leaf::packInsertSpans(std::span<const std::string> paths,
     payloads.reserve(nodes.size());
 
     std::optional<std::size_t> expectedHead;
-    std::optional<std::size_t> expectedTail;
+    std::size_t                expectedTail = 0;
 
     for (std::size_t i = 0; i < nodes.size(); ++i) {
         InputData inputData{specs[i].span.data, specs[i].metadata};
         auto payload = ensurePodPayload(*nodes[i], inputData);
         if (!payload) {
-            ret.errors.emplace_back(Error{Error::Code::InvalidType, "POD fast path unavailable for span insert"});
+            ret.errors.emplace_back(Error::Code::InvalidType, "POD fast path unavailable for span insert");
             return ret;
         }
         auto head = payload->headIndex();
@@ -1489,8 +1489,8 @@ auto Leaf::packInsertSpans(std::span<const std::string> paths,
         if (!expectedHead) {
             expectedHead = head;
             expectedTail = tail;
-        } else if (*expectedHead != head || *expectedTail != tail) {
-            ret.errors.emplace_back(Error{Error::Code::InvalidType, "Existing span lengths mismatch"});
+        } else if (*expectedHead != head || expectedTail != tail) {
+            ret.errors.emplace_back(Error::Code::InvalidType, "Existing span lengths mismatch");
             return ret;
         }
         payloads.push_back(std::move(payload));
@@ -1499,10 +1499,13 @@ auto Leaf::packInsertSpans(std::span<const std::string> paths,
     std::vector<PodPayloadBase::ReservationSpan> reservations;
     reservations.reserve(payloads.size());
 
+    // specs is non-empty here, so the first loop above always set expectedCount.
+    std::size_t const spanCount = expectedCount.value_or(0);
+
     for (std::size_t i = 0; i < payloads.size(); ++i) {
-        auto reservation = payloads[i]->reserveSpan(*expectedCount);
+        auto reservation = payloads[i]->reserveSpan(spanCount);
         if (!reservation) {
-            ret.errors.emplace_back(Error{Error::Code::NotSupported, "Span pack insert reservation failed"});
+            ret.errors.emplace_back(Error::Code::NotSupported, "Span pack insert reservation failed");
             for (std::size_t j = 0; j < reservations.size(); ++j) {
                 payloads[j]->rollbackSpan(reservations[j].index, reservations[j].count);
             }
@@ -1513,10 +1516,10 @@ auto Leaf::packInsertSpans(std::span<const std::string> paths,
     }
 
     for (std::size_t i = 0; i < reservations.size(); ++i) {
-        if (*expectedCount == 0) {
+        if (spanCount == 0) {
             continue;
         }
-        auto bytes = specs[i].elementSize * (*expectedCount);
+        auto bytes = specs[i].elementSize * spanCount;
         std::memcpy(reservations[i].ptr, specs[i].span.data, bytes);
     }
 
@@ -1524,7 +1527,7 @@ auto Leaf::packInsertSpans(std::span<const std::string> paths,
         payloads[i]->publishSpan(reservations[i].index, reservations[i].count);
     }
 
-    ret.nbrValuesInserted += static_cast<uint32_t>((*expectedCount) * specs.size());
+    ret.nbrValuesInserted += static_cast<uint32_t>(spanCount * specs.size());
     return ret;
 }
 

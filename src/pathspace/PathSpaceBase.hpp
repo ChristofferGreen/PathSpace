@@ -162,7 +162,7 @@ public:
         return output;
     }
 
-    auto snapshot() const -> Expected<ValueSnapshot>;
+    [[nodiscard]] auto snapshot() const -> Expected<ValueSnapshot>;
 
 private:
     struct Impl;
@@ -486,7 +486,7 @@ public:
             auto fullPath  = joinPathComponent(baseIter.toStringView(), nameView);
             Iterator check{fullPath};
             if (auto err = check.validate(ValidationLevel::Basic)) {
-                return std::optional<Error>{*err};
+                return err;
             }
 
             InputMetadata metadata{InputMetadataT<Value>{}};
@@ -804,7 +804,7 @@ protected:
     //   later operations can call ctx->notify(prefix) or ctx->notify(prefix + "/...") rather than notifyAll().
     // - Avoid blocking work or spawning threads here; this hook should be lightweight.
     // - Treat the prefix as read-only and stable for the lifetime of the mount unless explicitly retargeted.
-    virtual void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> newContext, std::string /*prefix*/) {
+    virtual void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> newContext, std::string /*prefix*/) { // NOLINT(performance-unnecessary-value-param)
         auto* exec = newContext ? newContext->executor() : nullptr;
         std::lock_guard<std::mutex> guard(this->bindingMutex);
         this->context = std::move(newContext);

@@ -7,8 +7,9 @@ struct Path {
     Path() = default;
     Path(T const &path);
 
-    auto isValid() const -> bool;
-    auto getPath() const -> T const&;
+    [[nodiscard]] auto isValid() const -> bool;
+    [[nodiscard]] auto getPath() const -> T const&;
+
 protected:
     T path;
 };

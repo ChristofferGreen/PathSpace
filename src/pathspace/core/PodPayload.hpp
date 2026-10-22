@@ -36,13 +36,13 @@ inline PodPayloadPushHook GetPodPayloadPushHook() {
 // Type-erased base so Node can hold any POD payload.
 struct PodPayloadBase {
     virtual ~PodPayloadBase()                                    = default;
-    virtual std::type_info const& type() const noexcept          = 0;
-    virtual bool                  matches(std::type_info const& ti) const noexcept = 0;
-    virtual std::size_t           size() const noexcept          = 0;
-    virtual std::size_t           elementSize() const noexcept   = 0;
-    virtual std::size_t           headIndex() const noexcept     = 0;
-    virtual std::size_t           publishedTail() const noexcept = 0;
-    virtual InputMetadata const&  podMetadata() const noexcept   = 0;
+    [[nodiscard]] virtual std::type_info const& type() const noexcept                                                      = 0;
+    [[nodiscard]] virtual bool                  matches(std::type_info const& ti) const noexcept                           = 0;
+    [[nodiscard]] virtual std::size_t           size() const noexcept                                                      = 0;
+    [[nodiscard]] virtual std::size_t           elementSize() const noexcept                                               = 0;
+    [[nodiscard]] virtual std::size_t           headIndex() const noexcept                                                 = 0;
+    [[nodiscard]] virtual std::size_t           publishedTail() const noexcept                                             = 0;
+    [[nodiscard]] virtual InputMetadata const&  podMetadata() const noexcept                                               = 0;
     virtual bool                  pushValue(void const* value)   = 0;
     virtual std::optional<Error>  readTo(void* out) const        = 0;
     virtual std::optional<Error>  takeTo(void* out)              = 0;
@@ -84,7 +84,7 @@ struct PodPayloadBase {
     virtual std::optional<ReservationSpan> reserveSpan(std::size_t count) = 0;
     virtual void                         publishSpan(std::size_t index, std::size_t count) = 0;
     virtual void                         rollbackSpan(std::size_t index, std::size_t count) = 0;
-    virtual std::optional<std::size_t> packSpanStart() const noexcept    = 0;
+    [[nodiscard]] virtual std::optional<std::size_t> packSpanStart() const noexcept                                         = 0;
     virtual void                       markPackSpanStart(std::size_t startIndex) noexcept                     = 0;
 };
 

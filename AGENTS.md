@@ -90,6 +90,8 @@ This guide collects the conventions and scripts used when pairing with the PathS
 - Rebuild quickly: `cmake --build build -j`.
 - Collect logs: `./scripts/run_log.sh`.
 - Count lines (sanity check for scope): `./scripts/lines_of_code.sh`.
+- Static analysis: `./scripts/compile.sh --tidy` (needs `brew install llvm`; config in `.clang-tidy`, keep it at zero findings).
+- Race check: `./scripts/compile.sh --tsan --test` (nightly in CI; keep it at zero reports).
 - Run hierarchy benchmark: `./build/bench/PathSpaceBench --runs 10 --warmup 1 --scale 1.0`.
 
 Stay in sync with `docs/AI_Architecture.md` and the related plan documents when touching architecture, path semantics, or rendering logic. Update both the code and documentation in the same branch whenever behaviour changes.

@@ -16,7 +16,7 @@ struct ConcreteName {
     auto operator==(ConcreteName const &other) const -> bool;
     auto operator==(char const * const other) const -> bool;
 
-    auto getName() const -> std::string_view const&;
+    [[nodiscard]] auto getName() const -> std::string_view const&;
 
     template <class Archive>
     void serialize(Archive &ar) {

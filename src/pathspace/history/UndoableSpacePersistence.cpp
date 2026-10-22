@@ -17,7 +17,6 @@ namespace {
 using SP::Error;
 using SP::Expected;
 namespace UndoUtilsAlias = SP::History::UndoUtils;
-namespace UndoJournal    = SP::History::UndoJournal;
 
 constexpr bool isValidPersistenceTokenChar(char c) noexcept {
     return (c >= 'a' && c <= 'z')

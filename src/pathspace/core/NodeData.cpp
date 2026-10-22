@@ -135,7 +135,7 @@ auto NodeData::serialize(const InputData& inputData) -> std::optional<Error> {
         return std::nullopt;
     } else if (inputData.task) {
         // Store task and aligned future handle
-        this->tasks.push_back(std::move(inputData.task));
+        this->tasks.push_back(inputData.task);
         this->futures.push_back(Future::FromShared(this->tasks.back()));
         // If a type-erased future is provided (typed task path), align it as well
         if (inputData.anyFuture.valid()) {
@@ -731,7 +731,7 @@ auto NodeData::borrowNestedShared(std::size_t index) const -> std::shared_ptr<Pa
     }
     slot->borrows.fetch_add(1);
     std::weak_ptr<NestedSlot> weakSlot = slot;
-    auto control = slot; // keep slot alive for the holder lifetime
+    const auto&                    control  = slot; // keep slot alive for the holder lifetime
     std::shared_ptr<PathSpaceBase> holder(slot->ptr.get(), [weakSlot, control](PathSpaceBase*) {
         if (auto ctrl = weakSlot.lock()) {
             auto prev = ctrl->borrows.fetch_sub(1);
@@ -786,10 +786,10 @@ auto rewriteNotificationPath(std::string const& current,
 }
 } // namespace
 
-void NodeData::retargetTasks(std::weak_ptr<NotificationSink> sink,
-                             Executor* exec,
-                             std::string const& oldPrefix,
-                             std::string const& newPrefix) {
+void NodeData::retargetTasks(const std::weak_ptr<NotificationSink>& sink,
+                             Executor*                              exec,
+                             std::string const&                     oldPrefix,
+                             std::string const&                     newPrefix) {
     for (auto const& task : tasks) {
         if (!task) {
             continue;

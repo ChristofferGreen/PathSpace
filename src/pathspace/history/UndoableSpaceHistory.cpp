@@ -26,7 +26,6 @@ using SP::Error;
 using SP::Expected;
 namespace UndoUtilsAlias = SP::History::UndoUtils;
 namespace UndoPaths      = SP::History::UndoUtils::Paths;
-namespace UndoJournal    = SP::History::UndoJournal;
 
 inline auto nodeDataBytes(SP::NodeData const& data) -> std::size_t {
     auto raw   = data.rawBuffer();
@@ -400,7 +399,7 @@ auto UndoableSpace::handleJournalControlInsert(MatchedJournalRoot const& matched
     InsertReturn ret;
     auto         state = matchedRoot.state;
     if (!state) {
-        ret.errors.push_back(Error{Error::Code::UnknownError, "History root missing"});
+        ret.errors.emplace_back(Error::Code::UnknownError, "History root missing");
         return ret;
     }
 
@@ -428,8 +427,8 @@ auto UndoableSpace::handleJournalControlInsert(MatchedJournalRoot const& matched
         });
         if (state->activeTransaction && state->activeTransaction->owner == currentThread) {
             scope.setResult(false, "transaction_active");
-            ret.errors.push_back(Error{Error::Code::InvalidPermissions,
-                                       "Cannot garbage collect while transaction open"});
+            ret.errors.emplace_back(Error::Code::InvalidPermissions,
+                                    "Cannot garbage collect while transaction open");
             return ret;
         }
 
@@ -487,8 +486,7 @@ auto UndoableSpace::handleJournalControlInsert(MatchedJournalRoot const& matched
         if (!data.obj || !data.metadata.typeInfo
             || *data.metadata.typeInfo != typeid(std::string)
             || data.metadata.deserialize == nullptr) {
-            ret.errors.push_back(
-                Error{Error::Code::InvalidType, "History tag expects std::string payload"});
+            ret.errors.emplace_back(Error::Code::InvalidType, "History tag expects std::string payload");
             return ret;
         }
 
@@ -515,8 +513,7 @@ auto UndoableSpace::handleJournalControlInsert(MatchedJournalRoot const& matched
         return ret;
     }
 
-    ret.errors.push_back(
-        Error{Error::Code::UnknownError, "Unsupported history control command"});
+    ret.errors.emplace_back(Error::Code::UnknownError, "Unsupported history control command");
     return ret;
 }
 
@@ -933,14 +930,14 @@ auto UndoableSpace::in(Iterator const& path, InputData const& data) -> InsertRet
     auto state = journalMatched->state;
     if (!state) {
         InsertReturn ret;
-        ret.errors.push_back(Error{Error::Code::UnknownError, "History root missing"});
+        ret.errors.emplace_back(Error::Code::UnknownError, "History root missing");
         return ret;
     }
 
     if (journalMatched->diagnostics) {
         InsertReturn ret;
-        ret.errors.push_back(Error{Error::Code::InvalidPermissions,
-                                   "History diagnostics are read-only"});
+        ret.errors.emplace_back(Error::Code::InvalidPermissions,
+                                "History diagnostics are read-only");
         return ret;
     }
 
@@ -963,7 +960,7 @@ auto UndoableSpace::in(Iterator const& path, InputData const& data) -> InsertRet
         ret.errors.push_back(beforeExpected.error());
         return ret;
     }
-    auto beforeNode = beforeExpected.value();
+    const auto& beforeNode = beforeExpected.value();
 
     auto guardExpected = beginJournalTransactionInternal(state);
     if (!guardExpected) {
@@ -1122,8 +1119,8 @@ auto UndoableSpace::redo(ConcretePathStringView root, std::size_t steps) -> Expe
     return applyJournalSteps(state, steps, false);
 }
 
-auto UndoableSpace::trimHistory(ConcretePathStringView, TrimPredicate)
-    -> Expected<TrimStats> {
+auto UndoableSpace::trimHistory(ConcretePathStringView, const TrimPredicate&)
+        -> Expected<TrimStats> {
     return std::unexpected(Error{Error::Code::NotSupported,
                                  "Snapshot-based trim API has been removed"});
 }

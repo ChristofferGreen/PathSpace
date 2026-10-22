@@ -507,7 +507,7 @@ auto ValueHandle::readInto(void* destination, InputMetadata const& metadata) con
                     for (std::size_t i = 0; i < count; ++i) {
                         InputData in{base + i * elemSize, meta};
                         if (auto e = tmp.serialize(in)) {
-                            err = e;
+                            err = std::move(e);
                             return;
                         }
                     }

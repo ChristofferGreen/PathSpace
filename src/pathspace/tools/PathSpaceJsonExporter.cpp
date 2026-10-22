@@ -61,7 +61,9 @@ public:
         types.assign(summary.begin(), summary.end());
     }
 
-    auto queueTypes() const -> std::vector<ElementType> const& { return types; }
+    [[nodiscard]] auto queueTypes() const -> std::vector<ElementType> const& {
+        return types;
+    }
 
 private:
     auto popImpl(void* destination, InputMetadata const& metadata) -> std::optional<Error> override {

@@ -20,8 +20,6 @@ using SP::Error;
 using SP::Expected;
 using SP::History::UndoJournal::JournalEntry;
 using SP::History::UndoJournal::JournalFileWriter;
-using SP::History::UndoJournal::JournalFileMagic;
-using SP::History::UndoJournal::JournalFileVersion;
 namespace UndoUtils = SP::History::UndoUtils;
 
 inline auto errnoMessage(std::string_view prefix) -> Error {

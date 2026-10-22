@@ -639,7 +639,7 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
             // Exponential backoff for next slice (reset on success below)
             waitSlice = std::min(cap, waitSlice * 2);
         }
-        { static thread_local int spinCount = 0; if ((++spinCount & 7) == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
+        { static thread_local unsigned spinCount = 0; if ((++spinCount & 7u) == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
 
         // After being notified (or slice elapsed), try to read again outside of the registry lock
         auto retry = this->leaf.out(path, inputMetadata, obj, options.doPop);

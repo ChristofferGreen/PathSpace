@@ -109,10 +109,10 @@ private:
                                                   Out const&      options,
                                                   void*           obj);
 
-    [[nodiscard]] bool registerEntry(std::type_index type_index,
-                                     std::string type_name,
-                                     InputMetadata metadata,
-                                     TypeOperations operations);
+    [[nodiscard]] bool registerEntry(std::type_index      type_index,
+                                     std::string          type_name,
+                                     const InputMetadata& metadata,
+                                     TypeOperations       operations);
 
     mutable std::mutex registryMutex;
     std::vector<std::unique_ptr<Entry>> entries;

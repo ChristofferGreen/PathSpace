@@ -145,7 +145,7 @@ inline auto SP::TaggedLogger::getShortPath(const char* filepath) -> std::string 
 }
 
 inline auto SP::TaggedLogger::writeToStderr(const LogMessage& msg) const -> void {
-    if (this->enabledTags.size())
+    if (!this->enabledTags.empty())
         for (auto const& tag : msg.tags)
             if (!this->enabledTags.contains(tag))
                 return;

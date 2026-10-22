@@ -127,12 +127,12 @@ public:
     }
 
     // Access a type-erased future view (useful for uniform storage).
-    FutureAny any_future() const {
+    [[nodiscard]] FutureAny any_future() const {
         return future().to_any();
     }
 
     // Expose the underlying untyped Task for integration with existing systems.
-    std::shared_ptr<Task> legacy_task() const {
+    [[nodiscard]] std::shared_ptr<Task> legacy_task() const {
         return legacy_;
     }
 

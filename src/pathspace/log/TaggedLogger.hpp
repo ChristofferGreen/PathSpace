@@ -73,7 +73,7 @@ auto TaggedLogger::log_impl(const std::string& message, const std::source_locati
 
     {
         std::unique_lock<std::mutex> lock(this->queueMutex);
-        this->messageQueue.push(std::move(logMessage));
+        this->messageQueue.push(logMessage);
         this->cv.notify_one();
     }
 }

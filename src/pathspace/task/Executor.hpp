@@ -53,7 +53,7 @@ struct Executor {
     virtual auto shutdown() -> void = 0;
 
     // Implementation-defined capacity/size (e.g., number of workers).
-    virtual auto size() const -> size_t = 0;
+    [[nodiscard]] virtual auto size() const -> size_t = 0;
 };
 
 } // namespace SP

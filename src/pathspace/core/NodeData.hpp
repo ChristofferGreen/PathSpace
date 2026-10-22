@@ -46,11 +46,11 @@ struct NodeData {
                             bool doPop,
                             void* obj) -> std::optional<Error>;
     auto popFrontSerialized(NodeData& destination) -> std::optional<Error>;
-    auto empty() const -> bool;
+    [[nodiscard]] auto empty() const -> bool;
     // Return a Future aligned with the front task (if present)
-    auto peekFuture() const -> std::optional<Future>;
+    [[nodiscard]] auto peekFuture() const -> std::optional<Future>;
     // Return a type-erased future aligned with the front typed task (if present)
-    auto peekAnyFuture() const -> std::optional<FutureAny>;
+    [[nodiscard]] auto peekAnyFuture() const -> std::optional<FutureAny>;
     [[nodiscard]] auto serializeSnapshot() const -> std::optional<std::vector<std::byte>>;
     static auto        deserializeSnapshot(std::span<const std::byte> bytes,
                                            bool preserveTypeInfo = true) -> std::optional<NodeData>;
@@ -63,14 +63,14 @@ struct NodeData {
     [[nodiscard]] auto nestedAt(std::size_t index) const -> PathSpaceBase*;
     auto takeNestedAt(std::size_t index) -> std::unique_ptr<PathSpaceBase>;
     auto appendNested(std::unique_ptr<PathSpaceBase> space) -> void;
-    auto borrowNestedShared(std::size_t index) const -> std::shared_ptr<PathSpaceBase>;
+    [[nodiscard]] auto borrowNestedShared(std::size_t index) const -> std::shared_ptr<PathSpaceBase>;
     // Replace an existing placeholder slot (if present) without changing type metadata.
     auto emplaceNestedAt(std::size_t index, std::unique_ptr<PathSpaceBase>& space) -> std::optional<Error>;
     // Rebind existing tasks to a new notification sink/executor (used when a PathSpace is mounted).
-    void retargetTasks(std::weak_ptr<NotificationSink> sink,
-                       Executor* exec,
-                       std::string const& oldPrefix,
-                       std::string const& newPrefix);
+    void               retargetTasks(const std::weak_ptr<NotificationSink>& sink,
+                                     Executor*                              exec,
+                                     std::string const&                     oldPrefix,
+                                     std::string const&                     newPrefix);
     auto append(NodeData const& other) -> std::optional<Error>;
     [[nodiscard]] auto valueCount() const -> std::size_t;
     [[nodiscard]] auto typeSummary() const -> std::deque<ElementType> const& { return types; }
@@ -106,7 +106,7 @@ private:
     std::vector<std::shared_ptr<NestedSlot>> nestedSlots;
 
     void removeNestedTypeAt(std::size_t nestedIndex);
-    std::optional<Error> validateNested(std::unique_ptr<PathSpaceBase> const& space) const;
+    [[nodiscard]] std::optional<Error> validateNested(std::unique_ptr<PathSpaceBase> const& space) const;
 
     friend struct NodeDataTestHelper; // test hooks
 

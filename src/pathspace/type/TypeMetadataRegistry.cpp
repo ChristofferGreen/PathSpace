@@ -36,10 +36,10 @@ std::optional<TypeMetadataView> TypeMetadataRegistry::findByType(std::type_index
     return make_view(it->second);
 }
 
-bool TypeMetadataRegistry::registerEntry(std::type_index type_index,
-                                         std::string type_name,
-                                         InputMetadata metadata,
-                                         TypeOperations operations) {
+bool TypeMetadataRegistry::registerEntry(std::type_index      type_index,
+                                         std::string          type_name,
+                                         const InputMetadata& metadata,
+                                         TypeOperations       operations) {
     if (metadata.typeInfo == nullptr || type_name.empty()) {
         return false;
     }
@@ -54,7 +54,7 @@ bool TypeMetadataRegistry::registerEntry(std::type_index type_index,
 
     auto entry        = std::make_unique<Entry>();
     entry->type_name = std::move(type_name);
-    entry->metadata  = metadata;
+    entry->metadata   = metadata;
     entry->operations = operations;
 
     auto* raw = entry.get();

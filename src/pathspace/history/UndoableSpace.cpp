@@ -40,9 +40,7 @@ namespace SP::History {
 using SP::ConcretePathStringView;
 
 UndoableSpace::UndoableSpace(std::unique_ptr<PathSpaceBase> inner, HistoryOptions defaults)
-    : defaultOptions(defaults)
-    , inner(std::move(inner))
-    , spaceUuid(UndoUtilsAlias::generateSpaceUuid()) {}
+    : defaultOptions(std::move(defaults)), inner(std::move(inner)), spaceUuid(UndoUtilsAlias::generateSpaceUuid()) {}
 
 auto UndoableSpace::visit(PathVisitor const& visitor, VisitOptions const& options) -> Expected<void> {
     if (!inner) {
@@ -159,7 +157,7 @@ auto UndoableSpace::enableHistory(ConcretePathStringView root, HistoryOptions op
 
     auto state = std::make_shared<UndoJournalRootState>();
     state->rootPath   = normalized;
-    state->components = components;
+    state->components  = std::move(components);
     state->options    = std::move(resolvedOptions);
     state->encodedRoot = encodeRootForPersistence(state->rootPath);
 

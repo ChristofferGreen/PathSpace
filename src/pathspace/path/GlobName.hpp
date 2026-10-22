@@ -20,12 +20,12 @@ struct GlobName {
     auto operator==(ConcreteName const &other) const -> bool;
     auto operator==(char const * const other) const -> bool;
 
-    auto match(const std::string_view& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
-    auto match(const ConcreteName& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
+    [[nodiscard]] auto match(const std::string_view& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
+    [[nodiscard]] auto match(const ConcreteName& str) const -> std::tuple<bool /*match*/, bool /*supermatch*/>;
 
-    auto isConcrete() const -> bool;
-    auto isGlob() const -> bool;
-    auto getName() const -> std::string_view const&;
+    [[nodiscard]] auto isConcrete() const -> bool;
+    [[nodiscard]] auto isGlob() const -> bool;
+    [[nodiscard]] auto getName() const -> std::string_view const&;
 
     template <class Archive>
     void serialize(Archive &ar) {
