@@ -241,23 +241,3 @@ task {
   ]
 }
 
-task {
-  name: "TSan: mutable span edits race with concurrent take [CONCURRENCY]"
-  description: "PodPayload::take reads elements that a concurrent withSpanMutable callback may be writing (test: pod.fastpath.concurrency 'Concurrent mutable span and take preserve count'). Either serialize in-place edits with takes or document that concurrent mutable-span edits and takes on one lane are unsupported."
-  status: planned
-  priority: P2
-  acceptance_criteria: [
-    "Contract documented in docs/AI_Architecture.md or enforced with a lock",
-    "The test no longer reports a race under --tsan"
-  ]
-}
-
-task {
-  name: "TSan: TaggedLogger test swaps std::cerr rdbuf while loggers run [TESTS]"
-  description: "test_TaggedLogger.cpp replaces std::cerr.rdbuf while the logger may still write from another thread; stop the logger or capture through a logger sink instead."
-  status: planned
-  priority: P3
-  acceptance_criteria: [
-    "No ios_base::rdbuf race under --tsan"
-  ]
-}

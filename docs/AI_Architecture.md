@@ -351,6 +351,14 @@ as well since they can not be serialised. Insert will append serialised data to 
 a pointer to the front element will instead be stored and its position changed forward when a extract is issued. At first the serialisation will be done via the alpaca library but when a
 compiler supporting the C++26 serialisation functionality it will be rewritten to use that instead.
 
+### POD fast path and span access
+Trivially copyable types (`podPreferred`) are stored in a lock-free single-lane queue (`PodPayload`) instead of serialized `NodeData`. Concurrency contract:
+- Inserts (including pack inserts) may run concurrently with every other operation; they only write slots beyond the published tail.
+- `take`/`read`/const spans may run concurrently with each other.
+- A mutable span (`take(path, [](std::span<T>) {...})` and the spans handed out by `spanPackMut`) has exclusive write access to the elements it covers. Do not run `take`, `read`, a const span or another mutable span on the same lane while such an edit runs; the element values would be a data race. Queue structure and element counts stay consistent either way.
+- The payload cannot enforce this itself: pack operations hand raw pointers to the caller after the payload has returned, so exclusion has to come from the caller. Debug builds (NDEBUG undefined, which includes the sanitizer builds) assert on the single-lane violations they can observe.
+- Mutable pack spans (`spanPackMut`) are not covered by the assertion; the same rule applies to them.
+
 ## Unit Testing
 Unit testing is by using the C++ doctest library.
 

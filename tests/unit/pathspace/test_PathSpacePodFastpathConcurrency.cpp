@@ -106,15 +106,20 @@ TEST_CASE("Concurrent POD inserts remain visible in span read") {
     }
 }
 
-TEST_CASE("Concurrent mutable span and take preserve count") {
+// Contract (see PodPayload.hpp): a mutable span has exclusive write access to the elements it
+// covers, so consumers must not take/read them while the edit runs. Appends are allowed: they only
+// write slots beyond the span. This test checks that inserts racing with an in-place edit neither
+// lose nor duplicate values, and that the edit is visible afterwards.
+TEST_CASE("Concurrent mutable span and insert preserve count") {
     PathSpace space;
-    for (int i = 1; i <= 8; ++i) {
+    constexpr int InitialCount = 8;
+    constexpr int ExtraCount   = 8;
+    for (int i = 1; i <= InitialCount; ++i) {
         CHECK(space.insert("/concurrent", i).errors.empty());
     }
 
     std::atomic<bool> spanStarted{false};
-    std::atomic<bool> spanDone{false};
-    std::vector<int> taken;
+    std::atomic<bool> insertsDone{false};
 
     std::thread mutator([&]() {
         auto ret = space.take("/concurrent", [&](std::span<int> ints) {
@@ -122,36 +127,43 @@ TEST_CASE("Concurrent mutable span and take preserve count") {
             if (!ints.empty()) {
                 ints[0] = 999;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            // Keep the edit open until the concurrent inserts finished.
+            while (!insertsDone.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
         });
-        spanDone.store(true, std::memory_order_release);
         REQUIRE(ret.has_value());
     });
 
-    std::thread taker([&]() {
+    std::thread inserter([&]() {
         while (!spanStarted.load(std::memory_order_acquire)) {
             std::this_thread::yield();
         }
-        while (!spanDone.load(std::memory_order_acquire) || taken.size() < 8) {
-            auto v = space.take<int>("/concurrent");
-            if (v.has_value()) {
-                taken.push_back(*v);
-            } else {
-                std::this_thread::yield();
-            }
+        for (int i = 1; i <= ExtraCount; ++i) {
+            CHECK(space.insert("/concurrent", 100 + i).errors.empty());
         }
+        insertsDone.store(true, std::memory_order_release);
     });
 
     mutator.join();
-    taker.join();
+    inserter.join();
 
-    REQUIRE(taken.size() == 8);
-    CHECK(std::count(taken.begin(), taken.end(), 999) <= 1);
-    for (int expected = 1; expected <= 8; ++expected) {
-        if (std::count(taken.begin(), taken.end(), 999) == 1 && expected == 1) {
-            continue;
+    std::vector<int> taken;
+    for (;;) {
+        auto v = space.take<int>("/concurrent");
+        if (!v.has_value()) {
+            break;
         }
-        CHECK(std::find(taken.begin(), taken.end(), expected) != taken.end());
+        taken.push_back(*v);
+    }
+
+    REQUIRE(taken.size() == static_cast<std::size_t>(InitialCount + ExtraCount));
+    CHECK(taken.front() == 999);
+    for (int expected = 2; expected <= InitialCount; ++expected) {
+        CHECK(std::count(taken.begin(), taken.end(), expected) == 1);
+    }
+    for (int i = 1; i <= ExtraCount; ++i) {
+        CHECK(std::count(taken.begin(), taken.end(), 100 + i) == 1);
     }
 }
 

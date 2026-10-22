@@ -8,8 +8,6 @@ on:
 jobs:
   tsan:
     runs-on: macos-latest
-    # Known races are tracked in docs/AI_Todo.task; remove continue-on-error once they are fixed.
-    continue-on-error: true
     timeout-minutes: 90
     steps:
       - name: Checkout

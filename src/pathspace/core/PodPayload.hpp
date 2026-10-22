@@ -6,6 +6,8 @@
 
 #include <atomic>
 #include <algorithm>
+#include <cassert>
+#include <cstdint>
 #include <cstddef>
 #include <limits>
 #include <memory>
@@ -86,6 +88,19 @@ struct PodPayloadBase {
     virtual void                       markPackSpanStart(std::size_t startIndex) noexcept                     = 0;
 };
 
+// Lock-free single-lane queue of trivially copyable values.
+//
+// Concurrency contract:
+//  - push/reserve/publish may run concurrently with every other operation; they only write slots
+//    beyond the published tail.
+//  - take/read/const spans may run concurrently with each other.
+//  - A mutable span (withSpanMutable*, including the spans handed out by spanPackMut) grants
+//    exclusive write access to the elements it covers. Callers must not run take, read, a const
+//    span or another mutable span on the same lane while such an edit is in progress; the element
+//    values would be a data race. Queue structure and element counts stay consistent regardless.
+//    Serializing this inside the payload is not possible: pack operations hand raw pointers to the
+//    caller after leaving the payload, so exclusion has to come from the caller.
+//  - Debug builds (NDEBUG undefined) assert on the single-lane violations they can observe.
 template <typename T>
 class PodPayload final : public PodPayloadBase {
 public:
@@ -140,6 +155,7 @@ public:
 
     // Peek front without popping.
     std::optional<Error> read(T* out) const {
+        assertNoActiveEdit();
         for (;;) {
             auto head = head_.load(std::memory_order_acquire);
             auto tail = publishedTail_.load(std::memory_order_acquire);
@@ -158,6 +174,7 @@ public:
 
     // Pop front.
     std::optional<Error> take(T* out) {
+        assertNoActiveEdit();
         for (;;) {
             auto head = head_.load(std::memory_order_acquire);
             auto tail = publishedTail_.load(std::memory_order_acquire);
@@ -199,6 +216,7 @@ public:
     // Invoke callback with a snapshot span of current queue (head..tail).
     template <typename Fn>
     std::optional<Error> withSpan(Fn&& fn) const {
+        assertNoActiveEdit();
         auto buf  = std::atomic_load_explicit(&buffer_, std::memory_order_acquire);
         auto head = head_.load(std::memory_order_acquire);
         auto tail = publishedTail_.load(std::memory_order_acquire);
@@ -226,7 +244,10 @@ public:
         if (tail > head) {
             sp = std::span<T>(buf->data.get() + head, tail - head);
         }
-        fn(sp);
+        {
+            EditScope edit(*this);
+            fn(sp);
+        }
         return std::nullopt;
     }
 
@@ -253,6 +274,7 @@ public:
     }
 
     std::optional<Error> withSpanRawPinned(std::function<void(void const*, std::size_t, std::shared_ptr<void> const&)> const& fn) const override {
+        assertNoActiveEdit();
         auto buf  = std::atomic_load_explicit(&buffer_, std::memory_order_acquire);
         auto head = head_.load(std::memory_order_acquire);
         auto tail = publishedTail_.load(std::memory_order_acquire);
@@ -278,12 +300,16 @@ public:
         if (tail > head) {
             sp = std::span<T>(buf->data.get() + head, tail - head);
         }
-        fn(static_cast<void*>(sp.data()), sp.size(), std::static_pointer_cast<void>(buf));
+        {
+            EditScope edit(*this);
+            fn(static_cast<void*>(sp.data()), sp.size(), std::static_pointer_cast<void>(buf));
+        }
         return std::nullopt;
     }
 
     std::optional<Error> withSpanRawFrom(std::size_t startIndex,
                                          std::function<void(void const*, std::size_t)> const& fn) const override {
+        assertNoActiveEdit();
         auto buf  = std::atomic_load_explicit(&buffer_, std::memory_order_acquire);
         auto head = head_.load(std::memory_order_acquire);
         auto tail = publishedTail_.load(std::memory_order_acquire);
@@ -312,12 +338,16 @@ public:
         if (tail > start) {
             sp = std::span<T>(buf->data.get() + start, tail - start);
         }
-        fn(static_cast<void*>(sp.data()), sp.size());
+        {
+            EditScope edit(*this);
+            fn(static_cast<void*>(sp.data()), sp.size());
+        }
         return std::nullopt;
     }
 
     std::optional<Error> withSpanRawFromPinned(std::size_t startIndex,
                                                std::function<void(void const*, std::size_t, std::shared_ptr<void> const&)> const& fn) const override {
+        assertNoActiveEdit();
         auto buf  = std::atomic_load_explicit(&buffer_, std::memory_order_acquire);
         auto head = head_.load(std::memory_order_acquire);
         auto tail = publishedTail_.load(std::memory_order_acquire);
@@ -346,8 +376,29 @@ public:
         if (tail > start) {
             sp = std::span<T>(buf->data.get() + start, tail - start);
         }
-        fn(static_cast<void*>(sp.data()), sp.size(), std::static_pointer_cast<void>(buf));
+        {
+            EditScope edit(*this);
+            fn(static_cast<void*>(sp.data()), sp.size(), std::static_pointer_cast<void>(buf));
+        }
         return std::nullopt;
+    }
+
+    // Marks an in-place mutable span edit for the duration of its callback (contract checking).
+    struct EditScope {
+        explicit EditScope(PodPayload const& owner) noexcept : owner_(owner) {
+            owner_.mutableEditors_.fetch_add(1, std::memory_order_acq_rel);
+        }
+        ~EditScope() { owner_.mutableEditors_.fetch_sub(1, std::memory_order_acq_rel); }
+        EditScope(EditScope const&)            = delete;
+        EditScope& operator=(EditScope const&) = delete;
+
+    private:
+        PodPayload const& owner_;
+    };
+
+    void assertNoActiveEdit() const noexcept {
+        assert(mutableEditors_.load(std::memory_order_acquire) == 0
+               && "PodPayload: element access concurrent with an in-place mutable span edit");
     }
 
     InputMetadata const& podMetadata() const noexcept override { return StaticMetadata(); }
@@ -456,6 +507,7 @@ private:
         std::unique_ptr<T[]>      data;
     };
 
+    mutable std::atomic<std::uint32_t> mutableEditors_{0};
     static constexpr std::size_t InitialCapacity = 1024;
     static constexpr std::size_t NoPackSpanStart = std::numeric_limits<std::size_t>::max();
 

@@ -88,9 +88,18 @@ private:
 
 auto captureStderr(std::function<void()> fn) -> std::string {
     std::ostringstream buffer;
-    auto*               original = std::cerr.rdbuf(buffer.rdbuf());
+    // The logger's writer thread uses std::cerr under coutMutex, so swap the stream buffer under
+    // the same mutex (but not while fn runs, which logs through that thread).
+    std::streambuf* original = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(SP::TaggedLogger::coutMutex);
+        original = std::cerr.rdbuf(buffer.rdbuf());
+    }
     fn();
-    std::cerr.rdbuf(original);
+    {
+        std::lock_guard<std::mutex> lock(SP::TaggedLogger::coutMutex);
+        std::cerr.rdbuf(original);
+    }
     return buffer.str();
 }
 
