@@ -9,6 +9,7 @@
 #include <optional>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <string_view>
 
 namespace SP {
@@ -17,7 +18,7 @@ namespace SP {
  * PathSpaceContext — shared runtime context for PathSpace trees
  *
  * Responsibilities:
- * - Own the wait/notify registry (currently backed by WaitMap; upgradable to WatchRegistry).
+ * - Own the wait/notify registry.
  * - Provide a shared NotificationSink for lifetime-safe notifications from tasks.
  * - Expose an injected Executor for task scheduling (no hard dependency on singletons).
  * - Coordinate shutdown signaling and mass wakeups.
@@ -34,9 +35,13 @@ public:
     explicit PathSpaceContext(Executor* exec = nullptr)
         : executorPtr(exec)
         , waitRegistry(std::make_unique<WaitMap>())
+        , waker(std::make_shared<Waker>(this))
         , shuttingDown(false) {}
 
-    ~PathSpaceContext() = default;
+    ~PathSpaceContext() {
+        // A task may still hold the waker; make sure no notification reaches a destroyed context.
+        waker->detach();
+    }
 
     // ----- Executor management -----
 
@@ -50,21 +55,34 @@ public:
         return executorPtr.load(std::memory_order_acquire);
     }
 
-    // ----- Notification sink management -----
+    // ----- Notification sinks -----
+    //
+    // Two different things are called a sink:
+    //  - The waker is what tasks (and spaces) notify when something becomes readable. It always
+    //    delivers to this context, so waiters wake, and then to the observer. It cannot be replaced.
+    //  - The observer (setSink) is an optional listener that sees every notification after the
+    //    waiters were woken. Installing one never changes how waiters are woken.
 
-    // Install a shared NotificationSink implementation.
+    // The sink tasks use to announce completion. Weak so that late completions after the context
+    // is gone are dropped.
+    std::weak_ptr<NotificationSink> wakerSink() const {
+        return std::weak_ptr<NotificationSink>(this->waker);
+    }
+
+    // Install the observer sink (replaces a previous observer).
+
     void setSink(std::shared_ptr<NotificationSink> sinkIn) {
         std::lock_guard<std::mutex> lg(this->mutex);
         this->sink = std::move(sinkIn);
     }
 
-    // Acquire a weak handle to the NotificationSink for safe cross-thread notifications.
+    // Acquire a weak handle to the observer sink.
     std::weak_ptr<NotificationSink> getSink() const {
         std::lock_guard<std::mutex> lg(this->mutex);
         return std::weak_ptr<NotificationSink>(this->sink);
     }
 
-    // Invalidate the sink so late notifications are safely dropped.
+    // Remove the observer sink.
     void invalidateSink() {
         std::lock_guard<std::mutex> lg(this->mutex);
         this->sink.reset();
@@ -163,7 +181,33 @@ public:
     }
 
 private:
-    // Shared notification sink for lifetime-safe delivery.
+    // Delivers notifications to the owning context for as long as it is alive. The context
+    // detaches it in its destructor, waiting for notifications that are already in flight.
+    class Waker final : public NotificationSink {
+    public:
+        explicit Waker(PathSpaceContext* ownerIn) : owner(ownerIn) {}
+
+        void notify(const std::string& notificationPath) override {
+            inFlight.fetch_add(1, std::memory_order_seq_cst);
+            if (auto* context = owner.load(std::memory_order_seq_cst)) {
+                context->notify(notificationPath);
+            }
+            inFlight.fetch_sub(1, std::memory_order_seq_cst);
+        }
+
+        void detach() {
+            owner.store(nullptr, std::memory_order_seq_cst);
+            while (inFlight.load(std::memory_order_seq_cst) > 0) {
+                std::this_thread::yield();
+            }
+        }
+
+    private:
+        std::atomic<PathSpaceContext*> owner;
+        std::atomic<int>               inFlight{0};
+    };
+
+    // Observer sink for lifetime-safe delivery.
     mutable std::mutex                 mutex;
     std::shared_ptr<NotificationSink>  sink;
     bool                               notifyingSink = false;
@@ -173,6 +217,9 @@ private:
 
     // Wait/notify registry (backed by WaitMap for glob/concrete semantics).
     std::unique_ptr<WaitMap>           waitRegistry;
+
+    // Sink handed to tasks; delivers into notify().
+    std::shared_ptr<Waker>             waker;
 
     // Shutdown flag visible across threads.
     std::atomic<bool>                  shuttingDown;

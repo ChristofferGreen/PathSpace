@@ -378,9 +378,6 @@ public:
         if (this->aliveFlag) {
             this->aliveFlag->store(false, std::memory_order_release);
         }
-        if (auto ctx = this->getContext()) {
-            ctx->invalidateSink();
-        }
     }
 
     // Insert a typed value or execution at a path (globs allowed for insert to fan-out to existing nodes).
@@ -726,29 +723,9 @@ protected:
     // Provide a weak NotificationSink; downstream users should use notify(notificationPath) instead.
     std::weak_ptr<NotificationSink> getNotificationSink() {
         if (auto ctx = this->getContext()) {
-            auto w = ctx->getSink();
-            if (!w.lock()) {
-                struct DefaultNotificationSinkImpl : NotificationSink {
-                    DefaultNotificationSinkImpl(PathSpaceBase* ownerIn,
-                                                std::weak_ptr<std::atomic<bool>> aliveIn)
-                        : owner(ownerIn)
-                        , alive(std::move(aliveIn)) {}
-                    void notify(const std::string& notificationPath) override {
-                        auto flag = alive.lock();
-                        if (!flag || !flag->load(std::memory_order_acquire)) {
-                            return;
-                        }
-                        owner->notifyAbsolute(notificationPath);
-                    }
-                    PathSpaceBase* owner = nullptr;
-                    std::weak_ptr<std::atomic<bool>> alive;
-                };
-                auto sink = std::shared_ptr<NotificationSink>(
-                    new DefaultNotificationSinkImpl(this, this->aliveFlag));
-                ctx->setSink(sink);
-                return std::weak_ptr<NotificationSink>(sink);
-            }
-            return w;
+            // Tasks always notify the context's waker, so waiters wake regardless of any observer
+            // sink installed on the context.
+            return ctx->wakerSink();
         }
 
         if (!this->notificationSinkPtr) {
