@@ -10,6 +10,8 @@ namespace SP {
 
 // Non-templated bounded wrapper: limits queue length per path.
 // - On insert: if count >= maxItems, pop oldest entries of the same type (via out with doPop) until space; if pop fails (type mismatch), the insert is dropped.
+//   Eviction needs a type that can be serialized and deserialized (the caller's value is restored
+//   after the pop); other types are rejected with NotSupported once the queue is full.
 // - On out/take (doPop): the count is decremented when a value is popped.
 // - Reads without pop leave the count unchanged.
 class BoundedPathSpace final : public PathSpaceBase {
@@ -32,6 +34,19 @@ public:
         // Only snapshot when we have a known size to restore.
         if (data.metadata.serialize && data.obj) {
             data.metadata.serialize(data.obj, originalBytes);
+        }
+
+        // Making room pops the oldest entry into the caller's object and then restores the caller's
+        // value from the serialized copy above. A type that cannot be serialized and deserialized
+        // cannot be restored, so refuse instead of overwriting (or stealing) the caller's value.
+        bool needsEviction = false;
+        {
+            std::lock_guard<std::mutex> lock(this->countsMutex);
+            needsEviction = this->counts[p] >= this->maxItems;
+        }
+        if (needsEviction && !(data.metadata.serialize && data.metadata.deserialize)) {
+            return {.errors = {Error{Error::Code::NotSupported,
+                                     "BoundedPathSpace cannot evict entries to insert a type that cannot be restored"}}};
         }
 
         // Pop until there is room (same type only).
