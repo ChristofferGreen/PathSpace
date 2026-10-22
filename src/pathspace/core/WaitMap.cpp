@@ -67,6 +67,24 @@ void WaitMap::debug_log(char const* event,
                  notified);
 }
 
+namespace {
+
+// Bump the entry's version and wake its waiters. The version is bumped while holding the entry's
+// mutex: a waiter checks the version and blocks on the condition variable under that same mutex,
+// so it either sees the new version or is already blocked when notify_all runs. Without the mutex
+// a wakeup could slip in between the waiter's check and its block and be lost.
+// Lock order is registryMutex -> WaiterEntry::mutex; waiters never take the registry while
+// holding an entry mutex.
+void signalEntry(WaitMap::WaiterEntry& entry) {
+    {
+        std::lock_guard<std::mutex> guard(entry.mutex);
+        entry.notifyVersion.fetch_add(1, std::memory_order_release);
+    }
+    entry.cv.notify_all();
+}
+
+} // namespace
+
 WaitMap::Guard::Guard(WaitMap& waitMap,
                       std::string_view path,
                       std::uint64_t initialVersion,
@@ -130,6 +148,9 @@ auto WaitMap::Guard::wait_until(std::chrono::time_point<std::chrono::system_cloc
         }
     }
     awaitedVersion = entryPtr->notifyVersion.load(std::memory_order_acquire);
+    // Do not keep the entry's mutex locked after the wait: a thread holding a Guard must still be
+    // able to call notify() (which takes this mutex), and the next wait_until locks it again.
+    waitLock.unlock();
     auto const waitMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - waitStart);
 
@@ -228,9 +249,20 @@ auto WaitMap::notify(std::string_view path) -> void {
 
     if (is_concrete(path)) {
         // Notify trie node CV for concrete path
+        // A change at a node can make everything below it readable (for example a nested space
+        // inserted at the node), so waiters on descendants are woken as well.
         if (auto* node = findTrieNode(this->root, path)) {
             sp_log("Found matching concrete path", "WaitMap");
-            toNotify.push_back(&node->entry);
+            std::vector<TrieNode*> pending{node};
+            while (!pending.empty()) {
+                auto* current = pending.back();
+                pending.pop_back();
+                toNotify.push_back(&current->entry);
+                for (auto& [childName, child] : current->children) {
+                    (void)childName;
+                    pending.push_back(child.get());
+                }
+            }
         }
 
         // Notify any glob waiters that match this concrete path
@@ -292,12 +324,10 @@ auto WaitMap::notify(std::string_view path) -> void {
     // Keep the registry mutex held while notifying to prevent entries from
     // being cleared concurrently and leaving dangling pointers.
     for (auto* entry : toNotify) {
-        entry->notifyVersion.fetch_add(1, std::memory_order_release);
-        entry->cv.notify_all();
+        signalEntry(*entry);
     }
     for (auto* entry : toNotifyGlob) {
-        entry->notifyVersion.fetch_add(1, std::memory_order_release);
-        entry->cv.notify_all();
+        signalEntry(*entry);
     }
 }
 
@@ -327,8 +357,7 @@ auto WaitMap::notifyAll() -> void {
 
     // Hold the registry mutex while notifying to avoid concurrent clear().
     for (auto* entry : toNotify) {
-        entry->notifyVersion.fetch_add(1, std::memory_order_release);
-        entry->cv.notify_all();
+        signalEntry(*entry);
     }
 }
 
@@ -357,8 +386,7 @@ auto WaitMap::clear() -> void {
     } // release registry lock before notifying
 
     for (auto* entry : toNotify) {
-        entry->notifyVersion.fetch_add(1, std::memory_order_release);
-        entry->cv.notify_all();
+        signalEntry(*entry);
     }
 
     // Step 2: wait for any in-flight waiters to drain so no one is waiting on CVs we are about to destroy

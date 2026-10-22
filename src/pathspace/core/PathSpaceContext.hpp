@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -71,17 +72,53 @@ public:
 
     // ----- Wait/notify -----
 
+    // Waiters are keyed by the node path without index suffixes: "/a/b[2]/c" is the node
+    // "/a/b/c". Writers notify the node they changed (or a nested space's mount prefix, which does
+    // contain the index), so both sides are normalized here. Glob character classes such as
+    // "[a-z]" are not index suffixes and are kept. Returns nullopt when nothing needs stripping.
+    static auto stripIndexSuffixes(std::string_view path) -> std::optional<std::string> {
+        std::optional<std::string> out;
+        std::size_t                copied = 0;
+        for (std::size_t i = 0; i < path.size(); ++i) {
+            if (path[i] != '[') {
+                continue;
+            }
+            std::size_t j = i + 1;
+            while (j < path.size() && path[j] >= '0' && path[j] <= '9') {
+                ++j;
+            }
+            if (j == i + 1 || j >= path.size() || path[j] != ']') {
+                continue;
+            }
+            if (!out) {
+                out.emplace();
+                out->reserve(path.size());
+            }
+            out->append(path.substr(copied, i - copied));
+            copied = j + 1;
+            i      = j;
+        }
+        if (out) {
+            out->append(path.substr(copied));
+        }
+        return out;
+    }
+
     // Wait for notifications on a concrete or glob path.
     // Guard exposes waitRegistryuntil(...) while holding the registry's lock.
     WaitGuard wait(std::string_view path) {
         ensureWait();
-        return waitRegistry->wait(path);
+        auto const stripped = stripIndexSuffixes(path);
+        return waitRegistry->wait(stripped ? std::string_view{*stripped} : path);
     }
 
     // Notify waiters (path may be concrete or glob; semantics provided by underlying registry).
     void notify(std::string_view path) {
         ensureWait();
-        waitRegistry->notify(path);
+        {
+            auto const stripped = stripIndexSuffixes(path);
+            waitRegistry->notify(stripped ? std::string_view{*stripped} : path);
+        }
         std::shared_ptr<NotificationSink> sinkCopy;
         {
             std::lock_guard<std::mutex> lg(this->mutex);

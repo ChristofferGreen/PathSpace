@@ -794,9 +794,10 @@ void NodeData::retargetTasks(const std::weak_ptr<NotificationSink>& sink,
         if (!task) {
             continue;
         }
-        task->notifier = sink;
         task->setExecutor(exec);
-        task->notificationPath = rewriteNotificationPath(task->notificationPath, oldPrefix, newPrefix);
+        task->retargetNotification(sink, [&](std::string const& current) {
+            return rewriteNotificationPath(current, oldPrefix, newPrefix);
+        });
     }
 }
 

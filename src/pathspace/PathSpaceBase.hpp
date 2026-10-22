@@ -416,7 +416,7 @@ public:
             auto notifier = this->getNotificationSink();
             auto exec     = this->getExecutor();
             using ResultT = std::invoke_result_t<DataType>;
-            auto taskT    = TaskT<ResultT>::Create(std::move(notifier), path.toString(), data, options.executionCategory, exec);
+            auto taskT    = TaskT<ResultT>::Create(std::move(notifier), this->absoluteNotificationPath(path.toString()), data, options.executionCategory, exec);
             inputData.task      = taskT->legacy_task();
             inputData.anyFuture = taskT->any_future();
         }
@@ -738,7 +738,7 @@ protected:
                         if (!flag || !flag->load(std::memory_order_acquire)) {
                             return;
                         }
-                        owner->notify(notificationPath);
+                        owner->notifyAbsolute(notificationPath);
                     }
                     PathSpaceBase* owner = nullptr;
                     std::weak_ptr<std::atomic<bool>> alive;
@@ -762,7 +762,7 @@ protected:
                     if (!flag || !flag->load(std::memory_order_acquire)) {
                         return;
                     }
-                    owner->notify(notificationPath);
+                    owner->notifyAbsolute(notificationPath);
                 }
                 PathSpaceBase* owner = nullptr;
                 std::weak_ptr<std::atomic<bool>> alive;
@@ -956,6 +956,13 @@ private:
     virtual auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> = 0;
     virtual auto shutdown() -> void                                                                                                   = 0;
     virtual auto notify(std::string const& notificationPath) -> void                                                                  = 0;
+    // Task completion sinks deliver paths that are already absolute in the shared context (they
+    // include this space's mount prefix, see absoluteNotificationPath). Spaces that prefix paths
+    // in notify() must not prefix these again.
+    virtual auto notifyAbsolute(std::string const& absolutePath) -> void { this->notify(absolutePath); }
+    // Path to record on a task created at `relativePath` of this space so that its completion
+    // notifies the same key readers wait on.
+    virtual auto absoluteNotificationPath(std::string relativePath) const -> std::string { return relativePath; }
     virtual auto spanPackConst(std::span<const std::string> paths,
                                InputMetadata const& metadata,
                                Out const& options,

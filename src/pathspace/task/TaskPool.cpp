@@ -184,7 +184,7 @@ auto TaskPool::addTask(std::weak_ptr<Task>&& task) -> std::optional<Error> {
                 sp_log("TaskPool::addTask enqueuing task", "TaskPool");
                 tasks.push(std::move(task));
                 taskCV.notify_one();
-                taskPath = locked->notificationPath;
+                taskPath = locked->notificationTarget().path;
                 taskLabel = locked->label;
             } else {
                 sp_log("TaskPool::addTask task expired before enqueue", "TaskPool");
@@ -561,8 +561,11 @@ auto TaskPool::workerFunction(size_t workerIndex) -> void {
 
         if (auto strongTask = task.lock()) {
             sp_log("TaskPool::workerFunction Task locked successfully", "TaskPool");
-            notificationPath = strongTask->notificationPath;
-            notifier         = strongTask->notifier;
+            {
+                auto target      = strongTask->notificationTarget();
+                notificationPath = std::move(target.path);
+                notifier         = std::move(target.notifier);
+            }
 
             ++activeTasks;
             auto traceStart = int64_t{0};
@@ -596,6 +599,13 @@ auto TaskPool::workerFunction(size_t workerIndex) -> void {
             } catch (...) {
                 strongTask->markFailed();
                 sp_log("Exception in running Task", "Error", "Exception");
+            }
+            {
+                // The owning space may have been re-homed while the task ran; announce completion
+                // where readers wait now, not where the task started.
+                auto target      = strongTask->notificationTarget();
+                notificationPath = std::move(target.path);
+                notifier         = std::move(target.notifier);
             }
             if (traceStart != 0 && traceEnabled.load(std::memory_order_acquire)) {
                 auto traceEnd = now_micros();

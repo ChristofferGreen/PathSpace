@@ -106,6 +106,8 @@ protected:
     auto out(Iterator const& path, InputMetadata const& inputMetadata, Out const& options, void* obj) -> std::optional<Error> override;
     auto shutdown() -> void override;
     auto notify(std::string const& notificationPath) -> void override;
+    auto notifyAbsolute(std::string const& absolutePath) -> void override;
+    auto absoluteNotificationPath(std::string relativePath) const -> std::string override;
     auto spanPackConst(std::span<const std::string> paths,
                        InputMetadata const& metadata,
                        Out const& options,

@@ -46,6 +46,10 @@ protected:
     void notify(std::string const& notificationPath) override {
         notifications.push_back(notificationPath);
     }
+    // Task completion sinks deliver through notifyAbsolute; record those too.
+    void notifyAbsolute(std::string const& absolutePath) override {
+        notifications.push_back(absolutePath);
+    }
 };
 
 struct RecordingSink : NotificationSink {

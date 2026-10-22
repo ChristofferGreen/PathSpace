@@ -154,6 +154,25 @@ auto makeMountPrefix(std::string const& spacePrefix, std::string const& path) ->
     return result;
 }
 
+// Upper bound on one blocking wait before the reader re-checks the space on its own. Normal
+// operation never relies on it (writers notify); it only bounds the damage of a writer that
+// forgets to. PATHSPACE_WAIT_RECHECK_MS overrides it (tests set it very large to prove that no
+// wakeup is being missed).
+auto waitSafetyRecheckInterval() -> std::chrono::milliseconds {
+    static auto const interval = []() {
+        constexpr std::chrono::milliseconds Default{50};
+        if (const char* env = std::getenv("PATHSPACE_WAIT_RECHECK_MS")) {
+            char* endptr = nullptr;
+            long  ms     = std::strtol(env, &endptr, 10);
+            if (endptr != env && ms > 0) {
+                return std::chrono::milliseconds{ms};
+            }
+        }
+        return Default;
+    }();
+    return interval;
+}
+
 auto countCategory(std::deque<ElementType> const& types, DataCategory category) -> std::size_t {
     std::size_t total = 0;
     for (auto const& t : types) {
@@ -276,13 +295,20 @@ auto PathSpace::clone(CopyStats* stats) const -> PathSpace {
 
 void PathSpace::adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> newContext, std::string newPrefix) {
     sp_log("PathSpace::adoptContextAndPrefix", "Function Called");
-    std::string previousPrefix;
+    std::string                       previousPrefix;
+    std::shared_ptr<PathSpaceContext> previousContext;
     {
         // Readers snapshot context/prefix under the same mutex (see PathSpaceBase::getContext).
         std::lock_guard<std::mutex> guard(this->bindingMutex);
-        previousPrefix = this->prefix;
-        this->context  = newContext;
-        this->prefix   = newPrefix;
+        previousPrefix  = this->prefix;
+        previousContext = this->context;
+        this->context   = newContext;
+        this->prefix    = newPrefix;
+    }
+    // Blocked readers wait on the previous context under the previous prefix; wake them so they
+    // re-evaluate against the new binding.
+    if (previousContext && previousContext != newContext) {
+        previousContext->notifyAll();
     }
     auto const& ctx = newContext;
     auto const& pfx = newPrefix;
@@ -511,17 +537,22 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
         return err;
     }
 
-    std::optional<Error> error;
-    // First try entirely outside the loop to minimize lock time
+    // After a successful read or pop, wake other waiters on the path so they re-check their state.
+    auto notifyAfterSuccess = [&]() {
+        if (!contextPtr) {
+            return;
+        }
+        auto const notePath = prefixCopy.empty() ? path.toString() : prefixCopy + path.toString();
+        sp_log("out(success) notify: " + notePath, "PathSpace");
+        contextPtr->notify(notePath);
+    };
+
+    // First try entirely outside the wait machinery to minimize lock time.
     {
-        error = this->leaf.out(path, inputMetadata, obj, options.doPop);
+        auto error = this->leaf.out(path, inputMetadata, obj, options.doPop);
         if (!error.has_value()) {
             retargetNestedIfNeeded();
-            // Successful read or pop; notify other waiters to re-check state
-            if (!prefixCopy.empty())
-                contextPtr->notify(prefixCopy + std::string(path.toStringView()));
-            else
-                contextPtr->notify(path.toStringView());
+            notifyAfterSuccess();
             return error;
         }
         if (options.doBlock == false)
@@ -554,119 +585,45 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
         }
     }
     auto const deadline = std::chrono::system_clock::now() + maxWait;
-    std::string waitPath = prefixCopy.empty() ? path.toString() : prefixCopy + path.toString();
-    sp_log("PathSpace::out waiting on: " + waitPath, "PathSpace");
+    sp_log("PathSpace::out waiting on: " + path.toString(), "PathSpace");
     sp_log(std::string("PathSpace::out block wait timeout(ms)=") + std::to_string(maxWait.count()), "PathSpace");
-    // Second immediate re-check to close race between initial read and wait registration
-    {
-        auto secondTry = this->leaf.out(path, inputMetadata, obj, options.doPop);
-        if (!secondTry.has_value()) {
-            // Successful read or pop; notify other waiters to re-check state
-            if (!prefixCopy.empty()) {
-                std::string notePath = prefixCopy;
-                auto sv = path.toStringView();
-                notePath.append(sv.data(), sv.size());
-                sp_log("out(success pre-wait) notify: " + notePath, "PathSpace");
-                contextPtr->notify(notePath);
-            } else {
-                auto sv = path.toStringView();
-                std::string_view notePath{sv.data(), sv.size()};
-                sp_log("out(success pre-wait) notify: " + std::string(notePath), "PathSpace");
-                contextPtr->notify(notePath);
-            }
-            retargetNestedIfNeeded();
-            return std::nullopt;
-        }
-    }
 
-
-    static thread_local std::chrono::milliseconds waitSlice{1};
-
+    // Register as a waiter *before* each attempt. A WaitMap guard captures the notification
+    // version when it is created, so a notify that lands between the attempt and the wait makes
+    // the wait return immediately instead of being lost. The wait therefore blocks until a
+    // notification or the deadline; the periodic re-check below is only a safety net for writers
+    // that mutate the space without notifying.
     while (true) {
-        // Check shutdown and deadline first
         if (contextPtr && contextPtr->isShuttingDown()) {
             return Error{Error::Code::Timeout, "Shutting down while waiting for data at path: " + path.toString()};
         }
         if (this->clearingInProgress.load(std::memory_order_acquire)) {
             return Error{Error::Code::Timeout, "PathSpace clearing in progress"};
         }
-        auto now = std::chrono::system_clock::now();
-        if (now >= deadline)
+        auto const now = std::chrono::system_clock::now();
+        if (now >= deadline) {
             return Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + path.toString()};
-
-        // Quick re-check before waiting to avoid sleeping unnecessarily
-        {
-            auto quick = this->leaf.out(path, inputMetadata, obj, options.doPop);
-            if (!quick.has_value()) {
-                retargetNestedIfNeeded();
-                // Successful read or pop; notify other waiters to re-check state
-                if (!prefixCopy.empty()) {
-                    std::string notePath = prefixCopy;
-                    auto sv = path.toStringView();
-                    notePath.append(sv.data(), sv.size());
-                    sp_log("out(success pre-wait in-loop) notify: " + notePath, "PathSpace");
-                    contextPtr->notify(notePath);
-                } else {
-                    auto sv = path.toStringView();
-                    std::string_view notePath{sv.data(), sv.size()};
-                    sp_log("out(success pre-wait in-loop) notify: " + std::string(notePath), "PathSpace");
-                    contextPtr->notify(notePath);
-                }
-                return std::nullopt;
-            }
         }
 
-        // Wait in short slices; never call leaf.out while holding the WatchRegistry lock
-        {
-            auto waitGuard = contextPtr->wait(waitPath);
-            auto now2   = std::chrono::system_clock::now();
-            auto remain = deadline - now2;
-            if (remain <= std::chrono::milliseconds(0)) {
-                return Error{Error::Code::Timeout, "Operation timed out waiting for data at path: " + path.toString()};
-            }
-            // Start with a small slice and back off to reduce busy-waiting under contention.
-            auto slice = waitSlice;
-            // Cap slice and ensure we never exceed the remaining time.
-            auto cap = std::chrono::milliseconds(8);
-            if (slice > cap) slice = cap;
-            if (remain < slice)
-                slice = std::chrono::duration_cast<std::chrono::milliseconds>(remain);
-            sp_log(std::string("PathSpace::out wait slice(ms)=") + std::to_string(slice.count()), "PathSpace");
-            auto waitStart = std::chrono::system_clock::now();
-            waitGuard.wait_until(waitStart + slice);
-            [[maybe_unused]] auto waitEnd = std::chrono::system_clock::now();
-            sp_log(std::string("PathSpace::out woke after(ms)=") + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(waitEnd - waitStart).count()), "PathSpace");
-            // Exponential backoff for next slice (reset on success below)
-            waitSlice = std::min(cap, waitSlice * 2);
+        // The binding can change while blocked (re-home), so look it up for every attempt.
+        contextPtr = this->getContext();
+        prefixCopy = this->getPrefix();
+        if (!contextPtr) {
+            return Error{Error::Code::Timeout, "No context to wait on for path: " + path.toString()};
         }
-        { static thread_local unsigned spinCount = 0; if ((++spinCount & 7u) == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1)); }
-
-        // After being notified (or slice elapsed), try to read again outside of the registry lock
-        auto retry = this->leaf.out(path, inputMetadata, obj, options.doPop);
-        if (!retry.has_value()) {
+        auto waitGuard = contextPtr->wait(prefixCopy.empty() ? path.toString() : prefixCopy + path.toString());
+        auto attempt   = this->leaf.out(path, inputMetadata, obj, options.doPop);
+        if (!attempt.has_value()) {
             retargetNestedIfNeeded();
-            waitSlice = std::chrono::milliseconds(1);
-            // Successful read or pop; notify other waiters to re-check state
-                if (!prefixCopy.empty()) {
-                    std::string notePath = prefixCopy;
-                    auto sv = path.toStringView();
-                    notePath.append(sv.data(), sv.size());
-                    sp_log("out(success in-loop) notify: " + notePath, "PathSpace");
-                    contextPtr->notify(notePath);
-                } else {
-                    auto sv = path.toStringView();
-                    std::string_view notePath{sv.data(), sv.size()};
-                    sp_log("out(success in-loop) notify: " + std::string(notePath), "PathSpace");
-                    contextPtr->notify(notePath);
-                }
-                return std::nullopt;
-            } else {
-            // Log why retry failed to help diagnose missed-notify or readiness races
-            sp_log(std::string("out(retry) still failing, error=")
-                       + retry->message.value_or("no-message")
-                       + " code=" + std::to_string(static_cast<int>(retry->code)),
-                   "PathSpace");
+            notifyAfterSuccess();
+            return std::nullopt;
         }
+        sp_log(std::string("out(retry) still failing, error=") + attempt->message.value_or("no-message")
+                   + " code=" + std::to_string(static_cast<int>(attempt->code)),
+               "PathSpace");
+
+        auto const wakeBy = std::min(deadline, now + waitSafetyRecheckInterval());
+        waitGuard.wait_until(wakeBy);
     }
 }
 
@@ -684,6 +641,20 @@ auto PathSpace::notify(std::string const& notificationPath) -> void {
         sp_log("PathSpace::notify forwarding: " + std::string(notePath), "PathSpace");
         ctx->notify(notificationPath);
     }
+}
+
+auto PathSpace::notifyAbsolute(std::string const& absolutePath) -> void {
+    if (auto ctx = this->getContext()) {
+        ctx->notify(absolutePath);
+    }
+}
+
+auto PathSpace::absoluteNotificationPath(std::string relativePath) const -> std::string {
+    auto pfx = this->getPrefix();
+    if (pfx.empty()) {
+        return relativePath;
+    }
+    return pfx + relativePath;
 }
 
 auto PathSpace::spanPackConst(std::span<const std::string> paths,
@@ -709,6 +680,14 @@ auto PathSpace::spanPackMut(std::span<const std::string> paths,
 
     std::size_t waitIndex = 0;
     while (true) {
+        // Register before the attempt so a notify between the attempt and the wait is not lost.
+        auto pathToWait = paths[waitIndex % paths.size()];
+        ++waitIndex;
+        if (!pfx.empty()) {
+            pathToWait = pfx + pathToWait;
+        }
+        auto guard = ctx->wait(pathToWait);
+
         auto res = this->leaf.spanPackMut(paths, metadata, nonBlockingOptions, fn);
         if (res) {
             return res;
@@ -718,19 +697,12 @@ auto PathSpace::spanPackMut(std::span<const std::string> paths,
             return std::unexpected(err);
         }
 
-        auto now = std::chrono::system_clock::now();
+        auto const now = std::chrono::system_clock::now();
         if (now >= deadline) {
             return std::unexpected(Error{Error::Code::Timeout, "Span pack take timed out"});
         }
 
-        auto pathToWait = paths[waitIndex % paths.size()];
-        ++waitIndex;
-        if (!pfx.empty()) {
-            pathToWait = pfx + pathToWait;
-        }
-
-        auto guard = ctx->wait(pathToWait);
-        guard.wait_until(deadline);
+        guard.wait_until(std::min(deadline, now + waitSafetyRecheckInterval()));
     }
 }
 

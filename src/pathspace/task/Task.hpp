@@ -10,6 +10,7 @@
 #include <cassert>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -112,6 +113,23 @@ private:
     friend class TaskPool;
     friend struct NodeData; // Allow NodeData to access Task internals for scheduling
 
+    // Where completion is announced. A space can be re-homed while the task is queued or running,
+    // so the sink and path may change under a worker; both are guarded by notifyMutex.
+    struct NotificationTarget {
+        std::weak_ptr<NotificationSink> notifier;
+        std::string                     path;
+    };
+    auto notificationTarget() const -> NotificationTarget {
+        std::lock_guard<std::mutex> guard(this->notifyMutex);
+        return NotificationTarget{this->notifier, this->notificationPath};
+    }
+    template <typename RewriteFn>
+    auto retargetNotification(std::weak_ptr<NotificationSink> sink, RewriteFn&& rewrite) -> void {
+        std::lock_guard<std::mutex> guard(this->notifyMutex);
+        this->notifier         = std::move(sink);
+        this->notificationPath = rewrite(this->notificationPath);
+    }
+
     Task()                       = default; // Private constructor - use Create()
     Task(const Task&)            = delete;  // Non-copyable
     Task& operator=(const Task&) = delete;  // Non-copyable
@@ -124,6 +142,7 @@ private:
     std::function<void(std::any const& from, void* const to)> resultCopyFn;       // Function to copy the result
     std::any                                                  result;            // Result of the task execution
     ExecutionCategory                                         executionCategory; // Optional execution options for the task
+    mutable std::mutex                                        notifyMutex;       // Guards notifier and notificationPath
     std::weak_ptr<NotificationSink>                           notifier;          // Weak reference to notification sink for lifetime-safe notifications
     std::string                                               notificationPath;
     Executor*                                                 executor = nullptr; // Optional preferred executor for (re)submission

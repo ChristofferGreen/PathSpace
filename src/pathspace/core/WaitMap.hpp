@@ -54,6 +54,8 @@ struct WaitMap {
 
             auto const waitStart = std::chrono::steady_clock::now();
             auto const result = waiterEntry->cv.wait_until(waitLock, timeout, std::move(pred));
+            // Release the entry mutex so the thread can still notify while it holds this Guard.
+            waitLock.unlock();
             auto const waitMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - waitStart);
 
