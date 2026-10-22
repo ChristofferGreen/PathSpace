@@ -724,7 +724,7 @@ protected:
     }
     // ---------- Protected API ----------
     // Provide a weak NotificationSink; downstream users should use notify(notificationPath) instead.
-    std::weak_ptr<NotificationSink> getNotificationSink() const {
+    std::weak_ptr<NotificationSink> getNotificationSink() {
         if (auto ctx = this->getContext()) {
             auto w = ctx->getSink();
             if (!w.lock()) {
@@ -744,7 +744,7 @@ protected:
                     std::weak_ptr<std::atomic<bool>> alive;
                 };
                 auto sink = std::shared_ptr<NotificationSink>(
-                    new DefaultNotificationSinkImpl(const_cast<PathSpaceBase*>(this), this->aliveFlag));
+                    new DefaultNotificationSinkImpl(this, this->aliveFlag));
                 ctx->setSink(sink);
                 return std::weak_ptr<NotificationSink>(sink);
             }
@@ -768,7 +768,7 @@ protected:
                 std::weak_ptr<std::atomic<bool>> alive;
             };
             this->notificationSinkPtr = std::shared_ptr<NotificationSink>(
-                new DefaultNotificationSinkImpl(const_cast<PathSpaceBase*>(this), this->aliveFlag));
+                new DefaultNotificationSinkImpl(this, this->aliveFlag));
         }
         return std::weak_ptr<NotificationSink>(this->notificationSinkPtr);
     }

@@ -42,12 +42,12 @@ public:
 
     // Set or replace the executor used for task submission.
     void setExecutor(Executor* exec) noexcept {
-        executorPtr = exec;
+        executorPtr.store(exec, std::memory_order_release);
     }
 
     // Current executor (may be nullptr if not configured).
     Executor* executor() const noexcept {
-        return executorPtr;
+        return executorPtr.load(std::memory_order_acquire);
     }
 
     // ----- Notification sink management -----
@@ -107,14 +107,12 @@ public:
     // Wait for notifications on a concrete or glob path.
     // Guard exposes waitRegistryuntil(...) while holding the registry's lock.
     WaitGuard wait(std::string_view path) {
-        ensureWait();
         auto const stripped = stripIndexSuffixes(path);
         return waitRegistry->wait(stripped ? std::string_view{*stripped} : path);
     }
 
     // Notify waiters (path may be concrete or glob; semantics provided by underlying registry).
     void notify(std::string_view path) {
-        ensureWait();
         {
             auto const stripped = stripIndexSuffixes(path);
             waitRegistry->notify(stripped ? std::string_view{*stripped} : path);
@@ -138,13 +136,11 @@ public:
 
     // Notify all waiters (used during shutdown and broad updates).
     void notifyAll() {
-        ensureWait();
         waitRegistry->notifyAll();
     }
 
     // Clear all registered waiters (generally called when clearing the tree).
     void clearWaits() {
-        ensureWait();
         waitRegistry->clear();
     }
 
@@ -163,26 +159,17 @@ public:
 
     // Whether there are any registered waiters (concrete or glob)
     bool hasWaiters() const noexcept {
-        // ensureWait is non-const; use const_cast for lazy init
-        const_cast<PathSpaceContext*>(this)->ensureWait();
         return this->waitRegistry->hasWaiters();
     }
 
 private:
-    void ensureWait() {
-        if (!waitRegistry) {
-            // Late initialization in case context was default-constructed without wait registry
-            waitRegistry = std::make_unique<WaitMap>();
-        }
-    }
-
     // Shared notification sink for lifetime-safe delivery.
     mutable std::mutex                 mutex;
     std::shared_ptr<NotificationSink>  sink;
     bool                               notifyingSink = false;
 
     // Preferred executor for task scheduling.
-    Executor*                          executorPtr = nullptr;
+    std::atomic<Executor*>             executorPtr{nullptr};
 
     // Wait/notify registry (backed by WaitMap for glob/concrete semantics).
     std::unique_ptr<WaitMap>           waitRegistry;

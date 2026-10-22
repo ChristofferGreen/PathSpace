@@ -55,22 +55,41 @@ TEST_CASE("guards reentrant sink notifications and exposes executor accessors") 
     CHECK(sink->calls.front() == "/root");
 }
 
-TEST_CASE("hasWaiters lazily initializes wait registry") {
+TEST_CASE("a fresh context has a wait registry and no waiters") {
     PathSpaceContext ctx;
 
     CHECK_FALSE(ctx.hasWaiters());
-    // Second call should reuse the already-initialized registry without crashing.
     CHECK_FALSE(ctx.hasWaiters());
-}
 
-TEST_CASE("ensureWait rebuilds registry when cleared") {
-    PathSpaceContext ctx;
-    ctx.waitRegistry.reset(); // simulate late initialization path
-
-    auto guard  = ctx.wait("/reinit");
+    auto guard  = ctx.wait("/fresh");
     auto status = guard.wait_until(std::chrono::system_clock::now() + std::chrono::milliseconds(2));
     CHECK(status == std::cv_status::timeout);
     CHECK(ctx.hasWaiters());
+}
+
+TEST_CASE("wait and notify ignore index suffixes in paths") {
+    PathSpaceContext ctx;
+
+    auto guard = ctx.wait("/a/b[2]/c");
+    ctx.notify("/a/b/c");
+    auto status = guard.wait_until(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    CHECK(status == std::cv_status::no_timeout);
+
+    // Glob character classes are not index suffixes and are left alone.
+    auto stripped = PathSpaceContext::stripIndexSuffixes("/a/[a-z]/b[10]");
+    REQUIRE(stripped.has_value());
+    CHECK(*stripped == "/a/[a-z]/b");
+    CHECK_FALSE(PathSpaceContext::stripIndexSuffixes("/a/b").has_value());
+    CHECK_FALSE(PathSpaceContext::stripIndexSuffixes("/a/[x]/b").has_value());
+}
+
+TEST_CASE("notify wakes waiters on descendants of the notified path") {
+    PathSpaceContext ctx;
+
+    auto guard = ctx.wait("/mount/space/value");
+    ctx.notify("/mount/space");
+    auto status = guard.wait_until(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    CHECK(status == std::cv_status::no_timeout);
 }
 
 TEST_CASE("sink lifecycle forwards notifications and can be invalidated") {

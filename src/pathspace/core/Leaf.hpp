@@ -45,6 +45,14 @@ public:
     auto rootNode() -> Node& { return root; }
     auto rootNode() const -> Node const& { return root; }
 
+private:
+    // spanPackConst/spanPackMut are const in the public interface (PathSpaceBase) even though the
+    // mutable variant hands out writable spans and both resolve nodes through non-const lookups.
+    // This is the single place that casts the constness away.
+    auto mutableRoot() const -> Node& { return const_cast<Node&>(this->root); }
+
+public:
+
 
 
         // Return a type-erased FutureAny handle for an execution at the given path (typed tasks).

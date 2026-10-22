@@ -1119,7 +1119,7 @@ auto Leaf::spanPackConst(std::span<const std::string> paths,
         std::vector<RawConstSpan>      spans(paths.size());
         std::vector<std::shared_ptr<void>> keepers(paths.size());
         std::optional<std::size_t>     expectedCount;
-        Node&                          rootRef = const_cast<Node&>(this->root);
+        Node&                          rootRef = this->mutableRoot();
         std::optional<Error>           lastError;
         auto recurse = [&](auto&& self, std::size_t idx) -> Expected<void> {
             if (idx == paths.size()) {
@@ -1190,7 +1190,7 @@ auto Leaf::spanPackMut(std::span<const std::string> paths,
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
-    Node& rootRef = const_cast<Node&>(this->root);
+    Node& rootRef = this->mutableRoot();
     std::vector<Node*> nodes;
     nodes.reserve(paths.size());
     for (auto const& pathStr : paths) {
