@@ -12,23 +12,23 @@ PathSpace is a coordination language that enables insertion and extractions from
 - Each history-enabled subtree owns exactly one undo/redo stack. We do not coordinate history across multiple roots; a logical command must mutate a single root so one stack captures the full change.
 - If a feature naturally spans several areas, route it through a command-log subtree or reorganize the data so related metadata lives alongside the primary payload before enabling history. `enableHistory` now rejects configurations that expect shared stacks—setting the same `HistoryOptions::sharedStackKey` on multiple roots triggers an error so callers regroup under a single undo root instead.
 - Undo entries flush to disk by default for crash safety. Advanced callers can set `HistoryOptions::manual_garbage_collect` or insert `_history/set_manual_garbage_collect = true` when they want to defer durability and retention to explicit checkpoints.
-- November 10, 2025: `history::UndoableSpace` now journals mutations instead of taking copy-on-write snapshots. The mutation log records inserts/takes plus inverse payloads so undo/redo replay quickly without walking the trie. Retention budgets still apply (auto-trim plus manual garbage collect), `_history/stats/*` and `_history/lastOperation/*` are derived from `UndoJournalState::Stats`, and `_history/unsupported/*` continues to log nodes we cannot serialize (executions, nested spaces) because those payloads are skipped when we capture before/after state.
-- December 10, 2025: History metadata now accepts user-provided tags. Writing `_history/set_tag = "<label>"` (std::string payload) stamps the label onto each journal entry and mirrors it to `_history/lastOperation/tag`, so tooling can display friendly command names next to undo/redo telemetry.
-- November 7, 2025: Persistence metadata now serializes through a versioned little-endian binary header shared across recovery, telemetry, and tooling. Alpaca JSON output was retired; `_history/stats/*` remains the authoritative introspection surface for tooling.
-- December 9, 2025: `docs/History_Journal_Wiring.md` now captures the full stack plumbing: how `UndoableSpace` stands between callers and the inner `PathSpace`, how `_history/*` control paths are intercepted, why `notify()` still bubbles through to existing waiters, and what guardrails (`allowNestedUndo`, `HistoryOptions::sharedStackKey`) are enforced before a root is registered. Treat that note as the canonical wiring reference when onboarding new contributors.
+- `history::UndoableSpace` journals mutations: the log records inserts and takes together with inverse payloads, so undo/redo replays them without walking the trie. Retention budgets apply (auto-trim plus manual garbage collect); `_history/stats/*` and `_history/lastOperation/*` are derived from `UndoJournalState::Stats`, and `_history/unsupported/*` records nodes that cannot be serialized (executions, nested spaces) because their payloads are skipped when before/after state is captured.
+- Writing `_history/set_tag = "<label>"` (a `std::string`) stamps the label onto each following journal entry and mirrors it to `_history/lastOperation/tag`, so tooling can show command names next to undo/redo telemetry.
+- Persistence metadata uses a versioned little-endian binary header shared by recovery, telemetry and tooling; `_history/stats/*` is the authoritative introspection surface.
+- `docs/History_Journal_Wiring.md` describes how `UndoableSpace` sits between callers and the inner `PathSpace`, how the `_history/*` control paths are intercepted, why `notify()` still reaches existing waiters, and which guardrails (`allowNestedUndo`, `HistoryOptions::sharedStackKey`) apply before a root is registered.
 
-##### Stack plumbing & notifications (December 9, 2025)
+##### Stack plumbing & notifications
 - `UndoableSpace` resolves every mutation through `findJournalRootByPath`, so inserts/takes under a history-enabled subtree always allocate a `JournalTransactionGuard`, capture "before" payloads, and write journal entries before committing the inner operation. If the path falls outside a registered root, the wrapper short-circuits and forwards the call unchanged.
 - `_history/undo`, `_history/redo`, `_history/garbage_collect`, and `_history/set_manual_garbage_collect` are implemented as regular inserts whose payloads are interpreted by `handleJournalControlInsert`. This keeps tooling simple: scripting and inspector clients can keep issuing inserts without linking against C++ helpers.
 - `notify()` and `visit()` both delegate to the wrapped `PathSpace`. Waiters that previously subscribed to `<root>/**` (including `_history/stats/*` telemetry nodes) continue to fire because journal mutations ultimately write into the same canonical nodes inside the inner space.
 - Persistence setup happens lazily when `HistoryOptions::persistHistory` is set. The wrapper encodes `<root>` into a per-space UUID directory, ensures the directory exists, calls `loadJournalPersistence()`, and updates `_history/stats/manualGcEnabled` / disk telemetry whenever compaction runs.
 
-##### Mutation guardrails (November 10, 2025)
+##### Mutation guardrails
 - `UndoableSpace` overrides `PathSpaceBase::in`/`out` and wraps every mutation in `beginJournalTransactionInternal`, capturing before/after payload snapshots and replay metadata via `recordJournalMutation`. All live history writes therefore flow through the journal regardless of the public API the caller invokes (`insert`, `take`, history control commands).
 - When adding a new mutator (e.g., a bulk update helper or custom transaction primitive), route the implementation through `UndoableSpace` by reusing the existing transaction helpers and emitting a journal mutation for each logical change. Bypassing these helpers will desynchronise undo/redo state and persistence—treat it as a correctness bug.
 - External contributors introducing new mutation paths must update this guardrail section and add regression coverage mirroring the patterns in `tests/unit/history/test_UndoableSpace.cpp` (`journal telemetry matches snapshot telemetry outputs`, fuzz/concurrency tests). The maintainer team will run the same `rg 'snapshot' tests/unit/history` audit to ensure snapshot-era helpers do not reappear.
 
-#### Journal Persistence Format (November 10, 2025)
+#### Journal Persistence Format
 - Journal files live at `<persistence-root>/journal.log` and start with a 12-byte header: `0x50534A46` (`'PSJF'` little endian) magic, `uint16` format version (currently `1`), and a reserved `uint32` set to zero. The header is fsynced when the writer is asked to persist eagerly.
 - Root directories mirror the history namespace: the persistence namespace becomes the top-level folder, and each undo root is encoded as `"__root"` for `/` or the concrete path with `/` replaced by `_` (e.g. `/doc/article` -> `_doc_article`).
 - Each appended record is length-prefixed with a `uint32` (little endian) so tools can stream entries without parsing the payload. Compaction rewrites the header plus the surviving records in the same framing.
@@ -268,7 +268,7 @@ The internal spaces inside a path are implemented witha  Leaf class, it's possib
 behaviour of parts of the path structure of a PathSpace instance. This can be used to have different behaviour for different sub spaces within a PathSpace. By default PathSpace
 will create a Leaf of the same type as the parent when creating new ones (which happens during insert of data).
 
-## Snapshot Cache Layer (February 2026)
+## Snapshot Cache Layer
 - Read-optimized snapshot caching lives in a layer: `SnapshotCachedPathSpace`.
 - The legacy snapshot cache embedded in `PathSpace` has been removed; wrap a space with the layer instead.
 - Freshness contract: reads may be stale during active mutations, but after a mutation completes (through the layer) the cache must not return stale data.
@@ -296,10 +296,19 @@ assert(space.take<int>("/collection/numbers_more").value() == 2);
 ## Blocking
 Blocking is opt-in and expressed through the helpers in `src/pathspace/core/Out.hpp`.
 
-- Passing `Block{}` to `read`/`take` (or composing `Out{} & Block{}`) turns the call into a waiter when the target node is empty. The waiter is registered in the concrete or glob registry described in the wait/notify section.
-- `Block{}` defaults to a very large timeout (100 years); override it with `Block{std::chrono::milliseconds{budget}}` to enforce a real deadline. When the timeout elapses, the operation returns an `Error::Timeout` in the `std::expected` result.
-- Successful reads/takes automatically deregister their waiter before returning. If the waiter is cancelled because the path is deleted or the space is shutting down, the operation reports an error so callers can retry or exit.
-- Inserts themselves do not block, but they wake both concrete and glob waiters on completion. Custom layers can tap into the same behaviour through `BlockOptions` when forwarding or composing higher-level queues.
+- Passing `Block{}` to `read`/`take` (or composing `Out{} & Block{}`) turns the call into a waiter when the target node is empty.
+- `Block{}` defaults to a very large timeout (100 years); override it with `Block{std::chrono::milliseconds{budget}}` to enforce a real deadline. When the timeout elapses the call returns `Error::Timeout`. A shutdown or `clear()` also ends the wait with an error.
+- Inserts do not block; on completion they notify the path they changed, which wakes the waiters described below. Custom layers can reuse the same behaviour through `BlockOptions` when forwarding or composing higher-level queues.
+
+### Wait/notify protocol
+Waiters and notifications meet in the context's `WaitMap` (`src/pathspace/core/WaitMap.*`), shared by a space and its nested spaces through `PathSpaceContext`.
+
+- **Register, then attempt, then wait.** A blocking call first tries the operation once. If that fails it loops: create a `WaitMap::Guard` (which captures the path's notification version), attempt the operation again, and only then wait on the guard. A notification that lands between the attempt and the wait changes the version, so the wait returns immediately; no wakeup is lost. The wait is a plain condition-variable wait on the version, bounded by the deadline.
+- **Notifiers bump the version under the waiter's mutex** (`signalEntry` in `WaitMap.cpp`), so a waiter either sees the new version or is already blocked when `notify_all` runs. Lock order is registry mutex, then entry mutex. A `Guard` releases the entry mutex after each wait, so a thread holding a guard can still notify.
+- **Keys.** Waiters and notifiers are keyed by the node path without index suffixes (`/a/b[2]/c` is the node `/a/b/c`); `PathSpaceContext::wait`/`notify` normalize this, so nested spaces mounted at `/a/b[2]` notify the same key readers wait on. Glob character classes such as `[a-z]` are kept.
+- **Descendants.** `notify(path)` also wakes waiters registered below `path`, because a change at a node (for example a nested space inserted there) can make everything under it readable. Glob waiters are woken when the notified concrete path matches their pattern.
+- **Tasks.** A task records an absolute notification path (its space's mount prefix included) and the sink to notify. The sink delivers that path to the context unchanged (`PathSpaceBase::notifyAbsolute`); only direct `notify()` calls add the space's prefix. Re-homing a space (`adoptContextAndPrefix`) rewrites the target of its queued tasks, and a worker re-reads the target when a task finishes, so a re-home during execution takes effect. A re-home also wakes waiters of the previous context so they re-evaluate against the new binding.
+- **Safety net.** Each wait is additionally capped at 50 ms (`PATHSPACE_WAIT_RECHECK_MS` overrides it) after which the operation is retried. Normal operation never depends on it; it only bounds the damage if a writer or a custom sink fails to notify. Tests run once with the cap set very high (60000) to prove that no wakeup is being missed; the one test that replaces the context's sink with a capture-only sink (`Glob mount notification path rewrites on rehome`) still needs the cap, because that sink does not wake waiters.
 
 ## Operations
 The operations in the base language are insert/read/extract, they are implemented as member functions of the PathSpace class.
@@ -363,7 +372,16 @@ Trivially copyable types (`podPreferred`) are stored in a lock-free single-lane 
 Unit testing is by using the C++ doctest library.
 
 ## Exception Handling
-PathSpace code should not throw C++ exceptions. All failures must travel through explicit status channels (`std::expected`, `Error`, variant/enum results, or structured logs) so callers can react deterministically. Only integrate exception-based control flow when wrapping third-party libraries that force it; in those cases, catch the exception at the boundary, translate it into the PathSpace error model, and document the rationale in-code plus in the relevant plan/doc.
+PathSpace code should not throw C++ exceptions. All failures must travel through explicit status channels (`std::expected`, `Error`, variant/enum results, or structured logs) so callers can react deterministically. Exceptions are only acceptable when wrapping third-party libraries (the Alpaca calls in `type/serialization.hpp` are guarded by try/catch and converted to `Error`) or for container-style programmer errors in `SlidingBuffer` (`at`, `resize` mirror `std::vector`).
+
+- Serialization hooks in `InputMetadata` (`deserialize`, `deserializePop`) return `std::optional<Error>`: `std::nullopt` means the destination was fully written; truncated or corrupt bytes yield `MalformedInput`/`UnserializableType` and leave the destination untouched.
+
+## Const-correctness notes
+A few `const_cast`s are deliberate; each has one documented home:
+- `read`/`peek` style calls are `const` but go through the virtual `out`, which may start a lazy task or register a waiter. They are logically const (they never change the visible data), which is why `PathSpaceBase::read` casts `this` to call `out`.
+- `spanPackConst`/`spanPackMut` are `const` in the `PathSpaceBase` interface; `Leaf::mutableRoot()` is the single place that casts the root away because the lookup helpers take a non-const `Node&`.
+- `InputData` stores the caller's object as `void*` (type erasure for the shared insert/read signature). Insert paths must treat it as read-only. `BoundedPathSpace::in` is the exception worth knowing about: while evicting old entries it pops into the caller's object and then restores it from a serialized copy, so a type without a `deserialize` hook cannot be restored and the caller's object may be left overwritten (not covered by a test).
+- `PathSpaceBase::getNotificationSink` is non-const: it lazily creates the sink that refers back to the owning space.
 
 ## Views
 PathSpace supports read-only projections and permission gating through `src/pathspace/layer/PathView.hpp` (view with a permission callback) and path aliasing/forwarding via `src/pathspace/layer/PathAlias.hpp`.
