@@ -178,7 +178,7 @@ TEST_CASE("PathSpaceBase context sink ignores notifications after owner destruct
     CHECK_NOTHROW(sink->notify("/late"));
 }
 
-TEST_CASE("PathSpaceBase installs default sink into shared context when needed") {
+TEST_CASE("PathSpaceBase hands out the shared context's waker") {
     SinkProbe probe;
 
     auto ctx = std::make_shared<PathSpaceContext>();
@@ -187,16 +187,20 @@ TEST_CASE("PathSpaceBase installs default sink into shared context when needed")
     auto weak = probe.getNotificationSink();
     auto sink = weak.lock();
     REQUIRE(sink);
+    CHECK(ctx->getSink().expired()); // the context's observer slot stays empty
 
+    // The waker delivers into the context (waiters wake); it does not call back into the space.
+    auto guard = ctx->wait("/ctx");
     sink->notify("/ctx");
-    CHECK(probe.notifyCount == 1);
-    CHECK(probe.lastNotification == "/ctx");
+    CHECK(guard.wait_until(std::chrono::system_clock::now() + std::chrono::seconds(5))
+          == std::cv_status::no_timeout);
+    CHECK(probe.notifyCount == 0);
 
     auto weakAgain = probe.getNotificationSink();
     CHECK(weakAgain.lock() == sink);
 }
 
-TEST_CASE("PathSpaceBase reuses existing context sink") {
+TEST_CASE("PathSpaceBase hands tasks the context waker and keeps an installed observer") {
     SinkProbe probe;
     auto ctx = std::make_shared<PathSpaceContext>();
     auto recorder = std::make_shared<RecordingSink>();
@@ -206,10 +210,10 @@ TEST_CASE("PathSpaceBase reuses existing context sink") {
     auto weak = probe.getNotificationSink();
     auto sink = weak.lock();
     REQUIRE(sink);
-    CHECK(sink.get() == recorder.get());
+    CHECK(sink.get() != recorder.get()); // the observer never replaces the waker
 
     sink->notify("/direct");
-    CHECK(recorder->lastNotification == "/direct");
+    CHECK(recorder->lastNotification == "/direct"); // but it sees what the waker delivers
     CHECK(probe.notifyCount == 0);
 }
 

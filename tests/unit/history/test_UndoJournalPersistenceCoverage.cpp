@@ -192,6 +192,112 @@ TEST_SUITE("history.journal.persistence.coverage") {
         CHECK(result.error().message->find("Truncated journal entry payload") != std::string::npos);
     }
 
+    TEST_CASE("replayJournal rejects a record length larger than the file without allocating it") {
+        auto path = tempPath("huge_length.log");
+        writeHeader(path, JournalFileMagic, JournalFileVersion);
+        appendEntryPayload(path, 0xFFFFFFFFu, std::vector<std::byte>(8, std::byte{0}));
+
+        auto strict = replayJournal(path, [](JournalEntry&&) -> Expected<void> { return {}; });
+        REQUIRE_FALSE(strict.has_value());
+        CHECK(strict.error().code == SP::Error::Code::MalformedInput);
+
+        JournalReplayReport report;
+        auto tolerant = replayJournal(path,
+                                      [](JournalEntry&&) -> Expected<void> { return {}; },
+                                      JournalReplayOptions{.tolerateTornTail = true},
+                                      &report);
+        CHECK(tolerant.has_value());
+        CHECK(report.tornTail);
+        CHECK(report.validBytes == 10); // only the 10-byte header (magic, version, reserved) is good
+    }
+
+    TEST_CASE("replayJournal recovers the entries before a torn last record") {
+        auto path = tempPath("torn_tail.log");
+        std::uint64_t sizeAfterFirst  = 0;
+        std::uint64_t sizeAfterSecond = 0;
+        {
+            JournalFileWriter writer(path);
+            REQUIRE(writer.append(makeEntry(1), false).has_value());
+            REQUIRE(writer.flush().has_value());
+            sizeAfterFirst = std::filesystem::file_size(path);
+            REQUIRE(writer.append(makeEntry(2), false).has_value());
+            REQUIRE(writer.flush().has_value());
+            sizeAfterSecond = std::filesystem::file_size(path);
+        }
+        REQUIRE(sizeAfterSecond > sizeAfterFirst + 3);
+        std::filesystem::resize_file(path, sizeAfterSecond - 3); // crash in the middle of record 2
+
+        auto strict = replayJournal(path, [](JournalEntry&&) -> Expected<void> { return {}; });
+        CHECK_FALSE(strict.has_value());
+
+        std::vector<std::uint64_t> sequences;
+        JournalReplayReport        report;
+        auto                       tolerant = replayJournal(
+            path,
+            [&](JournalEntry&& entry) -> Expected<void> {
+                sequences.push_back(entry.sequence);
+                return {};
+            },
+            JournalReplayOptions{.tolerateTornTail = true},
+            &report);
+        REQUIRE(tolerant.has_value());
+        CHECK(sequences == std::vector<std::uint64_t>{1});
+        CHECK(report.tornTail);
+        CHECK(report.validBytes == sizeAfterFirst);
+    }
+
+    TEST_CASE("replayJournal reports a partial length field as a torn tail") {
+        auto path = tempPath("partial_length.log");
+        std::uint64_t sizeAfterFirst = 0;
+        {
+            JournalFileWriter writer(path);
+            REQUIRE(writer.append(makeEntry(1), false).has_value());
+            REQUIRE(writer.flush().has_value());
+            sizeAfterFirst = std::filesystem::file_size(path);
+        }
+        {
+            std::FILE* file = std::fopen(path.string().c_str(), "ab");
+            REQUIRE(file != nullptr);
+            std::uint8_t const partial[2] = {0x10, 0x00};
+            REQUIRE(std::fwrite(partial, 1, sizeof(partial), file) == sizeof(partial));
+            std::fclose(file);
+        }
+
+        std::size_t        count = 0;
+        JournalReplayReport report;
+        auto               result = replayJournal(
+            path,
+            [&](JournalEntry&&) -> Expected<void> {
+                ++count;
+                return {};
+            },
+            JournalReplayOptions{},
+            &report);
+        CHECK(result.has_value());
+        CHECK(count == 1);
+        CHECK(report.tornTail);
+        CHECK(report.validBytes == sizeAfterFirst);
+    }
+
+    TEST_CASE("replayJournal reports a clean file as fully valid") {
+        auto path = tempPath("clean.log");
+        {
+            JournalFileWriter writer(path);
+            REQUIRE(writer.append(makeEntry(1), false).has_value());
+            REQUIRE(writer.append(makeEntry(2), false).has_value());
+            REQUIRE(writer.flush().has_value());
+        }
+
+        JournalReplayReport report;
+        auto                result = replayJournal(path,
+                                    [](JournalEntry&&) -> Expected<void> { return {}; },
+                                    JournalReplayOptions{.tolerateTornTail = true},
+                                    &report);
+        CHECK(result.has_value());
+        CHECK_FALSE(report.tornTail);
+        CHECK(report.validBytes == std::filesystem::file_size(path));
+    }
+
     TEST_CASE("replayJournal surfaces entry decode failures") {
         auto path = tempPath("bad_entry.log");
         writeHeader(path, JournalFileMagic, JournalFileVersion);

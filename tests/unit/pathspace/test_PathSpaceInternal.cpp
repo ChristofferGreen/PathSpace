@@ -391,7 +391,7 @@ TEST_CASE("getNotificationSink creates a default sink without context") {
     CHECK(sinkAgain.get() == sink.get());
 }
 
-TEST_CASE("getNotificationSink seeds or reuses the context sink") {
+TEST_CASE("getNotificationSink returns the context waker and leaves the observer sink alone") {
     struct RecordingSink : NotificationSink {
         void notify(std::string const& notificationPath) override {
             notifications.push_back(notificationPath);
@@ -401,33 +401,27 @@ TEST_CASE("getNotificationSink seeds or reuses the context sink") {
 
     auto ctx = std::make_shared<PathSpaceContext>();
 
-    // If the context is missing a sink, getNotificationSink should seed one.
-    {
-        NotificationProbe space{ctx, ""};
-        auto seeded = space.getNotificationSink().lock();
-        REQUIRE(seeded);
-
-        auto ctxSink = ctx->getSink().lock();
-        REQUIRE(ctxSink);
-        CHECK(ctxSink.get() == seeded.get());
-
-        seeded->notify("/seeded");
-        REQUIRE(space.notifications.size() == 1);
-        CHECK(space.notifications.front() == "/seeded");
-    }
-
-    // If a sink is already set, getNotificationSink should reuse it.
-    auto externalSink = std::make_shared<RecordingSink>();
-    ctx->setSink(externalSink);
-
     NotificationProbe space{ctx, ""};
-    auto reused = space.getNotificationSink().lock();
-    REQUIRE(reused);
-    CHECK(reused.get() == externalSink.get());
+    auto waker = space.getNotificationSink().lock();
+    REQUIRE(waker);
+    CHECK(waker.get() == space.getNotificationSink().lock().get()); // stable
+    CHECK(ctx->getSink().expired());                                  // no observer is seeded
 
-    reused->notify("/external");
-    REQUIRE(externalSink->notifications.size() == 1);
-    CHECK(externalSink->notifications.front() == "/external");
+    // Notifying the waker wakes the context's waiters ...
+    auto guard = ctx->wait("/woken");
+    waker->notify("/woken");
+    CHECK(guard.wait_until(std::chrono::system_clock::now() + std::chrono::seconds(5))
+          == std::cv_status::no_timeout);
+
+    // ... and is reported to an observer sink, which never replaces the waker.
+    auto observer = std::make_shared<RecordingSink>();
+    ctx->setSink(observer);
+    CHECK(space.getNotificationSink().lock().get() == waker.get());
+
+    waker->notify("/observed");
+    REQUIRE(observer->notifications.size() == 1);
+    CHECK(observer->notifications.front() == "/observed");
+    CHECK(space.notifications.empty()); // the space itself is not involved
 }
 
 } // TEST_SUITE

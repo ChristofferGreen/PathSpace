@@ -103,6 +103,74 @@ TEST_CASE("journal persistence replays entries on enable") {
     std::filesystem::remove_all(tempRoot, ec);
 }
 
+TEST_CASE("journal persistence recovers from a torn last record and keeps appending") {
+    auto tempRoot = std::filesystem::temp_directory_path() / "undoable_space_torn_tail_test";
+    std::error_code ec;
+    std::filesystem::remove_all(tempRoot, ec);
+
+    HistoryOptions defaults;
+    defaults.persistHistory       = true;
+    defaults.persistenceRoot      = tempRoot.string();
+    defaults.persistenceNamespace = "torn_suite";
+    defaults.useMutationJournal   = true;
+
+    auto findJournal = [&]() {
+        std::filesystem::path found;
+        for (auto const& entry : std::filesystem::recursive_directory_iterator(tempRoot)) {
+            if (entry.is_regular_file() && entry.path().filename() == "journal.log") {
+                found = entry.path();
+            }
+        }
+        return found;
+    };
+
+    {
+        auto space = makeUndoableSpace(defaults);
+        REQUIRE(space);
+        REQUIRE(space->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+        REQUIRE(space->insert("/doc/a", std::string{"alpha"}).errors.empty());
+        REQUIRE(space->insert("/doc/b", std::string{"beta"}).errors.empty());
+        REQUIRE(space->insert("/doc/c", std::string{"gamma"}).errors.empty());
+    }
+
+    // Simulate a crash in the middle of appending the last record.
+    auto journalPath = findJournal();
+    REQUIRE_FALSE(journalPath.empty());
+    auto fullSize = std::filesystem::file_size(journalPath);
+    std::filesystem::resize_file(journalPath, fullSize - 5);
+
+    {
+        auto recovered = makeUndoableSpace(defaults);
+        REQUIRE(recovered);
+        REQUIRE(recovered->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+
+        auto a = recovered->read<std::string>("/doc/a");
+        auto b = recovered->read<std::string>("/doc/b");
+        REQUIRE(a.has_value());
+        REQUIRE(b.has_value());
+        CHECK(*a == std::string{"alpha"});
+        CHECK(*b == std::string{"beta"});
+        // The torn record was never durable, so its effect is not replayed.
+        CHECK_FALSE(recovered->read<std::string>("/doc/c").has_value());
+
+        // New history is appended after the recovered prefix, not after the torn bytes.
+        REQUIRE(recovered->insert("/doc/d", std::string{"delta"}).errors.empty());
+    }
+
+    auto again = makeUndoableSpace(defaults);
+    REQUIRE(again);
+    REQUIRE(again->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+    auto a = again->read<std::string>("/doc/a");
+    auto b = again->read<std::string>("/doc/b");
+    auto d = again->read<std::string>("/doc/d");
+    REQUIRE(a.has_value());
+    REQUIRE(b.has_value());
+    REQUIRE(d.has_value());
+    CHECK(*d == std::string{"delta"});
+
+    std::filesystem::remove_all(tempRoot, ec);
+}
+
 TEST_CASE("persistence namespace validation rejects path traversal tokens") {
     auto tempRoot = std::filesystem::temp_directory_path() / "undoable_space_namespace_validation";
     std::error_code ec;

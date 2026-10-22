@@ -159,6 +159,24 @@ TEST_CASE("BoundedPathSpace preserves caller object after pop loop") {
     CHECK(val->payload == 99);
 }
 
+TEST_CASE("BoundedPathSpace refuses to evict for a type it cannot restore and keeps the caller's value") {
+    auto backing = std::make_shared<PathSpace>();
+    BoundedPathSpace bounded{backing, 1};
+
+    // Nested spaces are inserted as unique_ptr<PathSpace>: no serialize/deserialize hooks.
+    auto first = std::make_unique<PathSpace>();
+    REQUIRE(bounded.in(Iterator{"/queue"}, InputData{first}).errors.empty()); // room for one
+
+    auto second = std::make_unique<PathSpace>();
+    auto* secondRaw = second.get();
+    auto ret = bounded.in(Iterator{"/queue"}, InputData{second}); // full: would need to evict
+
+    REQUIRE_FALSE(ret.errors.empty());
+    CHECK(ret.errors.front().code == Error::Code::NotSupported);
+    CHECK(second.get() == secondRaw); // the caller still owns its object
+    CHECK(backing->take<std::unique_ptr<PathSpace>>("/queue").has_value()); // the first entry survived
+}
+
 TEST_CASE("BoundedPathSpace replaceExistingPayload resets counts and maxItems floor") {
     auto backing = std::make_shared<PathSpace>();
 
