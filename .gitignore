@@ -19,3 +19,5 @@ build-asan/
 build-tsan/
 build-ubsan/
 build-tidy/
+.DS_Store
+.vscode/

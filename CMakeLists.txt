@@ -3,15 +3,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "")
 
 # Fix for GCC on macOS - set library paths BEFORE project() call
 if(APPLE)
-    # Prefer Apple clang toolchain for C/C++/ObjC++ to support ObjC blocks and frameworks
+    # Prefer the Apple clang toolchain
     if(NOT CMAKE_C_COMPILER)
         set(CMAKE_C_COMPILER "/usr/bin/clang" CACHE FILEPATH "" FORCE)
     endif()
     if(NOT CMAKE_CXX_COMPILER)
         set(CMAKE_CXX_COMPILER "/usr/bin/clang++" CACHE FILEPATH "" FORCE)
-    endif()
-    if(NOT CMAKE_OBJCXX_COMPILER)
-        set(CMAKE_OBJCXX_COMPILER "/usr/bin/clang++" CACHE FILEPATH "" FORCE)
     endif()
 
     set(CMAKE_EXE_LINKER_FLAGS_INIT "-L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib")
@@ -19,13 +16,7 @@ if(APPLE)
     set(CMAKE_MODULE_LINKER_FLAGS_INIT "-L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib")
 endif()
 
-# Define the project name and the language used
-# Keep platform independence by enabling ObjC++ only on Apple (for example window helper)
-if(APPLE)
-  project(PathSpaceTests LANGUAGES C CXX OBJCXX)
-else()
-  project(PathSpaceTests LANGUAGES C CXX)
-endif()
+project(PathSpace LANGUAGES C CXX)
 
 # Additional GCC settings for macOS
 if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")

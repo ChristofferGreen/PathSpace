@@ -20,7 +20,7 @@ This guide collects the conventions and scripts used when pairing with the PathS
 
 ## Repository Map
 - `src/` — production sources.
-- `tests/`, `Testing/` — unit/functional tests managed by CTest.
+- `tests/` — doctest suites managed by CTest.
 - `docs/` — architecture notes, path semantics; start with `docs/AI_Architecture.md`.
 - `scripts/` — automation (`create_pr.sh`, `compile.sh`, tooling helpers).
 - `bench/` — benchmark apps (PathSpace hierarchy perf harness).
