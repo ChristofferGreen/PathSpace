@@ -53,9 +53,11 @@ TEST_CASE("Snapshot cache rebuild returns when disabled while waiting") {
 
     cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
         .enabled = true,
-        .rebuildDebounce = 0ms,
+        .rebuildDebounce = 1h,
         .maxDirtyRoots = 8,
     });
+    // The 1h debounce keeps the background worker from rebuilding before it is stopped;
+    // explicit rebuildSnapshotNow() calls ignore the debounce.
     cached.stopSnapshotWorker();
     backing->arm();
 
@@ -89,9 +91,11 @@ TEST_CASE("Snapshot cache rebuild waits for in-progress rebuild") {
 
     cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
         .enabled = true,
-        .rebuildDebounce = 0ms,
+        .rebuildDebounce = 1h,
         .maxDirtyRoots = 8,
     });
+    // The 1h debounce keeps the background worker from rebuilding before it is stopped;
+    // explicit rebuildSnapshotNow() calls ignore the debounce.
     cached.stopSnapshotWorker();
     backing->arm();
 
@@ -124,9 +128,11 @@ TEST_CASE("Snapshot cache rebuild aborts if disabled mid-visit") {
     CHECK(cached.insert("/value", 1).nbrValuesInserted == 1);
     cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
         .enabled = true,
-        .rebuildDebounce = 0ms,
+        .rebuildDebounce = 1h,
         .maxDirtyRoots = 8,
     });
+    // The 1h debounce keeps the background worker from rebuilding before it is stopped;
+    // explicit rebuildSnapshotNow() calls ignore the debounce.
     cached.stopSnapshotWorker();
     backing->arm();
 
@@ -152,9 +158,11 @@ TEST_CASE("Snapshot cache stays dirty when mutation happens mid-rebuild") {
     CHECK(cached.insert("/value", 1).nbrValuesInserted == 1);
     cached.setSnapshotOptions(SnapshotCachedPathSpace::SnapshotOptions{
         .enabled = true,
-        .rebuildDebounce = 0ms,
+        .rebuildDebounce = 1h,
         .maxDirtyRoots = 8,
     });
+    // The 1h debounce keeps the background worker from rebuilding before it is stopped;
+    // explicit rebuildSnapshotNow() calls ignore the debounce.
     cached.stopSnapshotWorker();
     backing->arm();
 

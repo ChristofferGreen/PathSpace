@@ -242,17 +242,6 @@ task {
 }
 
 task {
-  name: "TSan: PathSpaceContext shared_ptr races [CONCURRENCY]"
-  description: "ThreadSanitizer reports data races on PathSpace::context: PathSpace::in adopts the context of a freshly inserted nested space after publishing it, and adoptContextAndPrefix writes the member while PathSpace::out copies it (tests: nesting.indexed, retarget)."
-  status: planned
-  priority: P1
-  acceptance_criteria: [
-    "Nested spaces get their context before they become visible to readers, or the context member is accessed atomically",
-    "./scripts/compile.sh --tsan --test reports no PathSpaceContext races"
-  ]
-}
-
-task {
   name: "TSan: mutable span edits race with concurrent take [CONCURRENCY]"
   description: "PodPayload::take reads elements that a concurrent withSpanMutable callback may be writing (test: pod.fastpath.concurrency 'Concurrent mutable span and take preserve count'). Either serialize in-place edits with takes or document that concurrent mutable-span edits and takes on one lane are unsupported."
   status: planned

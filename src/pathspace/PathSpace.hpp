@@ -89,7 +89,9 @@ protected:
     // Protected test utilities:
     // - notifyAll(): wakes all waiters across paths via the shared context
     // - shutdownPublic(): cooperatively signals shutdown() for tests; expose via a test-only subclass if needed
-    void notifyAll() { this->context->notifyAll(); }
+    void notifyAll() {
+        if (auto ctx = this->getContext()) ctx->notifyAll();
+    }
     void shutdownPublic() { this->shutdown(); }
 
     // Protected probe: non-blocking peek of a typed Future at a concrete path (if present).
@@ -126,8 +128,12 @@ protected:
     }
 
 
-    // Optional mount prefix used when a shared context is present
+    // Optional mount prefix used when a shared context is present (guarded by bindingMutex).
     std::string prefix;
+    auto getPrefix() const -> std::string {
+        std::lock_guard<std::mutex> guard(this->bindingMutex);
+        return this->prefix;
+    }
     TaskPool*   pool = nullptr;
     // If non-null, this PathSpace owns the TaskPool and will shut it down and destroy it at teardown.
     std::unique_ptr<TaskPool> ownedPool;

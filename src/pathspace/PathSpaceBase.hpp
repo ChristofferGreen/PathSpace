@@ -29,6 +29,7 @@
 #include <limits>
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
@@ -377,8 +378,8 @@ public:
         if (this->aliveFlag) {
             this->aliveFlag->store(false, std::memory_order_release);
         }
-        if (this->context) {
-            this->context->invalidateSink();
+        if (auto ctx = this->getContext()) {
+            ctx->invalidateSink();
         }
     }
 
@@ -713,7 +714,7 @@ public:
     virtual auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void>;
 
     [[nodiscard]] std::shared_ptr<PathSpaceContext> sharedContext() const {
-        return this->context;
+        return this->getContext();
     }
 
 protected:
@@ -724,8 +725,8 @@ protected:
     // ---------- Protected API ----------
     // Provide a weak NotificationSink; downstream users should use notify(notificationPath) instead.
     std::weak_ptr<NotificationSink> getNotificationSink() const {
-        if (this->context) {
-            auto w = this->context->getSink();
+        if (auto ctx = this->getContext()) {
+            auto w = ctx->getSink();
             if (!w.lock()) {
                 struct DefaultNotificationSinkImpl : NotificationSink {
                     DefaultNotificationSinkImpl(PathSpaceBase* ownerIn,
@@ -744,7 +745,7 @@ protected:
                 };
                 auto sink = std::shared_ptr<NotificationSink>(
                     new DefaultNotificationSinkImpl(const_cast<PathSpaceBase*>(this), this->aliveFlag));
-                this->context->setSink(sink);
+                ctx->setSink(sink);
                 return std::weak_ptr<NotificationSink>(sink);
             }
             return w;
@@ -773,16 +774,25 @@ protected:
     }
     // Executor injection point for task scheduling.
     void setExecutor(Executor* exec) {
-        if (this->context) this->context->setExecutor(exec);
+        if (auto ctx = this->getContext()) ctx->setExecutor(exec);
+        std::lock_guard<std::mutex> guard(this->bindingMutex);
         this->executorPtr = exec;
     }
     Executor* getExecutor() const {
-        if (this->context && this->context->executor()) return this->context->executor();
+        if (auto ctx = this->getContext()) {
+            if (auto* exec = ctx->executor()) return exec;
+        }
+        std::lock_guard<std::mutex> guard(this->bindingMutex);
         return this->executorPtr;
     }
 
     // Shared context access & adoption (used when mounting nested spaces).
-    std::shared_ptr<PathSpaceContext> getContext() const { return this->context; }
+    // The context/executor/prefix binding can be replaced by adoptContextAndPrefix while other
+    // threads are reading, so every access goes through bindingMutex and takes a snapshot.
+    std::shared_ptr<PathSpaceContext> getContext() const {
+        std::lock_guard<std::mutex> guard(this->bindingMutex);
+        return this->context;
+    }
 
     // - Called by the parent space when this object is mounted under a path.
     // - Supplies a shared PathSpaceContext for wait/notify and an absolute mount prefix.
@@ -795,9 +805,11 @@ protected:
     // - Avoid blocking work or spawning threads here; this hook should be lightweight.
     // - Treat the prefix as read-only and stable for the lifetime of the mount unless explicitly retargeted.
     virtual void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> newContext, std::string /*prefix*/) {
+        auto* exec = newContext ? newContext->executor() : nullptr;
+        std::lock_guard<std::mutex> guard(this->bindingMutex);
         this->context = std::move(newContext);
-        if (this->context && this->context->executor()) {
-            this->executorPtr = this->context->executor();
+        if (exec) {
+            this->executorPtr = exec;
         }
     }
 
@@ -918,6 +930,8 @@ private:
 
     // ---------- Private state and virtual hooks ----------
     mutable std::shared_ptr<NotificationSink> notificationSinkPtr;
+    // Guards context, executorPtr and (in PathSpace) prefix; see getContext().
+    mutable std::mutex                        bindingMutex;
     std::shared_ptr<PathSpaceContext>         context;
     std::shared_ptr<std::atomic<bool>>       aliveFlag = std::make_shared<std::atomic<bool>>(true);
     Executor*                                 executorPtr = nullptr;
