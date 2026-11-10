@@ -487,17 +487,13 @@ auto TaskPool::flushTrace() -> std::optional<Error> {
 
 auto TaskPool::shutdown() -> void {
     sp_log("TaskPool::shutdown begin", "TaskPool");
+    // One shutdown at a time. A second caller waits here until the first has joined the workers
+    // and then finds nothing left to join; two callers joining the same std::thread objects (and
+    // one of them clearing the vector the other iterates) is undefined behaviour.
+    std::lock_guard<std::mutex> shutdownGuard(this->shutdownMutex);
     // Signal shutdown
     {
         std::lock_guard<std::mutex> lock(this->mutex);
-        if (this->shuttingDown) {
-            sp_log("TaskPool::shutdown already in progress", "TaskPool");
-            // Already shutting down; ensure any joinable threads are joined.
-            for (auto& th : this->workers) {
-                if (th.joinable()) th.join();
-            }
-            return;
-        }
         this->shuttingDown = true;
         this->taskCV.notify_all();
     }

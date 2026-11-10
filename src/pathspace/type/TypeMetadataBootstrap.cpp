@@ -15,13 +15,9 @@ void RegisterType(SP::TypeMetadataRegistry& registry) {
 
 namespace SP {
 
+// Fills the given registry. Safe to repeat: registerType rejects a type that is already present.
+// Whether the process-wide registry has been filled is tracked by TypeMetadataRegistry::instance().
 void RegisterBuiltinTypeMetadata(TypeMetadataRegistry& registry) {
-    static bool initialized = false;
-    if (initialized) {
-        return;
-    }
-    initialized = true;
-
     RegisterType<bool>(registry);
     RegisterType<char>(registry);
     RegisterType<signed char>(registry);

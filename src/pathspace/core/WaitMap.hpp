@@ -70,6 +70,8 @@ struct WaitMap {
         }
 
     private:
+        friend struct WaitMap; // wait() counts the waiter under the registry lock and marks the Guard
+
         struct WaiterEntry*           ensure_entry();
 
         WaitMap&                     waitMap;
@@ -115,6 +117,7 @@ private:
 
     // Existing API compatibility (current .cpp still uses these; slated for migration):
     auto getEntry(std::string_view path) -> WaiterEntry&;
+    auto entryLocked(std::string_view path) -> WaiterEntry&; // caller holds registryMutex
 
 
     // Glob waiters are tracked separately by their pattern.
@@ -144,6 +147,17 @@ public:
 namespace testing {
 // Test-only override to force WaitMap debug logging without relying on PATHSPACE_DEBUG_WAITMAP.
 std::atomic<bool>& waitMapDebugOverride();
+
+// Test-only hook: WaitMap::clear() calls it after the active waiters drained and before it
+// destroys the registry, so a test can register a new waiter in exactly that window.
+using WaitMapClearDrainedHook = void (*)();
+inline std::atomic<WaitMapClearDrainedHook>& waitMapClearDrainedHook() {
+    static std::atomic<WaitMapClearDrainedHook> hook{nullptr};
+    return hook;
+}
+inline void SetWaitMapClearDrainedHook(WaitMapClearDrainedHook hook) {
+    waitMapClearDrainedHook().store(hook, std::memory_order_release);
+}
 } // namespace testing
 
 } // namespace SP

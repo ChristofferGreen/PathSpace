@@ -35,10 +35,11 @@ public:
     // True if a value was set and the state will not change further.
     [[nodiscard]] virtual bool ready() const = 0;
 
-    // Block until ready() becomes true.
+    // Block until the state is final: a value was set, or the producer failed and none will come.
+    // Check ready() (or the result of copy_to) afterwards to tell the two apart.
     virtual void wait() const = 0;
 
-    // Block until deadline; return true if ready() is true at return.
+    // Block until the state is final or the deadline passed; return true if ready() is true at return.
     [[nodiscard]] virtual bool wait_until(std::chrono::time_point<std::chrono::steady_clock> deadline) const = 0;
 
     // The concrete C++ type stored in this shared state.
@@ -67,17 +68,18 @@ public:
     // ISharedState interface
     [[nodiscard]] bool ready() const override {
         std::scoped_lock<std::mutex> lg(this->stateMutex);
-        return this->readyFlag;
+        return this->phase == Phase::Ready;
     }
 
     void wait() const override {
         std::unique_lock<std::mutex> lock(this->stateMutex);
-        this->stateCv.wait(lock, [&]{ return this->readyFlag; });
+        this->stateCv.wait(lock, [&]{ return this->phase != Phase::Pending; });
     }
 
     bool wait_until(std::chrono::time_point<std::chrono::steady_clock> deadline) const override {
         std::unique_lock<std::mutex> lock(this->stateMutex);
-        return this->stateCv.wait_until(lock, deadline, [&]{ return this->readyFlag; });
+        this->stateCv.wait_until(lock, deadline, [&]{ return this->phase != Phase::Pending; });
+        return this->phase == Phase::Ready;
     }
 
     [[nodiscard]] const std::type_info& type() const override {
@@ -87,38 +89,59 @@ public:
     bool copy_to(void* dest) const override {
         if (dest == nullptr) return false;
         std::scoped_lock<std::mutex> lg(this->stateMutex);
-        if (!this->readyFlag || !this->value.has_value()) return false;
+        if (this->phase != Phase::Ready || !this->value.has_value()) return false;
         *static_cast<T*>(dest) = *this->value;
         return true;
     }
 
     // Producer-side API
-    // Set the result if not already set; returns true on first successful set.
+    // Set the result if the state is still pending; returns true on first successful set.
     bool set_value(T v) {
         {
             std::scoped_lock<std::mutex> lg(this->stateMutex);
-            if (this->readyFlag) return false;
+            if (this->phase != Phase::Pending) return false;
             this->value = std::move(v);
-            this->readyFlag = true;
+            this->phase = Phase::Ready;
         }
         this->stateCv.notify_all();
         return true;
     }
 
+    // Declare that no value will ever be set (the producer threw). Wakes every waiter; ready()
+    // stays false. Returns false if the state was already final.
+    bool fail() {
+        {
+            std::scoped_lock<std::mutex> lg(this->stateMutex);
+            if (this->phase != Phase::Pending) return false;
+            this->phase = Phase::Failed;
+        }
+        this->stateCv.notify_all();
+        return true;
+    }
+
+    // True if fail() ended this state without a value.
+    [[nodiscard]] bool failed() const {
+        std::scoped_lock<std::mutex> lg(this->stateMutex);
+        return this->phase == Phase::Failed;
+    }
+
     // Consumer-side typed access (copy). Returns false if not ready.
     bool get(T& out) const {
         std::scoped_lock<std::mutex> lg(this->stateMutex);
-        if (!this->readyFlag || !this->value.has_value()) return false;
+        if (this->phase != Phase::Ready || !this->value.has_value()) return false;
         out = *this->value;
         return true;
     }
 
 private:
+    // Pending -> Ready (set_value) or Pending -> Failed (fail); both are final.
+    enum class Phase { Pending, Ready, Failed };
+
     // mutable to allow const wait/copy operations to lock
     mutable std::mutex              stateMutex;
     mutable std::condition_variable stateCv;
     std::optional<T>                value;
-    bool                            readyFlag{false};
+    Phase                           phase{Phase::Pending};
 };
 
 /**
@@ -167,7 +190,7 @@ public:
         return this->state ? this->state->copy_to(dest) : false;
     }
 
-    // Blocking result copy. Returns false only if invalid.
+    // Blocking result copy. Returns false if invalid or if the producer failed.
     bool copy_to(void* dest) const {
         if (!this->state) return false;
         this->state->wait();
@@ -214,7 +237,7 @@ public:
         return this->state ? this->state->get(out) : false;
     }
 
-    // Blocking get; returns false if invalid (no state).
+    // Blocking get; returns false if invalid (no state) or if the producer failed.
     bool get(T& out) const {
         if (!this->state) return false;
         this->state->wait();

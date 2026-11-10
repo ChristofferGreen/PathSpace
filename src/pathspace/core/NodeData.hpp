@@ -89,10 +89,14 @@ private:
     auto deserializeData(void* obj, const InputMetadata& inputMetadata, bool doPop) -> std::optional<Error>;
     auto deserializeExecution(void* obj, const InputMetadata& inputMetadata, bool doPop) -> std::optional<Error>;
 
+    // Owned by nestedSlots; a borrow (borrowNestedShared) holds a second reference so the slot and
+    // its space outlive the node for as long as the borrow lasts.
     struct NestedSlot {
         std::unique_ptr<PathSpaceBase> ptr;
         mutable std::atomic<std::size_t> borrows{0};
-        std::shared_ptr<NestedSlot> self; // back-reference for aliasing
+        // Back-reference for aliasing. Deliberately weak: as an owning pointer it formed a cycle
+        // that kept every slot, and any space still mounted in it, alive forever.
+        std::weak_ptr<NestedSlot> self;
         mutable std::mutex m;
         mutable std::condition_variable cv;
     };
@@ -101,7 +105,7 @@ private:
     std::deque<ElementType>            types;
     std::deque<std::shared_ptr<Task>>  tasks;   // NodeData is the primary owner of tasks
     std::deque<Future>                 futures; // Aligned with tasks; lightweight handles for result readiness
-    std::deque<FutureAny>              anyFutures; // Aligned with typed tasks; type-erased future handles
+    std::deque<FutureAny>              anyFutures; // Aligned with tasks (invalid handle for untyped tasks)
     std::deque<std::size_t>            valueSizes; // Serialized byte lengths for non-execution values
     std::vector<std::shared_ptr<NestedSlot>> nestedSlots;
 

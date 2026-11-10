@@ -14,6 +14,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/path/test_ConcreteNameCoverage.cpp
   unit/path/test_TransparentString.cpp
   unit/core/test_WaitMap.cpp
+  unit/core/test_WaitMapClearRace.cpp
   unit/core/test_Node.cpp
   unit/core/test_NodeCoverage.cpp
   unit/core/test_LeafCoverage.cpp
@@ -28,12 +29,15 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/type/test_FunctionCategory.cpp
   unit/type/test_TypeMetadataRegistry.cpp
   unit/type/test_TypeMetadataRegistryPrivates.cpp
+  unit/type/test_TypeMetadataBootstrap.cpp
   unit/type/test_SlidingBuffer.cpp
   unit/core/test_NodeDataSnapshot.cpp
   unit/core/test_NodeDataNested.cpp
   unit/core/test_NodeDataCoverage.cpp
   unit/core/test_NodeDataDeserializeEdges.cpp
+  unit/core/test_NodeDataExecutionQueues.cpp
   unit/core/test_PathSpaceContext.cpp
+  unit/core/test_PathSpaceContextObserver.cpp
   unit/pathspace/test_PathSpaceBaseSpanPack.cpp
   unit/ext/test_alpaca.cpp
   unit/core/test_ExpectedShimCoverage.cpp
@@ -43,11 +47,13 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/task/test_TaskCreate.cpp
   unit/task/test_TaskT.cpp
   unit/task/test_TaskPoolTraceInternals.cpp
+  unit/task/test_TaskPoolShutdownState.cpp
   unit/trace/test_PathSpaceTrace.cpp
   unit/pathspace/test_PathSpaceRead.cpp
   unit/pathspace/test_PathSpaceNestingBasic.cpp
   unit/pathspace/test_PathSpaceNestingIndexed.cpp
   unit/pathspace/test_PathSpaceNestingLifecycle.cpp
+  unit/pathspace/test_PathSpaceContextOwnership.cpp
   unit/pathspace/test_PathSpaceNestingConcurrent.cpp
   unit/pathspace/test_PathSpaceExtract.cpp
   unit/pathspace/test_PathSpaceListChildren.cpp
@@ -60,6 +66,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/pathspace/test_PathSpaceExecution.cpp
   unit/pathspace/test_PathSpaceCopy.cpp
   unit/pathspace/test_PathSpaceInternal.cpp
+  unit/pathspace/test_PathSpaceClearHandshake.cpp
   unit/pathspace/test_ValueHandleGuards.cpp
   unit/pathspace/test_ValueHandleReadInto.cpp
   unit/pathspace/test_PathSpaceIndexed.cpp
@@ -67,6 +74,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/pathspace/test_PathSpacePodFastpathConcurrency.cpp
   unit/pathspace/test_PathSpacePodFastpathPackInsert.cpp
   unit/pathspace/test_PathSpacePodFastpathSpanPack.cpp
+  unit/pathspace/test_PathSpaceSpanPackLatency.cpp
   unit/pathspace/test_PathSpacePodFastpathCore.cpp
   unit/path/test_UnvalidatedPath.cpp
   unit/history/test_UndoJournalRoundTrip.cpp
@@ -88,6 +96,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/history/test_UndoableSpaceHistoryJournalCoverage.cpp
   unit/history/test_UndoableSpaceHistoryGuardsCoverage.cpp
   unit/history/test_UndoableSpaceTransactionsCoverage.cpp
+  unit/history/test_UndoableSpaceStateMachine.cpp
   unit/pathspace/test_PathSpaceJsonExporterFlatPaths.cpp
   unit/pathspace/test_PathSpaceJsonExporterLimits.cpp
   unit/pathspace/test_PathSpaceJsonExporterPlaceholders.cpp
@@ -99,6 +108,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/pathspace/test_PathSpaceBaseDefaults.cpp
   unit/pathspace/test_VisitOptions.cpp
   unit/layer/test_BoundedPathSpace.cpp
+  unit/layer/test_BoundedPathSpaceCounts.cpp
   unit/core/test_Error.cpp
   unit/core/test_ExpectedShim.cpp
   unit/core/test_PodPayloadCoverage.cpp
@@ -113,12 +123,14 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/layer/test_SnapshotCacheReadPaths.cpp
   unit/layer/test_SnapshotCacheMetrics.cpp
   unit/layer/test_SnapshotCacheRebuild.cpp
+  unit/layer/test_SnapshotCacheWorkerState.cpp
   unit/layer/test_SnapshotCacheDirtyRoots.cpp
   unit/layer/test_SnapshotCacheMutationTracking.cpp
   unit/layer/test_PathViewCoverage.cpp
   unit/path/test_validation.cpp
   unit/task/test_FutureCoverage.cpp
   unit/task/test_TaskStateAtomic.cpp
+  unit/task/test_TaskFailureState.cpp
   unit/task/test_IFutureAny.cpp
   unit/task/test_ExecutorForwarding.cpp
   test_main.cpp

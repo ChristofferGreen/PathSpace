@@ -22,6 +22,21 @@
 #include "task/IFutureAny.hpp"
 
 namespace SP {
+namespace testing {
+// Test-only hook: PathSpace::in/out call it right after the operation was admitted past the
+// clear()/shutdown() gate and before it touches the tree. Lets tests hold an operation in flight.
+using PathSpaceAdmissionHook = void (*)();
+inline std::atomic<PathSpaceAdmissionHook>& pathSpaceAdmissionHook() {
+    static std::atomic<PathSpaceAdmissionHook> hook{nullptr};
+    return hook;
+}
+inline void SetPathSpaceAdmissionHook(PathSpaceAdmissionHook hook) {
+    pathSpaceAdmissionHook().store(hook, std::memory_order_release);
+}
+inline PathSpaceAdmissionHook GetPathSpaceAdmissionHook() {
+    return pathSpaceAdmissionHook().load(std::memory_order_acquire);
+}
+} // namespace testing
 
 class TaskPool;
 class PathSpaceContext;
@@ -153,8 +168,20 @@ private:
 
     friend struct PathSpaceTestHelper; // unit tests
 
+    // clear()/shutdown() handshake. activeOutCount counts the in()/out() calls in flight (the name
+    // predates inserts taking part); an operation registers first and samples the flag second,
+    // clear raises the flag first and waits for the count second.
     std::atomic<std::size_t> activeOutCount{0};
     std::atomic<bool>        clearingInProgress{false};
+    // True once this space adopted a context that belongs to another space (it was mounted as a
+    // nested space or re-homed). A borrowed context is shared with its owner and the owner's other
+    // spaces: this space tears down its own tree only and never shuts the context down or clears
+    // its wait registry. Guarded by bindingMutex.
+    bool contextBorrowed = false;
+    auto borrowsContext() const -> bool {
+        std::lock_guard<std::mutex> guard(this->bindingMutex);
+        return this->contextBorrowed;
+    }
 };
 
 } // namespace SP

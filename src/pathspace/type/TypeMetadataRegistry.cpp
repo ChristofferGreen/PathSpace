@@ -1,5 +1,7 @@
 #include "type/TypeMetadataRegistry.hpp"
 
+#include <mutex>
+
 namespace SP {
 
 void RegisterBuiltinTypeMetadata(TypeMetadataRegistry& registry);
@@ -14,7 +16,10 @@ auto TypeMetadataRegistry::make_view(TypeMetadataRegistry::Entry const* entry)
 
 TypeMetadataRegistry& TypeMetadataRegistry::instance() {
     static TypeMetadataRegistry registry;
-    RegisterBuiltinTypeMetadata(registry);
+    // call_once blocks concurrent first callers until the builtins are in, so no caller can see
+    // the registry half filled, and later calls do not register again.
+    static std::once_flag builtinsRegistered;
+    std::call_once(builtinsRegistered, [] { RegisterBuiltinTypeMetadata(registry); });
     return registry;
 }
 

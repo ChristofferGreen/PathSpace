@@ -95,6 +95,7 @@ private:
     std::vector<std::thread>        workers;
     std::queue<std::weak_ptr<Task>> tasks;
     std::mutex                      mutex;
+    std::mutex                      shutdownMutex; // serialises shutdown(); guards joining and clearing `workers`
     std::condition_variable         taskCV;
     std::atomic<bool>               shuttingDown{false};
     std::atomic<size_t>             activeWorkers{0};

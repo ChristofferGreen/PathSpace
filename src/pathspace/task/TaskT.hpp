@@ -65,9 +65,19 @@ public:
 
         // Wrap the user function to both compute the result and fulfill the promise.
         auto wrapped = [st = std::move(shared_state), fn = std::forward<F>(func)]() -> T {
+            // If the callable throws, no value will ever be set: release the future's waiters
+            // before the exception reaches the worker.
+            struct FailUnlessFulfilled {
+                std::shared_ptr<SharedState<T>> const& state;
+                bool                                   fulfilled = false;
+                ~FailUnlessFulfilled() {
+                    if (!fulfilled) state->fail();
+                }
+            } failGuard{st};
             T value = fn();
             // Best-effort fulfill; if already set, ignore (first set wins).
             st->set_value(value);
+            failGuard.fulfilled = true;
             return value;
         };
 
@@ -91,8 +101,16 @@ public:
         auto shared_state = self->promise_.shared_state();
 
         auto wrapped = [st = std::move(shared_state), fn = std::forward<F>(func)]() -> T {
+            struct FailUnlessFulfilled {
+                std::shared_ptr<SharedState<T>> const& state;
+                bool                                   fulfilled = false;
+                ~FailUnlessFulfilled() {
+                    if (!fulfilled) state->fail();
+                }
+            } failGuard{st};
             T value = fn();
             st->set_value(value);
+            failGuard.fulfilled = true;
             return value;
         };
 

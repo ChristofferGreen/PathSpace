@@ -23,6 +23,8 @@
 - `HistoryOptions::sharedStackKey` advertises a caller's intent to reuse a single stack across multiple roots. The wrapper now compares keys across every registered root and fails the call if the key is already in use, forcing callers to regroup their data under one history-enabled subtree or funnel shared work through a command-log mount.
 - Persistence knobs (`persistHistory`, `persistenceRoot`, `persistenceNamespace`, `maxDiskBytes`, `ramCacheEntries`, `keepLatestFor`) are all resolved during `enableHistory()` so there is a single source of truth per root. Mutation logging is always journal-based now; the wrapper logs a warning the first time it forces `useMutationJournal = true` for legacy callers that still request copy-on-write snapshots.
 - `_history/set_manual_garbage_collect` toggles `HistoryOptions::manualGarbageCollect`. When enabled, the wrapper defers compaction until the command arrives; otherwise auto-retention trims the journal whenever budgets are exceeded. In both cases, `compactJournalPersistence()` updates disk metrics and publishes notifications so observers see the change.
+- `compactJournalPersistence()` rewrites `journal.log` so it holds exactly the entries the in-memory journal still has. It runs when retention trims entries and when a commit after an undo discards the redo tail; a redo tail is never left on disk in front of newer records. The undo position itself is not persisted (open item H4 in `docs/State_Machine_Audit.md`).
+- A transaction handle that goes out of scope without `commit()` commits; `beginTransaction()` can no longer leave a root locked.
 
 ### `HistoryOptions` reference
 

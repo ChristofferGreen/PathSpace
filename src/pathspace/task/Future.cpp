@@ -27,8 +27,10 @@ auto Future::ready() const -> bool {
 }
 
 auto Future::wait() const -> void {
+    // Wait for the terminal state, not for completion: a task whose callable threw ends up Failed
+    // and would otherwise keep this loop spinning forever.
     if (auto t = this->taskWeak.lock()) {
-        while (!t->isCompleted()) {
+        while (!t->isTerminal()) {
             std::this_thread::yield();
         }
     }
@@ -36,12 +38,12 @@ auto Future::wait() const -> void {
 
 auto Future::wait_until_steady(std::chrono::time_point<std::chrono::steady_clock> deadline) const -> bool {
     if (auto t = this->taskWeak.lock()) {
-        while (!t->isCompleted()) {
+        while (!t->isTerminal()) {
             if (std::chrono::steady_clock::now() >= deadline)
                 return false;
             std::this_thread::yield();
         }
-        return true;
+        return t->isCompleted();
     }
     return false;
 }
@@ -59,6 +61,9 @@ auto Future::try_copy_result_to(void* dest) const -> bool {
 auto Future::copy_result_to(void* dest) const -> bool {
     this->wait();
     if (auto t = this->taskWeak.lock()) {
+        if (!t->isCompleted()) {
+            return false; // failed: there is no result to copy
+        }
         t->resultCopy(dest);
         return true;
     }

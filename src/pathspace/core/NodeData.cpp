@@ -137,10 +137,9 @@ auto NodeData::serialize(const InputData& inputData) -> std::optional<Error> {
         // Store task and aligned future handle
         this->tasks.push_back(inputData.task);
         this->futures.push_back(Future::FromShared(this->tasks.back()));
-        // If a type-erased future is provided (typed task path), align it as well
-        if (inputData.anyFuture.valid()) {
-            this->anyFutures.push_back(inputData.anyFuture);
-        }
+        // Keep the type-erased futures index-aligned with the tasks: an untyped task stores an
+        // invalid handle, so popping an execution always pops exactly one entry from each queue.
+        this->anyFutures.push_back(inputData.anyFuture);
 
         bool const isImmediateExecution = (*this->tasks.rbegin())->category() == ExecutionCategory::Immediate;
         if (isImmediateExecution) {
@@ -463,6 +462,8 @@ auto NodeData::deserializeExecution(void* obj, [[maybe_unused]] const InputMetad
                 sp_log("Pop requested; removing front task and aligned future", "NodeData");
                 this->tasks.pop_front();
                 this->futures.pop_front();
+                if (!this->anyFutures.empty())
+                    this->anyFutures.pop_front();
                 popType();
             }
             return std::nullopt;
@@ -480,6 +481,8 @@ auto NodeData::deserializeExecution(void* obj, [[maybe_unused]] const InputMetad
             this->tasks.pop_front();
             if (!this->futures.empty())
                 this->futures.pop_front();
+            if (!this->anyFutures.empty())
+                this->anyFutures.pop_front();
             popType();
         }
         return std::nullopt;
@@ -626,7 +629,7 @@ auto NodeData::valueCount() const -> std::size_t {
 auto NodeData::peekAnyFuture() const -> std::optional<FutureAny> {
     if (this->types.empty() || this->types.front().category != DataCategory::Execution)
         return std::nullopt;
-    if (this->anyFutures.empty())
+    if (this->anyFutures.empty() || !this->anyFutures.front().valid())
         return std::nullopt;
     return this->anyFutures.front();
 }

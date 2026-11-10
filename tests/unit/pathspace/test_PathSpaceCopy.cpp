@@ -252,7 +252,10 @@ TEST_CASE("copy handles nested serialization failures gracefully") {
     CHECK(stats.nestedSpacesCopied == 0);
     CHECK(stats.nestedSpacesSkipped >= 1);
 
-    auto nestedRead = clone.read<int>("/ns/v", Block{});
+    // The path does not exist in the clone, so a blocking read waits out its whole timeout: keep
+    // it short. (An unbounded Block{} only returned here while the discarded nested copy wrongly
+    // shut the clone's context down.)
+    auto nestedRead = clone.read<int>("/ns/v", Block{std::chrono::milliseconds{20}});
     CHECK_FALSE(nestedRead.has_value());
 }
 
@@ -277,7 +280,8 @@ TEST_CASE("copy skips nested when snapshot restore fails to attach") {
     CHECK(stats.nestedSpacesCopied == 0);
     CHECK(stats.nestedSpacesSkipped >= 1);
 
-    auto nestedRead = clone.read<int>("/node/v", Block{});
+    // Missing path: bounded for the same reason as in the test above.
+    auto nestedRead = clone.read<int>("/node/v", Block{std::chrono::milliseconds{20}});
     CHECK_FALSE(nestedRead.has_value());
 
     auto valueRead = clone.read<int>("/node", Block{});

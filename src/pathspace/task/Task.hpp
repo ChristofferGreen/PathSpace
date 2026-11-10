@@ -83,6 +83,11 @@ struct Task {
     }
 
     auto isCompleted() const -> bool;
+    // The callable threw; the task will never produce a result.
+    auto isFailed() const -> bool;
+    // Completed or failed: the state will not change again. Waiters must wait for this, not for
+    // isCompleted(), or they never wake up for a task that failed.
+    auto isTerminal() const -> bool;
     auto hasStarted() const -> bool;
     auto tryStart() -> bool;
     auto transitionToRunning() -> bool;

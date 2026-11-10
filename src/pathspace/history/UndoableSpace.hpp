@@ -114,9 +114,12 @@ private:
         JournalTransactionGuard(UndoableSpace& owner,
                                 std::shared_ptr<UndoJournalRootState> state,
                                 bool active);
-        JournalTransactionGuard(JournalTransactionGuard&& other) noexcept = default;
-        JournalTransactionGuard& operator=(JournalTransactionGuard&& other) noexcept = default;
-        ~JournalTransactionGuard() = default;
+        // A guard owns one level of the root's open transaction. Moving transfers that ownership
+        // (the source becomes inactive) and destroying an active guard commits, so an early return
+        // or an exception can never leave the root's transaction open.
+        JournalTransactionGuard(JournalTransactionGuard&& other) noexcept;
+        JournalTransactionGuard& operator=(JournalTransactionGuard&& other) noexcept;
+        ~JournalTransactionGuard();
 
         JournalTransactionGuard(JournalTransactionGuard const&)            = delete;
         JournalTransactionGuard& operator=(JournalTransactionGuard const&) = delete;
@@ -131,6 +134,8 @@ private:
         }
 
     private:
+        void release() noexcept;
+
         UndoableSpace*                        owner   = nullptr;
         std::shared_ptr<UndoJournalRootState> statePtr;
         bool                                  active  = false;
@@ -148,7 +153,11 @@ private:
         HistoryTransaction& operator=(HistoryTransaction const&) = delete;
 
         auto commit() -> Expected<void>;
-        explicit operator bool() const noexcept { return this->guard.has_value(); }
+        // True while this handle still holds the open transaction. A handle that was committed
+        // or moved from is inactive; an active handle commits when it is destroyed.
+        explicit operator bool() const noexcept {
+            return this->guard.has_value() && static_cast<bool>(*this->guard);
+        }
 
     private:
         friend class UndoableSpace;

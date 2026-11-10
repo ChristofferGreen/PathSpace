@@ -53,7 +53,7 @@ public:
 
     // Result copy interfaces (non-templated). Return true on success.
     // - try_copy_result_to: non-blocking; returns false if not ready or invalid.
-    // - copy_result_to: blocking; returns false if the task expires unexpectedly.
+    // - copy_result_to: blocking; returns false if the task expires unexpectedly or failed.
     // - copy_result_for: timed; returns false on timeout or expiration.
     auto try_copy_result_to(void* dest) const -> bool;
     auto copy_result_to(void* dest) const -> bool;

@@ -211,14 +211,47 @@ auto UndoableSpace::captureJournalNodeData(UndoJournalRootState const& state,
         return std::unexpected(Error{Error::Code::UnknownError,
                                      std::string(UndoUtilsAlias::UnsupportedNestedMessage)});
     }
-    if (!node->data) {
-        return std::optional<NodeData>{};
-    }
-    if (node->data->hasExecutionPayload()) {
+    if (node->data && node->data->hasExecutionPayload()) {
         return std::unexpected(Error{Error::Code::UnknownError,
                                      std::string(UndoUtilsAlias::UnsupportedExecutionMessage)});
     }
-    return std::optional<NodeData>{*node->data};
+
+    std::optional<NodeData> captured;
+    if (node->data) {
+        captured = *node->data;
+    }
+    // Values inserted into the inner space before it was wrapped can still sit on the node's POD
+    // lane. They are part of the node's state: leaving them out would make undo restore an empty
+    // node. The lane's elements follow the generic ones, the order an upgrade produces.
+    if (node->podPayload) {
+        NodeData             laneValues;
+        std::optional<Error> laneError;
+        auto const&          laneMetadata = node->podPayload->podMetadata();
+        auto const           elementSize  = node->podPayload->elementSize();
+        auto spanError = node->podPayload->withSpanRaw([&](void const* elements, std::size_t count) {
+            auto const* bytes = static_cast<std::byte const*>(elements);
+            for (std::size_t index = 0; index < count && !laneError; ++index) {
+                InputData element{bytes + index * elementSize, laneMetadata};
+                laneError = laneValues.serialize(element);
+            }
+        });
+        if (spanError) {
+            return std::unexpected(*spanError);
+        }
+        if (laneError) {
+            return std::unexpected(*laneError);
+        }
+        if (!laneValues.empty()) {
+            if (captured) {
+                if (auto appendError = captured->append(laneValues)) {
+                    return std::unexpected(*appendError);
+                }
+            } else {
+                captured = std::move(laneValues);
+            }
+        }
+    }
+    return captured;
 }
 
 auto UndoableSpace::applyJournalNodeData(UndoJournalRootState& state,
@@ -347,7 +380,9 @@ auto UndoableSpace::performJournalStep(UndoJournalRootState& state,
                                        std::string_view      emptyMessage) -> Expected<void> {
     JournalOperationScope scope(*this, state, operationName);
 
-    auto entryOpt = sourceIsUndo ? state.journal.undo() : state.journal.redo();
+    // Look at the entry without moving the cursor: the cursor may only advance once the step has
+    // been applied to the tree, otherwise a failed step leaves history and tree out of step.
+    auto entryOpt = sourceIsUndo ? state.journal.peekUndo() : state.journal.peekRedo();
     if (!entryOpt.has_value()) {
         scope.setResult(false, "empty");
         return std::unexpected(Error{Error::Code::NoObjectFound,
@@ -388,6 +423,10 @@ auto UndoableSpace::performJournalStep(UndoJournalRootState& state,
         scope.setResult(false, applyResult.error().message.value_or("apply_failed"));
         return applyResult;
     }
+
+    // The entry reference stays valid: moving the cursor does not touch the stored entries.
+    auto moved = sourceIsUndo ? state.journal.undo() : state.journal.redo();
+    (void)moved;
 
     scope.setResult(true);
     return {};
@@ -1083,22 +1122,29 @@ auto UndoableSpace::out(Iterator const& path,
 
     auto guard = std::move(guardExpected.value());
     auto error = inner->out(path, metaNoPod, options, obj);
+    // Every path below has to close the transaction; a journaling failure is reported after the
+    // commit instead of returning with the root still locked.
+    std::optional<Error> journalError;
     if (!error.has_value()) {
         auto afterExpected = captureJournalNodeData(*state, relativeComponents);
         if (!afterExpected) {
-            return afterExpected.error();
-        }
-        auto record = recordJournalMutation(*state,
-                                            UndoJournal::OperationKind::Take,
-                                            fullPath,
-                                            afterExpected.value(),
-                                            beforeNode);
-        if (!record) {
-            return record.error();
+            journalError = afterExpected.error();
+        } else {
+            auto record = recordJournalMutation(*state,
+                                                UndoJournal::OperationKind::Take,
+                                                fullPath,
+                                                afterExpected.value(),
+                                                beforeNode);
+            if (!record) {
+                journalError = record.error();
+            }
         }
     }
-    if (auto commit = guard.commit(); !commit) {
-        return commit.error();
+    if (auto commit = guard.commit(); !commit && !journalError) {
+        journalError = commit.error();
+    }
+    if (journalError) {
+        return journalError;
     }
     return error;
 }

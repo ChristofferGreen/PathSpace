@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PathSpace.hpp"
+#include "core/PathSpaceContext.hpp"
 
 #include <mutex>
 #include <string>
@@ -9,7 +10,11 @@
 namespace SP {
 
 // Non-templated bounded wrapper: limits queue length per path.
-// - On insert: if count >= maxItems, pop oldest entries of the same type (via out with doPop) until space; if pop fails (type mismatch), the insert is dropped.
+// - On insert: if count >= maxItems, pop oldest entries of the same type (via out with doPop) until space; if pop fails (type mismatch), the insert is dropped
+//   and the failure is reported in InsertReturn::errors. A pop that finds the queue empty means the
+//   queue was drained behind the wrapper (through the backing space): the count is reset and the
+//   insert proceeds.
+// - Counts are kept per queue: "/q" and "/q[1]" address the same queue.
 //   Eviction needs a type that can be serialized and deserialized (the caller's value is restored
 //   after the pop); other types are rejected with NotSupported once the queue is full.
 // - On out/take (doPop): the count is decremented when a value is popped.
@@ -22,7 +27,7 @@ public:
     auto in(Iterator const& path, InputData const& data) -> InsertReturn override {
         if (!this->backing) return {.errors = {Error{Error::Code::InvalidPermissions, "No backing PathSpace"}}};
 
-        std::string p = path.toString();
+        std::string p = countKey(path);
 
         if (data.replaceExistingPayload) {
             std::lock_guard<std::mutex> lock(this->countsMutex);
@@ -57,8 +62,18 @@ public:
             }
             auto err = this->backing->out(path, data.metadata, Out{.doPop = true}, data.obj);
             if (err) {
-                // type mismatch or other failure: drop insert
-                return {};
+                if (err->code == Error::Code::NoObjectFound || err->code == Error::Code::NoSuchPath) {
+                    // Nothing left to evict: the queue was drained through the backing space and
+                    // the count is stale. There is room, so resynchronise and insert.
+                    std::lock_guard<std::mutex> lock(this->countsMutex);
+                    this->counts[p] = 0;
+                    break;
+                }
+                // Type mismatch or other failure: the queue stays full, so the insert is dropped.
+                // Report it; an empty InsertReturn would look like "nothing to insert".
+                return {.errors = {Error{err->code,
+                                         "BoundedPathSpace dropped the insert: queue is full and eviction failed ("
+                                             + err->message.value_or("no detail") + ")"}}};
             }
             {
                 std::lock_guard<std::mutex> lock(this->countsMutex);
@@ -89,7 +104,7 @@ public:
         if (!this->backing) return Error{Error::Code::InvalidPermissions, "No backing PathSpace"};
         auto err = this->backing->out(path, inputMetadata, options, obj);
         if (!err && options.doPop) {
-            std::string p = path.toString();
+            std::string p = countKey(path);
             std::lock_guard<std::mutex> lock(this->countsMutex);
             auto it = this->counts.find(p);
             if (it != this->counts.end() && it->second > 0) --it->second;
@@ -121,6 +136,16 @@ protected:
     }
 
 private:
+    // Counts are per queue (node). An indexed path such as "/q[1]" addresses an element of the
+    // queue at "/q", so both spellings must share one count.
+    static auto countKey(Iterator const& path) -> std::string {
+        auto full = path.toString();
+        if (auto stripped = PathSpaceContext::stripIndexSuffixes(full)) {
+            return std::move(*stripped);
+        }
+        return full;
+    }
+
     std::shared_ptr<PathSpaceBase> backing;
     std::size_t maxItems;
     std::unordered_map<std::string, std::size_t> counts;

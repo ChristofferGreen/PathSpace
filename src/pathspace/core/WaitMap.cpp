@@ -167,9 +167,19 @@ auto WaitMap::wait(std::string_view path) -> Guard {
     }
     // Pre-register the waiter entry so notify/notifyAll cannot miss this waiter
     // if they run before the thread calls Guard::wait_until.
-    auto& entry = this->getEntry(path);
-    auto const initialVersion = entry.notifyVersion.load(std::memory_order_acquire);
-    return Guard(*this, path, initialVersion, true);
+    // The waiter is counted while the registry is still locked: clear() checks the count under
+    // the same lock before it destroys the entries, so it can never free an entry between this
+    // lookup and the Guard taking effect.
+    std::uint64_t initialVersion = 0;
+    {
+        std::lock_guard<std::timed_mutex> lock(registryMutex);
+        auto& entry    = this->entryLocked(path);
+        initialVersion = entry.notifyVersion.load(std::memory_order_acquire);
+        this->activeWaiterCount.fetch_add(1, std::memory_order_acq_rel);
+    }
+    Guard guard(*this, path, initialVersion, false);
+    guard.counted = true; // counted above, under the registry lock
+    return guard;
 }
 
 // Helper: traverse trie to the node for a concrete path; create nodes as needed.
@@ -397,17 +407,31 @@ auto WaitMap::clear() -> void {
         });
     }
 
-    // Step 3: clear all waiter structures safely
+    if (auto hook = testing::waitMapClearDrainedHook().load(std::memory_order_acquire)) {
+        hook();
+    }
+
+    // Step 3: destroy the waiter structures - unless a waiter registered since the drain. Waiters
+    // are counted under the registry lock, so the check below cannot miss one. Such a waiter is
+    // legitimately waiting again (it was not told to stop); its entry must stay valid, and
+    // waiting for it to leave could take as long as its timeout. The registry is then left as it
+    // is and gets cleaned up by a later clear().
     {
         std::lock_guard<std::timed_mutex> lock(registryMutex);
-        this->globWaiters.clear();
-        this->root.reset();
+        if (this->activeWaiterCount.load(std::memory_order_acquire) == 0) {
+            this->globWaiters.clear();
+            this->root.reset();
+        }
     }
 }
 
 auto WaitMap::getEntry(std::string_view path) -> WaiterEntry& {
     std::lock_guard<std::timed_mutex> lock(registryMutex);
+    return this->entryLocked(path);
+}
 
+// Requires registryMutex.
+auto WaitMap::entryLocked(std::string_view path) -> WaiterEntry& {
     // Glob waiters: keep a separate registry (note: map CV is used only for glob waits)
     if (is_glob(path)) {
         return this->globWaiters[std::string(path)];

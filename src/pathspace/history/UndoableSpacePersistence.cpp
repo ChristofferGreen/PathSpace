@@ -11,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <vector>
 
 namespace {
 
@@ -206,30 +207,39 @@ auto UndoableSpace::loadJournalPersistence(UndoJournalRootState& state) -> Expec
     auto           nextFromSequence = sequenceSeen ? maxSequence + 1 : fallbackNext;
     state.nextSequence = std::max(state.nextSequence, nextFromSequence);
 
+    auto const trimmedOnLoad = state.journal.size() != entries.size();
     lock.unlock();
 
-    updateJournalDiskTelemetry(state);
-    if (state.persistenceEnabled) {
+    // Retention may be tighter than when the file was written; drop the trimmed records from disk
+    // as well so the file matches the journal that was just rebuilt.
+    if (trimmedOnLoad) {
         auto compact = compactJournalPersistence(state, false);
         if (!compact) {
             return compact;
         }
     }
+    updateJournalDiskTelemetry(state);
 
     return {};
 }
 
 auto UndoableSpace::compactJournalPersistence(UndoJournalRootState& state, bool fsync)
     -> Expected<void> {
-    if (!state.persistenceEnabled || !state.persistenceWriter) {
+    if (!state.persistenceEnabled) {
         return {};
     }
-    auto flush = state.persistenceWriter->flush();
-    if (!flush) {
-        return flush;
+    // Rewrite the file so it holds exactly the entries the in-memory journal still has: records
+    // that retention trimmed or that a new edit after undo discarded must not be replayed again.
+    std::vector<UndoJournal::JournalEntry> surviving;
+    surviving.reserve(state.journal.size());
+    for (std::size_t index = 0; index < state.journal.size(); ++index) {
+        surviving.push_back(state.journal.entryAt(index));
     }
-    (void)fsync;
-    return Expected<void>{};
+    // The writer holds the old file open. The rewrite replaces that file, so close the writer
+    // first; the next commit reopens it on the new file and appends after the surviving records.
+    state.persistenceWriter.reset();
+    return UndoJournal::compactJournal(
+        state.journalPath, std::span<const UndoJournal::JournalEntry>(surviving), fsync);
 }
 
 void UndoableSpace::updateJournalDiskTelemetry(UndoJournalRootState& state) {

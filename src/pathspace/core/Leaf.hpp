@@ -98,7 +98,6 @@ private:
 
     Node                       root;
     mutable std::mutex         packInsertMutex;
-    mutable std::atomic<bool>  packInsertSeen{false};
     friend class History::UndoableSpace;
 };
 

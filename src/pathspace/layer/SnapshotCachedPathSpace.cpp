@@ -96,6 +96,9 @@ auto dirtyRootsContainPrefix(DirtyRootSet const& roots, std::string_view path) -
 }
 } // namespace
 
+// Shortest pause between a failed rebuild and the next attempt (the debounce applies when longer).
+constexpr std::chrono::milliseconds FailedRebuildBackoff{50};
+
 struct SnapshotCachedPathSpace::SnapshotState {
     std::atomic<bool> enabled{false};
     std::atomic<bool> allowSynchronousRebuild{false};
@@ -113,6 +116,8 @@ struct SnapshotCachedPathSpace::SnapshotState {
     std::chrono::milliseconds debounce{200};
     std::chrono::steady_clock::time_point lastMutation{};
     std::chrono::steady_clock::time_point lastBuild{};
+    // After a failed rebuild the cache stays dirty; this is the earliest time to try again.
+    std::chrono::steady_clock::time_point retryNotBefore{};
     std::size_t maxDirtyRoots = 128;
     bool workerRunning = false;
     bool stopWorker = false;
@@ -147,7 +152,12 @@ auto SnapshotCachedPathSpace::setSnapshotOptions(SnapshotOptions options) -> voi
         this->snapshotState->maxDirtyRoots = std::max<std::size_t>(1, options.maxDirtyRoots);
         this->snapshotState->allowSynchronousRebuild.store(options.allowSynchronousRebuild, std::memory_order_release);
         this->snapshotState->dirty = options.enabled;
-        this->snapshotState->rebuildInProgress = false;
+        // rebuildInProgress and stopWorker belong to a rebuild or a stop that may be running right
+        // now on another thread; they are cleared by whoever set them, never here. Bumping the
+        // mutation counter makes such a rebuild leave the cache dirty when it finishes, since
+        // its result predates this configuration.
+        this->snapshotState->mutationCounter.fetch_add(1, std::memory_order_acq_rel);
+        this->snapshotState->retryNotBefore = std::chrono::steady_clock::time_point{};
         // Start debounce window at enable-time so we do not rebuild immediately.
         this->snapshotState->lastMutation = now;
         this->snapshotState->lastBuild = std::chrono::steady_clock::time_point{};
@@ -157,7 +167,6 @@ auto SnapshotCachedPathSpace::setSnapshotOptions(SnapshotOptions options) -> voi
         this->snapshotState->rebuildFailCount.store(0, std::memory_order_release);
         this->snapshotState->lastRebuildMs.store(0, std::memory_order_release);
         this->snapshotState->bytes.store(0, std::memory_order_release);
-        this->snapshotState->stopWorker = false;
         std::atomic_store_explicit(&this->snapshotState->snapshotView, publishedView, std::memory_order_release);
         std::atomic_store_explicit(&this->snapshotState->dirtyRootsView, publishedRoots, std::memory_order_release);
         this->snapshotState->cv.notify_all();
@@ -220,7 +229,11 @@ auto SnapshotCachedPathSpace::startSnapshotWorker() -> void {
     if (!state) {
         return;
     }
-    std::lock_guard<std::mutex> guard(state->mutex);
+    std::unique_lock<std::mutex> guard(state->mutex);
+    // A worker that was asked to stop is still winding down (its stopper is joining it). Wait for
+    // it to exit instead of treating it as running: otherwise the cache ends up enabled without a
+    // worker, and cancelling the stop request here would leave the stopper joining forever.
+    state->cv.wait(guard, [&]() { return !(state->workerRunning && state->stopWorker); });
     if (state->workerRunning) {
         return;
     }
@@ -238,7 +251,7 @@ auto SnapshotCachedPathSpace::startSnapshotWorker() -> void {
             if (!state->enabled.load(std::memory_order_acquire) || !state->dirty) {
                 continue;
             }
-            auto nextWake = state->lastMutation + state->debounce;
+            auto nextWake = std::max(state->lastMutation + state->debounce, state->retryNotBefore);
             if (state->cv.wait_until(lock, nextWake, [&]() { return state->stopWorker; })) {
                 if (state->stopWorker) {
                     break;
@@ -355,10 +368,16 @@ void SnapshotCachedPathSpace::markSnapshotDirty(Iterator const& path) {
 }
 
 auto SnapshotCachedPathSpace::rebuildSnapshot(std::shared_ptr<SnapshotState> const& state) -> void {
+    // A failed rebuild leaves the cache dirty. Without a pause the worker (and every synchronous
+    // rebuild on read) would retry at once and walk the whole backing space in a tight loop.
+    auto const deferRetry = [](SnapshotState& failed) {
+        failed.retryNotBefore = std::chrono::steady_clock::now() + std::max(failed.debounce, FailedRebuildBackoff);
+    };
     if (!state || !this->backing) {
         if (state) {
             std::lock_guard<std::mutex> guard(state->mutex);
             state->rebuildFailCount.fetch_add(1, std::memory_order_acq_rel);
+            deferRetry(*state);
             state->rebuildInProgress = false;
             state->cv.notify_all();
         }
@@ -399,6 +418,7 @@ auto SnapshotCachedPathSpace::rebuildSnapshot(std::shared_ptr<SnapshotState> con
     }
     if (!visitResult.has_value()) {
         state->rebuildFailCount.fetch_add(1, std::memory_order_acq_rel);
+        deferRetry(*state);
         state->rebuildInProgress = false;
         state->cv.notify_all();
         return;
@@ -454,7 +474,7 @@ auto SnapshotCachedPathSpace::trySnapshotRead(Iterator const& path,
     if (state->allowSynchronousRebuild.load(std::memory_order_acquire)) {
         std::lock_guard<std::mutex> guard(state->mutex);
         if (state->enabled.load(std::memory_order_acquire) && !state->workerRunning && state->dirty && !state->rebuildInProgress
-            && now - state->lastMutation >= state->debounce) {
+            && now - state->lastMutation >= state->debounce && now >= state->retryNotBefore) {
             state->rebuildInProgress = true;
             shouldRebuild = true;
         }

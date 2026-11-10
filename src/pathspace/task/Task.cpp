@@ -6,6 +6,14 @@ auto Task::isCompleted() const -> bool {
     return this->state.isCompleted();
 }
 
+auto Task::isFailed() const -> bool {
+    return this->state.isFailed();
+}
+
+auto Task::isTerminal() const -> bool {
+    return this->state.isTerminal();
+}
+
 auto Task::hasStarted() const -> bool {
     return this->state.hasStarted();
 }

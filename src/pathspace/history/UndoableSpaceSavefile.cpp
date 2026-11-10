@@ -191,6 +191,10 @@ auto UndoableSpace::importHistorySavefile(ConcretePathStringView root,
 
         state->liveBytes = computeJournalLiveBytes(*state);
 
+        // The journal file is replaced below. A writer left open would keep appending to the old,
+        // unlinked file and every later commit would be lost; the next commit reopens it.
+        state->persistenceWriter.reset();
+
         lock.unlock();
 
         if (state->persistenceEnabled) {

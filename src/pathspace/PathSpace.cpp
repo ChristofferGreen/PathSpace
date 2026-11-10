@@ -183,6 +183,14 @@ auto countCategory(std::deque<ElementType> const& types, DataCategory category) 
     return total;
 }
 
+// Spaces on which the current thread has an in()/out() call in flight (innermost last). An insert
+// issued from inside such a call (for example from a span callback) is already protected by the
+// outer call's registration and must not wait for a clear() that is itself waiting for that call.
+auto inFlightSpaces() -> std::vector<PathSpace const*>& {
+    thread_local std::vector<PathSpace const*> stack;
+    return stack;
+}
+
 } // namespace
 
 void PathSpace::retargetNestedMounts(Node const* node, std::string const& basePath) {
@@ -278,6 +286,7 @@ auto PathSpace::operator=(PathSpace const& other) -> PathSpace& {
     this->pool = other.pool ? other.pool : &TaskPool::Instance();
     Executor* exec = static_cast<Executor*>(this->pool);
     this->context = std::make_shared<PathSpaceContext>(exec);
+    this->contextBorrowed = false; // the fresh context is this space's own
     this->setExecutor(exec);
     this->prefix = other.prefix;
     this->activeOutCount.store(0, std::memory_order_relaxed);
@@ -304,6 +313,10 @@ void PathSpace::adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> newConte
         previousContext = this->context;
         this->context   = newContext;
         this->prefix    = newPrefix;
+        if (newContext != previousContext) {
+            // The context now in use was handed in by another space, which keeps owning it.
+            this->contextBorrowed = static_cast<bool>(newContext);
+        }
     }
     // Blocked readers wait on the previous context under the previous prefix; wake them so they
     // re-evaluate against the new binding.
@@ -385,14 +398,14 @@ PathSpace::~PathSpace() {
 auto PathSpace::clear() -> void {
     auto ctx = this->getContext();
     sp_log("PathSpace::clear", "Function Called");
-    this->clearingInProgress.store(true, std::memory_order_release);
+    this->clearingInProgress.store(true, std::memory_order_seq_cst);
 
     if (ctx) {
         // Wake any waiters before clearing to avoid dangling waits
         ctx->notifyAll();
     }
 
-    while (this->activeOutCount.load(std::memory_order_acquire) > 0) {
+    while (this->activeOutCount.load(std::memory_order_seq_cst) > 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
@@ -403,7 +416,11 @@ auto PathSpace::clear() -> void {
     }
 
     this->leaf.clear();
-    ctx->clearWaits();
+    // The wait registry belongs to the context's owner; other spaces sharing the context have
+    // their waiters in it.
+    if (!this->borrowsContext()) {
+        ctx->clearWaits();
+    }
     this->clearingInProgress.store(false, std::memory_order_release);
 }
 
@@ -414,12 +431,19 @@ auto PathSpace::shutdown() -> void {
     if (!ctx) {
         return;
     }
-    this->clearingInProgress.store(true, std::memory_order_release);
+    if (this->borrowsContext()) {
+        // Mounted in (or taken out of) another space: the context, its observer and its waiters
+        // are that space's. Shutting them down from here would leave the owner unable to block
+        // ever again. Tear down this space's own tree only.
+        this->clear();
+        return;
+    }
+    this->clearingInProgress.store(true, std::memory_order_seq_cst);
     ctx->invalidateSink();
     // Mark shutting down and wake all waiters so blocking outs can exit promptly
     ctx->shutdown();
     sp_log("PathSpace::shutdown Context shutdown signaled", "PathSpaceShutdown");
-    while (this->activeOutCount.load(std::memory_order_acquire) > 0) {
+    while (this->activeOutCount.load(std::memory_order_seq_cst) > 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     this->leaf.clear();
@@ -435,17 +459,51 @@ auto PathSpace::in(Iterator const& path, InputData const& data) -> InsertReturn 
     sp_log("PathSpace::in", "Function Called");
     InsertReturn ret;
 
-    this->leaf.in(path, data, ret);
-
-    if (ret.nbrSpacesInserted > 0 && ctx) {
-        for (auto const& req : ret.retargets) {
-            if (!req.space)
-                continue;
-            auto mountPrefix = makeMountPrefix(pfx, req.mountPrefix);
-            req.space->adoptContextAndPrefix(ctx, std::move(mountPrefix));
+    // Inserts take part in the same handshake as reads: clear()/shutdown() wait for the ones in
+    // flight, and an insert that arrives while the tree is being wiped waits for the wipe to end
+    // instead of writing into nodes that are about to be freed.
+    struct InFlight {
+        PathSpace& self;
+        explicit InFlight(PathSpace& owner) : self(owner) {
+            auto& stack = inFlightSpaces();
+            // Nested in an operation of this thread on the same space: that operation keeps the
+            // tree alive, and waiting here for a clear that waits for it would never end.
+            bool const nested = std::find(stack.begin(), stack.end(), &owner) != stack.end();
+            while (true) {
+                self.activeOutCount.fetch_add(1, std::memory_order_seq_cst);
+                if (nested || !self.clearingInProgress.load(std::memory_order_seq_cst)) {
+                    break;
+                }
+                self.activeOutCount.fetch_sub(1, std::memory_order_seq_cst);
+                std::this_thread::yield();
+            }
+            stack.push_back(&owner);
         }
-        // Prevent upstream callers from re-applying retargets with an incorrect prefix.
-        ret.retargets.clear();
+        ~InFlight() {
+            inFlightSpaces().pop_back();
+            self.activeOutCount.fetch_sub(1, std::memory_order_seq_cst);
+        }
+    };
+    {
+        InFlight inFlight{*this};
+        if (auto hook = testing::GetPathSpaceAdmissionHook()) {
+            hook();
+        }
+
+        this->leaf.in(path, data, ret);
+
+        if (ret.nbrSpacesInserted > 0 && ctx) {
+            for (auto const& req : ret.retargets) {
+                if (!req.space)
+                    continue;
+                auto mountPrefix = makeMountPrefix(pfx, req.mountPrefix);
+                req.space->adoptContextAndPrefix(ctx, std::move(mountPrefix));
+            }
+            // Prevent upstream callers from re-applying retargets with an incorrect prefix.
+            ret.retargets.clear();
+        }
+        // The tree is no longer touched below. Leave the handshake before notifying: observers run
+        // user code, which must be free to call clear() on this space.
     }
 
     if (ret.nbrSpacesInserted > 0 || ret.nbrValuesInserted > 0 || ret.nbrTasksInserted > 0) {
@@ -487,7 +545,11 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
     struct ActiveOutGuard {
         PathSpace* self;
         bool engaged{false};
+        bool tracked{false};
         ~ActiveOutGuard() {
+            if (tracked) {
+                inFlightSpaces().pop_back();
+            }
             if (engaged) {
                 self->activeOutCount.fetch_sub(1, std::memory_order_acq_rel);
             }
@@ -497,11 +559,19 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
     auto contextPtr = this->getContext();
     auto prefixCopy = this->getPrefix();
 
-    if (this->clearingInProgress.load(std::memory_order_acquire)) {
+    // Register as in flight *before* sampling the clearing flag. clear()/shutdown() raise the flag
+    // and then wait for the count to drain, so either they see this operation or it sees the flag;
+    // checking first would let a clear start in between and free the tree under this read.
+    guard.engaged = true;
+    this->activeOutCount.fetch_add(1, std::memory_order_seq_cst);
+    if (this->clearingInProgress.load(std::memory_order_seq_cst)) {
         return Error{Error::Code::Timeout, "PathSpace clearing in progress"};
     }
-    guard.engaged = true;
-    this->activeOutCount.fetch_add(1, std::memory_order_acq_rel);
+    inFlightSpaces().push_back(this);
+    guard.tracked = true;
+    if (auto hook = testing::GetPathSpaceAdmissionHook()) {
+        hook();
+    }
     auto retargetNestedIfNeeded = [&]() {
         if (!(options.doPop && inputMetadata.dataCategory == DataCategory::UniquePtr && contextPtr)) {
             return;

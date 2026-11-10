@@ -21,6 +21,7 @@ The renderer, UI, widget, inspector and web-server plans were removed together w
 - `docs/AI_Todo.task` — backlog items; keep plans and backlog consistent.
 - `docs/History_Journal_Wiring.md` — undo journal wiring notes.
 - `docs/Optimization.md` — benchmark recipe and optimization experiment log.
+- `docs/State_Machine_Audit.md` — audit of implicit state machines: deficiencies, regression tests, fix status and open decisions.
 
 ## Updating This Index
 When a plan is added, retired or re-prioritized, update the lists above.

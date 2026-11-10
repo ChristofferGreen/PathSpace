@@ -326,6 +326,31 @@ static auto resolveConcreteNode(Node& root, std::string const& pathStr) -> Expec
 
 } // namespace
 
+// A reader that asks for the generic representation (podPreferred == false) of the type a node
+// keeps on its POD lane is not a type mismatch: which representation a node uses is internal.
+// Move the lane to generic storage so the reader is served by the ordinary NodeData path.
+// Returns an error only when the lane holds a different type or the upgrade failed.
+static auto upgradePodLaneForGenericReader(Node& node, InputMetadata const& inputMetadata) -> std::optional<Error> {
+    if (inputMetadata.podPreferred) {
+        return std::nullopt;
+    }
+    auto payload = loadPodPayload(node);
+    if (!payload) {
+        return std::nullopt;
+    }
+    if (inputMetadata.typeInfo == nullptr || !payload->matches(*inputMetadata.typeInfo)) {
+        return Error{Error::Code::InvalidType, "Type mismatch during deserialization"};
+    }
+    InsertReturn upgradeRet;
+    if (!migratePodToNodeData(node, upgradeRet)) {
+        if (!upgradeRet.errors.empty()) {
+            return upgradeRet.errors.front();
+        }
+        return Error{Error::Code::UnknownError, "Failed to upgrade POD payload for generic access"};
+    }
+    return std::nullopt;
+}
+
 auto migratePodToNodeData(Node& node, InsertReturn& ret) -> bool {
     std::unique_lock<std::mutex> lg(node.payloadMutex);
     if (!node.podPayload) {
@@ -747,6 +772,8 @@ auto Leaf::outAtNode(Node& node,
                     continue;
                 std::optional<Error> res;
                 bool attempted = false;
+                // A lane of another type is simply not a match for this child; keep looking.
+                (void)upgradePodLaneForGenericReader(*childTry, inputMetadata);
                 if (inputMetadata.podPreferred && hasPodPayload(*childTry)) {
                     foundAny  = true;
                     attempted = true;
@@ -822,8 +849,8 @@ auto Leaf::outAtNode(Node& node,
             return res;
         }
 
-        if (!inputMetadata.podPreferred && hasPodPayload(*child)) {
-            return Error{Error::Code::InvalidType, "Type mismatch during deserialization"};
+        if (auto upgradeError = upgradePodLaneForGenericReader(*child, inputMetadata)) {
+            return upgradeError;
         }
 
         if (inputMetadata.podPreferred && hasPodPayload(*child)) {
@@ -1185,11 +1212,6 @@ auto Leaf::spanPackMut(std::span<const std::string> paths,
     if (!inputMetadata.podPreferred) {
         return std::unexpected(Error{Error::Code::NotSupported, "Span pack requires POD fast path"});
     }
-    if (!this->packInsertSeen.load(std::memory_order_acquire)) {
-        for (int i = 0; i < 5 && !this->packInsertSeen.load(std::memory_order_acquire); ++i) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        }
-    }
     Node& rootRef = this->mutableRoot();
     std::vector<Node*> nodes;
     nodes.reserve(paths.size());
@@ -1345,7 +1367,6 @@ auto Leaf::packInsert(std::span<const std::string> paths,
                       InputMetadata const& inputMetadata,
                       std::span<void const* const> values) -> InsertReturn {
     std::scoped_lock packLock(this->packInsertMutex);
-    this->packInsertSeen.store(true, std::memory_order_release);
     InsertReturn ret;
     if (!inputMetadata.podPreferred || inputMetadata.dataCategory == DataCategory::UniquePtr
         || inputMetadata.dataCategory == DataCategory::Execution) {
@@ -1430,7 +1451,6 @@ auto Leaf::packInsert(std::span<const std::string> paths,
 auto Leaf::packInsertSpans(std::span<const std::string> paths,
                            std::span<SpanInsertSpec const> specs) -> InsertReturn {
     std::scoped_lock packLock(this->packInsertMutex);
-    this->packInsertSeen.store(true, std::memory_order_release);
     InsertReturn ret;
 
     if (paths.size() != specs.size()) {

@@ -26,6 +26,48 @@ UndoableSpace::JournalTransactionGuard::JournalTransactionGuard(
     , statePtr(std::move(state))
     , active(active) {}
 
+UndoableSpace::JournalTransactionGuard::JournalTransactionGuard(JournalTransactionGuard&& other) noexcept
+    : owner(std::exchange(other.owner, nullptr))
+    , statePtr(std::move(other.statePtr))
+    , active(std::exchange(other.active, false))
+    , dirty(std::exchange(other.dirty, false)) {
+    other.statePtr.reset();
+}
+
+auto UndoableSpace::JournalTransactionGuard::operator=(JournalTransactionGuard&& other) noexcept
+    -> JournalTransactionGuard& {
+    if (this != &other) {
+        this->release();
+        this->owner    = std::exchange(other.owner, nullptr);
+        this->statePtr = std::move(other.statePtr);
+        this->active   = std::exchange(other.active, false);
+        this->dirty    = std::exchange(other.dirty, false);
+        other.statePtr.reset();
+    }
+    return *this;
+}
+
+UndoableSpace::JournalTransactionGuard::~JournalTransactionGuard() {
+    this->release();
+}
+
+void UndoableSpace::JournalTransactionGuard::release() noexcept {
+    if (!this->active || !this->owner || !this->statePtr) {
+        return;
+    }
+    // The mutations recorded so far already reached the inner space, so they are committed rather
+    // than discarded: the journal has to keep describing the tree.
+    try {
+        if (auto result = this->commit(); !result) {
+            sp_log("History transaction released without commit failed to commit: "
+                       + result.error().message.value_or("unknown error"),
+                   "UndoableSpace");
+        }
+    } catch (...) {
+        sp_log("History transaction released without commit threw while committing", "UndoableSpace");
+    }
+}
+
 void UndoableSpace::JournalTransactionGuard::markDirty() {
     if (active && statePtr) {
         owner->markJournalTransactionDirty(*statePtr);
@@ -148,6 +190,9 @@ auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Exp
             .count());
 
     bool flushOnCommit = !state.options.manualGarbageCollect;
+    // Appending after an undo discards the redo tail in memory. Those records are still in the
+    // file, in front of where an append would land, so the file is rewritten instead of appended to.
+    bool const rewriteJournal = state.persistenceEnabled && beforeStats.redoCount > 0;
     for (std::size_t i = 0; i < pendingEntries.size(); ++i) {
         auto& entry = pendingEntries[i];
         if (entry.timestampMs == 0) {
@@ -159,7 +204,7 @@ auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Exp
         entry.sequence = state.nextSequence++;
         auto enforceRetention = !state.options.manualGarbageCollect;
         state.journal.append(entry, enforceRetention);
-        if (state.persistenceEnabled) {
+        if (state.persistenceEnabled && !rewriteJournal) {
             bool fsyncThisEntry = flushOnCommit && (i + 1 == pendingEntries.size());
             if (auto append = state.persistenceWriter->append(entry, fsyncThisEntry); !append) {
                 scope.setResult(false, append.error().message.value_or("append_failed"));
@@ -185,7 +230,7 @@ auto UndoableSpace::commitJournalTransaction(UndoJournalRootState& state) -> Exp
     }
 
     if (state.persistenceEnabled) {
-        if (trimmedEntriesDelta > 0) {
+        if (rewriteJournal || trimmedEntriesDelta > 0) {
             auto compact = compactJournalPersistence(state, !state.options.manualGarbageCollect);
             if (!compact) {
                 scope.setResult(false, compact.error().message.value_or("compact_failed"));

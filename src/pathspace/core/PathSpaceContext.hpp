@@ -4,6 +4,7 @@
 #include "core/NotificationSink.hpp"
 #include "task/Executor.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <optional>
@@ -11,6 +12,7 @@
 #include <string>
 #include <thread>
 #include <string_view>
+#include <vector>
 
 namespace SP {
 
@@ -135,21 +137,32 @@ public:
             auto const stripped = stripIndexSuffixes(path);
             waitRegistry->notify(stripped ? std::string_view{*stripped} : path);
         }
+        // Re-entrancy guard: an observer that notifies this context from inside its own callback
+        // must not recurse. That is a property of the calling thread, so it is tracked per thread;
+        // a flag on the context would also swallow unrelated notifications from other threads
+        // that arrive while a delivery is in progress.
+        auto& delivering = deliveringContexts();
+        if (std::find(delivering.begin(), delivering.end(), this) != delivering.end()) {
+            return;
+        }
         std::shared_ptr<NotificationSink> sinkCopy;
         {
             std::lock_guard<std::mutex> lg(this->mutex);
-            if (!this->sink || this->notifyingSink) {
-                return;
-            }
-            this->notifyingSink = true;
-            sinkCopy            = this->sink;
+            sinkCopy = this->sink;
         }
+        if (!sinkCopy) {
+            return;
+        }
+        struct DeliveryScope {
+            std::vector<PathSpaceContext const*>& stack;
+            DeliveryScope(std::vector<PathSpaceContext const*>& stackIn, PathSpaceContext const* context)
+                : stack(stackIn) {
+                stack.push_back(context);
+            }
+            ~DeliveryScope() { stack.pop_back(); }
+        } deliveryScope{delivering, this};
         std::string pathCopy(path);
         sinkCopy->notify(pathCopy);
-        {
-            std::lock_guard<std::mutex> lg(this->mutex);
-            this->notifyingSink = false;
-        }
     }
 
     // Notify all waiters (used during shutdown and broad updates).
@@ -207,10 +220,15 @@ private:
         std::atomic<int>               inFlight{0};
     };
 
+    // Contexts whose observer is being called on the current thread (innermost last).
+    static auto deliveringContexts() -> std::vector<PathSpaceContext const*>& {
+        thread_local std::vector<PathSpaceContext const*> stack;
+        return stack;
+    }
+
     // Observer sink for lifetime-safe delivery.
     mutable std::mutex                 mutex;
     std::shared_ptr<NotificationSink>  sink;
-    bool                               notifyingSink = false;
 
     // Preferred executor for task scheduling.
     std::atomic<Executor*>             executorPtr{nullptr};
