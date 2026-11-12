@@ -105,6 +105,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/pathspace/test_PathSpaceJsonExporterBasics.cpp
   unit/pathspace/test_PathSpaceJsonConverters.cpp
   unit/pathspace/test_PathSpaceHeader.cpp
+  unit/pathspace/test_PathSpaceFutureHandles.cpp
   unit/pathspace/test_PathSpaceBaseDefaults.cpp
   unit/pathspace/test_VisitOptions.cpp
   unit/layer/test_BoundedPathSpace.cpp
