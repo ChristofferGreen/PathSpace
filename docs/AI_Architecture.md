@@ -449,6 +449,38 @@ Concurrency and notifications:
   - Providers with blocking reads should notify waiters upon enqueue (`notify(path)` or `notifyAll()`).
   - Use bounded waits and cooperative shutdown: long-running loops should check a stop flag and exit promptly; `PathSpace::shutdown()` marks shutting down and wakes waiters.
 
+### View API, invariants and examples
+**`PathView`** (`src/pathspace/layer/PathView.hpp`)
+- Constructed as `PathView(backingSpace, permission, root = "")`; `permission` is `std::function<Permission(Iterator const&)>` returning `{read, write, execute}`.
+- Invariants: the callback sees the path as the caller spelled it (before `root` is prepended). `in` needs `write`, `out` (read/take/peek) needs `read`; a denied call returns `InvalidPermissions` (inserts report it in `InsertReturn::errors`). `execute` is part of the struct but the view does not check it. A non-empty `root` is prepended to every forwarded path. `visit` maps the view's root to the backing root, drops entries outside `root`, and skips subtrees the callback denies for reading.
+- Example (`tests/unit/layer/test_PathView.cpp`, suite `layer.path_view`):
+  ```cpp
+  auto backing = std::make_shared<PathSpace>();
+  PathView view(backing, [](Iterator const& p) {
+      bool ok = p.toStringView().find("/deny") == std::string_view::npos;
+      return Permission{.read = ok, .write = ok, .execute = true};
+  }, "/root");
+  view.insert("/allow/value", 42);   // stored at /root/allow/value in `backing`
+  view.insert("/deny/value", 7);     // InvalidPermissions
+  ```
+- Further coverage: `tests/unit/layer/test_PathViewCoverage.cpp` (missing backing space, root filtering, visit filtering, join/strip normalization).
+
+**`PathAlias`** (`src/pathspace/layer/PathAlias.hpp`)
+- Constructed as `PathAlias(upstream, targetPrefix)`; `setTargetPrefix` normalizes the prefix (leading `/`, no trailing `/`) and retargets atomically, then notifies the mount prefix (or `notifyAll` when the mount is unknown) so blocked readers re-check.
+- Invariants: `in`/`out` accept concrete paths only (glob paths, also ones introduced by the prefix, are rejected); with no upstream the alias returns errors and `notify` is a no-op; the alias does not mirror upstream notifications by itself.
+- Example (`tests/unit/layer/test_PathAlias.cpp`, suite `layer.path_alias`):
+  ```cpp
+  auto upstream = std::make_shared<PathSpace>();
+  PathAlias alias{upstream, "/dev"};
+  alias.insert<"/mouse/0/name", std::string>("mouse0");   // upstream: /dev/mouse/0/name
+  alias.setTargetPrefix("/dev2");                          // later operations go to /dev2/...
+  ```
+  Mounting the alias inside a parent (`parent.insert<"/alias">(std::move(aliasPtr))`) makes `/alias/a` resolve to `<targetPrefix>/a` upstream.
+- Further coverage: `tests/unit/layer/test_PathAliasCoverage.cpp`.
+
+### Default Paths
+There is no implicit default root or built-in node tree in the core: a fresh `PathSpace` is empty and every path is created on first insert. The reserved names that layers define themselves (`_history/*` under history-enabled roots, `/_system/*` on a trellis, the `/diagnostics/history/...` mirror) are listed in `docs/AI_Paths.md` and defined in `src/pathspace/history/UndoHistoryUtils.hpp` and `src/pathspace/layer/PathSpaceTrellis.cpp`; names starting with `_` are reserved for such control and telemetry nodes. Anything else (for example `/system/applications/<app>`) is a caller convention. Defaults that do exist are in the options structs: `Out{}` is a non-blocking read/pop-free call with default validation, `Block{}` waits (effectively) forever until you give it a timeout, and `In{}` executes lambdas immediately unless `executionCategory = Lazy`. Mounting a view or alias under a parent space (`parent.insert<"/alias">(std::move(layer))`) adopts the parent's context and prefix, so notifications and waits keep working across the mount (`tests/unit/layer/test_PathAlias.cpp`, "Nested mounting under a parent PathSpace"; `tests/unit/layer/test_BoundedPathSpace.cpp`, "works mounted under /devices/test").
+
 ### Shutdown and Test Hooks
 
 - `PathSpace::shutdown()` is the public API to cooperatively wake waiters and clear paths during teardown.
