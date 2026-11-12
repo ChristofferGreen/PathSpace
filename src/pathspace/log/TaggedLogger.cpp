@@ -115,6 +115,54 @@ auto TaggedLogger::setLoggingEnabled(bool enabled) -> void {
     loggingEnabled.store(enabled, std::memory_order_relaxed);
 }
 
+auto TaggedLogger::setEnabledTags(std::set<std::string> tags) -> void {
+    std::lock_guard<std::mutex> lock(tagFilterMutex);
+    enabledTags = std::move(tags);
+}
+
+auto TaggedLogger::enableTag(const std::string& tag) -> void {
+    std::lock_guard<std::mutex> lock(tagFilterMutex);
+    enabledTags.insert(tag);
+}
+
+auto TaggedLogger::disableTag(const std::string& tag) -> void {
+    std::lock_guard<std::mutex> lock(tagFilterMutex);
+    enabledTags.erase(tag);
+}
+
+auto TaggedLogger::clearEnabledTags() -> void {
+    std::lock_guard<std::mutex> lock(tagFilterMutex);
+    enabledTags.clear();
+}
+
+auto TaggedLogger::skipTag(const std::string& tag) -> void {
+    std::lock_guard<std::mutex> lock(tagFilterMutex);
+    skipTags.insert(tag);
+}
+
+auto TaggedLogger::unskipTag(const std::string& tag) -> void {
+    std::lock_guard<std::mutex> lock(tagFilterMutex);
+    skipTags.erase(tag);
+}
+
+auto TaggedLogger::shouldLog(const std::set<std::string>& tags) const -> bool {
+    std::lock_guard<std::mutex> lock(tagFilterMutex);
+    if (!enabledTags.empty()) {
+        for (auto const& tag : tags)
+            if (!enabledTags.contains(tag))
+                return false;
+    }
+    for (auto const& skipTag : skipTags)
+        if (tags.contains(skipTag))
+            return false;
+    return true;
+}
+
+auto TaggedLogger::flush() -> void {
+    std::unique_lock<std::mutex> lock(queueMutex);
+    idleCv.wait(lock, [this] { return messageQueue.empty() && !writing; });
+}
+
 auto TaggedLogger::processQueue() -> void {
     while (true) {
         std::unique_lock<std::mutex> lock(this->queueMutex);
@@ -127,10 +175,13 @@ auto TaggedLogger::processQueue() -> void {
         while (!this->messageQueue.empty()) {
             const auto msg = std::move(this->messageQueue.front());
             this->messageQueue.pop();
+            this->writing = true;
             lock.unlock();
             this->writeToStderr(msg);
             lock.lock();
+            this->writing = false;
         }
+        this->idleCv.notify_all();
     }
 }
 
@@ -145,13 +196,6 @@ inline auto SP::TaggedLogger::getShortPath(const char* filepath) -> std::string 
 }
 
 inline auto SP::TaggedLogger::writeToStderr(const LogMessage& msg) const -> void {
-    if (!this->enabledTags.empty())
-        for (auto const& tag : msg.tags)
-            if (!this->enabledTags.contains(tag))
-                return;
-    for (auto const& skipTag : this->skipTags)
-        if (msg.tags.contains(skipTag))
-            return;
     const auto  now      = msg.timestamp;
     const auto  nowMs    = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
     const auto  nowTimeT = std::chrono::system_clock::to_time_t(now);
@@ -188,6 +232,22 @@ void set_thread_name(const std::string& name) {
 
 void set_logging_enabled(bool enabled) {
     logger().setLoggingEnabled(enabled);
+}
+
+void enable_log_tag(const std::string& tag) {
+    logger().enableTag(tag);
+}
+
+void disable_log_tag(const std::string& tag) {
+    logger().disableTag(tag);
+}
+
+void clear_enabled_log_tags() {
+    logger().clearEnabledTags();
+}
+
+void flush_logs() {
+    logger().flush();
 }
 
 } // namespace SP

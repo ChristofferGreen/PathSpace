@@ -38,19 +38,36 @@ public:
     auto setLoggingEnabled(bool enabled) -> void;
     auto isEnabled() const -> bool { return loggingEnabled.load(std::memory_order_relaxed); }
 
+    // Tag filtering. A non-empty allowlist (enabled tags) restricts output to messages whose tags
+    // are all in the allowlist; the skip list then drops messages carrying any skipped tag. The
+    // allowlist is empty by default. Filtering happens when a message is logged, so changes apply
+    // to subsequent messages only and are safe to make while other threads log.
+    auto setEnabledTags(std::set<std::string> tags) -> void;
+    auto enableTag(const std::string& tag) -> void;
+    auto disableTag(const std::string& tag) -> void;
+    auto clearEnabledTags() -> void;
+    auto skipTag(const std::string& tag) -> void;
+    auto unskipTag(const std::string& tag) -> void;
+    auto shouldLog(const std::set<std::string>& tags) const -> bool;
+
+    // Blocks until every accepted message has been written to stderr.
+    auto flush() -> void;
+
     static std::mutex coutMutex;
 
 private:
     std::queue<LogMessage>  messageQueue;
     mutable std::mutex      queueMutex;
     std::condition_variable cv;
+    std::condition_variable idleCv;
+    bool                    writing{false}; // guarded by queueMutex
     std::thread             workerThread;
     std::atomic<bool>       running;
     std::atomic<bool>       loggingEnabled;
     // std::set<std::string>   skipTags{};
     std::set<std::string> skipTags{"Function Called", "INFO", "WaitMap", "Leaf", "ThreadPool", "TaskPool", "PathSpaceShutdown", "Testcase", "Task", "Task lambda execution", "Task lambda completed", "Task copying result", "ERROR", "SlidingBuffer", "NodeData", "PathSpace", "PathSpaceBase"};
     std::set<std::string> enabledTags{};
-    // std::set<std::string>   enabledTags{"TaskPool", "PathSpaceShutdown", "Leaf", "WaitMap", "Testcase"};
+    mutable std::mutex    tagFilterMutex; // guards skipTags and enabledTags
 
     std::unordered_map<std::thread::id, std::string> threadNames;
     mutable std::mutex                               threadNamesMutex;
@@ -69,7 +86,11 @@ auto TaggedLogger::log_impl(const std::string& message, const std::source_locati
     if (!loggingEnabled)
         return;
 
-    const auto logMessage = LogMessage{.timestamp = std::chrono::system_clock::now(), .tags = {std::forward<Tags>(tags)...}, .message = message, .threadName = getThreadName(std::this_thread::get_id()), .location = location};
+    std::set<std::string> tagSet{std::string(std::forward<Tags>(tags))...};
+    if (!shouldLog(tagSet))
+        return;
+
+    const auto logMessage = LogMessage{.timestamp = std::chrono::system_clock::now(), .tags = std::move(tagSet), .message = message, .threadName = getThreadName(std::this_thread::get_id()), .location = location};
 
     {
         std::unique_lock<std::mutex> lock(this->queueMutex);
@@ -82,6 +103,10 @@ auto TaggedLogger::log_impl(const std::string& message, const std::source_locati
 
 void set_thread_name(const std::string& name);
 void set_logging_enabled(bool enabled);
+void enable_log_tag(const std::string& tag);
+void disable_log_tag(const std::string& tag);
+void clear_enabled_log_tags();
+void flush_logs();
 
 } // namespace SP
 
