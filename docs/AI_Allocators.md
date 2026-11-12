@@ -26,7 +26,7 @@ The same resource can be attached to a shared context for spaces that share one:
 - The serialized payload buffer (`SlidingBuffer`) of every node.
 - Copies: `PathSpace(PathSpace const&)`, `clone()` and the nested spaces a copy creates use the source's resource. Assigning (`a = b`) keeps `a`'s own resource.
 
-Not covered (global allocator): the `Node` objects themselves, the per-node type/task/future queues, task control blocks, the wait registry and temporary buffers used while serializing. A custom resource therefore bounds the dominant tree and payload storage, not every byte the process allocates.
+Not covered (global allocator): the `Node` objects themselves (about 2 KB each), the POD fast-path lanes used for trivially copyable values such as `int`, the per-node type/task/future queues, task control blocks, the wait registry and temporary buffers used while serializing. A custom resource therefore bounds the dominant tree and payload storage, not every byte the process allocates.
 
 ## Rules for the resource
 1. **Lifetime.** The caller owns the resource. It must outlive the space and everything allocated from it, including copies and clones. Declare it before the space (or keep it in a longer-lived scope). The context stores a raw pointer only.
@@ -38,7 +38,7 @@ Not covered (global allocator): the `Node` objects themselves, the per-node type
 ## Choosing a resource
 | Resource | Fits | Watch out for |
 |---|---|---|
-| default (`new`/`delete`) | General use | None; no allocator indirection beyond one virtual call |
+| default (`new`/`delete`) | General use | None; one virtual call per allocation |
 | `synchronized_pool_resource` | Many small nodes freed and reused | Pool internals take locks; measure under your thread count |
 | `monotonic_buffer_resource` + `LockedMemoryResource` | Build a tree, use it, drop it as a unit (per-frame or per-request spaces) | Memory is only returned when the arena is released; `take`, `clear` and erased nodes do not give memory back |
 
@@ -46,4 +46,4 @@ Not covered (global allocator): the `Node` objects themselves, the per-node type
 `tests/unit/CountingMemoryResource.hpp` counts allocations, deallocations and live bytes with atomics. Typical assertion: build a space on it, run the workload, destroy the space, and check `liveAllocations() == 0`. The tests in `tests/unit/pathspace/test_PathSpaceAllocator.cpp` show stress, concurrency and arena-outlives-space patterns.
 
 ## Benchmarks
-`PathSpaceBench --resource default|pool|monotonic|counting` runs the hierarchy scenarios on each resource (single-threaded, so the pool and arena are used unsynchronized); `counting` also prints allocation counts and peak bytes. See `docs/Optimization.md` for the recipe and the recorded A/B numbers.
+Measured in the hierarchy benchmark, default, pool and monotonic resources are within a few percent of each other in instructions and cycles; pick a resource for lifetime and locality reasons (release everything at once, bound or count memory), not for speed. `PathSpaceBench --resource default|pool|monotonic|counting` runs the hierarchy scenarios on each resource (single-threaded, so the pool and arena are used unsynchronized); `counting` also prints allocation counts and peak bytes. See `docs/Optimization.md` for the recipe and the recorded A/B numbers.

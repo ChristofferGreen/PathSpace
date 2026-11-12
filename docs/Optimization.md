@@ -25,6 +25,9 @@ cmake --build build-release -j
 | 2026-01-31 | Skip retarget path building | Rejected (regressed nested totals) |
 | 2026-01-31 | Nested iterator construction micro-opt | Rejected (mixed) |
 | 2026-01-31 | `parallel_node_hash_map` submaps 12 -> 4 | Reverted (ASan abort in `test_PathSpace_execution`) |
+| 2026-11-13 | `parallel_node_hash_map` submaps 12 -> 4, with the `getOrCreateChild` shard-lock fix | Kept (instructions 20.4G -> 0.9G, RSS 453 MB -> 6.7 MB on the 400-insert run) |
+| 2026-11-13 | `std::pmr` children map and `SlidingBuffer` (default resource) | Kept (no measurable cost once nodes are small; see below) |
+| 2026-11-13 | Custom memory resources (pool, monotonic arena) vs default | No significant difference in the hierarchy benchmark; arena frees nothing before release |
 | 2026-01-31 | Snapshot array-backed trie (bench-only) | Not adopted: reads ~100x faster, but build 3-5x slower, so total is worse |
 
 Raw notes for each experiment follow. Entries marked "debug build" or "single run" predate the recipe above.
@@ -164,3 +167,23 @@ Raw notes for each experiment follow. Entries marked "debug build" or "single ru
   - Nested chain: build 205.07 ms, read 0.06 ms, total 205.13 ms
   - Nested fanout: build 104.86 ms, read 0.04 ms, total 104.90 ms
 - Result: Snapshot array has dramatically faster reads but substantially higher build time; total time is worse with the current snapshot build path at this cap.
+
+### 2026-11-13 — Node size, `std::pmr` containers and custom memory resources
+- Setup: Apple Silicon, shared and heavily loaded machine (wall-clock numbers swung 10x between identical runs, swap in use). Wall time is therefore not trusted; instructions retired, cycles and peak RSS come from `/usr/bin/time -l` and agree between repeats. Every comparison below ran back to back in one session; master and the new build were each measured twice.
+- Build: Release (`-DPATHSPACE_WERROR=ON`), `PathSpaceBench --runs 15 --warmup 2 --max-inserts 400` for master vs new; `--runs 10 --warmup 1` (default 10,000 inserts) for new only (master needs several GB at that size).
+- **Node size.** `Node::DefaultSubmaps` is the log2 of phmap's shard count: 12 embedded 4096 submaps, `sizeof(Node)` = 458,752 bytes. With the `std::pmr` children map each submap also stores a `polymorphic_allocator` (+8 bytes per submap), 491,520 bytes per node. In the node-heavy benchmark that cost about +7% RSS and +10-20% cycles (best of 6 interleaved runs: 1.10G baseline, 1.04G `SlidingBuffer`-only pmr, 1.25G pmr children) with 3-4% fewer instructions, so the pmr children map was not acceptable at 12 submaps. Constructing and destroying 300 nodes in isolation was equal (about 10 ms either way), so the cost came from footprint, not CPU work.
+- **Fix.** `DefaultSubmaps = 4` (16 shards, about 2 KB per node). The 2026-01-31 attempt aborted under ASan because `getOrCreateChild` read the iterator returned by `try_emplace` after releasing the shard lock; a concurrent insert into the same shard reallocates its slot table. With 4096 shards this was practically unreachable, with 16 it crashed roughly 1 in 50 runs of `pathspace.multithreading`. `getOrCreateChild` now takes the child pointer under the lock (`lazy_emplace_l`), covered by `core.node.concurrency`. 150 soak runs after the fix were clean.
+- **Master vs new (default resource), 400 inserts:**
+
+| | master | new |
+|---|---|---|
+| instructions retired | 20.44G / 20.45G | 0.91G / 0.91G |
+| cycles | 6.98G / 7.16G | 0.30G / 0.27G |
+| peak RSS | 453.7 MB / 451.4 MB | 6.7 MB / 6.8 MB |
+| scenario p50 total (Wide, Deep, Nested chain, Nested fanout) | 9.3, 64.4, 30.3, 22.5 ms (second run 7.5, 22.9, 27.9, 17.2) | 1.0, 1.8, 0.9, 1.6 ms (second run 1.1, 1.0, 0.9, 0.7) |
+
+- **Resources, new build, 400 inserts** (instructions / cycles / RSS): default 0.91G / 0.30G / 6.7 MB, pool 0.89G / 0.30G / 6.9 MB, monotonic 0.88G / 0.30G / 6.7 MB, counting 0.92G / 0.30G / 6.7 MB. Allocation counts through the counting resource: Wide tree 883 (0.03 MiB peak), Deep chain 1,865 (0.06 MiB), Nested chain 1,696 (0.05 MiB), Nested fanout 1,273 (0.04 MiB); the monotonic arena took one 2 MiB block from its upstream.
+- **Resources, new build, default 10,000 inserts** (instructions / cycles / RSS): default 7.24G / 2.69G / 99 MB (repeat 7.24G / 2.57G / 98.8 MB), pool 7.07G / 2.58G / 101 MB, monotonic 7.02G / 2.64G / 98.6 MB, counting 7.27G / 2.62G / 99.3 MB. Deep chain makes 46,662 allocations (1.42 MiB peak) and Wide tree 10,387 (0.3 MiB). Instruction and cycle counts differ by under 3% across resources, inside the repeat-to-repeat spread, so no resource is recommended on speed alone.
+- What a custom resource covers is limited to tree entries and payload buffers (see `docs/AI_Allocators.md`); POD payload lanes, `NodeData` queues and task state still use the global allocator.
+- Reproduce: `./scripts/bench_allocators.sh build-release --runs 10 --warmup 1 --max-inserts 400`, and compare against a master build with `/usr/bin/time -l` for instructions and RSS.
+
