@@ -863,7 +863,13 @@ auto Leaf::outAtNode(Node& node,
             return res;
         }
 
-        if (child->data) {
+        // `data` is installed under payloadMutex by concurrent inserts; check it under the lock.
+        bool childHasData = false;
+        {
+            std::lock_guard<std::mutex> lg(child->payloadMutex);
+            childHasData = static_cast<bool>(child->data);
+        }
+        if (childHasData) {
             std::optional<Error> res;
             {
                 std::lock_guard<std::mutex> lg(child->payloadMutex);
