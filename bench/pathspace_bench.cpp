@@ -7,6 +7,8 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <memory>
+#include <memory_resource>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -33,6 +35,8 @@ struct RunStats {
     double readMs = 0.0;
     double totalMs = 0.0;
     std::size_t readCount = 0;
+    std::size_t allocations = 0;  // counting/monotonic resources only
+    std::size_t peakBytes = 0;
 };
 
 struct Options {
@@ -43,6 +47,59 @@ struct Options {
     Engine engine = Engine::PathSpace;
     std::size_t maxReads = std::numeric_limits<std::size_t>::max();
     std::size_t maxInserts = 10'000;
+    // Memory resource the PathSpace engine allocates from.
+    enum class Resource { Default, Pool, Monotonic, Counting };
+    Resource resource = Resource::Default;
+};
+
+// Counts allocations and tracks peak live bytes while forwarding to the global heap.
+class CountingResource final : public std::pmr::memory_resource {
+public:
+    std::size_t allocations = 0;
+    std::size_t liveBytes   = 0;
+    std::size_t peakBytes   = 0;
+
+private:
+    auto do_allocate(std::size_t bytes, std::size_t alignment) -> void* override {
+        ++allocations;
+        liveBytes += bytes;
+        peakBytes = std::max(peakBytes, liveBytes);
+        return std::pmr::new_delete_resource()->allocate(bytes, alignment);
+    }
+    auto do_deallocate(void* ptr, std::size_t bytes, std::size_t alignment) -> void override {
+        liveBytes -= bytes;
+        std::pmr::new_delete_resource()->deallocate(ptr, bytes, alignment);
+    }
+    auto do_is_equal(std::pmr::memory_resource const& other) const noexcept -> bool override { return this == &other; }
+};
+
+// Owns the resource chain for one benchmark run. The benchmark is single-threaded, so the pool and
+// arena are used unsynchronized; use SP::LockedMemoryResource when sharing them across threads.
+struct ResourceSet {
+    explicit ResourceSet(Options::Resource kind) {
+        switch (kind) {
+        case Options::Resource::Default:
+            break;
+        case Options::Resource::Pool:
+            pool = std::make_unique<std::pmr::unsynchronized_pool_resource>();
+            active = pool.get();
+            break;
+        case Options::Resource::Monotonic:
+            counting = std::make_unique<CountingResource>();
+            arena    = std::make_unique<std::pmr::monotonic_buffer_resource>(std::size_t{1} << 20, counting.get());
+            active   = arena.get();
+            break;
+        case Options::Resource::Counting:
+            counting = std::make_unique<CountingResource>();
+            active   = counting.get();
+            break;
+        }
+    }
+
+    std::unique_ptr<CountingResource>                     counting;
+    std::unique_ptr<std::pmr::unsynchronized_pool_resource> pool;
+    std::unique_ptr<std::pmr::monotonic_buffer_resource>  arena;
+    std::pmr::memory_resource*                            active = nullptr; // null: default PathSpace
 };
 
 auto now() -> std::chrono::steady_clock::time_point {
@@ -498,7 +555,15 @@ auto runScenario(Scenario const& scenario, Options const& options) -> std::vecto
         auto buildStart = now();
         std::size_t readCount = 0;
         if (options.engine == Options::Engine::PathSpace) {
-            PathSpace space;
+            ResourceSet resources{options.resource};
+            // The resources outlive the space declared after them.
+            std::optional<PathSpace> spaceStorage;
+            if (resources.active != nullptr) {
+                spaceStorage.emplace(*resources.active);
+            } else {
+                spaceStorage.emplace();
+            }
+            PathSpace& space = *spaceStorage;
             if (nestedDepth > 0) {
                 buildNestedChain(space, nestedDepth, nestedBreadth, depth, breadth, valuesPerLeaf, readPaths, limiter);
             } else if (nestedBreadth > 0) {
@@ -514,6 +579,10 @@ auto runScenario(Scenario const& scenario, Options const& options) -> std::vecto
 
             if (run >= options.warmupRuns) {
                 RunStats sample{};
+                if (resources.counting) {
+                    sample.allocations = resources.counting->allocations;
+                    sample.peakBytes   = resources.counting->peakBytes;
+                }
                 sample.buildMs = toMs(buildEnd - buildStart);
                 sample.readMs = toMs(readEnd - readStart);
                 sample.totalMs = toMs(readEnd - buildStart);
@@ -595,7 +664,11 @@ void printStats(std::string_view label, std::vector<RunStats> const& stats) {
     read.reserve(stats.size());
     total.reserve(stats.size());
     std::size_t reads = 0;
+    std::size_t allocations = 0;
+    std::size_t peakBytes = 0;
     for (auto const& s : stats) {
+        allocations = s.allocations;
+        peakBytes = s.peakBytes;
         build.push_back(s.buildMs);
         read.push_back(s.readMs);
         total.push_back(s.totalMs);
@@ -619,6 +692,10 @@ void printStats(std::string_view label, std::vector<RunStats> const& stats) {
     std::cout << "  total ms: mean " << mean(total)
               << ", p50 " << percentile(total, 50)
               << ", p95 " << percentile(total, 95) << "\n";
+    if (peakBytes != 0) {
+        std::cout << "  memory: " << allocations << " allocations, "
+                  << static_cast<double>(peakBytes) / (1024.0 * 1024.0) << " MiB peak (last run)\n";
+    }
 }
 
 auto parseOptions(int argc, char** argv) -> Options {
@@ -644,6 +721,16 @@ auto parseOptions(int argc, char** argv) -> Options {
                 options.engine = Options::Engine::SnapshotArrayTrie;
             } else {
                 options.engine = Options::Engine::PathSpace;
+            }
+        } else if (auto val = takeValue("--resource")) {
+            if (*val == "pool") {
+                options.resource = Options::Resource::Pool;
+            } else if (*val == "monotonic") {
+                options.resource = Options::Resource::Monotonic;
+            } else if (*val == "counting") {
+                options.resource = Options::Resource::Counting;
+            } else {
+                options.resource = Options::Resource::Default;
             }
         } else if (auto val = takeValue("--max-reads")) {
             auto parsed = static_cast<std::size_t>(std::stoull(std::string(*val)));
@@ -677,6 +764,13 @@ int main(int argc, char** argv) {
     }
     if (options.maxInserts != std::numeric_limits<std::size_t>::max()) {
         std::cout << "  max inserts: " << options.maxInserts << "\n";
+    }
+    std::cout << "  resource: ";
+    switch (options.resource) {
+    case Options::Resource::Default: std::cout << "default\n"; break;
+    case Options::Resource::Pool: std::cout << "pool\n"; break;
+    case Options::Resource::Monotonic: std::cout << "monotonic\n"; break;
+    case Options::Resource::Counting: std::cout << "counting\n"; break;
     }
     std::cout << "  engine: ";
     if (options.engine == Options::Engine::PathSpace) {
