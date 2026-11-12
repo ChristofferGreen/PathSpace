@@ -39,8 +39,10 @@ namespace SP {
 
 
 struct Node final {
-    // Tunable shard count for parallel_node_hash_map
-    static constexpr int DefaultSubmaps = 12;
+    // log2 of the shard count of parallel_node_hash_map: 4 means 16 submaps. Every Node embeds all of
+    // its submaps (about 112 bytes each), so this exponent sets sizeof(Node): 12 meant 4096 submaps
+    // and roughly 450 KB per node.
+    static constexpr int DefaultSubmaps = 4;
 
     // Keys and map nodes allocate from the node's memory resource.
     using ChildrenMap = phmap::parallel_node_hash_map<
