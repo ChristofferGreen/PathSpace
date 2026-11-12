@@ -5,6 +5,7 @@
 #include "path/TransparentString.hpp"
 
 #include <memory>
+#include <memory_resource>
 #include <mutex>
 #include <new>
 #include <string>
@@ -41,12 +42,13 @@ struct Node final {
     // Tunable shard count for parallel_node_hash_map
     static constexpr int DefaultSubmaps = 12;
 
+    // Keys and map nodes allocate from the node's memory resource.
     using ChildrenMap = phmap::parallel_node_hash_map<
-        std::string,
+        std::pmr::string,
         std::unique_ptr<Node>,
         TransparentStringHash,
         std::equal_to<>,
-        std::allocator<std::pair<const std::string, std::unique_ptr<Node>>>,
+        std::pmr::polymorphic_allocator<std::pair<const std::pmr::string, std::unique_ptr<Node>>>,
         DefaultSubmaps,
         std::mutex>;
 
@@ -60,8 +62,19 @@ struct Node final {
     std::unique_ptr<NodeData> data;
     std::shared_ptr<PodPayloadBase> podPayload;
 
-    Node()  = default;
+    // The children map (and, through getOrCreateChild, the whole subtree below) allocates from
+    // `resource`, which must not be null and must outlive the node.
+    explicit Node(std::pmr::memory_resource* resource = std::pmr::get_default_resource())
+        : children(0,
+                   ChildrenMap::hasher{},
+                   ChildrenMap::key_equal{},
+                   ChildrenMap::allocator_type{resource}) {}
     ~Node() = default;
+
+    // Resource this node and its subtree allocate from.
+    [[nodiscard]] auto memoryResource() const noexcept -> std::pmr::memory_resource* {
+        return this->children.get_allocator().resource();
+    }
 
     static void* operator new(std::size_t size) {
         if (size != sizeof(Node)) {
@@ -112,7 +125,7 @@ struct Node final {
 
     // Create or fetch a child node for the given name
     Node& getOrCreateChild(std::string_view name) {
-        auto [it, inserted] = children.try_emplace(name, std::make_unique<Node>());
+        auto [it, inserted] = children.try_emplace(name, std::make_unique<Node>(this->memoryResource()));
         return *it->second;
     }
 

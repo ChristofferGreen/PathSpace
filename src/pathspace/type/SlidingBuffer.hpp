@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <memory_resource>
 #include <span>
 #include <vector>
 
@@ -16,9 +17,29 @@ struct SlidingBuffer {
     // Initial capacity to reduce early reallocations
     static constexpr auto INITIAL_CAPACITY = 128uz;
 
-    // Constructor with pre-allocation
-    SlidingBuffer() {
+    // Constructor with pre-allocation. The storage is allocated from `resource`, which must not be
+    // null and must outlive the buffer. Copies and moves follow std::pmr::vector semantics: a
+    // copy-constructed buffer uses the default resource, a move-constructed one keeps the source's.
+    explicit SlidingBuffer(std::pmr::memory_resource* resource = std::pmr::get_default_resource())
+        : storage(resource) {
         storage.reserve(INITIAL_CAPACITY);
+    }
+
+    // Allocator-extended copy/move: the new buffer allocates from `resource`.
+    SlidingBuffer(SlidingBuffer const& other, std::pmr::memory_resource* resource)
+        : storage(other.storage, resource), frontOffset(other.frontOffset) {}
+    SlidingBuffer(SlidingBuffer&& other, std::pmr::memory_resource* resource)
+        : storage(std::move(other.storage), resource), frontOffset(other.frontOffset) {}
+
+    SlidingBuffer(SlidingBuffer const&)            = default;
+    SlidingBuffer(SlidingBuffer&&) noexcept        = default;
+    auto operator=(SlidingBuffer const&) -> SlidingBuffer& = default;
+    auto operator=(SlidingBuffer&&) noexcept -> SlidingBuffer& = default;
+    ~SlidingBuffer()                               = default;
+
+    // Resource the storage allocates from.
+    [[nodiscard]] auto memoryResource() const noexcept -> std::pmr::memory_resource* {
+        return storage.get_allocator().resource();
     }
 
     [[nodiscard]] auto data() const noexcept -> uint8_t const*;
@@ -58,10 +79,11 @@ struct SlidingBuffer {
     auto append(std::span<uint8_t const> bytes) -> void;
     auto append(uint8_t const* bytes, size_t count) -> void;
     auto advance(size_t bytes) -> void;
-    auto assignRaw(std::vector<uint8_t> data, size_t frontOffsetIn) -> void;
+    // Replace the raw storage with a copy of `data` (kept in this buffer's resource).
+    auto assignRaw(std::span<uint8_t const> data, size_t frontOffsetIn) -> void;
 
 private:
-    std::vector<uint8_t> storage;
+    std::pmr::vector<uint8_t> storage;
     size_t               frontOffset = 0uz;
 
     // Calculate appropriate growth for capacity

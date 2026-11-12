@@ -17,6 +17,7 @@
 #include <vector>
 #include <mutex>
 #include <atomic>
+#include <memory_resource>
 #include <string>
 
 namespace SP {
@@ -31,6 +32,11 @@ struct NodeDataTestHelper;
 
 struct NodeData {
     NodeData() = default;
+    // The serialized byte buffer allocates from `resource` (non-null, must outlive the NodeData).
+    explicit NodeData(std::pmr::memory_resource* resource) : data(resource) {}
+    // Allocator-extended copy/move: the new payload's byte buffer allocates from `resource`.
+    NodeData(NodeData const& other, std::pmr::memory_resource* resource);
+    NodeData(NodeData&& other, std::pmr::memory_resource* resource);
     NodeData(InputData const& inputData);
     NodeData(NodeData const& other);
     NodeData& operator=(NodeData const& other);

@@ -133,8 +133,8 @@ auto SlidingBuffer::compact() -> void {
     sp_log("After compact - size: " + std::to_string(storage.size()) + ", front: " + std::to_string(frontOffset), "SlidingBuffer");
 }
 
-auto SlidingBuffer::assignRaw(std::vector<uint8_t> data, size_t frontOffsetIn) -> void {
-    this->storage     = std::move(data);
+auto SlidingBuffer::assignRaw(std::span<uint8_t const> data, size_t frontOffsetIn) -> void {
+    this->storage.assign(data.begin(), data.end());
     this->frontOffset = std::min(frontOffsetIn, this->storage.size());
 }
 

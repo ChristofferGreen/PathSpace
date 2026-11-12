@@ -96,6 +96,30 @@ NodeData::NodeData(NodeData const& other)
     }
 }
 
+NodeData::NodeData(NodeData const& other, std::pmr::memory_resource* resource)
+    : data(other.data, resource),
+      types(other.types),
+      tasks(other.tasks),
+      futures(other.futures),
+      anyFutures(other.anyFutures),
+      valueSizes(other.valueSizes),
+      nestedSlots{} {
+    if (other.hasNestedSpaces()) {
+        sp_log("NodeData copy dropped nested PathSpaces (not copyable)", "NodeData");
+        dropNestedTypes();
+    }
+}
+
+NodeData::NodeData(NodeData&& other, std::pmr::memory_resource* resource)
+    : data(std::move(other.data), resource),
+      types(std::move(other.types)),
+      tasks(std::move(other.tasks)),
+      futures(std::move(other.futures)),
+      anyFutures(std::move(other.anyFutures)),
+      valueSizes(std::move(other.valueSizes)),
+      nestedSlots(std::move(other.nestedSlots)) {
+}
+
 NodeData& NodeData::operator=(NodeData const& other) {
     if (this == &other) {
         return *this;

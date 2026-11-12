@@ -965,7 +965,7 @@ void PathSpace::copyFrom(PathSpace const& other, CopyStats* stats) {
                     if (snapshot) {
                         auto restored = NodeData::deserializeSnapshot(*snapshot);
                         if (restored) {
-                            dst.data = std::make_unique<NodeData>(std::move(*restored));
+                            dst.data = std::make_unique<NodeData>(std::move(*restored), dst.memoryResource());
                             local.payloadsCopied += 1;
                             local.valuesCopied += dst.data->valueCount();
                             snapshotRestored = true;
@@ -1000,7 +1000,7 @@ void PathSpace::copyFrom(PathSpace const& other, CopyStats* stats) {
                     if (spanErr.has_value() || !ok) {
                         local.payloadsSkipped += 1;
                     } else {
-                        dst.data = std::make_unique<NodeData>(std::move(tmp));
+                        dst.data = std::make_unique<NodeData>(std::move(tmp), dst.memoryResource());
                         local.payloadsCopied += 1;
                         local.valuesCopied += dst.data->valueCount();
                         snapshotRestored = true;
@@ -1009,7 +1009,7 @@ void PathSpace::copyFrom(PathSpace const& other, CopyStats* stats) {
             }
 
             if (!snapshotRestored && !nestedSpaces.empty() && !dst.data) {
-                dst.data = std::make_unique<NodeData>();
+                dst.data = std::make_unique<NodeData>(dst.memoryResource());
             }
 
             for (std::size_t idx = 0; idx < nestedSpaces.size(); ++idx) {
@@ -1026,7 +1026,7 @@ void PathSpace::copyFrom(PathSpace const& other, CopyStats* stats) {
                     nestedPtr->adoptContextAndPrefix(dstSpace->context, mountPrefix);
                     PathSpace* nestedRaw = nestedPtr.get();
                     if (!dst.data) {
-                        dst.data = std::make_unique<NodeData>();
+                        dst.data = std::make_unique<NodeData>(dst.memoryResource());
                     }
                     auto expectedSlots = countCategory(dst.data->typeSummary(), DataCategory::UniquePtr);
                     auto attached      = dst.data->nestedCount();

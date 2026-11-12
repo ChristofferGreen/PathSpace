@@ -1,4 +1,5 @@
 #pragma once
+#include <memory_resource>
 #include <string>
 #include <string_view>
 
@@ -18,6 +19,7 @@ struct CharPointerHash {
 
 using TransparentStringHash = Overload<
         std::hash<std::string>,
+        std::hash<std::pmr::string>,
         std::hash<std::string_view>,
         CharPointerHash>;
 

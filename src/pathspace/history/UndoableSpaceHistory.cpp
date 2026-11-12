@@ -292,7 +292,7 @@ auto UndoableSpace::applyJournalNodeData(UndoJournalRootState& state,
             beforeBytes = payloadBytes(*node->data);
         }
         if (data.has_value()) {
-            node->data = std::make_unique<NodeData>(data.value());
+            node->data = std::make_unique<NodeData>(data.value(), node->memoryResource());
         } else {
             node->data.reset();
         }

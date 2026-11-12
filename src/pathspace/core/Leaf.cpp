@@ -40,7 +40,7 @@ auto Leaf::ensureNodeData(Node& n, InputData const& inputData, InsertReturn& ret
     {
         std::lock_guard<std::mutex> lg(n.payloadMutex);
         if (!n.data) {
-            auto data = std::make_unique<NodeData>();
+            auto data = std::make_unique<NodeData>(n.memoryResource());
             if (auto err = data->serialize(inputData); err.has_value()) {
                 ret.errors.emplace_back(*err);
                 return nullptr;
@@ -90,7 +90,7 @@ auto appendPayload(Node& node, NodeData const& payload, InsertReturn& ret) -> bo
         return false;
     }
     if (!node.data) {
-        node.data = std::make_unique<NodeData>(payload);
+        node.data = std::make_unique<NodeData>(payload, node.memoryResource());
     } else {
         if (auto error = node.data->append(payload); error.has_value()) {
             ret.errors.emplace_back(error.value());
@@ -362,7 +362,7 @@ auto migratePodToNodeData(Node& node, InsertReturn& ret) -> bool {
     auto        elemBytes = payload->elementSize();
     std::vector<std::byte> buffer(elemBytes);
 
-    auto data = std::make_unique<NodeData>();
+    auto data = std::make_unique<NodeData>(node.memoryResource());
     for (;;) {
         auto err = payload->takeTo(buffer.data());
         if (err) {
