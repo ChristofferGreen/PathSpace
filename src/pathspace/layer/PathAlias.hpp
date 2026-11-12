@@ -125,19 +125,12 @@ public:
             return std::unexpected(Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"});
         }
 
-        std::vector<std::string> mapped;
-        mapped.reserve(paths.size());
-        for (auto const& path : paths) {
-            if (is_glob(path)) {
-                return std::unexpected(Error{Error::Code::InvalidPath, "PathAlias does not accept glob span reads"});
-            }
-            mapped.emplace_back(this->mapPathRaw(path));
-            if (is_glob(mapped.back())) {
-                return std::unexpected(Error{Error::Code::InvalidPath, "PathAlias does not accept glob span reads"});
-            }
+        auto mapped = this->mapConcretePaths(paths, "PathAlias does not accept glob span reads");
+        if (!mapped) {
+            return std::unexpected(mapped.error());
         }
 
-        return this->upstream->spanPackConst(std::span<const std::string>(mapped.data(), mapped.size()), metadata, options, fn);
+        return this->upstream->spanPackConst(std::span<const std::string>(*mapped), metadata, options, fn);
     }
 
     auto spanPackMut(std::span<const std::string> paths,
@@ -148,19 +141,12 @@ public:
             return std::unexpected(Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"});
         }
 
-        std::vector<std::string> mapped;
-        mapped.reserve(paths.size());
-        for (auto const& path : paths) {
-            if (is_glob(path)) {
-                return std::unexpected(Error{Error::Code::InvalidPath, "PathAlias does not accept glob span writes"});
-            }
-            mapped.emplace_back(this->mapPathRaw(path));
-            if (is_glob(mapped.back())) {
-                return std::unexpected(Error{Error::Code::InvalidPath, "PathAlias does not accept glob span writes"});
-            }
+        auto mapped = this->mapConcretePaths(paths, "PathAlias does not accept glob span writes");
+        if (!mapped) {
+            return std::unexpected(mapped.error());
         }
 
-        return this->upstream->spanPackMut(std::span<const std::string>(mapped.data(), mapped.size()), metadata, options, fn);
+        return this->upstream->spanPackMut(std::span<const std::string>(*mapped), metadata, options, fn);
     }
 
     auto packInsert(std::span<const std::string> paths,
@@ -170,23 +156,26 @@ public:
             return InsertReturn{.errors = {Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"}}};
         }
 
-        std::vector<std::string> mapped;
-        mapped.reserve(paths.size());
-        for (auto const& path : paths) {
-            if (is_glob(path)) {
-                InsertReturn ret;
-                ret.errors.emplace_back(Error{Error::Code::InvalidPath, "PathAlias does not accept glob inserts"});
-                return ret;
-            }
-            mapped.emplace_back(this->mapPathRaw(path));
-            if (is_glob(mapped.back())) {
-                InsertReturn ret;
-                ret.errors.emplace_back(Error{Error::Code::InvalidPath, "PathAlias does not accept glob inserts"});
-                return ret;
-            }
+        auto mapped = this->mapConcretePaths(paths, "PathAlias does not accept glob inserts");
+        if (!mapped) {
+            return InsertReturn{.errors = {mapped.error()}};
         }
 
-        return this->upstream->packInsert(std::span<const std::string>(mapped.data(), mapped.size()), metadata, values);
+        return this->upstream->packInsert(std::span<const std::string>(*mapped), metadata, values);
+    }
+
+    auto packInsertSpans(std::span<const std::string> paths,
+                         std::span<SpanInsertSpec const> specs) -> InsertReturn override {
+        if (!this->upstream) {
+            return InsertReturn{.errors = {Error{Error::Code::InvalidPermissions, "PathAlias upstream not set"}}};
+        }
+
+        auto mapped = this->mapConcretePaths(paths, "PathAlias does not accept glob inserts");
+        if (!mapped) {
+            return InsertReturn{.errors = {mapped.error()}};
+        }
+
+        return this->upstream->packInsertSpans(std::span<const std::string>(*mapped), specs);
     }
 
     auto visit(PathVisitor const& visitor, VisitOptions const& options = {}) -> Expected<void> override {
@@ -254,6 +243,24 @@ private:
         return joinPaths(prefixCopy, std::string(path.currentToEnd()));
     }
 
+    // Maps every pack path under the target prefix; globs are rejected before and after mapping
+    // because a pack addresses concrete nodes.
+    auto mapConcretePaths(std::span<const std::string> paths, char const* globMessage) const
+        -> Expected<std::vector<std::string>> {
+        std::vector<std::string> mapped;
+        mapped.reserve(paths.size());
+        for (auto const& path : paths) {
+            if (is_glob(path)) {
+                return std::unexpected(Error{Error::Code::InvalidPath, globMessage});
+            }
+            mapped.emplace_back(this->mapPathRaw(path));
+            if (is_glob(mapped.back())) {
+                return std::unexpected(Error{Error::Code::InvalidPath, globMessage});
+            }
+        }
+        return mapped;
+    }
+
     // Thread-safe mapping of raw path string (used for notify).
     std::string mapPathRaw(std::string const& path) const {
         std::string prefixCopy;
@@ -289,23 +296,7 @@ protected:
             std::lock_guard<std::mutex> lg(this->aliasMutex);
             prefixCopy = this->targetPrefixValue;
         }
-        if (prefixCopy.empty() || prefixCopy == "/") {
-            return upstreamPath;
-        }
-        if (upstreamPath == prefixCopy) {
-            return "/";
-        }
-        if (upstreamPath.size() > prefixCopy.size() && upstreamPath.rfind(prefixCopy, 0) == 0) {
-            auto remainder = upstreamPath.substr(prefixCopy.size());
-            if (remainder.empty()) {
-                return "/";
-            }
-            if (remainder.front() != '/') {
-                return std::string{"/"} + remainder;
-            }
-            return remainder;
-        }
-        return upstreamPath;
+        return stripPathPrefix(upstreamPath, prefixCopy).value_or(upstreamPath);
     }
 
 private:

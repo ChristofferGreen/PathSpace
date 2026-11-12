@@ -429,7 +429,7 @@ TEST_CASE("ValueHandle readInto surfaces span errors during fallback") {
     CHECK(result->error().code == Error::Code::UnknownError);
 }
 
-TEST_CASE("ValueHandle readInto reports deserialize failure after span fallback") {
+TEST_CASE("ValueHandle readInto reports the serialize failure from the span fallback") {
     PathSpace space;
     Node* root = PathSpaceTestHelper::root(space);
     REQUIRE(root != nullptr);
@@ -464,7 +464,9 @@ TEST_CASE("ValueHandle readInto reports deserialize failure after span fallback"
     REQUIRE(visitResult);
     REQUIRE(result.has_value());
     CHECK_FALSE(result->has_value());
-    CHECK(result->error().code == Error::Code::NoObjectFound);
+    // The metadata has no serializer, so building the fallback snapshot fails. That error must be
+    // reported instead of deserializing the partial snapshot (which used to yield NoObjectFound).
+    CHECK(result->error().code == Error::Code::SerializationFunctionMissing);
 }
 
 TEST_CASE("ValueHandle readInto succeeds via snapshot fallback after read errors") {

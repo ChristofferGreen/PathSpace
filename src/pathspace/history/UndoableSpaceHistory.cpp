@@ -113,9 +113,9 @@ auto UndoableSpace::computeJournalByteMetrics(UndoJournalRootState const& state)
     return metrics;
 }
 
-void UndoableSpace::recordJournalUnsupportedPayload(UndoJournalRootState& state,
-                                                    std::string_view path,
-                                                    std::string_view reason) {
+void UndoableSpace::recordJournalUnsupportedPayloadLocked(UndoJournalRootState& state,
+                                                          std::string_view path,
+                                                          std::string_view reason) {
     auto now = std::chrono::system_clock::now();
     state.telemetry.unsupportedTotal += 1;
 
@@ -1026,30 +1026,10 @@ auto UndoableSpace::in(Iterator const& path, InputData const& data) -> InsertRet
         }
     } else {
         std::scoped_lock stateLock(state->mutex);
-        auto now = std::chrono::system_clock::now();
         for (auto const& err : result.errors) {
-            if (!err.message) {
-                continue;
+            if (err.message) {
+                recordJournalUnsupportedPayloadLocked(*state, fullPath, *err.message);
             }
-            HistoryTelemetry::UnsupportedRecord record;
-            record.path        = fullPath;
-            record.reason      = *err.message;
-            record.timestamp   = now;
-            record.occurrences = 1;
-            auto& log          = state->telemetry.unsupportedLog;
-            auto  it           = std::find_if(log.begin(), log.end(), [&](auto const& entry) {
-                return entry.path == record.path && entry.reason == record.reason;
-            });
-            if (it != log.end()) {
-                it->occurrences += 1;
-                it->timestamp    = now;
-            } else {
-                log.push_back(record);
-                if (log.size() > UndoUtilsAlias::MaxUnsupportedLogEntries) {
-                    log.erase(log.begin());
-                }
-            }
-            state->telemetry.unsupportedTotal += 1;
         }
         state->stateDirty = true;
     }

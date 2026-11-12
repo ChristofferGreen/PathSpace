@@ -113,6 +113,7 @@ public:
     }
 
     void adoptContextAndPrefix(std::shared_ptr<PathSpaceContext> context, std::string prefix) override {
+        PathSpaceBase::adoptContextAndPrefix(context, prefix);
         if (this->backing) this->backing->adoptContextAndPrefix(std::move(context), std::move(prefix));
     }
 

@@ -154,6 +154,37 @@ auto makeMountPrefix(std::string const& spacePrefix, std::string const& path) ->
     return result;
 }
 
+// Effective time budget for one blocking read/take. A zero or negative timeout falls back to the
+// default instead of failing spuriously; PATHSPACE_TEST_TIMEOUT_MS (milliseconds) or
+// PATHSPACE_TEST_TIMEOUT (seconds) clamp it so tests cannot hang.
+auto blockingWaitBudget(std::chrono::milliseconds requested) -> std::chrono::milliseconds {
+    auto maxWait = requested;
+    if (maxWait <= std::chrono::milliseconds{0}) {
+        // Guard against accidental zero/negative timeouts to avoid spurious failures in blocking reads.
+        maxWait = DEFAULT_TIMEOUT;
+    }
+    if (const char* envms = std::getenv("PATHSPACE_TEST_TIMEOUT_MS")) {
+        char* endptr = nullptr;
+        long ms = std::strtol(envms, &endptr, 10);
+        if (endptr != envms && ms > 0) {
+            auto clamp = std::chrono::milliseconds(ms);
+            if (clamp < maxWait) {
+                maxWait = clamp;
+            }
+        }
+    } else if (const char* env = std::getenv("PATHSPACE_TEST_TIMEOUT")) {
+        char* endptr = nullptr;
+        long secs = std::strtol(env, &endptr, 10);
+        if (endptr != env && secs > 0) {
+            auto clamp = std::chrono::milliseconds(secs * 1000);
+            if (clamp < maxWait) {
+                maxWait = clamp;
+            }
+        }
+    }
+    return maxWait;
+}
+
 // Upper bound on one blocking wait before the reader re-checks the space on its own. Normal
 // operation never relies on it (writers notify); it only bounds the damage of a writer that
 // forgets to. PATHSPACE_WAIT_RECHECK_MS overrides it (tests set it very large to prove that no
@@ -629,31 +660,7 @@ auto PathSpace::out(Iterator const& path, InputMetadata const& inputMetadata, Ou
             return error;
     }
 
-    // Clamp blocking wait duration using PATHSPACE_TEST_TIMEOUT_MS (milliseconds) or PATHSPACE_TEST_TIMEOUT (seconds)
-    auto maxWait = options.timeout;
-    if (maxWait <= std::chrono::milliseconds{0}) {
-        // Guard against accidental zero/negative timeouts to avoid spurious failures in blocking reads.
-        maxWait = DEFAULT_TIMEOUT;
-    }
-    if (const char* envms = std::getenv("PATHSPACE_TEST_TIMEOUT_MS")) {
-        char* endptr = nullptr;
-        long ms = std::strtol(envms, &endptr, 10);
-        if (endptr != envms && ms > 0) {
-            auto clamp = std::chrono::milliseconds(ms);
-            if (clamp < maxWait) {
-                maxWait = clamp;
-            }
-        }
-    } else if (const char* env = std::getenv("PATHSPACE_TEST_TIMEOUT")) {
-        char* endptr = nullptr;
-        long secs = std::strtol(env, &endptr, 10);
-        if (endptr != env && secs > 0) {
-            auto clamp = std::chrono::milliseconds(secs * 1000);
-            if (clamp < maxWait) {
-                maxWait = clamp;
-            }
-        }
-    }
+    auto const maxWait = blockingWaitBudget(options.timeout);
     auto const deadline = std::chrono::system_clock::now() + maxWait;
     sp_log("PathSpace::out waiting on: " + path.toString(), "PathSpace");
     sp_log(std::string("PathSpace::out block wait timeout(ms)=") + std::to_string(maxWait.count()), "PathSpace");
@@ -744,12 +751,20 @@ auto PathSpace::spanPackMut(std::span<const std::string> paths,
         return this->leaf.spanPackMut(paths, metadata, options, fn);
     }
 
-    auto deadline = std::chrono::system_clock::now() + options.timeout;
+    auto const deadline = std::chrono::system_clock::now() + blockingWaitBudget(options.timeout);
     Out nonBlockingOptions = options;
     nonBlockingOptions.doBlock = false;
 
     std::size_t waitIndex = 0;
     while (true) {
+        // Same exit conditions as the blocking out(): shutdown and clear() end the wait early.
+        if (ctx->isShuttingDown()) {
+            return std::unexpected(Error{Error::Code::Timeout, "Shutting down while waiting for span pack take"});
+        }
+        if (this->clearingInProgress.load(std::memory_order_acquire)) {
+            return std::unexpected(Error{Error::Code::Timeout, "PathSpace clearing in progress"});
+        }
+
         // Register before the attempt so a notify between the attempt and the wait is not lost.
         auto pathToWait = paths[waitIndex % paths.size()];
         ++waitIndex;
@@ -773,6 +788,12 @@ auto PathSpace::spanPackMut(std::span<const std::string> paths,
         }
 
         guard.wait_until(std::min(deadline, now + waitSafetyRecheckInterval()));
+
+        // The binding can change while blocked (re-home), so look it up again before the next attempt.
+        if (auto rebound = this->getContext()) {
+            ctx = std::move(rebound);
+        }
+        pfx = this->getPrefix();
     }
 }
 

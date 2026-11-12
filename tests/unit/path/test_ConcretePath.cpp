@@ -202,4 +202,13 @@ TEST_CASE("isPrefixOf reports invalid rhs") {
     CHECK(result.error().code == Error::Code::InvalidPathSubcomponent);
 }
 
+TEST_CASE("Dot-prefixed names compare equal to themselves") {
+    // validate_path_impl accepts "/.hidden", so such a path can be stored; equality must agree.
+    ConcretePathStringView hidden{"/root/.hidden"};
+    CHECK(hidden == "/root/.hidden");
+    CHECK_FALSE(hidden == "/root/.other");
+    ConcretePathStringView relative{"/root/./x"};
+    CHECK_FALSE(relative == "/root/./x");
+}
+
 } // TEST_SUITE

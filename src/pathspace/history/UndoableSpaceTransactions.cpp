@@ -322,7 +322,10 @@ auto UndoableSpace::recordJournalMutation(UndoJournalRootState& state,
     if (!valuePayloadExpected) {
         auto reason = valuePayloadExpected.error().message.value_or(
             "Unable to encode journal value payload");
-        recordJournalUnsupportedPayload(state, fullPath, reason);
+        {
+            std::scoped_lock lock(state.mutex);
+            recordJournalUnsupportedPayloadLocked(state, fullPath, reason);
+        }
         return std::unexpected(valuePayloadExpected.error());
     }
 
@@ -330,7 +333,10 @@ auto UndoableSpace::recordJournalMutation(UndoJournalRootState& state,
     if (!inversePayloadExpected) {
         auto reason = inversePayloadExpected.error().message.value_or(
             "Unable to encode journal inverse payload");
-        recordJournalUnsupportedPayload(state, fullPath, reason);
+        {
+            std::scoped_lock lock(state.mutex);
+            recordJournalUnsupportedPayloadLocked(state, fullPath, reason);
+        }
         return std::unexpected(inversePayloadExpected.error());
     }
 

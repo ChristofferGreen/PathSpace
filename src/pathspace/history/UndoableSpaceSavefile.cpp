@@ -169,6 +169,10 @@ auto UndoableSpace::importHistorySavefile(ConcretePathStringView root,
             }
         }
 
+        // Entries were appended without enforcement; apply retention now (as loading the journal
+        // from disk does) so an import never keeps or persists more than the policy allows.
+        state->journal.setRetentionPolicy(state->journal.policy());
+
         std::vector<UndoJournal::JournalEntry> persistedEntries;
         if (state->persistenceEnabled) {
             persistedEntries.reserve(state->journal.size());
@@ -188,6 +192,8 @@ auto UndoableSpace::importHistorySavefile(ConcretePathStringView root,
         state->telemetry.cachedRedo = stats.redoCount;
         state->telemetry.undoBytes  = stats.undoBytes;
         state->telemetry.redoBytes  = stats.redoBytes;
+        state->telemetry.trimmedEntries = stats.trimmedEntries;
+        state->telemetry.trimmedBytes   = stats.trimmedBytes;
 
         state->liveBytes = computeJournalLiveBytes(*state);
 

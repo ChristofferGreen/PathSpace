@@ -100,6 +100,22 @@ std::once_flag                                     gDefaultConvertersFlag;
 
 void registerDefaultConverters() {
     std::call_once(gDefaultConvertersFlag, [] {
+        // Cover every builtin TypeMetadataBootstrap registers. The fundamental spellings go first so
+        // the fixed-width registrations below rename the ones they alias (e.g. int64_t is `long` on
+        // Linux and `long long` on macOS); the others keep their own name instead of exporting as
+        // "converter-missing".
+        PathSpaceJsonRegisterConverterAs<char>("char", [](char value) { return Json(std::string(1, value)); });
+        PathSpaceJsonRegisterConverterAs<short>("short", [](short value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<unsigned short>("unsigned short", [](unsigned short value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<int>("int", [](int value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<unsigned int>("unsigned int", [](unsigned int value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<long>("long", [](long value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<unsigned long>("unsigned long", [](unsigned long value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<long long>("long long", [](long long value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<unsigned long long>("unsigned long long",
+                                                             [](unsigned long long value) { return Json(value); });
+        PathSpaceJsonRegisterConverterAs<long double>("long double",
+                                                      [](long double value) { return Json(static_cast<double>(value)); });
         PathSpaceJsonRegisterConverterAs<bool>("bool", [](bool value) { return Json(value); });
         PathSpaceJsonRegisterConverterAs<std::int8_t>("int8_t", [](std::int8_t value) { return Json(value); });
         PathSpaceJsonRegisterConverterAs<std::uint8_t>("uint8_t", [](std::uint8_t value) { return Json(value); });

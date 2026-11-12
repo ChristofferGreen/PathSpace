@@ -198,4 +198,20 @@ TEST_SUITE("core.nodedata.snapshot") {
         CHECK_FALSE(restored.deserialize(&out, metadataForInt()).has_value());
         CHECK(out == value);
     }
+
+    TEST_CASE("deserializeSnapshot rejects counts larger than the remaining bytes") {
+        // Header claims ~4G type entries in a 12-byte buffer: must fail without allocating them.
+        std::vector<std::byte> bytes(12);
+        std::uint32_t version = 2;
+        std::uint32_t count   = 0xFFFFFFFFu;
+        std::memcpy(bytes.data(), &version, sizeof(version));
+        std::memcpy(bytes.data() + 4, &count, sizeof(count));
+        CHECK_FALSE(NodeData::deserializeSnapshot(std::span<const std::byte>{bytes.data(), bytes.size()}).has_value());
+
+        // Same for the value-size table: zero types, then a huge value-size count.
+        std::uint32_t zero = 0;
+        std::memcpy(bytes.data() + 4, &zero, sizeof(zero));
+        std::memcpy(bytes.data() + 8, &count, sizeof(count));
+        CHECK_FALSE(NodeData::deserializeSnapshot(std::span<const std::byte>{bytes.data(), bytes.size()}).has_value());
+    }
 }

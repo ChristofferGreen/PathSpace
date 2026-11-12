@@ -202,4 +202,12 @@ TEST_CASE("GlobPath and ConcretePath equality overloads") {
     CHECK(view == "/foo/bar");
     CHECK(view == std::string_view{"/foo/bar"});
 }
+
+TEST_CASE("GlobName stops at the end of the pattern") {
+    // Input longer than a literal pattern must fail without reading past the pattern.
+    auto [match, super] = GlobName{"a"}.match(std::string_view{"ab"});
+    CHECK_FALSE(match);
+    CHECK_FALSE(super);
+    CHECK_FALSE(std::get<0>(GlobName{"[ab]"}.match(std::string_view{"ab"})));
+}
 }

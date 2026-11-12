@@ -1,5 +1,11 @@
+#include "path/GlobName.hpp"
 #include "path/utils.hpp"
 #include "third_party/doctest.h"
+
+#include <optional>
+#include <string>
+#include <tuple>
+#include <utility>
 
 using namespace SP;
 
@@ -196,6 +202,42 @@ TEST_CASE("match_paths handles root and empty paths") {
     CHECK_FALSE(match_paths("/alpha/", "/alpha/beta"));
     CHECK(match_paths("alpha/beta", "alpha/beta"));
     CHECK(match_paths("alpha/beta", "/alpha/beta"));
+}
+
+TEST_CASE("match_names backtracks over '*'") {
+    // The first candidate for the text after '*' is not always the right one.
+    CHECK(match_names("*b", "abab"));
+    CHECK(match_names("a*bc", "abxbc"));
+    CHECK(match_names("*a*", "banana"));
+    CHECK_FALSE(match_names("*b", "abac"));
+}
+
+TEST_CASE("match_names and GlobName agree on bracket ranges") {
+    // '-' after a completed range, or before ']', is a literal (POSIX).
+    CHECK_FALSE(match_names("[a-c-e]", "d"));
+    CHECK(match_names("[a-c-e]", "-"));
+    CHECK(match_names("[a-c-e]", "e"));
+    CHECK(match_names("[!a-c-e]", "d"));
+    CHECK(match_names("[a-]", "-"));
+    CHECK(match_names("[a-]", "a"));
+    for (auto [pattern, name] : {std::pair{"[a-c-e]", "d"}, std::pair{"[a-]", "-"}, std::pair{"[!a-c-e]", "d"},
+                                 std::pair{"*b", "abab"}, std::pair{"a?c", "abc"}}) {
+        CHECK(match_names(pattern, name) == std::get<0>(GlobName{pattern}.match(std::string_view{name})));
+    }
+}
+
+TEST_CASE("isPathPrefix and stripPathPrefix respect component boundaries") {
+    CHECK(isPathPrefix("/a", "/a"));
+    CHECK(isPathPrefix("/a", "/a/b"));
+    CHECK(isPathPrefix("/a/", "/a/b"));
+    CHECK_FALSE(isPathPrefix("/a", "/ab"));
+    CHECK(isPathPrefix("/", "/anything"));
+    CHECK(isPathPrefix("", "/anything"));
+
+    CHECK(stripPathPrefix("/a/b/c", "/a") == std::optional<std::string>{"/b/c"});
+    CHECK(stripPathPrefix("/a", "/a") == std::optional<std::string>{"/"});
+    CHECK(stripPathPrefix("/ab", "/a") == std::nullopt);
+    CHECK(stripPathPrefix("/x", "/") == std::optional<std::string>{"/x"});
 }
 
 TEST_SUITE_END();

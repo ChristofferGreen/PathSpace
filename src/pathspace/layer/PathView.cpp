@@ -1,5 +1,6 @@
 #include "PathView.hpp"
 #include "core/Error.hpp"
+#include "path/utils.hpp"
 
 #include <optional>
 #include <string>
@@ -30,23 +31,6 @@ auto joinCanonical(std::string const& prefix, std::string const& suffix) -> std:
         return normalized->getPath();
     }
     return joined;
-}
-
-auto stripPrefix(std::string const& absolute, std::string const& prefix) -> std::optional<std::string> {
-    if (prefix.empty() || prefix == "/") {
-        return absolute;
-    }
-    if (absolute.rfind(prefix, 0) == 0) {
-        auto remainder = absolute.substr(prefix.size());
-        if (remainder.empty()) {
-            return std::string{"/"};
-        }
-        if (remainder.front() != '/') {
-            return std::string{"/"} + remainder;
-        }
-        return remainder;
-    }
-    return std::nullopt;
 }
 
 } // namespace
@@ -104,7 +88,7 @@ auto PathView::visit(PathVisitor const& visitor, VisitOptions const& options) ->
     mapped.root        = joinCanonical(this->root, options.root);
 
     auto viewVisitor = [&](PathEntry const& upstreamEntry, ValueHandle& handle) -> VisitControl {
-        auto viewPath = stripPrefix(upstreamEntry.path, this->root);
+        auto viewPath = stripPathPrefix(upstreamEntry.path, this->root);
         if (!viewPath) {
             return VisitControl::SkipChildren;
         }
@@ -133,7 +117,7 @@ auto joinCanonicalForTest(std::string const& prefix, std::string const& suffix) 
 }
 
 auto stripPrefixForTest(std::string const& absolute, std::string const& prefix) -> std::optional<std::string> {
-    return stripPrefix(absolute, prefix);
+    return stripPathPrefix(absolute, prefix);
 }
 } // namespace testing
 

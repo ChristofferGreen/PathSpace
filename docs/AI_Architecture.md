@@ -69,8 +69,10 @@ Glob paths extend concrete paths with pattern matching capabilities. They suppor
 - `**` - Matches zero or more components (super-matcher)
 - `?` - Matches any single character
 - `[abc]` - Matches any character in the set
-- `[a-z]` - Matches any character in the range
+- `[a-z]` - Matches any character in the range; `[!...]` negates the set. A `-` that cannot form a range (first, last, or right after a range, as in `[a-c-e]`) is a literal `-`
 - `\` - Escapes special characters
+
+`match_names` (used by `Leaf` and `WaitMap`) and `GlobName::match` share one component matcher, `matchGlobComponent` in `path/utils`, so they cannot disagree.
 
 Example patterns:
 ```cpp

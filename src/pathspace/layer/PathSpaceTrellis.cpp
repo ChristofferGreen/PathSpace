@@ -6,6 +6,7 @@
 #include "core/PathSpaceContext.hpp"
 #include "path/Iterator.hpp"
 #include "path/UnvalidatedPath.hpp"
+#include "path/utils.hpp"
 #include "type/InputData.hpp"
 #include "type/InputMetadata.hpp"
 
@@ -74,8 +75,7 @@ auto PathSpaceTrellis::out(Iterator const& path,
     }
 
     if (!path.isAtEnd()) {
-        auto component = path.currentComponent();
-        if (component == "_system") {
+        if (isSystemPath(path)) {
             return makeError(Error::Code::InvalidPermissions, "PathSpaceTrellis system paths are not readable");
         }
         Iterator const target{joinWithMount(path.toStringView())};
@@ -91,7 +91,7 @@ auto PathSpaceTrellis::out(Iterator const& path,
 
 auto PathSpaceTrellis::listChildrenCanonical(std::string_view canonicalPath) const -> std::vector<std::string> {
     if (!this->backing) return {};
-    if (canonicalPath == "/_system" || canonicalPath.rfind("/_system/", 0) == 0) {
+    if (isSystemPath(canonicalPath)) {
         return {};
     }
     auto joined = joinWithMount(canonicalPath);
@@ -113,11 +113,7 @@ auto PathSpaceTrellis::notify(std::string const& notificationPath) -> void {
         return;
     }
 
-    std::string_view trimmed = notificationPath;
-    if (!trimmed.empty() && trimmed.front() == '/')
-        trimmed.remove_prefix(1);
-
-    if (trimmed.rfind("_system", 0) == 0)
+    if (isSystemPath(notificationPath))
         return;
 
     this->backing->notify(joinWithMount(notificationPath));
@@ -133,7 +129,7 @@ auto PathSpaceTrellis::visit(PathVisitor const& visitor, VisitOptions const& opt
 
     auto trellisVisitor = [&](PathEntry const& upstreamEntry, ValueHandle& handle) -> VisitControl {
         auto localPath = stripMount(upstreamEntry.path);
-        if (localPath.rfind("/_system", 0) == 0) {
+        if (isSystemPath(localPath)) {
             return VisitControl::SkipChildren;
         }
         PathEntry remapped = upstreamEntry;
@@ -176,8 +172,7 @@ auto PathSpaceTrellis::typedPeekFuture(std::string_view pathIn) const -> std::op
 
     Iterator const iter{pathIn};
     if (!iter.isAtEnd()) {
-        auto component = iter.currentComponent();
-        if (component == "_system") {
+        if (isSystemPath(iter)) {
             return std::nullopt;
         }
         auto joined = joinWithMount(pathIn);
@@ -208,19 +203,7 @@ auto PathSpaceTrellis::joinWithMount(std::string_view tail) const -> std::string
 }
 
 auto PathSpaceTrellis::stripMount(std::string const& absolute) const -> std::string {
-    if (this->mountPrefix.empty() || this->mountPrefix == "/")
-        return absolute;
-    if (absolute == this->mountPrefix)
-        return "/";
-    if (absolute.size() > this->mountPrefix.size() && absolute.rfind(this->mountPrefix, 0) == 0) {
-        auto remainder = absolute.substr(this->mountPrefix.size());
-        if (remainder.empty())
-            return "/";
-        if (remainder.front() != '/')
-            return std::string{"/"} + remainder;
-        return remainder;
-    }
-    return absolute;
+    return stripPathPrefix(absolute, this->mountPrefix).value_or(absolute);
 }
 
 auto PathSpaceTrellis::snapshotSources() const -> std::vector<std::string> {
@@ -455,6 +438,14 @@ auto PathSpaceTrellis::mergeInsertReturn(InsertReturn& target, InsertReturn cons
 
 auto PathSpaceTrellis::isSystemPath(Iterator const& path) -> bool {
     return !path.isAtEnd() && path.currentComponent() == "_system";
+}
+
+auto PathSpaceTrellis::isSystemPath(std::string_view path) -> bool {
+    // Notification paths may arrive without the leading slash.
+    if (!path.empty() && path.front() != '/') {
+        return path == "_system" || path.starts_with("_system/");
+    }
+    return path != "/" && isPathPrefix("/_system", path);
 }
 
 } // namespace SP

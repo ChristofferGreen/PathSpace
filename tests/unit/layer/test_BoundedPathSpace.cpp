@@ -275,4 +275,16 @@ TEST_CASE("BoundedPathSpace surfaces backing errors and forwards control helpers
     }
 }
 
+TEST_CASE("BoundedPathSpace adopts the parent context when mounted") {
+    PathSpace root;
+    auto backing = std::make_shared<PathSpace>();
+    auto bounded = std::make_unique<BoundedPathSpace>(backing, 1);
+    auto* raw    = bounded.get();
+    REQUIRE(root.insert<"/devices/bounded">(std::move(bounded)).errors.empty());
+
+    // The wrapper itself must share the parent's context, not only its backing space.
+    CHECK(raw->sharedContext() != nullptr);
+    CHECK(raw->sharedContext() == root.sharedContext());
+}
+
 TEST_SUITE_END();

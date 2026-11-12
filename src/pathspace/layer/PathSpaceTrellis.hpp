@@ -61,7 +61,9 @@ private:
     [[nodiscard]] auto tryFanOutFuture() const -> std::optional<FutureAny>;
 
     static auto mergeInsertReturn(InsertReturn& target, InsertReturn const& source) -> void;
+    // True for "/_system" and anything below it (component-aware: "/_systemx" is not a system path).
     static auto isSystemPath(Iterator const& path) -> bool;
+    static auto isSystemPath(std::string_view path) -> bool;
 
     std::shared_ptr<PathSpaceBase> backing;
     std::string                    mountPrefix;

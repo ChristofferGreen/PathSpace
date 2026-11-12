@@ -217,6 +217,44 @@ TEST_CASE("persistence namespace validation rejects path traversal tokens") {
     std::filesystem::remove_all(tempRoot, ec);
 }
 
+TEST_CASE("savefile import applies the destination retention policy") {
+    auto savePath = std::filesystem::temp_directory_path() / "undoable_space_savefile_retention.bin";
+    std::error_code removeEc;
+    std::filesystem::remove(savePath, removeEc);
+
+    HistoryOptions unlimited;
+    unlimited.useMutationJournal = true;
+    auto source = makeUndoableSpace(unlimited);
+    REQUIRE(source);
+    REQUIRE(source->enableHistory(ConcretePathStringView{"/doc"}).has_value());
+    for (int i = 0; i < 5; ++i) {
+        REQUIRE(source->insert("/doc/value", i).errors.empty());
+    }
+    REQUIRE(source->exportHistorySavefile(ConcretePathStringView{"/doc"}, savePath, true).has_value());
+
+    HistoryOptions bounded = unlimited;
+    bounded.maxEntries     = 2;
+    auto destination       = makeUndoableSpace(bounded);
+    REQUIRE(destination);
+    REQUIRE(destination->enableHistory(ConcretePathStringView{"/doc"}, bounded).has_value());
+    // Keep the destination's own policy rather than the one stored in the savefile.
+    REQUIRE(destination->importHistorySavefile(ConcretePathStringView{"/doc"}, savePath, false).has_value());
+
+    auto stats = destination->getHistoryStats(ConcretePathStringView{"/doc"});
+    REQUIRE(stats.has_value());
+    CHECK(stats->counts.undo == 2);
+    CHECK(stats->trim.entries == 3);
+
+    // Every imported value is still live; only the undo depth is bounded.
+    for (int i = 0; i < 5; ++i) {
+        auto value = destination->take<int>("/doc/value");
+        REQUIRE(value.has_value());
+        CHECK(*value == i);
+    }
+
+    std::filesystem::remove(savePath, removeEc);
+}
+
 TEST_CASE("savefile export import roundtrip retains history") {
     auto savePath = std::filesystem::temp_directory_path() / "undoable_space_savefile.bin";
     std::error_code removeEc;

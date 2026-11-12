@@ -15,10 +15,20 @@ auto Path<T>::isValid() const -> bool {
     if(this->path[0] != '/')
         return false;
 
-    // Check for relative paths like '.', '..', etc. Names not allowed to start with .
-    if (this->path.contains("/."))
-        return false;
-
+    // Reject relative components ("." and ".."). Names that merely start with a dot ("/.hidden")
+    // are valid, matching validate_path_impl.
+    std::string_view const view{this->path};
+    std::size_t            pos = 1;
+    while (pos <= view.size()) {
+        auto const next      = view.find('/', pos);
+        auto const end       = next == std::string_view::npos ? view.size() : next;
+        auto const component = view.substr(pos, end - pos);
+        if (component == "." || component == "..")
+            return false;
+        if (next == std::string_view::npos)
+            break;
+        pos = next + 1;
+    }
     return true;
 }
 

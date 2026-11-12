@@ -20,8 +20,13 @@ TEST_CASE("Path validity rejects missing slash and embedded relative segments") 
     Path<std::string> root{"/"};
     CHECK(root.isValid());
 
+    // Dot-prefixed names are ordinary names (validate_path_impl accepts them, so they can be
+    // stored); only "." and ".." components are relative.
     Path<std::string> embeddedDot{"/root/.hidden"};
-    CHECK_FALSE(embeddedDot.isValid());
+    CHECK(embeddedDot.isValid());
+
+    Path<std::string> trailingDot{"/root/."};
+    CHECK_FALSE(trailingDot.isValid());
 
     Path<std::string> dotRoot{"/."};
     CHECK_FALSE(dotRoot.isValid());

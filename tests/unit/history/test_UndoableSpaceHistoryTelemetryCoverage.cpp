@@ -41,11 +41,11 @@ TEST_CASE("UndoableSpace records and reorders unsupported payload telemetry") {
     UndoableSpace space{std::make_unique<PathSpace>(), {}};
     UndoJournalRootState state;
 
-    space.recordJournalUnsupportedPayload(state, "/a", "reason");
-    space.recordJournalUnsupportedPayload(state, "/b", "reason2");
+    space.recordJournalUnsupportedPayloadLocked(state, "/a", "reason");
+    space.recordJournalUnsupportedPayloadLocked(state, "/b", "reason2");
     REQUIRE(state.telemetry.unsupportedLog.size() == 2);
 
-    space.recordJournalUnsupportedPayload(state, "/a", "reason");
+    space.recordJournalUnsupportedPayloadLocked(state, "/a", "reason");
     REQUIRE(state.telemetry.unsupportedLog.size() == 2);
     CHECK(state.telemetry.unsupportedLog.back().path == "/a");
     CHECK(state.telemetry.unsupportedLog.back().reason == "reason");
@@ -57,7 +57,7 @@ TEST_CASE("UndoableSpace trims unsupported payload telemetry log") {
     UndoJournalRootState state;
 
     for (std::size_t i = 0; i <= UndoUtilsAlias::MaxUnsupportedLogEntries; ++i) {
-        space.recordJournalUnsupportedPayload(state,
+        space.recordJournalUnsupportedPayloadLocked(state,
                                               "/path/" + std::to_string(i),
                                               "reason");
     }
@@ -306,7 +306,7 @@ TEST_CASE("UndoableSpace history stats surface unsupported recent records") {
 
     auto stateIt = space.journalRoots.find("/doc");
     REQUIRE(stateIt != space.journalRoots.end());
-    space.recordJournalUnsupportedPayload(*stateIt->second, "/doc/bad", "unsupported");
+    space.recordJournalUnsupportedPayloadLocked(*stateIt->second, "/doc/bad", "unsupported");
 
     auto path = space.read<std::string>("/doc/_history/unsupported/recent/0/path");
     REQUIRE(path.has_value());

@@ -33,11 +33,24 @@ TEST_CASE("JSON converter registry can register, convert, and describe types") {
     CHECK(converted->get<std::string>() == "ok");
     CHECK(called);
 
-    auto missing = detail::ConvertWithRegisteredConverter(std::type_index(typeid(long double)), reader);
+    struct NeverRegistered {};
+    auto missing = detail::ConvertWithRegisteredConverter(std::type_index(typeid(NeverRegistered)), reader);
     CHECK_FALSE(missing.has_value());
 
     CHECK(detail::DescribeRegisteredType(std::type_index(typeid(LocalType))) == "LocalType");
-    CHECK(detail::DescribeRegisteredType(std::type_index(typeid(long double))) == typeid(long double).name());
+    CHECK(detail::DescribeRegisteredType(std::type_index(typeid(NeverRegistered))) == typeid(NeverRegistered).name());
+}
+
+TEST_CASE("PathSpace JSON exporter converts every builtin fundamental type") {
+    PathSpace space;
+    REQUIRE(space.insert("/v/long", 7L).nbrValuesInserted == 1);
+    REQUIRE(space.insert("/v/ulong", 8UL).nbrValuesInserted == 1);
+    REQUIRE(space.insert("/v/char", 'x').nbrValuesInserted == 1);
+
+    auto json = PathSpaceJsonExporter::Export(space, PathSpaceJsonOptions{});
+    REQUIRE(json.has_value());
+    CHECK(json->find("converter-missing") == std::string::npos);
+    CHECK(json->find("\"x\"") != std::string::npos);
 }
 
 TEST_CASE("PathSpace JSON exporter emits placeholder for missing type info") {

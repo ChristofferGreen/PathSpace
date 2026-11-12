@@ -884,6 +884,10 @@ std::optional<NodeData> NodeData::deserializeSnapshot(std::span<const std::byte>
     if (!countOpt.has_value())
         return std::nullopt;
     std::uint32_t count = *countOpt;
+    // Counts come from untrusted bytes: bound them by what is left before allocating.
+    constexpr std::size_t TypeEntryBytes = sizeof(std::uintptr_t) + sizeof(std::uint32_t) + 4;
+    if (count > bytes.size() / TypeEntryBytes)
+        return std::nullopt;
 
     std::deque<ElementType> restoredTypes;
     restoredTypes.resize(count);
@@ -908,6 +912,8 @@ std::optional<NodeData> NodeData::deserializeSnapshot(std::span<const std::byte>
     if (hasValueSizes) {
         auto valueSizeCountOpt = readScalar<std::uint32_t>(bytes);
         if (!valueSizeCountOpt.has_value())
+            return std::nullopt;
+        if (*valueSizeCountOpt > bytes.size() / sizeof(std::uint32_t))
             return std::nullopt;
         restoredValueSizes.resize(*valueSizeCountOpt);
         for (std::uint32_t i = 0; i < *valueSizeCountOpt; ++i) {

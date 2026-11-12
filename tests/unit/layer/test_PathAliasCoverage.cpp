@@ -328,11 +328,12 @@ TEST_CASE("PathAlias mapping helpers handle root and prefix boundaries") {
     CHECK(alias.stripTargetPrefix("/any") == "/any");
 }
 
-TEST_CASE("PathAlias helper paths cover non-delimited prefix matches") {
+TEST_CASE("PathAlias helper paths ignore non-delimited prefix matches") {
     auto upstream = std::make_shared<PathSpace>();
     PathAlias alias{upstream, "/root"};
 
-    CHECK(alias.stripTargetPrefix("/rootchild") == "/child");
+    // "/rootchild" is a sibling of "/root", not below it, so it is passed through unchanged.
+    CHECK(alias.stripTargetPrefix("/rootchild") == "/rootchild");
     CHECK(alias.stripTargetPrefix("/other") == "/other");
 }
 

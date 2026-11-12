@@ -502,18 +502,23 @@ auto ValueHandle::readInto(void* destination, InputMetadata const& metadata) con
                 NodeData tmp;
                 auto elemSize = payload->elementSize();
                 auto const& meta = payload->podMetadata();
+                std::optional<Error> serializeErr;
                 auto spanErr = payload->withSpanRaw([&](void const* data, std::size_t count) {
                     auto* base = static_cast<std::byte const*>(data);
                     for (std::size_t i = 0; i < count; ++i) {
                         InputData in{base + i * elemSize, meta};
                         if (auto e = tmp.serialize(in)) {
-                            err = std::move(e);
+                            serializeErr = std::move(e);
                             return;
                         }
                     }
                 });
                 if (spanErr.has_value()) {
                     return spanErr;
+                }
+                // Do not read from a partially built snapshot.
+                if (serializeErr.has_value()) {
+                    return serializeErr;
                 }
                 if (auto deser = tmp.deserialize(destination, metadata)) {
                     return deser;

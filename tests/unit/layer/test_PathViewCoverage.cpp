@@ -89,7 +89,9 @@ TEST_CASE("PathView join/strip helpers cover edge cases") {
     CHECK(joinCanonicalForTest("/", "child") == "child");
 
     CHECK(stripPrefixForTest("/root", "/root") == std::optional<std::string>{"/"});
-    CHECK(stripPrefixForTest("/rootchild", "/root") == std::optional<std::string>{"/child"});
+    // Prefixes match whole components: "/rootchild" is a sibling of "/root", not below it.
+    CHECK(stripPrefixForTest("/rootchild", "/root") == std::nullopt);
+    CHECK(stripPrefixForTest("/root/child", "/root/") == std::optional<std::string>{"/child"});
     CHECK(stripPrefixForTest("/root/child", "/root") == std::optional<std::string>{"/child"});
     CHECK(stripPrefixForTest("/other", "/root") == std::nullopt);
     CHECK(stripPrefixForTest("/any", "/") == std::optional<std::string>{"/any"});
@@ -119,8 +121,11 @@ TEST_CASE("Path validity checks") {
     Path<std::string> noSlash{"relative"};
     CHECK_FALSE(noSlash.isValid());
 
+    // Dot-prefixed names are valid (as in validate_path_impl); "." and ".." components are not.
     Path<std::string> dotPath{"/.hidden"};
-    CHECK_FALSE(dotPath.isValid());
+    CHECK(dotPath.isValid());
+    Path<std::string> dotDotPath{"/a/.."};
+    CHECK_FALSE(dotDotPath.isValid());
 }
 
 TEST_CASE("PathView respects permissions and root") {

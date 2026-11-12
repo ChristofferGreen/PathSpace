@@ -311,9 +311,10 @@ private:
                                HistoryTelemetry const& afterTelemetry,
                                std::string_view tag,
                                std::string message);
-    void recordJournalUnsupportedPayload(UndoJournalRootState& state,
-                                         std::string_view path,
-                                         std::string_view reason);
+    // Requires state.mutex to be held (the telemetry it updates is read under that lock).
+    void recordJournalUnsupportedPayloadLocked(UndoJournalRootState& state,
+                                               std::string_view path,
+                                               std::string_view reason);
 
     auto readHistoryStatsValue(HistoryStats const& stats,
                                std::optional<std::size_t> headGeneration,

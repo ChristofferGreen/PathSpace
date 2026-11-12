@@ -3,100 +3,100 @@
 
 namespace SP {
 
-auto match_names(std::string_view const nameA, std::string_view const nameB) -> bool {
-    size_t nameAIdx = 0;
-    size_t nameBIdx = 0;
+namespace {
 
-    while (nameBIdx < nameB.size()) {
-        if (nameAIdx >= nameA.size()) {
-            return false;
-        }
+// One step of a glob pattern against a single character. `length` is how many pattern bytes the
+// step consumed; std::nullopt means the pattern is malformed (dangling escape, unterminated class).
+struct GlobStep {
+    std::size_t length  = 0;
+    bool        matched = false;
+};
 
-        if (nameA[nameAIdx] == '\\') {
-            // Handle escape character
-            nameAIdx++; // Skip backslash
-            if (nameAIdx < nameA.size() && nameA[nameAIdx] == nameB[nameBIdx]) {
-                // Match the escaped character literally
-                ++nameBIdx;
-                ++nameAIdx;
-            } else {
-                return false;
+auto matchGlobStep(std::string_view pattern, std::size_t pos, char ch) -> std::optional<GlobStep> {
+    switch (pattern[pos]) {
+        case '\\':
+            if (pos + 1 >= pattern.size()) {
+                return std::nullopt;
             }
-        } else if (nameAIdx < nameA.size() && nameA[nameAIdx] == '?') {
-            nameAIdx++;
-            nameBIdx++;
-        } else if (nameAIdx < nameA.size() && nameA[nameAIdx] == '*') {
-            size_t nextnameAIdx = nameAIdx + 1;
-
-            if (nextnameAIdx == nameA.size()) {
-                return true; // Trailing '*' matches everything
+            return GlobStep{2, pattern[pos + 1] == ch};
+        case '?':
+            return GlobStep{1, true};
+        case '[': {
+            std::size_t cursor = pos + 1;
+            bool const  invert = cursor < pattern.size() && pattern[cursor] == '!';
+            if (invert) {
+                ++cursor;
             }
-
-            size_t matchIdx = nameBIdx;
-            while (matchIdx < nameB.size() && nameB[matchIdx] != nameA[nextnameAIdx]) {
-                matchIdx++;
-            }
-
-            if (matchIdx == nameB.size()) {
-                return false;
-            }
-
-            nameAIdx = nextnameAIdx;
-            nameBIdx = matchIdx;
-        } else if (nameAIdx < nameA.size() && nameA[nameAIdx] == '[') {
-            nameAIdx++;
-            bool invert = false;
-            if (nameAIdx < nameA.size() && nameA[nameAIdx] == '!') {
-                invert = true;
-                nameAIdx++;
-            }
-
-            bool matched  = false;
-            char prevChar = '\0';
-
-            while (nameAIdx < nameA.size() && nameA[nameAIdx] != ']') {
-                if (nameA[nameAIdx] == '-' && prevChar != '\0' && nameAIdx + 1 < nameA.size()) {
-                    char rangeEnd = nameA[nameAIdx + 1];
-                    // Check if current nameBing character is within range
-                    if (nameBIdx < nameB.size() && nameB[nameBIdx] >= prevChar && nameB[nameBIdx] <= rangeEnd) {
-                        matched = true;
-                    }
-                    nameAIdx += 2; // Skip both the hyphen and range end character
+            bool matched = false;
+            while (cursor < pattern.size() && pattern[cursor] != ']') {
+                char low = pattern[cursor];
+                if (low == '\\' && cursor + 1 < pattern.size()) {
+                    low = pattern[++cursor];
+                }
+                ++cursor;
+                // "x-y" is a range unless the '-' is the last member ("[a-]" holds a literal '-').
+                if (cursor + 1 < pattern.size() && pattern[cursor] == '-' && pattern[cursor + 1] != ']') {
+                    char const high = pattern[cursor + 1];
+                    matched         = matched || (ch >= low && ch <= high);
+                    cursor += 2;
                 } else {
-                    if (nameBIdx < nameB.size() && nameB[nameBIdx] == nameA[nameAIdx]) {
-                        matched = true;
-                    }
-                    prevChar = nameA[nameAIdx];
-                    nameAIdx++;
+                    matched = matched || ch == low;
                 }
             }
-
-            if (nameAIdx >= nameA.size() || nameA[nameAIdx] != ']') {
-                return false; // Malformed pattern - missing closing bracket
+            if (cursor >= pattern.size()) {
+                return std::nullopt;
             }
+            return GlobStep{cursor + 1 - pos, matched != invert};
+        }
+        default:
+            return GlobStep{1, pattern[pos] == ch};
+    }
+}
 
-            if ((!invert && !matched) || (invert && matched)) {
-                return false;
+} // namespace
+
+auto matchGlobComponent(std::string_view const pattern, std::string_view const name) -> GlobComponentMatch {
+    std::size_t patternIdx = 0;
+    std::size_t nameIdx    = 0;
+    // Where to resume after the most recent '*' when a later step fails (classic backtracking).
+    std::optional<std::size_t> starPatternIdx;
+    std::size_t                starNameIdx = 0;
+
+    while (nameIdx < name.size()) {
+        if (patternIdx < pattern.size()) {
+            if (pattern[patternIdx] == '*') {
+                if (patternIdx + 1 < pattern.size() && pattern[patternIdx + 1] == '*') {
+                    return {.match = true, .supermatch = true}; // '**' matches across the name edge
+                }
+                starPatternIdx = ++patternIdx;
+                starNameIdx    = nameIdx;
+                continue;
             }
-
-            nameAIdx++; // Skip the closing bracket
-            nameBIdx++; // Move to next character in nameBing
-        } else {
-            if (nameBIdx < nameB.size() && nameA[nameAIdx] == nameB[nameBIdx]) {
-                nameAIdx++;
-                nameBIdx++;
-            } else {
-                return false;
+            auto step = matchGlobStep(pattern, patternIdx, name[nameIdx]);
+            if (!step) {
+                return {};
+            }
+            if (step->matched) {
+                patternIdx += step->length;
+                ++nameIdx;
+                continue;
             }
         }
+        if (!starPatternIdx) {
+            return {};
+        }
+        patternIdx = *starPatternIdx;
+        nameIdx    = ++starNameIdx;
     }
 
-    // Skip any remaining wildcards
-    while (nameAIdx < nameA.size() && nameA[nameAIdx] == '*') {
-        nameAIdx++;
+    while (patternIdx < pattern.size() && pattern[patternIdx] == '*') {
+        ++patternIdx;
     }
+    return {.match = patternIdx == pattern.size(), .supermatch = false};
+}
 
-    return nameAIdx == nameA.size() && nameBIdx == nameB.size();
+auto match_names(std::string_view const nameA, std::string_view const nameB) -> bool {
+    return matchGlobComponent(nameA, nameB).match;
 }
 
 auto match_paths(std::string_view const pathA, std::string_view const pathB) -> bool {
@@ -111,6 +111,40 @@ auto match_paths(std::string_view const pathA, std::string_view const pathB) -> 
     if (!iterA.isAtEnd() || !iterB.isAtEnd())
         return false;
     return true;
+}
+
+namespace {
+auto trimPrefixSlash(std::string_view prefix) -> std::string_view {
+    while (prefix.size() > 1 && prefix.back() == '/') {
+        prefix.remove_suffix(1);
+    }
+    return prefix;
+}
+} // namespace
+
+auto isPathPrefix(std::string_view prefix, std::string_view path) -> bool {
+    prefix = trimPrefixSlash(prefix);
+    if (prefix.empty() || prefix == "/") {
+        return true;
+    }
+    if (!path.starts_with(prefix)) {
+        return false;
+    }
+    return path.size() == prefix.size() || path[prefix.size()] == '/';
+}
+
+auto stripPathPrefix(std::string_view path, std::string_view prefix) -> std::optional<std::string> {
+    prefix = trimPrefixSlash(prefix);
+    if (prefix.empty() || prefix == "/") {
+        return std::string{path};
+    }
+    if (!isPathPrefix(prefix, path)) {
+        return std::nullopt;
+    }
+    if (path.size() == prefix.size()) {
+        return std::string{"/"};
+    }
+    return std::string{path.substr(prefix.size())};
 }
 
 auto is_concrete(std::string_view path) -> bool {

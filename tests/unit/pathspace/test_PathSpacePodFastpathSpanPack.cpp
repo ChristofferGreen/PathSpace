@@ -578,4 +578,29 @@ TEST_CASE("Minimal span take fails fast when lane lacks POD payload") {
     CHECK(x.value() == 7);
 }
 
+TEST_CASE("Blocking span pack take ends on shutdown") {
+    // Same exit conditions as a blocking scalar take: shutdown ends the wait instead of letting it
+    // run to the deadline. The message says which happened, so no wall-clock assertion is needed
+    // (a lost wakeup would stall the process and trip the test watchdog instead).
+    PathSpace space;
+    std::optional<Error> takeError;
+    std::thread taker([&] {
+        auto result = space.take<"x", "y">("/missing/pack",
+                                           [](std::span<float>, std::span<float>) {},
+                                           Out{} & Block{std::chrono::hours(1)});
+        if (!result) {
+            takeError = result.error();
+        }
+    });
+    auto ctx = space.sharedContext();
+    REQUIRE(ctx);
+    ctx->shutdown();
+    taker.join();
+
+    REQUIRE(takeError.has_value());
+    CHECK(takeError->code == Error::Code::Timeout);
+    REQUIRE(takeError->message.has_value());
+    CHECK(takeError->message->find("Shutting down") != std::string::npos);
+}
+
 TEST_SUITE_END();

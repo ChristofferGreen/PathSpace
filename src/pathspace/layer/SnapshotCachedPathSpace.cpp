@@ -2,6 +2,7 @@
 
 #include "core/NodeData.hpp"
 #include "path/ConcretePath.hpp"
+#include "path/utils.hpp"
 #include <algorithm>
 #include <condition_variable>
 #include <mutex>
@@ -49,22 +50,6 @@ auto normalizeSnapshotPath(std::string_view path) -> std::string {
 
 auto hasGlobChars(std::string_view path) -> bool {
     return path.find_first_of("*?[") != std::string_view::npos;
-}
-
-auto isPathPrefix(std::string_view prefix, std::string_view path) -> bool {
-    if (prefix == "/") {
-        return true;
-    }
-    if (path.size() < prefix.size()) {
-        return false;
-    }
-    if (path.compare(0, prefix.size(), prefix) != 0) {
-        return false;
-    }
-    if (path.size() == prefix.size()) {
-        return true;
-    }
-    return path[prefix.size()] == '/';
 }
 
 auto dirtyRootsContainPrefix(DirtyRootSet const& roots, std::string_view path) -> bool {

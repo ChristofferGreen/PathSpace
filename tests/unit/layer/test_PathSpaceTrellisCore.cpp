@@ -530,7 +530,8 @@ TEST_CASE("PathSpaceTrellis visit remaps prefix and skips system nodes") {
     });
 
     REQUIRE(result.has_value());
-    CHECK(visited == std::vector<std::string>{"/", "/child", "/child", "/other"});
+    // "/rootchild" is outside the "/root" mount (a sibling), so like "/other" it is not remapped.
+    CHECK(visited == std::vector<std::string>{"/", "/child", "/rootchild", "/other"});
 }
 
 TEST_CASE("PathSpaceTrellis notify is a no-op without backing") {
@@ -834,5 +835,20 @@ TEST_CASE("PathSpaceTrellis visit remaps mount root to slash") {
     REQUIRE(result);
     CHECK(std::find(paths.begin(), paths.end(), "/") != paths.end());
     CHECK(std::find(paths.begin(), paths.end(), "/child") != paths.end());
+}
+
+TEST_CASE("PathSpaceTrellis system checks match whole components") {
+    CHECK(PathSpaceTrellis::isSystemPath(std::string_view{"/_system"}));
+    CHECK(PathSpaceTrellis::isSystemPath(std::string_view{"/_system/enable"}));
+    CHECK(PathSpaceTrellis::isSystemPath(std::string_view{"_system/enable"}));
+    CHECK_FALSE(PathSpaceTrellis::isSystemPath(std::string_view{"/_systemx"}));
+    CHECK_FALSE(PathSpaceTrellis::isSystemPath(std::string_view{"_systemd/x"}));
+    CHECK_FALSE(PathSpaceTrellis::isSystemPath(std::string_view{"/"}));
+
+    // A sibling whose name only starts with "_system" is ordinary data: notify must reach it.
+    auto backing = std::make_shared<RecordingPathSpaceCore>();
+    PathSpaceTrellis trellis{backing};
+    trellis.notify("/_systemx/value");
+    CHECK(backing->flush() == std::vector<std::string>{"/_systemx/value"});
 }
 }

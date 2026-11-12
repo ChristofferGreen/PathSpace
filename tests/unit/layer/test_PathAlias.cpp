@@ -1,4 +1,6 @@
 #include "third_party/doctest.h"
+#include <array>
+#include <span>
 #include <string>
 
 #include <pathspace/PathSpace.hpp>
@@ -119,5 +121,22 @@ TEST_CASE("PathAlias - Nested mounting under a parent PathSpace") {
         REQUIRE(viaAlias.has_value());
         CHECK(viaAlias.value() == "new");
     }
+}
+
+TEST_CASE("PathAlias forwards span pack inserts") {
+    auto upstream = std::make_shared<PathSpace>();
+    PathAlias alias{upstream, "/dev"};
+
+    std::array<int, 2> a{{1, 2}};
+    std::array<int, 2> b{{3, 4}};
+    auto ret = alias.insert<"a", "b">("/pack", std::span<const int>(a), std::span<const int>(b));
+    CHECK(ret.errors.empty());
+
+    auto readA = upstream->read<int>("/dev/pack/a");
+    REQUIRE(readA.has_value());
+    CHECK(readA.value() == 1);
+    auto readB = upstream->read<int>("/dev/pack/b");
+    REQUIRE(readB.has_value());
+    CHECK(readB.value() == 3);
 }
 }
