@@ -6,6 +6,7 @@
 #include "core/Out.hpp"
 #include "task/IFutureAny.hpp"
 #include <atomic>
+#include <memory_resource>
 #include <string_view>
 #include <string>
 #include <mutex>
@@ -36,6 +37,13 @@ class UndoableSpace;
 
 class Leaf {
 public:
+    // The tree below the root allocates from `resource` (non-null; must outlive the Leaf).
+    explicit Leaf(std::pmr::memory_resource* resource = std::pmr::get_default_resource()) : root(resource) {}
+
+    [[nodiscard]] auto memoryResource() const noexcept -> std::pmr::memory_resource* {
+        return this->root.memoryResource();
+    }
+
     auto in(Iterator const& iter, InputData const& inputData, InsertReturn& ret) -> void;
     auto insertSerialized(Iterator const& iter, NodeData const& payload, InsertReturn& ret) -> void;
     auto out(Iterator const& iter, InputMetadata const& inputMetadata, void* obj, bool const doExtract) -> std::optional<Error>;

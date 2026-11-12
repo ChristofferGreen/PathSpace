@@ -400,6 +400,17 @@ PathSpace has no global flow control: producers are never blocked by `insert`, a
 - **Mitigations in practice:** wrap hot queues in `BoundedPathSpace`; give heavy work its own `TaskPool`; consume with `take` rather than `read` so entries are released; `Error::Code::CapacityExceeded` is reserved for future hard limits and is not returned anywhere today.
 - Tests: `tests/unit/layer/test_BoundedPathSpace.cpp`, `tests/unit/layer/test_BoundedPathSpaceCounts.cpp`; task pool behaviour in `tests/unit/task/test_TaskPool.cpp`.
 
+## Allocator integration
+Tree and payload storage allocate from a `std::pmr::memory_resource`. User-facing guide with examples: `docs/AI_Allocators.md`.
+- **Context**: `PathSpaceContext::setMemoryResource/getMemoryResource` hold the resource (default `std::pmr::get_default_resource()` at context creation). Null is rejected with `InvalidError`. The context never owns the resource.
+- **Space**: `PathSpace(std::pmr::memory_resource&, TaskPool* = nullptr)` fixes the resource for the space's tree; `PathSpace(std::shared_ptr<PathSpaceContext>, prefix)` takes whatever the context carries at construction time. `PathSpace::memoryResource()` reports it. Copies, clones and the nested spaces a copy creates allocate from the source's resource. A space adopted as a mounted nested space keeps the resource it was built with; mounting does not migrate storage.
+- **Allocator-aware components**: `Node::ChildrenMap` (`phmap::parallel_node_hash_map` keyed by `std::pmr::string` with a `std::pmr::polymorphic_allocator`; map nodes and long keys), child `Node`s (created with the parent's resource), and `SlidingBuffer`'s byte storage (`std::pmr::vector<uint8_t>`), reached through `NodeData(std::pmr::memory_resource*)`. `Leaf` creates every `NodeData` from the owning node's resource.
+- **Not covered**: the `Node` object itself (global free list), `NodeData`'s deques (types, tasks, futures, value sizes), task/future control blocks, wait registry nodes, and temporary buffers used while serializing. These use the global allocator.
+- **Copy semantics**: `SlidingBuffer` follows `std::pmr::vector`: copy construction uses the default resource, move construction keeps the source's, and the allocator-extended constructors choose explicitly. `NodeData` has allocator-extended copy/move constructors used by `Leaf` and the copy path so payloads end up in the destination node's resource.
+- **Lifetime**: the resource must outlive the space and everything allocated from it (copies, clones, payload handed out as spans). A resource replaced in a context only affects storage allocated afterwards; old storage is freed through the resource it came from, so the old resource must stay alive as long as that storage does.
+- **Thread safety**: operations run concurrently and allocate under their own locks, so the resource must be thread-safe. `std::pmr::monotonic_buffer_resource` and `std::pmr::unsynchronized_pool_resource` are not; wrap them in `SP::LockedMemoryResource` (`core/LockedMemoryResource.hpp`) or use `std::pmr::synchronized_pool_resource`. A monotonic arena also never returns memory before it is released, so long-lived spaces with many removals grow.
+- **Failure**: allocation failure (`std::bad_alloc`, or a resource that throws when exhausted) propagates as an exception from the operation that allocated; PathSpace does not translate it to `Error`. Use arenas sized with a growing upstream.
+
 ## Unit Testing
 Unit testing is by using the C++ doctest library.
 

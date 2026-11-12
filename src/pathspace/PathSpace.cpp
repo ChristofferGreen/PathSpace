@@ -252,7 +252,11 @@ void PathSpace::retargetNestedMounts(Node const* node, std::string const& basePa
     }
 }
 
-PathSpace::PathSpace(TaskPool* pool) {
+PathSpace::PathSpace(TaskPool* pool)
+    : PathSpace(*std::pmr::get_default_resource(), pool) {}
+
+PathSpace::PathSpace(std::pmr::memory_resource& resource, TaskPool* pool)
+    : leaf(&resource) {
     sp_log("PathSpace::PathSpace", "Function Called");
     // Ensure a non-null executor without relying on a global singleton.
     // If no pool is provided, create and own a TaskPool and use it as the executor.
@@ -262,11 +266,12 @@ PathSpace::PathSpace(TaskPool* pool) {
         this->pool = pool;
     }
     Executor* exec = static_cast<Executor*>(this->pool);
-    this->context = std::make_shared<PathSpaceContext>(exec);
+    this->context = this->makeOwnContext(exec);
     this->setExecutor(exec);
 };
 
-PathSpace::PathSpace(std::shared_ptr<PathSpaceContext> context, std::string prefix) {
+PathSpace::PathSpace(std::shared_ptr<PathSpaceContext> context, std::string prefix)
+    : leaf(context ? context->getMemoryResource() : std::pmr::get_default_resource()) {
     sp_log("PathSpace::PathSpace(context)", "Function Called");
     this->context = std::move(context);
 
@@ -295,11 +300,12 @@ PathSpace::PathSpace(std::shared_ptr<PathSpaceContext> context, std::string pref
     this->setExecutor(exec);
 }
 
-PathSpace::PathSpace(PathSpace const& other) {
+PathSpace::PathSpace(PathSpace const& other)
+    : leaf(other.memoryResource()) {
     sp_log("PathSpace::PathSpace(copy)", "Function Called");
     this->pool = other.pool ? other.pool : &TaskPool::Instance();
     Executor* exec = static_cast<Executor*>(this->pool);
-    this->context = std::make_shared<PathSpaceContext>(exec);
+    this->context = this->makeOwnContext(exec);
     this->setExecutor(exec);
     this->prefix = other.prefix;
     this->activeOutCount.store(0, std::memory_order_relaxed);
@@ -316,7 +322,7 @@ auto PathSpace::operator=(PathSpace const& other) -> PathSpace& {
     this->ownedPool.reset();
     this->pool = other.pool ? other.pool : &TaskPool::Instance();
     Executor* exec = static_cast<Executor*>(this->pool);
-    this->context = std::make_shared<PathSpaceContext>(exec);
+    this->context = this->makeOwnContext(exec);
     this->contextBorrowed = false; // the fresh context is this space's own
     this->setExecutor(exec);
     this->prefix = other.prefix;
@@ -326,8 +332,14 @@ auto PathSpace::operator=(PathSpace const& other) -> PathSpace& {
     return *this;
 }
 
+auto PathSpace::makeOwnContext(Executor* exec) const -> std::shared_ptr<PathSpaceContext> {
+    auto ctx = std::make_shared<PathSpaceContext>(exec);
+    (void)ctx->setMemoryResource(this->memoryResource()); // never null
+    return ctx;
+}
+
 auto PathSpace::clone(CopyStats* stats) const -> PathSpace {
-    PathSpace copy{this->pool ? this->pool : &TaskPool::Instance()};
+    PathSpace copy{*this->memoryResource(), this->pool ? this->pool : &TaskPool::Instance()};
     copy.prefix = this->prefix;
     copy.copyFrom(*this, stats);
     return copy;
@@ -1022,7 +1034,7 @@ void PathSpace::copyFrom(PathSpace const& other, CopyStats* stats) {
                     auto indexedPath = append_index_suffix(currentPath, idx);
                     auto mountPrefix = makeMountPrefix(dstSpace->prefix, indexedPath);
                     auto* nestedPool = nestedPathSpace->pool ? nestedPathSpace->pool : &TaskPool::Instance();
-                    auto nestedPtr = std::make_unique<PathSpace>(nestedPool);
+                    auto nestedPtr = std::make_unique<PathSpace>(*dstSpace->memoryResource(), nestedPool);
                     nestedPtr->adoptContextAndPrefix(dstSpace->context, mountPrefix);
                     PathSpace* nestedRaw = nestedPtr.get();
                     if (!dst.data) {

@@ -16,6 +16,7 @@
 #include "type/InputMetadata.hpp"
 #include <chrono>
 #include <memory>
+#include <memory_resource>
 #include <string_view>
 #include <vector>
 #include <atomic>
@@ -49,9 +50,21 @@ public:
      */
     explicit PathSpace(TaskPool* pool = nullptr);
     /**
+     * @brief Constructs a PathSpace whose tree nodes and payload buffers allocate from `resource`.
+     * @param resource Memory resource for this space's storage. The caller keeps ownership: it must
+     *                 outlive the space and every copy or clone made from it, and it must be safe to
+     *                 use from several threads (spaces allocate from concurrent operations; wrap
+     *                 std::pmr::monotonic_buffer_resource in std::pmr::synchronized_pool_resource or
+     *                 a locking adapter unless the space is used from one thread only).
+     * @param pool Pointer to a TaskPool for managing asynchronous operations. If nullptr, uses the global instance.
+     * See "Allocator integration" in docs/AI_Architecture.md for what is and is not covered.
+     */
+    explicit PathSpace(std::pmr::memory_resource& resource, TaskPool* pool = nullptr);
+    /**
      * @brief Constructs a PathSpace with a shared context and an optional path prefix.
      * @param context Shared runtime context (executor, wait/notify, sink).
      * @param prefix  Optional mount path prefix for this space.
+     * The tree allocates from the context's memory resource as it is at construction time.
      */
     explicit PathSpace(std::shared_ptr<PathSpaceContext> context, std::string prefix = {});
 
@@ -88,6 +101,14 @@ public:
     [[nodiscard]] auto clone(CopyStats* stats = nullptr) const -> PathSpace;
 
     ~PathSpace() override;
+
+    /**
+     * @brief Memory resource this space's tree nodes and payload buffers allocate from.
+     * Copies and clones allocate from the same resource. The resource is fixed at construction.
+     */
+    [[nodiscard]] auto memoryResource() const noexcept -> std::pmr::memory_resource* {
+        return this->leaf.memoryResource();
+    }
 
     virtual auto clear() -> void;
 
@@ -157,6 +178,8 @@ protected:
     Leaf        leaf;
 
 private:
+    // Fresh context owned by this space, carrying this space's memory resource.
+    auto makeOwnContext(Executor* exec) const -> std::shared_ptr<PathSpaceContext>;
     void copyFrom(PathSpace const& other, CopyStats* stats);
     static void copyNodeRecursive(Node const& src,
                                   Node& dst,
