@@ -334,7 +334,9 @@ auto PathSpace::operator=(PathSpace const& other) -> PathSpace& {
 
 auto PathSpace::makeOwnContext(Executor* exec) const -> std::shared_ptr<PathSpaceContext> {
     auto ctx = std::make_shared<PathSpaceContext>(exec);
-    (void)ctx->setMemoryResource(this->memoryResource()); // never null
+    if (auto const installed = ctx->setMemoryResource(this->memoryResource()); !installed) {
+        sp_log("PathSpace: memory resource rejected by context", "PathSpace"); // unreachable: never null
+    }
     return ctx;
 }
 

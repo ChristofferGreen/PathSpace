@@ -110,7 +110,7 @@ NodeData::NodeData(NodeData const& other, std::pmr::memory_resource* resource)
     }
 }
 
-NodeData::NodeData(NodeData&& other, std::pmr::memory_resource* resource)
+NodeData::NodeData(NodeData&& other, std::pmr::memory_resource* resource) // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved): members are moved individually
     : data(std::move(other.data), resource),
       types(std::move(other.types)),
       tasks(std::move(other.tasks)),

@@ -28,7 +28,7 @@ struct SlidingBuffer {
     // Allocator-extended copy/move: the new buffer allocates from `resource`.
     SlidingBuffer(SlidingBuffer const& other, std::pmr::memory_resource* resource)
         : storage(other.storage, resource), frontOffset(other.frontOffset) {}
-    SlidingBuffer(SlidingBuffer&& other, std::pmr::memory_resource* resource)
+    SlidingBuffer(SlidingBuffer&& other, std::pmr::memory_resource* resource) // NOLINT(cppcoreguidelines-rvalue-reference-param-not-moved): storage is moved
         : storage(std::move(other.storage), resource), frontOffset(other.frontOffset) {}
 
     SlidingBuffer(SlidingBuffer const&)            = default;
