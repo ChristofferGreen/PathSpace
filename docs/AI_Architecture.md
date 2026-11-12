@@ -383,6 +383,23 @@ Trivially copyable types (`podPreferred`) are stored in a lock-free single-lane 
 - The payload cannot enforce this itself: pack operations hand raw pointers to the caller after the payload has returned, so exclusion has to come from the caller. Debug builds (NDEBUG undefined, which includes the sanitizer builds) assert on the single-lane violations they can observe.
 - Mutable pack spans (`spanPackMut`) are not covered by the assertion; the same rule applies to them.
 
+## Backpressure & Queue Limits
+PathSpace has no global flow control: producers are never blocked by `insert`, and the core imposes no size limit. What happens under producer/consumer skew depends on where the queue lives.
+
+- **Node queues are unbounded.** Each node is a FIFO of values and executions (`NodeData`, or the lock-free `PodPayload` lane for POD types). `insert` appends and returns immediately ("Inserts do not block" in "Blocking"); a slow consumer just makes the queue longer. `take` pops from the front; `read` leaves it. Nothing caps the number of pending entries.
+- **Consumers wait, producers do not.** A blocking `read`/`take` on an empty node waits on the `WaitMap` until a notification or its timeout (`Timeout`). There is no symmetric wait for "queue has room".
+- **Task queue.** Executions are scheduled on a `TaskPool` (`src/pathspace/task/TaskPool.*`): an unbounded `std::queue` of weak task pointers served by a fixed number of workers (`std::thread::hardware_concurrency()` for the default pool, at least one). A burst of `Immediate` executions queues behind busy workers; submission only fails once the pool is shutting down. `Lazy` executions are queued only when a reader asks for the result. Pass your own executor (or a pool of a different size) to a `PathSpace` to isolate heavy producers; a task that blocks inside a worker on a read occupies that worker until it returns.
+- **Opt-in bound: `BoundedPathSpace`** (`src/pathspace/layer/BoundedPathSpace.hpp`) wraps a backing space and caps the queue length per path (indexed spellings such as `/q[1]` share the count of `/q`). It never blocks the producer and never fails because the queue is full; instead it drops the oldest entry (drop-oldest, latest wins):
+  - When the count has reached `maxItems` (minimum 1) an insert pops the oldest value of the same type and then appends the new one. Only types with both a serializer and a deserializer can be evicted; others are rejected with `NotSupported` once the queue is full.
+  - If the front entry has another type the insert is dropped and the failure is reported in `InsertReturn::errors` (the old data stays).
+  - If eviction finds the queue empty (someone drained it through the backing space) the count resets and the insert proceeds.
+  - Pops through the wrapper (`take`) decrement the count; plain reads do not.
+  - Counts live in the wrapper, not in the backing space, so writers that bypass the wrapper make the count stale until it resynchronises as described above.
+  Choose it for telemetry/event streams where the newest data matters more than completeness; keep unbounded queues (and apply your own back pressure, for example by waiting on a result path) when every item must be processed.
+- **History retention** is bounded separately (`HistoryOptions` / `JournalState::RetentionPolicy`, `maxEntries`/`maxBytes`, `0` means unlimited). It trims undo entries, not live queues.
+- **Mitigations in practice:** wrap hot queues in `BoundedPathSpace`; give heavy work its own `TaskPool`; consume with `take` rather than `read` so entries are released; `Error::Code::CapacityExceeded` is reserved for future hard limits and is not returned anywhere today.
+- Tests: `tests/unit/layer/test_BoundedPathSpace.cpp`, `tests/unit/layer/test_BoundedPathSpaceCounts.cpp`; task pool behaviour in `tests/unit/task/test_TaskPool.cpp`.
+
 ## Unit Testing
 Unit testing is by using the C++ doctest library.
 
