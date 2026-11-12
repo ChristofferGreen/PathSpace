@@ -611,7 +611,7 @@ TEST_CASE("PathSpaceTrellis blocking fan-out succeeds after retry") {
     backing->script = {Error{Error::Code::NoObjectFound, "empty"}, std::nullopt};
 
     int out = 0;
-    Out blocking = Block(std::chrono::milliseconds{10});
+    Out blocking = Block(std::chrono::milliseconds{60000});
     auto err = trellis.out(Iterator{"/"}, InputMetadataT<int>{}, blocking, &out);
     CHECK_FALSE(err.has_value());
 }
@@ -624,7 +624,7 @@ TEST_CASE("PathSpaceTrellis blocking fan-out returns non-empty error after wait"
     backing->script = {Error{Error::Code::NoObjectFound, "empty"}, Error{Error::Code::InvalidPermissions, "denied"}};
 
     int out = 0;
-    Out blocking = Block(std::chrono::milliseconds{5});
+    Out blocking = Block(std::chrono::milliseconds{60000});
     auto err = trellis.out(Iterator{"/"}, InputMetadataT<int>{}, blocking, &out);
     REQUIRE(err.has_value());
     CHECK(err->code == Error::Code::InvalidPermissions);

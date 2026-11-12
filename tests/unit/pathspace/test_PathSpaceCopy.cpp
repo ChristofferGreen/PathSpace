@@ -212,16 +212,13 @@ TEST_CASE("copies_nested_space_structure") {
 }
 
 TEST_CASE("clone avoids tree mutex recursion deadlock") {
-    using namespace std::chrono_literals;
     PathSpace source;
     auto nested = std::make_unique<PathSpace>();
     REQUIRE(source.insert("/ns", std::move(nested)).nbrSpacesInserted == 1);
 
-    auto start  = std::chrono::steady_clock::now();
-    auto clone  = source.clone();
-    auto end    = std::chrono::steady_clock::now();
-    auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    CHECK(millis < 200ms);
+    // A recursive tree-mutex acquisition would hang here; the CPU-counter watchdog in test_main
+    // reports that as a stalled test, so no wall-clock bound is needed (it would fail under load).
+    auto clone = source.clone();
 
     auto names = clone.read<Children>("/");
     REQUIRE(names.has_value());
