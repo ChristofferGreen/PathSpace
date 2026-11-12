@@ -78,13 +78,16 @@ target_compile_options(PathSpace PUBLIC "-Wno-deprecated")
 pathspace_enable_warnings(PathSpace SHADOW)
 
 if(PATHSPACE_CLANG_TIDY)
-    find_program(PATHSPACE_CLANG_TIDY_EXE NAMES clang-tidy
-        HINTS /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin)
+    find_program(PATHSPACE_CLANG_TIDY_EXE NAMES clang-tidy)
+    if(NOT PATHSPACE_CLANG_TIDY_EXE)
+        find_program(PATHSPACE_CLANG_TIDY_EXE NAMES clang-tidy
+            HINTS /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin)
+    endif()
     if(PATHSPACE_CLANG_TIDY_EXE)
         # Checks come from the repository's .clang-tidy file.
         set_target_properties(PathSpace PROPERTIES CXX_CLANG_TIDY "${PATHSPACE_CLANG_TIDY_EXE}")
     else()
-        message(WARNING "PATHSPACE_CLANG_TIDY=ON but clang-tidy was not found; install LLVM (brew install llvm)")
+        message(WARNING "PATHSPACE_CLANG_TIDY=ON but clang-tidy was not found; install clang-tidy or LLVM")
     endif()
 endif()
 
