@@ -373,7 +373,8 @@ TEST_CASE("PathSpace Nesting/listChildren holds nested alive during concurrent t
 
         {
             std::unique_lock<std::mutex> lock(listState->mutex);
-            REQUIRE(listState->cv.wait_for(lock, 200ms, [&]() { return listState->listingStarted; }));
+            // Event wait: a deadline here would fail under machine load; the CPU watchdog catches real hangs.
+            listState->cv.wait(lock, [&]() { return listState->listingStarted; });
         }
 
         std::promise<void> takeDone;
@@ -425,7 +426,8 @@ TEST_CASE("PathSpace Nesting/visit holds nested alive during concurrent take") {
 
     {
         std::unique_lock<std::mutex> lock(visitState->mutex);
-        REQUIRE(visitState->cv.wait_for(lock, 200ms, [&]() { return visitState->visitEntered; }));
+        // Event wait: a deadline here would fail under machine load; the CPU watchdog catches real hangs.
+        visitState->cv.wait(lock, [&]() { return visitState->visitEntered; });
     }
 
     std::promise<void> takeDone;
