@@ -17,6 +17,7 @@ The renderer, UI, widget, inspector and web-server plans were removed together w
 
 ## Supporting Documents
 - `docs/AI_Architecture.md` — core PathSpace architecture reference.
+- `docs/AI_Allocators.md` — custom `std::pmr::memory_resource` usage, lifetimes and thread-safety rules.
 - `docs/AI_Paths.md` — canonical path namespaces and layout conventions.
 - `docs/AI_Todo.task` — backlog items; keep plans and backlog consistent.
 - `docs/History_Journal_Wiring.md` — undo journal wiring notes.
