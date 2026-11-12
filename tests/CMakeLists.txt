@@ -33,6 +33,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/type/test_SlidingBuffer.cpp
   unit/type/test_SlidingBufferMemoryResource.cpp
   unit/core/test_NodeMemoryResource.cpp
+  unit/core/test_NodeConcurrency.cpp
   unit/core/test_NodeDataSnapshot.cpp
   unit/core/test_NodeDataNested.cpp
   unit/core/test_NodeDataCoverage.cpp

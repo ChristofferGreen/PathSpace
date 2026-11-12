@@ -124,9 +124,21 @@ struct Node final {
     bool isLeaf() const noexcept { return !hasChildren(); }
 
     // Create or fetch a child node for the given name
+    // The child is resolved while the shard lock is held. An iterator returned by try_emplace
+    // refers to a slot of the shard's table, which a concurrent insert into the same shard may
+    // reallocate once the lock is released; the Node itself is stable (node map).
     Node& getOrCreateChild(std::string_view name) {
-        auto [it, inserted] = children.try_emplace(name, std::make_unique<Node>(this->memoryResource()));
-        return *it->second;
+        auto* const resource = this->memoryResource();
+        Node*       result   = nullptr;
+        children.lazy_emplace_l(
+            name,
+            [&](auto& entry) { result = entry.second.get(); },
+            [&](auto const& construct) {
+                auto child = std::make_unique<Node>(resource);
+                result     = child.get();
+                construct(std::piecewise_construct, std::forward_as_tuple(name), std::forward_as_tuple(std::move(child)));
+            });
+        return *result;
     }
 
     // Lookup a child by name (const)
