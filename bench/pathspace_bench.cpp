@@ -466,7 +466,7 @@ void buildNestedChain(PathSpace& root,
         if (!limiter.allow()) {
             return;
         }
-        auto child = std::make_unique<PathSpace>();
+        auto child = std::make_unique<PathSpace>(*root.memoryResource());
         PathSpace* childPtr = child.get();
         std::string mount = "/chain_" + std::to_string(i);
         current->insert(mount, std::move(child));
@@ -504,7 +504,7 @@ void buildNestedFanout(PathSpace& root,
         if (!limiter.allow()) {
             return;
         }
-        auto child = std::make_unique<PathSpace>();
+        auto child = std::make_unique<PathSpace>(*root.memoryResource());
         PathSpace* childPtr = child.get();
         std::string mount = "/space_" + std::to_string(i);
         root.insert(mount, std::move(child));
