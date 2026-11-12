@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Error.hpp"
 #include "core/WaitMap.hpp"
 #include "core/NotificationSink.hpp"
 #include "task/Executor.hpp"
@@ -7,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <memory>
+#include <memory_resource>
 #include <optional>
 #include <mutex>
 #include <string>
@@ -24,6 +26,8 @@ namespace SP {
  * - Provide a shared NotificationSink for lifetime-safe notifications from tasks.
  * - Expose an injected Executor for task scheduling (no hard dependency on singletons).
  * - Coordinate shutdown signaling and mass wakeups.
+ * - Carry the std::pmr::memory_resource that spaces sharing this context allocate their tree and
+ *   payload storage from (see "Allocator integration" in docs/AI_Architecture.md).
  *
  * Integration notes:
  * - PathSpaceBase getters (getNotificationSink/getExecutor) can delegate to this context.
@@ -55,6 +59,32 @@ public:
     // Current executor (may be nullptr if not configured).
     Executor* executor() const noexcept {
         return executorPtr.load(std::memory_order_acquire);
+    }
+
+    // ----- Memory resource -----
+    //
+    // The resource tree nodes and payload buffers of the spaces sharing this context allocate
+    // from. It defaults to std::pmr::get_default_resource() at the time the context is created.
+    //
+    // Lifetime: the context never owns the resource. The caller guarantees that it outlives every
+    // space (and every container such a space allocated) that uses it, and that it is safe to call
+    // from several threads at once, since spaces allocate from concurrent operations. Replacing
+    // the resource affects only storage allocated afterwards; storage that already exists keeps
+    // (and is freed through) the resource it was created with, so the previous resource must stay
+    // alive as long as that storage does.
+
+    // Install the memory resource. A null pointer is rejected and leaves the current one in place.
+    auto setMemoryResource(std::pmr::memory_resource* resource) -> Expected<void> {
+        if (resource == nullptr) {
+            return std::unexpected(Error{Error::Code::InvalidError, "Memory resource must not be null"});
+        }
+        this->memoryResourcePtr.store(resource, std::memory_order_release);
+        return {};
+    }
+
+    // Current memory resource (never null).
+    auto getMemoryResource() const noexcept -> std::pmr::memory_resource* {
+        return this->memoryResourcePtr.load(std::memory_order_acquire);
     }
 
     // ----- Notification sinks -----
@@ -232,6 +262,9 @@ private:
 
     // Preferred executor for task scheduling.
     std::atomic<Executor*>             executorPtr{nullptr};
+
+    // Memory resource for storage allocated on behalf of spaces sharing this context.
+    std::atomic<std::pmr::memory_resource*> memoryResourcePtr{std::pmr::get_default_resource()};
 
     // Wait/notify registry (backed by WaitMap for glob/concrete semantics).
     std::unique_ptr<WaitMap>           waitRegistry;
