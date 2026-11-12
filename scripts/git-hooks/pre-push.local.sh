@@ -219,6 +219,12 @@ run_with_hard_timeout() {
 ROOT="$(repo_root)"
 cd "$ROOT"
 
+# git exports GIT_DIR and friends to hooks. In a linked worktree they are absolute paths to that
+# worktree's repository, and every nested git command in the build (CMake FetchContent clones the
+# dependencies with `git clone` and `git checkout`) would act on it instead of its own checkout and
+# fail. Nothing below needs them: the helpers find the repository from the current directory.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+
 PREPUSH_SUMMARY_DIR="$ROOT/build/test-logs/pre-push"
 PREPUSH_SUMMARY_PATH="$PREPUSH_SUMMARY_DIR/pre-push_${PREPUSH_RUN_STAMP}_pid$$.json"
 
