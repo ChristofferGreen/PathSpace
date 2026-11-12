@@ -169,7 +169,9 @@ run_with_timeout() {
   return 0
 }
 
-PREPUSH_COMMAND_TIMEOUT="${PREPUSH_COMMAND_TIMEOUT:-520}"
+# 0 (default) = no wall-clock limit: build time depends on machine load, and the test binary has its own
+# CPU/stall watchdog. Set a positive value only as a last-resort backstop.
+PREPUSH_COMMAND_TIMEOUT="${PREPUSH_COMMAND_TIMEOUT:-0}"
 
 run_with_hard_timeout() {
   local label="$1"; shift
@@ -193,7 +195,7 @@ run_with_hard_timeout() {
 
   local tbin
   tbin="$(have_timeout)"
-  if [[ -n "$tbin" ]]; then
+  if [[ "$secs" -gt 0 && -n "$tbin" ]]; then
     if "$tbin" "${secs}s" "${exec_cmd[@]}"; then
       return 0
     fi

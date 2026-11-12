@@ -38,7 +38,7 @@ Usage: $0 [options]
   -t, --target NAME    Build only this target
       --test           Run the tests after building
       --loop[=N]       Repeat the tests up to N times, stopping at the first failure (implies --test; default 5)
-      --timeout SECS   Per-run test timeout (default: 20; 1800 with a sanitizer)
+      --timeout SECS   Wall-clock backstop per run (default: 3600). Hangs and runaways are caught by the test binary's CPU watchdog, not by this
       --asan|--tsan|--ubsan  Build with a sanitizer
       --coverage       Build with coverage instrumentation
       --docs           Build the Doxygen docs (configures with -DENABLE_DOXYGEN=ON)
@@ -76,8 +76,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$TIMEOUT" ]]; then
-  if [[ -n "$SANITIZER" ]]; then TIMEOUT=1800; else TIMEOUT=20; fi
+  TIMEOUT=3600
 fi
+# Sanitizers multiply CPU cost; scale the test binary's CPU watchdog budget (see tests/test_main.cpp).
+[[ -z "$SANITIZER" ]] || export PATHSPACE_TEST_CPU_BUDGET_S="${PATHSPACE_TEST_CPU_BUDGET_S:-2400}"
 for n in "$LOOP" "$TIMEOUT" ${JOBS:+"$JOBS"}; do
   case "$n" in ''|*[!0-9]*) die "expected a positive integer, got '$n'" ;; esac
 done

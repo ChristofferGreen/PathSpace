@@ -2,11 +2,18 @@
 #include "third_party/doctest.h"
 #include "log/TaggedLogger.hpp"
 
+#include <sys/resource.h>
+
+#include <atomic>
 #include <cctype>
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -45,6 +52,107 @@ std::vector<std::string> split_suite_filters(const char* raw) {
     return filters;
 }
 
+// Hang detection that does not depend on how busy the machine is.
+//
+// Wall-clock limits fail healthy tests on a loaded machine. The watchdog instead looks at
+// counters of work actually done by this process:
+//   * CPU budget: CPU seconds (user+system, all threads) one test case may consume.
+//   * Stall: CPU seconds consumed in a sampling window. A deadlocked process consumes none;
+//     a merely starved process still gets scheduled and consumes some.
+// Both limits can be raised with PATHSPACE_TEST_CPU_BUDGET_S / PATHSPACE_TEST_STALL_CPU_MS
+// (sanitizer builds multiply CPU cost). Setting PATHSPACE_TEST_CPU_BUDGET_S=0 disables them.
+double processCpuSeconds() {
+    rusage usage{};
+    getrusage(RUSAGE_SELF, &usage);
+    auto toSeconds = [](const timeval& tv) { return static_cast<double>(tv.tv_sec) + static_cast<double>(tv.tv_usec) / 1e6; };
+    return toSeconds(usage.ru_utime) + toSeconds(usage.ru_stime);
+}
+
+double envSeconds(const char* name, double fallback) {
+    if (const char* raw = std::getenv(name); raw && *raw != '\0') {
+        return std::strtod(raw, nullptr);
+    }
+    return fallback;
+}
+
+class CpuWatchdog {
+public:
+    static CpuWatchdog& instance() {
+        static CpuWatchdog watchdog;
+        return watchdog;
+    }
+
+    void testCaseStarted(const char* name) {
+        std::lock_guard<std::mutex> lock(mutex);
+        current        = name;
+        caseStartCpu   = processCpuSeconds();
+        active         = true;
+    }
+    void testCaseEnded() {
+        std::lock_guard<std::mutex> lock(mutex);
+        active = false;
+    }
+
+private:
+    CpuWatchdog() {
+        budgetSeconds = envSeconds("PATHSPACE_TEST_CPU_BUDGET_S", 120.0);
+        stallCpuMs    = envSeconds("PATHSPACE_TEST_STALL_CPU_MS", 5.0);
+        stallWindow   = std::chrono::milliseconds(static_cast<long long>(envSeconds("PATHSPACE_TEST_STALL_WINDOW_S", 60.0) * 1000.0));
+        if (budgetSeconds <= 0.0) {
+            return;
+        }
+        std::thread([this] { run(); }).detach();
+    }
+
+    [[noreturn]] void trip(const std::string& current, const char* reason, double value) {
+        std::fprintf(stderr, "\nWATCHDOG: test case \"%s\" %s (%.3f)\n", current.c_str(), reason, value);
+        std::fflush(stderr);
+        std::_Exit(124);
+    }
+
+    void run() {
+        auto   windowStart    = std::chrono::steady_clock::now();
+        double windowStartCpu = processCpuSeconds();
+        while (true) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            const double cpu = processCpuSeconds();
+            std::string  name;
+            bool         isActive;
+            double       startCpu;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                name     = current;
+                isActive = active;
+                startCpu = caseStartCpu;
+            }
+            if (!isActive) {
+                windowStart    = std::chrono::steady_clock::now();
+                windowStartCpu = cpu;
+                continue;
+            }
+            if (cpu - startCpu > budgetSeconds) {
+                trip(name, "exceeded its CPU budget (CPU seconds)", cpu - startCpu);
+            }
+            if (std::chrono::steady_clock::now() - windowStart >= stallWindow) {
+                const double usedMs = (cpu - windowStartCpu) * 1000.0;
+                if (usedMs < stallCpuMs) {
+                    trip(name, "made no progress: deadlock suspected (CPU ms in window)", usedMs);
+                }
+                windowStart    = std::chrono::steady_clock::now();
+                windowStartCpu = cpu;
+            }
+        }
+    }
+
+    std::mutex                mutex;
+    std::string               current;
+    double                    caseStartCpu  = 0.0;
+    bool                      active        = false;
+    double                    budgetSeconds = 120.0;
+    double                    stallCpuMs    = 5.0;
+    std::chrono::milliseconds stallWindow{60000};
+};
+
 }  // namespace
 
 TEST_CASE("split_suite_filters trims whitespace and treats commas/semicolons as separators") {
@@ -68,6 +176,7 @@ struct ShowTestStart : public doctest::IReporter {
         std::lock_guard<std::mutex> lock(SP::logger().coutMutex);
 #endif
         std::cout << "Test: " << in.m_name << std::endl;
+        CpuWatchdog::instance().testCaseStarted(in.m_name);
     }
     void report_query(const doctest::QueryData&) override {
     }
@@ -78,6 +187,7 @@ struct ShowTestStart : public doctest::IReporter {
     void test_case_reenter(const doctest::TestCaseData&) override {
     }
     void test_case_end(const doctest::CurrentTestCaseStats&) override {
+        CpuWatchdog::instance().testCaseEnded();
     }
     void test_case_exception(const doctest::TestCaseException&) override {
     }

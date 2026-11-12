@@ -71,11 +71,11 @@ This guide collects the conventions and scripts used when pairing with the PathS
 - **No-flake policy:** If any test fails, pause all other work and focus exclusively on making that test reliable. Do not resume feature work or coverage expansion until the test is stable and you are confident in it (use repeated loop runs to verify).
 - Always execute the full suite after any code modification (docs-only edits are exempt).
 - Run the suite in a loop: minimum 5 iterations with timeout protection.
-- Target runtime: < 10 s per iteration; use a 20 s timeout to catch hangs.
-- Preferred helper: `./scripts/compile.sh --loop=5 --timeout=20` (builds, then repeats the tests via ctest) wraps the CTest invocation and is tuned for the WaitMap/task race scenarios described in `docs/AI_Architecture.md`.
+- Hangs are caught by counters, never by wall-clock: the test binary's watchdog (`tests/test_main.cpp`) aborts a test case that burns more than `PATHSPACE_TEST_CPU_BUDGET_S` CPU seconds (default 120) or whose process uses under `PATHSPACE_TEST_STALL_CPU_MS` CPU in a `PATHSPACE_TEST_STALL_WINDOW_S` window (deadlock). Results must not depend on how busy the machine is; the ctest/hook wall-clock limits are only hour-scale backstops.
+- Preferred helper: `./scripts/compile.sh --loop=5` (builds, then repeats the tests via ctest) wraps the CTest invocation and is tuned for the WaitMap/task race scenarios described in `docs/AI_Architecture.md`.
 - Recommended command (after configuring the `build/` tree):
   ```bash
-  ctest --test-dir build --output-on-failure -j --repeat-until-fail 5 --timeout 20
+  ctest --test-dir build --output-on-failure -j --repeat-until-fail 5 --timeout 3600
   ```
 - If a failure reproduces, capture the failing command and logs for the PR.
 
