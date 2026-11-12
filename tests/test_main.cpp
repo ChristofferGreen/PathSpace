@@ -78,8 +78,11 @@ double envSeconds(const char* name, double fallback) {
 class CpuWatchdog {
 public:
     static CpuWatchdog& instance() {
-        static CpuWatchdog watchdog;
-        return watchdog;
+        // Never destroyed: the detached sampler thread keeps locking `mutex` until the process
+        // exits, so a function-local static would be torn down underneath it (and aborts the
+        // run with "mutex lock failed" under ThreadSanitizer).
+        static auto* const watchdog = new CpuWatchdog;
+        return *watchdog;
     }
 
     void testCaseStarted(const char* name) {
