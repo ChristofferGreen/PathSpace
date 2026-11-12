@@ -57,6 +57,7 @@ set(PATHSPACE_CORE_TEST_SOURCES
   unit/pathspace/test_PathSpaceNestingIndexed.cpp
   unit/pathspace/test_PathSpaceNestingLifecycle.cpp
   unit/pathspace/test_PathSpaceContextOwnership.cpp
+  unit/pathspace/test_PathSpaceAllocator.cpp
   unit/pathspace/test_PathSpaceNestingConcurrent.cpp
   unit/pathspace/test_PathSpaceExtract.cpp
   unit/pathspace/test_PathSpaceListChildren.cpp
