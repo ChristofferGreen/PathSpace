@@ -391,6 +391,41 @@ PathSpace code should not throw C++ exceptions. All failures must travel through
 
 - Serialization hooks in `InputMetadata` (`deserialize`, `deserializePop`) return `std::optional<Error>`: `std::nullopt` means the destination was fully written; truncated or corrupt bytes yield `MalformedInput`/`UnserializableType` and leave the destination untouched.
 
+## Fault Tolerance & Errors
+Every failure reaches the caller as an `Error` (`src/pathspace/core/Error.hpp`) or an entry in `InsertReturn::errors`; nothing is retried automatically. Callers that want a retry loop around `Block{}` reads or lazy executions have to write it.
+
+### Task exceptions
+- A callable inserted as an execution runs on a `TaskPool` worker (`TaskPool::workerFunction`). The worker wraps the call in `try/catch (...)`: an exception marks the task `Failed` (`Task::markFailed`), logs "Exception in running Task" under the `Error`/`Exception` tags (visible only with logging enabled, see "Logging" below), and the worker carries on with the next task. The exception does not propagate and the message is not preserved.
+- Typed tasks (`TaskT<T>`) additionally fail their `SharedState<T>` when the callable throws, so waiters on `FutureT`/`FutureAny` wake up. `ready()` stays `false` and `get`/`copy_to` return `false`; there is no way to tell a failure from "not ready yet" except that `wait()` returns. Likewise `Future::wait`, `wait_for` and `copy_result_to` return as soon as the legacy task is terminal (`Completed` or `Failed`) instead of waiting for a result that will never come.
+- The notification for the task's path is still delivered after a failure, so blocked readers re-check the node.
+- **Known gap (audit item T3 in `docs/State_Machine_Audit.md`).** A failed execution stays at the front of its node. `read`/`take` report the same error as for a task that is still running (`UnknownError`, "Task is not completed"); with `Block{}` they keep retrying until the timeout and return `Timeout`. Values queued behind the failed task are unreachable until the node is cleared. The pending test `a failed execution does not block its node forever` in `tests/unit/task/test_TaskFailureState.cpp` documents the minimum contract any fix has to meet and is skipped until the error contract is chosen.
+- Tests: `tests/unit/task/test_TaskFailureState.cpp` (`task.failure.statemachine`), `tests/unit/task/test_FutureCoverage.cpp`, `tests/unit/task/test_IFutureAny.cpp`.
+
+### Submission failures
+- Inserting an `Immediate` execution without an executor returns `UnknownError` ("No executor available for immediate task submission"); an executor that refuses the task (for example a `TaskPool` that is shutting down: "Executor shutting down") surfaces its error from the insert. A lazy execution reports the same conditions from the first `read`/`take` that tries to start it ("No executor available for lazy task submission").
+- Covered in `tests/unit/core/test_NodeDataCoverage.cpp` (executor refusal, missing executor) and `tests/unit/task/test_TaskPool.cpp` (`addTask` refuses submissions during/after shutdown).
+
+### Read/take error codes
+`read`/`take` return `Expected<T>`; the codes below are the ones produced by the core (`Leaf`, `NodeData`, `PathSpace::out`):
+- `InvalidPath`: validation failed (`Out::validationLevel`) or an indexed component is malformed.
+- `NoSuchPath`: a component of the path does not exist.
+- `NoObjectFound`: the node exists but holds no value (also returned for `read<FutureAny>` when no execution future is present).
+- `InvalidType`: the front value has a different type than requested; the value is left in place.
+- `MalformedInput` / `UnserializableType` / `SerializationFunctionMissing`: payload bytes are truncated or the type has no (de)serializer; the destination is untouched.
+- `NotSupported`: for example spans on non-POD nodes, or reading a nested PathSpace instead of taking it.
+- `UnknownError`: an execution is not finished yet or failed ("Task is not completed"), or the task expired before its result was copied.
+- `Timeout`: a blocking call ran out of time. It is also used for "Shutting down while waiting for data" and "PathSpace clearing in progress", so check the message when the distinction matters.
+- `CapacityExceeded` exists in the enum but nothing in `src/` produces it yet; see "Backpressure & Queue Limits".
+Non-blocking calls return the first error; blocking calls retry on every notification and return `Timeout` at the deadline, discarding the last underlying error. Tests: `tests/unit/pathspace/test_PathSpaceRead.cpp`, `tests/unit/core/test_NodeDataDeserializeEdges.cpp`.
+
+### Shutdown behaviour
+- `PathSpace::shutdown()` (also run by the destructor) invalidates the notification sink, marks the context as shutting down, wakes all waiters, waits for in-flight `in()`/`out()` calls, clears the tree and purges the wait registry. Blocked reads return `Timeout` ("Shutting down while waiting for data..."). A space that borrows another space's context only clears its own tree. See "Blocking" and "Wait/notify protocol".
+- Because the tree is cleared first, queued tasks whose node is gone no longer lock and are skipped by the workers. `TaskPool::shutdown()` sets the shutting-down flag; workers keep taking tasks until the queue is empty (a task that is already running always finishes), then exit and are joined (calls are serialised). Completions that finish during shutdown skip their notification. `addTask`/`submit` after shutdown return an `Error`.
+- Tests: `tests/unit/pathspace/test_PathSpaceRead.cpp` ("Shutdown waits for a blocking read to exit"), `tests/unit/pathspace/test_PathSpaceClearHandshake.cpp`, `tests/unit/pathspace/test_PathSpaceContextOwnership.cpp`, `tests/unit/task/test_TaskPoolShutdownState.cpp`.
+
+### Logging
+`sp_log` is compiled in only when `SP_LOG_DEBUG` is defined and is off at run time unless `PATHSPACE_LOG=1` (or `PATHSPACE_LOG_ENABLED=1`). Output is tag-filtered: a built-in skip list silences the noisy internal tags (for example `INFO`, `TaskPool`, `NodeData`; the `Error`/`Exception` tags used for task exceptions are not in it), `PATHSPACE_LOG_ENABLE_TAGS=a,b` restricts output to messages whose tags are all in the allowlist, and `PATHSPACE_LOG_SKIP_TAGS` / `PATHSPACE_LOG_CLEAR_DEFAULT_SKIPS` adjust the skip list. Tags can also be toggled at run time (`TaggedLogger::enableTag`/`disableTag`/`skipTag`, or `SP::enable_log_tag`). Tests: `tests/unit/log/test_TaggedLogger.cpp`.
+
 ## Const-correctness notes
 A few `const_cast`s are deliberate; each has one documented home:
 - `read`/`peek` style calls are `const` but go through the virtual `out`, which may start a lazy task or register a waiter. They are logically const (they never change the visible data), which is why `PathSpaceBase::read` casts `this` to call `out`.
