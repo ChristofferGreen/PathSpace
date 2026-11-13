@@ -207,3 +207,17 @@ task {
     "Documented completion in finished/Plan_SceneGraph_Finished.md and refreshed backlog focus for upcoming slider → listbox coverage work."
   ]
 }
+
+task {
+  name: "Allocator & PMR Integration [EPIC]"
+  description: "PathSpaceContext owns the memory resource accessors; SlidingBuffer and Node children map allocate from std::pmr; PathSpace accepts a user memory_resource; tests, guide (docs/AI_Allocators.md) and benchmarks (PathSpaceBench --resource, docs/Optimization.md) landed. Node::DefaultSubmaps went from 12 to 4 (Node ~450 KB -> ~2 KB) together with a fix for a getOrCreateChild iterator race."
+  status: completed
+  priority: P2
+}
+
+task {
+  name: "Logging Allowlist, Future Handle Tests, Fault Tolerance / Default Paths / Backpressure docs, macOS CI [MIXED]"
+  description: "Tag filtering at log time with a runtime API and flush(); typed and legacy future-handle tests (pathspace.future.handles); Fault Tolerance, Default Paths and Views, and Backpressure sections in docs/AI_Architecture.md; macOS CI job already present in .github/workflows/ci.yml."
+  status: completed
+  priority: P2
+}

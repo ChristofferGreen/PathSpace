@@ -54,154 +54,66 @@ task {
     ]
   }
 
-  task {
-    name: "Backpressure & Queue Limits [DOCS]"
-    description: "Clarify behavior under high producer/consumer skew and mitigation strategies."
-    status: planned
-    priority: P1
-    acceptance_criteria: [
-      "AI_Architecture.md backpressure section documents queue growth, behavior, and mitigation.",
-      "Pointers to NodeData queues, task queues, and limits; trade-offs explained."
-    ]
-  }
 }
 
 task {
-  name: "Allocator & PMR Integration [EPIC]"
-  description: "Introduce PMR infrastructure, migrate containers, expose a public allocator API, and document with tests and benchmarks."
+  name: "Allocator Coverage [EPIC]"
+  description: "A custom memory resource currently covers tree entries (children map nodes, long keys) and payload byte buffers only. Extend it to the remaining allocations. Guide: docs/AI_Allocators.md."
   status: planned
-  priority: P2
+  priority: P3
 
   task {
-    name: "PMR Infrastructure [FEATURE]"
-    description: "Provide a central std::pmr::memory_resource via context; prepare core types for PMR."
+    name: "Node Objects and POD Lanes on the Resource [FEATURE]"
+    description: "Node objects (global free list, about 2 KB each), PodPayload lanes, NodeData type/task/future deques, task control blocks and the wait registry still allocate from the global heap."
     status: planned
-    priority: P1
+    priority: P3
     acceptance_criteria: [
-      "Context exposes setMemoryResource/getMemoryResource; null is rejected.",
-      "Core containers accept std::pmr::polymorphic_allocator."
+      "A counting resource sees every allocation made on behalf of a space, or the remaining ones are listed in docs/AI_Allocators.md with a reason.",
+      "No regression in instructions, cycles or RSS in an interleaved A/B run (method in docs/Optimization.md)."
     ]
     risks: [
-      "Ensure memory_resource lifetime outlives using containers."
+      "Covering Node itself needs a custom deleter on unique_ptr<Node>."
     ]
   }
 
   task {
-    name: "PMR Container Migration [PERF]"
-    description: "Migrate SlidingBuffer and Node children map to PMR-aware variants."
+    name: "Allocation Failure as Error [API]"
+    description: "std::bad_alloc or an exhausted resource propagates as an exception; PathSpace does not translate it to Error."
     status: planned
-    priority: P1
-    acceptance_criteria: [
-      "SlidingBuffer uses std::pmr::vector<uint8_t> with allocator plumbing.",
-      "Node::ChildrenMap uses a PMR allocator parameter.",
-      "All tests pass loop=5 with default resource."
-    ]
-    risks: [
-      "phmap allocator interactions; validate template parameters and perf."
-    ]
-  }
-
-  task {
-    name: "Allocator API [API]"
-    description: "Let users supply a custom memory_resource (e.g., monotonic pools)."
-    status: planned
-    priority: P1
-    acceptance_criteria: [
-      "PathSpace constructor/context exposes a setter for memory_resource.",
-      "Example demonstrates monotonic_buffer_resource usage."
-    ]
-  }
-
-  task {
-    name: "Allocator Tests [TESTS]"
-    description: "Verify containers honor the provided allocator under stress."
-    status: planned
-    priority: P2
-    acceptance_criteria: [
-      "Tests use a counting_resource; assertions verify allocation paths.",
-      "Stress subcases with many inserts/reads succeed with custom resource."
-    ]
-  }
-
-  task {
-    name: "Allocator Guide [DOCS]"
-    description: "Document best practices for allocator integration and lifetimes."
-    status: planned
-    priority: P2
-    acceptance_criteria: [
-      "Overview covers custom allocator usage with examples.",
-      "Architecture notes summarize allocator-aware components and trade-offs."
-    ]
-  }
-
-  task {
-    name: "Allocator Benchmarks [BENCH]"
-    description: "Compare default vs custom allocator throughput/latency and memory usage."
-    status: planned
-    priority: P2
-    acceptance_criteria: [
-      "Bench scripts run with default and tuned custom resources; results summarized in docs.",
-      "loop=5 remains green under both configurations."
-    ]
+    priority: P3
   }
 }
 
 task {
-  name: "Logging Allowlist [FEATURE]"
-  description: "Keep tests and CI quiet by default; enable targeted categories on demand."
+  name: "Bench Scenario Names Match What Runs [BENCH]"
+  description: "clampSize(0, scale) returns 1, so every PathSpaceBench scenario, including Wide tree, runs as a nested chain."
   status: planned
   priority: P2
-  acceptance_criteria: [
-    "enabledTags allowlist is supported and defaults to empty; skipTags remains for convenience.",
-    "Minimal default output; targeted tags can be enabled at runtime."
-  ]
-  steps: [
-    "Add allowlist guard in logging hot path; prefer allowlist if non-empty.",
-    "Provide a simple API for toggling tags; document usage."
-  ]
 }
 
 task {
-  name: "macOS CI Job [CI]"
-  description: "Add a macOS CI job mirroring loop=5 to catch platform-specific issues."
-  status: planned
-  priority: P2
-  acceptance_criteria: [
-    "A macOS job runs ./scripts/compile.sh --clean --loop=5.",
-    "Branch protection includes both Linux and macOS checks."
-  ]
-}
-
-task {
-  name: "Future Handle Tests [TESTS]"
-  description: "Lock in behavior for typed and legacy execution handles."
-  status: planned
-  priority: P2
-  acceptance_criteria: [
-    "peekFuture returns a valid Future when an execution exists.",
-    "readFuture returns a valid FutureAny for typed tasks; non-blocking and consistent."
-  ]
-}
-
-task {
-  name: "Default Paths & Views [DOCS]"
-  description: "Fill in Default Paths and Views documentation with examples mapped to tests."
-  status: planned
-  priority: P2
-  acceptance_criteria: [
-    "Views and Default Paths sections describe API, invariants, and examples; cross-references valid."
-  ]
-}
-
-task {
-  name: "Fault Tolerance & Errors [DOCS]"
-  description: "Document task exceptions, read/take failures, and shutdown behavior."
+  name: "Failed Execution Blocks Its Node [BUG]"
+  description: "Known gap T3 (docs/State_Machine_Audit.md): a failed task execution stays at the front of its node and blocks reads until Timeout. A pending test for it is currently skipped."
   status: planned
   priority: P1
   acceptance_criteria: [
-    "Fault Tolerance section describes exception handling, retries (if any), and read/take error codes.",
-    "Links to tests exercising exception paths; expected logs clarified."
+    "A failed execution is surfaced as an Error to the reader and does not permanently block the node.",
+    "The skipped test is enabled and passes in the loop-5 run and under TSan."
   ]
+}
+
+task {
+  name: "PathView Permission::execute and CapacityExceeded [CLEANUP]"
+  description: "PathView never checks Permission::execute, and Error::Code::CapacityExceeded exists but nothing in src/ returns it. Decide to implement or remove each."
+  status: planned
+  priority: P2
+}
+
+task {
+  name: "Require CI Checks in Branch Protection [CI]"
+  description: "ci.yml (macOS build matrix and loop-stability) and tsan.yml exist, but the first GitHub run has not been observed and the checks are not required by branch protection. Repository setting, maintainer action."
+  status: planned
+  priority: P2
 }
 
 task {
